@@ -1,0 +1,23 @@
+parameters:
+  agentPool: ''
+  env: ''
+
+##
+# Run tests
+##
+stages:
+- stage: RunTests
+  displayName: 'Run tests in the ${{ parameters.env }} environment'
+  condition: |
+    not(and(or(failed(), canceled()), ${{ ne(parameters.env, 'prod') }}))
+  jobs:
+  - template: ${{variables['System.DefaultWorkingDirectory']}}/pipelines/jobs/job-run-tests.yml
+    parameters:
+      agentPool: ${{ parameters.agentPool }}
+      env: ${{ parameters.env }}
+      testType: Unit
+  - template: ${{variables['System.DefaultWorkingDirectory']}}/pipelines/jobs/job-run-tests.yml
+    parameters:
+      agentPool: ${{ parameters.agentPool }}
+      env: ${{ parameters.env }}
+      testType: Integration

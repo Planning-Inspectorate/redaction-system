@@ -1,0 +1,25 @@
+parameters:
+- name: env
+  type: string
+  values: ['dev']
+- name: testType
+  type: string
+  values: ['Unit', 'Integration', 'E2e']
+    
+
+##
+# Run tests
+##
+jobs:
+- job: Run${{ parameters.testType }}TestsJob
+  pool: ${{ parameters.agentPool }}
+  steps:
+  - checkout: self
+    clean: true
+  - template: steps/azure_auth.yml@templates
+    parameters:
+      subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+  - script: |
+      export PYTHONPATH=$(pwd)
+      python3 -m pytest $(Build.SourcesDirectory)/redactor/test/${{ lower(parameters.testType) }}_test -vv -rP -n 4
+    displayName: 'pytest'

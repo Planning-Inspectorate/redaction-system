@@ -1,0 +1,14 @@
+parameters:
+  folder: ''
+##
+# Run tests
+##
+jobs:
+- job: ValidateCode
+  pool: ${{ parameters.agentPool }}
+  steps:
+  - checkout: self
+    clean: true
+  - script: |
+      python3 -m pip install ruff
+      ruff check ${{ parameters.folder }}
