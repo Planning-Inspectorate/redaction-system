@@ -1,3 +1,9 @@
+azure-identity==1.25.1
+langchain==1.1.0
+langchain-openai==1.1.0
+langchain-text-splitters==1.0.0
 mock==5.2.0
+python-dotenv 1.2.1
+PyMuPDF==1.26.6
 pytest==9.0.1
 pytest-xdist==3.8.0
