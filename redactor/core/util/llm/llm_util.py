@@ -13,8 +13,7 @@ class LLMUtil():
     """
     Class that handles the interaction with a large-language model hosted on Azure
     """
-    def __init__(self):
-        model = "gpt-4.1-nano"
+    def __init__(self, model: str = "gpt-4.1-nano"):
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
         self.api_key = os.environ.get("OPENAI_KEY", None)
         credential = ChainedTokenCredential(

@@ -6,12 +6,19 @@ import json
 
 
 class RedactorFactory():
+    """
+    Class for generating Redactor classes by name
+    """
     REDACTOR_TYPES: Type[Redactor] = [
         LLMTextRedactor
     ]
+    """The Redactor classes that are known to the factory"""
 
     @classmethod
     def _validate_redactor_types(cls):
+        """
+        Validate the REDACTOR_TYPES and return a map of type_name: Redactor
+        """
         name_map: Dict[str, List[Type[Redactor]]] = dict()
         for redactor_type in cls.REDACTOR_TYPES:
             type_name = redactor_type.get_name()
@@ -28,10 +35,20 @@ class RedactorFactory():
             raise DuplicateRedactorNameException(
                 f"The following Redactor implementation classes had duplicate names: {json.dumps(invalid_types, indent=4)}"
             )
-        return name_map
+        return {
+            k: v[0]
+            for k, v in name_map.items()
+        }
 
     @classmethod
     def get(cls, redactor_type: str) -> Type[Redactor]:
+        """
+        Return the Redactor that is identified by the provided type name
+        
+        :param str redactor_type: The Redactor type name (which aligns with the get_name method of the Redactor)
+        :return Type[Redactor]: The redactor instance identified by the provided redactor_type
+        :raises RedactorNameNoFoundException if the given redactor_type is not found
+        """
         if not isinstance(redactor_type, str):
             raise ValueError(f"RedactorFactory.get expected a str, but got a {type(redactor_type)}")
         name_map = cls._validate_redactor_types()
@@ -39,4 +56,4 @@ class RedactorFactory():
             raise RedactorNameNoFoundException(
                 f"No redactor could be found for redactor type '{redactor_type}'"
             )
-        return name_map[redactor_type][0]
+        return name_map[redactor_type]

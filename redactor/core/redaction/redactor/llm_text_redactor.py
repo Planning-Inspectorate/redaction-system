@@ -1,6 +1,6 @@
 from redactor.core.redaction.redactor.text_redactor import TextRedactor
 from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import LLMTextRedactionConfig
-from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import LLMTextResultResult
+from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import LLMTextResult
 from redactor.core.util.llm.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
@@ -25,7 +25,8 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextResultResult:
+    def redact(self) -> LLMTextResult:
+        model = self.config["properties"]["model"]
         system_prompt = self.config["properties"]["system_prompt"]
         text_to_redact = self.config["properties"]["text"]
         redaction_rules = self.config["properties"]["redaction_rules"]
@@ -42,7 +43,7 @@ class LLMTextRedactor(TextRedactor):
         )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
         json_parser = JsonOutputParser()
-        llm_util = LLMUtil()
+        llm_util = LLMUtil(model)
         text_to_redact = []
         responses = []
         for chunk in text_chunks:
@@ -57,11 +58,11 @@ class LLMTextRedactor(TextRedactor):
         output_token_count = sum(x.usage_metadata["output_tokens"] for x in responses)
         total_token_count = input_token_count + output_token_count
 
-        return LLMTextResultResult(
+        return LLMTextResult(
             redaction_strings=text_to_redact_cleaned,
-            metadata={
-                "input_token_count": input_token_count,
-                "output_token_count": output_token_count,
-                "total_token_count": total_token_count
-            }
+            metadata=LLMTextResult.LLMResultMetadata(
+                input_token_count=input_token_count,
+                output_token_count=output_token_count,
+                total_token_count=total_token_count
+            )
         )

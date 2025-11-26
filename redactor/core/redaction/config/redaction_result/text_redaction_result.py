@@ -6,3 +6,4 @@ from dataclasses import dataclass, field
 @dataclass
 class TextRedactionResult(RedactionResult):
     redaction_strings: List[str] = field(default_factory=lambda: [])
+    """The list of strings to redact"""
