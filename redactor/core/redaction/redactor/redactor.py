@@ -19,6 +19,9 @@ class Redactor(ABC):
     @classmethod
     @abstractmethod
     def get_name(cls) -> str:
+        """
+        :return str: A unique name for the Redactor implementation class
+        """
         pass
 
     @classmethod

@@ -3,5 +3,12 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class LLMTextResultResult(TextRedactionResult):
-    metadata: str = field(default="")
+class LLMTextResult(TextRedactionResult):
+    @dataclass
+    class LLMResultMetadata():
+        input_token_count: int = field()
+        output_token_count: int = field()
+        total_token_count: int = field()
+
+    metadata: LLMResultMetadata = field(default=None)
+    """Any metadata provided by the LLM"""
