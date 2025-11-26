@@ -5,7 +5,6 @@ from redactor.core.redaction.config.redaction_result.redaction_result import Red
 from redactor.core.redaction.config.redaction_result.text_redaction_result import TextRedactionResult
 from redactor.core.redaction.redactor.redactor_factory import RedactorFactory
 from redactor.core.redaction.redactor.redactor import Redactor
-from abc import ABC, abstractmethod
 from io import BytesIO
 from typing import Set, Type, List, Any, Dict
 import pymupdf
@@ -13,14 +12,32 @@ import pymupdf
 
 
 class PDFProcessor(FileProcessor):
-    def _extract_pdf_text(self, pdf: pymupdf.Document) -> str:
+    """
+    Class for managing the redaction of PDF documents
+    """
+    def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
+        """
+        Return text content of the given PDF
+        
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :return str: The text content of the PDF
+        """
+        pdf = pymupdf.open(stream=file_bytes)
         page_text = "\n".join(
             page.get_text()
             for page in pdf
         )
         return page_text
     
-    def _apply_provisional_text_redactions(self, pdf: pymupdf.Document, text_to_redact: List[str]):
+    def _apply_provisional_text_redactions(self, file_bytes: BytesIO, text_to_redact: List[str]):
+        """
+        Redact the given list of redaction strings as provisional redactions in the PDF bytes stream
+        
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :param List[str] text_to_redact: The text strings to redact in the document
+        :return BytesIO: Bytes stream for the PDF with provisional text redactions applied
+        """
+        pdf = pymupdf.open(stream=file_bytes)
         instances_to_redact = []
         for word_to_redact in text_to_redact:
             for page in pdf:
@@ -38,11 +55,13 @@ class PDFProcessor(FileProcessor):
                 highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
             except:
                 print(f"        Failed to add highlight for word {word}, at location '{rect}'")
+        new_file_bytes = BytesIO()
+        pdf.save(new_file_bytes, deflate=True)
+        new_file_bytes.seek(0)    
+        return new_file_bytes
 
     def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
-        pdf = pymupdf.open(stream=file_bytes)
-        pdf_text = self._extract_pdf_text(pdf)
-        print(pdf_text)
+        pdf_text = self._extract_pdf_text(file_bytes)
         redaction_rules = rule_config.get("redaction_rules", [])
         # Attach any extra parameters to the redaction rules
         for rule in redaction_rules:
@@ -64,10 +83,7 @@ class PDFProcessor(FileProcessor):
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
-        self._apply_provisional_text_redactions(pdf, text_redactions)
-        new_file_bytes = BytesIO()
-        pdf.save(new_file_bytes, deflate=True)
-        new_file_bytes.seek(0)    
+        new_file_bytes = self._apply_provisional_text_redactions(file_bytes, text_redactions) 
         return new_file_bytes
 
     def apply(self, file_bytes: BytesIO) -> BytesIO:
@@ -91,6 +107,7 @@ redacted_doc = PDFProcessor().redact(
             {
                 "type": "LLMTextRedaction",
                 "properties": {
+                    "model": "gpt-4.1-nano",
                     "system_prompt": "You always respond with a JSON array. Allowed output format:\n [\"some\", \"words\", \"from\", \"the\", \"text\"]",
                     "redaction_rules": [
                         "Find all human names in the text",
