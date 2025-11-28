@@ -6,5 +6,5 @@ class DuplicateRedactorNameException(Exception):
     pass
 
 
-class RedactorNameNoFoundException(Exception):
+class RedactorNameNotFoundException(Exception):
     pass

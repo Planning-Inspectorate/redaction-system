@@ -1,6 +1,6 @@
 from redactor.core.redaction.redactor.redactor import Redactor
 from redactor.core.redaction.redactor.llm_text_redactor import LLMTextRedactor
-from redactor.core.redaction.redactor.exceptions import DuplicateRedactorNameException, RedactorNameNoFoundException
+from redactor.core.redaction.redactor.exceptions import DuplicateRedactorNameException, RedactorNameNotFoundException
 from typing import List, Dict, Type
 import json
 
@@ -47,13 +47,13 @@ class RedactorFactory():
         
         :param str redactor_type: The Redactor type name (which aligns with the get_name method of the Redactor)
         :return Type[Redactor]: The redactor instance identified by the provided redactor_type
-        :raises RedactorNameNoFoundException if the given redactor_type is not found
+        :raises RedactorNameNotFoundException if the given redactor_type is not found
         """
         if not isinstance(redactor_type, str):
             raise ValueError(f"RedactorFactory.get expected a str, but got a {type(redactor_type)}")
         name_map = cls._validate_redactor_types()
         if redactor_type not in name_map:
-            raise RedactorNameNoFoundException(
+            raise RedactorNameNotFoundException(
                 f"No redactor could be found for redactor type '{redactor_type}'"
             )
         return name_map[redactor_type]
