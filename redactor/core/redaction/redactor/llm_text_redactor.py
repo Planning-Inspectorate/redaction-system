@@ -1,10 +1,12 @@
 from redactor.core.redaction.redactor.text_redactor import TextRedactor
 from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import LLMTextRedactionConfig
-from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import LLMTextResult
+from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import LLMTextRedactionResult
 from redactor.core.util.llm.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
+from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
+from typing import List
 
 
 class LLMRedactionResultFormat(BaseModel):
@@ -31,7 +33,7 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextResult:
+    def redact(self) -> LLMTextRedactionResult:
         # Initialisation
         model = self.config["properties"]["model"]
         system_prompt = self.config["properties"]["system_prompt"]
@@ -55,7 +57,8 @@ class LLMTextRedactor(TextRedactor):
         # Identify redaction strings
         llm_util = LLMUtil(model)
         text_to_redact = []
-        responses = []
+        # Todo - add multithreading here
+        responses: List[ParsedChatCompletion] = []
         for chunk in text_chunks:
             user_prompt_formatted = user_prompt_template.format(chunk=chunk)
             response = llm_util.invoke_chain(system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat)
@@ -69,9 +72,9 @@ class LLMTextRedactor(TextRedactor):
         input_token_count = sum(x.usage.prompt_tokens for x in responses)
         output_token_count = sum(x.usage.completion_tokens for x in responses)
         total_token_count = input_token_count + output_token_count
-        return LLMTextResult(
+        return LLMTextRedactionResult(
             redaction_strings=text_to_redact_cleaned,
-            metadata=LLMTextResult.LLMResultMetadata(
+            metadata=LLMTextRedactionResult.LLMResultMetadata(
                 input_token_count=input_token_count,
                 output_token_count=output_token_count,
                 total_token_count=total_token_count
