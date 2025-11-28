@@ -4,12 +4,18 @@ from redactor.core.redaction.config.redaction_result.llm_text_redaction_result i
 from redactor.core.util.llm.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel
+
+
+class LLMRedactionResultFormat(BaseModel):
+    redaction_strings: list[str]
 
 
 class LLMTextRedactor(TextRedactor):
     """
     Class that performs text redaction using an LLM
+
+    Loosely based on https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/structured-outputs?view=foundry-classic&tabs=python-secure%2Cdotnet-entra-id&pivots=programming-language-python
     """
     TEXT_SPLITTER = RecursiveCharacterTextSplitter(
         chunk_size=500,
@@ -26,38 +32,43 @@ class LLMTextRedactor(TextRedactor):
         return LLMTextRedactionConfig
 
     def redact(self) -> LLMTextResult:
+        # Initialisation
         model = self.config["properties"]["model"]
         system_prompt = self.config["properties"]["system_prompt"]
         text_to_redact = self.config["properties"]["text"]
         redaction_rules = self.config["properties"]["redaction_rules"]
-        prompt_template = PromptTemplate(
+        # Add the defined redaction rules to the System prompt
+        system_prompt_template = PromptTemplate(
             input_variables=["chunk"],
             template=(
                 f"{system_prompt}"
                 f"{'.'.join(redaction_rules)}"
-                "If there are no matches, return an empty list [].\n\n"
-                "Chunk text:\n"
-                "{chunk}\n\n"
-                "Answer:"
             ),
         )
+        system_prompt_formatted = system_prompt_template.format()
+        # The user's prompt will just be the raw text
+        user_prompt_template = PromptTemplate(
+            input_variables=["chunk"],
+            template="{chunk}"
+        )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
-        json_parser = JsonOutputParser()
+        # Identify redaction strings
         llm_util = LLMUtil(model)
         text_to_redact = []
         responses = []
         for chunk in text_chunks:
-            response = llm_util.invoke_chain(prompt_template, {"chunk": chunk})
-            response_cleaned = json_parser.parse(response.content)
+            user_prompt_formatted = user_prompt_template.format(chunk=chunk)
+            response = llm_util.invoke_chain(system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat)
+            response_cleaned: LLMRedactionResultFormat = response.choices[0].message.parsed
+            redaction_strings = response_cleaned.redaction_strings
             responses.append(response)
-            text_to_redact.extend(response_cleaned)
+            text_to_redact.extend(redaction_strings)
         # Remove duplicates
         text_to_redact_cleaned = list(dict.fromkeys(text_to_redact))
         # Collect metrics
-        input_token_count = sum(x.usage_metadata["input_tokens"] for x in responses)
-        output_token_count = sum(x.usage_metadata["output_tokens"] for x in responses)
+        input_token_count = sum(x.usage.prompt_tokens for x in responses)
+        output_token_count = sum(x.usage.completion_tokens for x in responses)
         total_token_count = input_token_count + output_token_count
-
         return LLMTextResult(
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextResult.LLMResultMetadata(

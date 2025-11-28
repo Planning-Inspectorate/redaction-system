@@ -108,7 +108,7 @@ redacted_doc = PDFProcessor().redact(
                 "type": "LLMTextRedaction",
                 "properties": {
                     "model": "gpt-4.1-nano",
-                    "system_prompt": "You always respond with a JSON array. Allowed output format:\n [\"some\", \"words\", \"from\", \"the\", \"text\"]",
+                    "system_prompt": "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: ",
                     "redaction_rules": [
                         "Find all human names in the text",
                         "Find all dates in the test"
