@@ -1,6 +1,8 @@
 from langchain_core.prompts import PromptTemplate
 from typing import Dict
 from azure.identity import ChainedTokenCredential, ManagedIdentityCredential, AzureCliCredential
+from pydantic import BaseModel
+from openai import OpenAI
 from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
 import os
@@ -21,14 +23,19 @@ class LLMUtil():
             AzureCliCredential()
         )
         self.token = credential.get_token("https://cognitiveservices.azure.com/.default").token
-        self.llm = AzureChatOpenAI(
-            deployment_name=model,
-            azure_endpoint=self.azure_endpoint,
+        self.llm = OpenAI(  
+            base_url = f"{self.azure_endpoint}openai/v1/",  
             api_key=self.api_key,
-            api_version="2024-12-01-preview",
-            temperature=0.1
         )
+        self.llm_model = model
 
-    def invoke_chain(self, prompt_template: PromptTemplate, prompt_args: Dict[str, str]):
-        prompt = prompt_template.format(**prompt_args)
-        return self.llm.invoke(prompt)
+    def invoke_chain(self, system_prompt: str, user_prompt: str, result_format: BaseModel):
+        completion = self.llm.chat.completions.parse(
+            model=self.llm_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            response_format=result_format
+        )
+        return completion
