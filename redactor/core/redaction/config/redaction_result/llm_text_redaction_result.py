@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 
 @dataclass
-class LLMTextResult(TextRedactionResult):
+class LLMTextRedactionResult(TextRedactionResult):
     @dataclass
     class LLMResultMetadata():
         input_token_count: int = field()
