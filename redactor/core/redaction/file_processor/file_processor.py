@@ -1,5 +1,6 @@
 from redactor.core.redaction.config.redaction_config.redaction_config import RedactionConfig
 from redactor.core.redaction.config.redaction_rule.redaction_rule import RedactionRule
+from redactor.core.redaction.redactor.redactor import Redactor
 from abc import ABC, abstractmethod
 from io import BytesIO
 from typing import Set, Type, Dict, Any
@@ -9,6 +10,14 @@ class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
     """
+    @classmethod
+    @abstractmethod
+    def get_name(cls) -> str:
+        """
+        :return str: A unique name for the FileProcessor implementation class
+        """
+        pass
+
     @abstractmethod
     def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
         """
@@ -32,9 +41,9 @@ class FileProcessor(ABC):
 
     @classmethod
     @abstractmethod
-    def get_applicable_rules(cls) -> Set[Type[RedactionRule]]:
+    def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
         """
-        Return the redaction rules that are allowed to be applied to the FileProcessor
+        Return the redactors that are allowed to be applied to the FileProcessor
         
         :return Set[type[RedactionRule]]: The redaction rules that can be applied
         """

@@ -6,11 +6,14 @@ from redactor.core.redaction.config.redaction_result.text_redaction_result impor
 from redactor.core.redaction.config.redaction_result.image_redaction_result import ImageRedactionResult
 from redactor.core.redaction.redactor.redactor_factory import RedactorFactory
 from redactor.core.redaction.redactor.redactor import Redactor
+from redactor.core.redaction.redactor.text_redactor import TextRedactor
+from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.file_processor.exceptions import UnprocessedRedactionResultException
 from io import BytesIO
 from typing import Set, Type, List, Any, Dict, Tuple
 import pymupdf
 import json
+from dataclasses import fields, asdict
 
 
 
@@ -18,6 +21,10 @@ class PDFProcessor(FileProcessor):
     """
     Class for managing the redaction of PDF documents
     """
+    @classmethod
+    def get_name(cls) -> str:
+        return "pdf"
+
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
         Return text content of the given PDF
@@ -74,15 +81,17 @@ class PDFProcessor(FileProcessor):
         # Todo
         return file_bytes
 
-    def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
+    def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any|RedactionConfig]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
-        redaction_rules = rule_config.get("redaction_rules", [])
+        redaction_rules = rule_config["properties"].get("redaction_rules", [])
         # Attach any extra parameters to the redaction rules
-        for rule in redaction_rules:
-            rule["properties"]["text"] = pdf_text
+        redaction_rules = [
+            rule if "text" in set(x.name for x in fields(rule)) else rule.__class__(**(asdict(rule) | {"text": pdf_text}))
+            for rule in redaction_rules
+        ]
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
-            RedactorFactory.get(rule["type"])(rule)
+            RedactorFactory.get(rule.type)(rule)
             for rule in redaction_rules
         ]
         # Generate redactions
@@ -118,11 +127,10 @@ class PDFProcessor(FileProcessor):
         pass
 
     @classmethod
-    def get_applicable_rules(cls) -> Set[Type[RedactionRule]]:
-        # TODO
-        return {}
+    def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
+        return {TextRedactor, ImageRedactor}
 
-
+'''
 with open("samples/hbtCv.pdf", "rb") as f:
     pdf_bytes = BytesIO(f.read())
 
@@ -149,3 +157,4 @@ redacted_doc = PDFProcessor().redact(
 
 with open("samples/hbtCvREDACTED.pdf", "wb") as f:
     f.write(redacted_doc.getvalue())
+'''

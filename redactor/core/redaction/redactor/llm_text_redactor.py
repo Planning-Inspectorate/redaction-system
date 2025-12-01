@@ -35,10 +35,10 @@ class LLMTextRedactor(TextRedactor):
 
     def redact(self) -> LLMTextRedactionResult:
         # Initialisation
-        model = self.config["properties"]["model"]
-        system_prompt = self.config["properties"]["system_prompt"]
-        text_to_redact = self.config["properties"]["text"]
-        redaction_rules = self.config["properties"]["redaction_rules"]
+        model = self.config.model
+        system_prompt = self.config.system_prompt
+        text_to_redact = self.config.text
+        redaction_rules = self.config.redaction_rules
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],

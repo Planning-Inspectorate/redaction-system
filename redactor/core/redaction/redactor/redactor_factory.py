@@ -1,7 +1,8 @@
 from redactor.core.redaction.redactor.redactor import Redactor
 from redactor.core.redaction.redactor.llm_text_redactor import LLMTextRedactor
+from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.redactor.exceptions import DuplicateRedactorNameException, RedactorNameNotFoundException
-from typing import List, Dict, Type
+from typing import List, Set, Dict, Type
 import json
 
 
@@ -9,8 +10,9 @@ class RedactorFactory():
     """
     Class for generating Redactor classes by name
     """
-    REDACTOR_TYPES: Type[Redactor] = [
-        LLMTextRedactor
+    REDACTOR_TYPES: Set[Type[Redactor]] = [
+        LLMTextRedactor,
+        ImageRedactor
     ]
     """The Redactor classes that are known to the factory"""
 
