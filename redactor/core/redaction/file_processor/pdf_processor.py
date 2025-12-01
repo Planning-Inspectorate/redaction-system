@@ -6,6 +6,8 @@ from redactor.core.redaction.config.redaction_result.text_redaction_result impor
 from redactor.core.redaction.config.redaction_result.image_redaction_result import ImageRedactionResult
 from redactor.core.redaction.redactor.redactor_factory import RedactorFactory
 from redactor.core.redaction.redactor.redactor import Redactor
+from redactor.core.redaction.redactor.text_redactor import TextRedactor
+from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.file_processor.exceptions import UnprocessedRedactionResultException
 from io import BytesIO
 from typing import Set, Type, List, Any, Dict, Tuple
@@ -18,6 +20,10 @@ class PDFProcessor(FileProcessor):
     """
     Class for managing the redaction of PDF documents
     """
+    @classmethod
+    def get_name(cls) -> str:
+        return "pdf"
+
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
         Return text content of the given PDF
@@ -118,34 +124,5 @@ class PDFProcessor(FileProcessor):
         pass
 
     @classmethod
-    def get_applicable_rules(cls) -> Set[Type[RedactionRule]]:
-        # TODO
-        return {}
-
-
-with open("samples/hbtCv.pdf", "rb") as f:
-    pdf_bytes = BytesIO(f.read())
-
-
-# TODO test this function
-redacted_doc = PDFProcessor().redact(
-    pdf_bytes,
-    {
-        "redaction_rules": [
-            {
-                "type": "LLMTextRedaction",
-                "properties": {
-                    "model": "gpt-4.1-nano",
-                    "system_prompt": "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: ",
-                    "redaction_rules": [
-                        "Find all human names in the text",
-                        "Find all dates in the test"
-                    ]
-                }
-            }
-        ]
-    }
-)
-
-with open("samples/hbtCvREDACTED.pdf", "wb") as f:
-    f.write(redacted_doc.getvalue())
+    def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
+        return {TextRedactor, ImageRedactor}
