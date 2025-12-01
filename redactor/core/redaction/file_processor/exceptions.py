@@ -1,0 +1,2 @@
+class UnprocessedRedactionResultException(Exception):
+    pass

@@ -20,4 +20,8 @@ class ImageRedactor(Redactor):
         # Initialisation
         image_to_redact = self.config["properties"]["image"]
         # Todo - need to implement this logic
-        return image_to_redact
+        return ImageRedactionResult(
+            redaction_boxes=(),
+            image_dimensions=(0, 0),
+            source_image=image_to_redact
+        )
