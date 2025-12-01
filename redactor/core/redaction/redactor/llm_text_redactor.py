@@ -67,7 +67,7 @@ class LLMTextRedactor(TextRedactor):
             responses.append(response)
             text_to_redact.extend(redaction_strings)
         # Remove duplicates
-        text_to_redact_cleaned = list(dict.fromkeys(text_to_redact))
+        text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
         # Collect metrics
         input_token_count = sum(x.usage.prompt_tokens for x in responses)
         output_token_count = sum(x.usage.completion_tokens for x in responses)
