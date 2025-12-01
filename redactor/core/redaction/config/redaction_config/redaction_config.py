@@ -1,7 +1,5 @@
-from abc import ABC
-from dataclasses import dataclass
+from pydantic import BaseModel
 
 
-@dataclass
-class RedactionConfig(ABC):
+class RedactionConfig(BaseModel):
     pass
