@@ -5,6 +5,7 @@ from redactor.core.redaction.exceptions import InvalidRedactionConfigException
 from typing import Dict, List, Any, Type
 import json
 import copy
+import yaml
 
 
 class ConfigProcessor():
@@ -85,8 +86,20 @@ class ConfigProcessor():
         """
         config_copy = copy.deepcopy(config)
         # Validate the redaction config, and convert the config into RedactionConfig objects
-        formatted_redaction_config = cls.validate_and_parse_redaction_config(config_copy["properties"]["redaction_rules"])
+        formatted_redaction_config = cls.validate_and_parse_redaction_config(config_copy["redaction_rules"])
         # Drop the config elements that are not applicable for the given file processor
         filtered_redaction_config = cls.filter_redaction_config(formatted_redaction_config, file_processor_class)
-        config_copy["properties"]["redaction_rules"] = filtered_redaction_config
+        config_copy["redaction_rules"] = filtered_redaction_config
         return config_copy
+
+    @classmethod
+    def load_config(cls, config_name: str = "default"):
+        """
+        Read the given yaml config file as a json object
+        
+        :param str config_name: The config file name under `config/` to load. Default is `default`
+        :return Dict[str, Any]: The content of the yaml file as a dictionary
+        """
+        with open(f"config/{config_name}.yaml", "r") as f:
+            config = yaml.safe_load(f)
+        return config
