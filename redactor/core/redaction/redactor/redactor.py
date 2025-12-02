@@ -40,7 +40,7 @@ class Redactor(ABC):
         :raises IncorrectRedactionConfigClassException: If the given config does not match the type returned by `get_redaction_config_class`
         """
         expected_class = cls.get_redaction_config_class()
-        if not type(config) == expected_class:
+        if type(config) is not expected_class:
             raise IncorrectRedactionConfigClassException(
                 f"The config class provided to {cls.__qualname__}.redact is incorrect. Expected {expected_class.__qualname__}, but was {type(config)}"
             )
