@@ -82,13 +82,14 @@ class PDFProcessor(FileProcessor):
 
     def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
-        redaction_rules = rule_config.get("redaction_rules", [])
+        redaction_rules: List[RedactionConfig] = rule_config.get("redaction_rules", [])
         # Attach any extra parameters to the redaction rules
-        for rule in redaction_rules:
-            rule["properties"]["text"] = pdf_text
+        for rule_config in redaction_rules:
+            if hasattr(rule_config, "text"):
+                rule_config.text = pdf_text
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
-            RedactorFactory.get(rule["type"])(rule)
+            RedactorFactory.get(rule.redactor_type)(rule)
             for rule in redaction_rules
         ]
         # Generate redactions

@@ -2,4 +2,5 @@ from pydantic import BaseModel
 
 
 class RedactionConfig(BaseModel):
-    pass
+    redactor_type: str
+    """The redactor the config should be fed into"""
