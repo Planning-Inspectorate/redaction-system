@@ -57,7 +57,7 @@ class PDFProcessor(FileProcessor):
         # Apply provisional redaction highlights for the human-in-the-loop to review
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
-            print(f"        Applying highlight {i}")
+            print(f"        Applying highlight {i} for word {redaction_inst}")
             try:
                 highlight_annotation = page.add_highlight_annot(rect)
                 highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
@@ -79,13 +79,13 @@ class PDFProcessor(FileProcessor):
         # Todo
         return file_bytes
 
-    def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
+    def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
-        redaction_rules: List[RedactionConfig] = rule_config.get("redaction_rules", [])
+        redaction_rules: List[RedactionConfig] = redaction_config.get("redaction_rules", [])
         # Attach any extra parameters to the redaction rules
-        for rule_config in redaction_rules:
-            if hasattr(rule_config, "text"):
-                rule_config.text = pdf_text
+        for redaction_config in redaction_rules:
+            if hasattr(redaction_config, "text"):
+                redaction_config.text = pdf_text
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
             RedactorFactory.get(rule.redactor_type)(rule)
@@ -117,11 +117,23 @@ class PDFProcessor(FileProcessor):
             for result in image_redaction_results
             for redaction_box in result.redaction_boxes
         ]
-        new_file_bytes = self._apply_provisional_image_redactions(file_bytes, image_redactions)
+        new_file_bytes = self._apply_provisional_image_redactions(new_file_bytes, image_redactions)
         return new_file_bytes
 
-    def apply(self, file_bytes: BytesIO) -> BytesIO:
-        return file_bytes
+    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+        print("Redacting PDF")
+        pdf = pymupdf.open(stream=file_bytes)
+        for page in pdf:
+            page_annotations = page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)
+            for annotation in page_annotations:
+                annotation_rect = annotation.rect
+                page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
+                page.delete_annot(annotation)
+            page.apply_redactions()
+        new_file_bytes = BytesIO()
+        pdf.save(new_file_bytes, deflate=True)
+        new_file_bytes.seek(0)   
+        return new_file_bytes
 
     @classmethod
     def get_applicable_redactors(cls) -> Set[Type[Redactor]]:

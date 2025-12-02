@@ -17,22 +17,23 @@ class FileProcessor(ABC):
         pass
 
     @abstractmethod
-    def redact(self, file_bytes: BytesIO, rule_config: Dict[str, Any]) -> BytesIO:
+    def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         """
         Add provisional redactions to the provided document
         
         :param BytesIO file_bytes: The file content as a bytes stream
-        :param Dict[str, Any] rule_config: The redaction rules to apply to the document
+        :param Dict[str, Any] redaction_config: The redaction config to apply to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
         pass
 
     @abstractmethod
-    def apply(self, file_bytes: BytesIO) -> BytesIO:
+    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         """
         Convert provisional redactions to real redactions
         
         :param BytesIO file_bytes: The file content as a bytes stream
+        :param Dict[str, Any] redaction_config: The redaction config to apply to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
         pass
