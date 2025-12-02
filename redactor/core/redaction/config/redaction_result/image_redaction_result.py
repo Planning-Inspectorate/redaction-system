@@ -1,7 +1,7 @@
 from redactor.core.redaction.config.redaction_result.redaction_result import RedactionResult
 from PIL.Image import Image
 from dataclasses import dataclass, field
-from typing import Tuple, List
+from typing import Tuple
 
 
 @dataclass(frozen=True)

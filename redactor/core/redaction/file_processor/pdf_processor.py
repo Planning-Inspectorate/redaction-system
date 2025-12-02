@@ -61,7 +61,7 @@ class PDFProcessor(FileProcessor):
             try:
                 highlight_annotation = page.add_highlight_annot(rect)
                 highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
-            except:
+            except Exception:
                 print(f"        Failed to add highlight for word {word}, at location '{rect}'")
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
