@@ -122,7 +122,7 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     def apply(self, file_bytes: BytesIO) -> BytesIO:
-        pass
+        return file_bytes
 
     @classmethod
     def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
