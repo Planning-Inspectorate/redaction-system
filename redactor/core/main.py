@@ -8,7 +8,7 @@ import json
 from redactor.core.redaction.redactor.text_redactor import TextRedactor
 
 
-def run(config: Dict[str, Any], file_bytes: BytesIO):
+def apply_provisional_redactions(config: Dict[str, Any], file_bytes: BytesIO):
     file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(config["file_format"])
     #print(config["properties"])
     config_cleaned = ConfigProcessor.validate_and_filter_config(config, file_processor_class)
@@ -16,6 +16,13 @@ def run(config: Dict[str, Any], file_bytes: BytesIO):
     processed_file_bytes = file_processor_inst.redact(file_bytes, config_cleaned["properties"])
     return processed_file_bytes
 
+
+def apply_final_redactions(config: Dict[str, Any], file_bytes: BytesIO):
+    file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(config["file_format"])
+    config_cleaned = ConfigProcessor.validate_and_filter_config(config, file_processor_class)
+    file_processor_inst = file_processor_class()
+    processed_file_bytes = file_processor_inst.apply(file_bytes, config_cleaned)
+    return processed_file_bytes
 
 if __name__ == "__main__":
     with open("samples/hbtCv.pdf", "rb") as f:
@@ -42,6 +49,10 @@ if __name__ == "__main__":
             }
         }
     }
-    bytes_redacted = run(config, file_bytes)
+    bytes_provisional = apply_provisional_redactions(config, file_bytes)
+    with open("samples/hbtCvPROVISIONAL.pdf", "wb") as f:
+        f.write(bytes_provisional.getvalue())
+    
+    bytes_redacted = apply_final_redactions(config, bytes_provisional)
     with open("samples/hbtCvREDACTED.pdf", "wb") as f:
         f.write(bytes_redacted.getvalue())

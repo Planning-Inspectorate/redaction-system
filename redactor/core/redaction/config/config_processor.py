@@ -4,6 +4,7 @@ from redactor.core.redaction.file_processor.file_processor import FileProcessor
 from redactor.core.redaction.exceptions import InvalidRedactionConfigException
 from typing import Dict, List, Any, Type
 import json
+import copy
 
 
 class ConfigProcessor():
@@ -82,9 +83,10 @@ class ConfigProcessor():
         :param Type[FileProcessor] file_processor_class: The file processor class that the config is for
         :returns Dict[str, Any]: The filtered config
         """
+        config_copy = copy.deepcopy(config)
         # Validate the redaction config, and convert the config into RedactionConfig objects
-        formatted_redaction_config = cls.validate_and_parse_redaction_config(config["properties"]["redaction_rules"])
+        formatted_redaction_config = cls.validate_and_parse_redaction_config(config_copy["properties"]["redaction_rules"])
         # Drop the config elements that are not applicable for the given file processor
         filtered_redaction_config = cls.filter_redaction_config(formatted_redaction_config, file_processor_class)
-        config["properties"]["redaction_rules"] = filtered_redaction_config
-        return config
+        config_copy["properties"]["redaction_rules"] = filtered_redaction_config
+        return config_copy
