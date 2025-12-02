@@ -12,7 +12,7 @@ class FileProcessor(ABC):
     @abstractmethod
     def get_name(cls) -> str:
         """
-        :return str: A unique name for the FileProcessor implementation class
+        :return str: A unique name for the FileProcessor implementation class. This should correspond to a subtype of a mime type returned by libmagic
         """
         pass
 
