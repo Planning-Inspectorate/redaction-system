@@ -9,7 +9,7 @@ class RedactorFactory():
     """
     Class for generating Redactor classes by name
     """
-    REDACTOR_TYPES: Type[Redactor] = [
+    REDACTOR_TYPES: List[Type[Redactor]] = [
         LLMTextRedactor
     ]
     """The Redactor classes that are known to the factory"""
