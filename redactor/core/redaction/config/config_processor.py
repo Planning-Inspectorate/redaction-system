@@ -100,6 +100,6 @@ class ConfigProcessor():
         :param str config_name: The config file name under `config/` to load. Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        with open(f"config/{config_name}.yaml", "r") as f:
+        with open(f"redactor/core/config/{config_name}.yaml", "r") as f:
             config = yaml.safe_load(f)
         return config
