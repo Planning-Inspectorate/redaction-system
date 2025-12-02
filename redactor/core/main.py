@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "properties": {
             "redaction_rules": [
                 {
-                    "type": "LLMTextRedaction",
+                    "redactor_type": "LLMTextRedaction",
                     "properties": {
                         "model": "gpt-4.1-nano",
                         "system_prompt": "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: ",

@@ -4,5 +4,8 @@ from typing import List
 
 class LLMTextRedactionConfig(TextRedactionConfig):
     model: str
+    """The LLM to use"""
     system_prompt: str
+    """The system prompt for the LLM"""
     redaction_rules: List[str]
+    """A list of redaction rule strings to apply"""

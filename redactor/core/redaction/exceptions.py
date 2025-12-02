@@ -1,0 +1,2 @@
+class InvalidRedactionConfigException(Exception):
+    pass
