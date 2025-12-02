@@ -1,9 +1,6 @@
-from langchain_core.prompts import PromptTemplate
-from typing import Dict
 from azure.identity import ChainedTokenCredential, ManagedIdentityCredential, AzureCliCredential
 from pydantic import BaseModel
 from openai import OpenAI
-from langchain_openai import AzureChatOpenAI
 from dotenv import load_dotenv
 import os
 
