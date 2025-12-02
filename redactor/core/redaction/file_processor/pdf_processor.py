@@ -1,6 +1,5 @@
 from redactor.core.redaction.file_processor.file_processor import FileProcessor
 from redactor.core.redaction.config.redaction_config.redaction_config import RedactionConfig
-from redactor.core.redaction.config.redaction_rule.redaction_rule import RedactionRule
 from redactor.core.redaction.config.redaction_result.redaction_result import RedactionResult
 from redactor.core.redaction.config.redaction_result.text_redaction_result import TextRedactionResult
 from redactor.core.redaction.config.redaction_result.image_redaction_result import ImageRedactionResult
