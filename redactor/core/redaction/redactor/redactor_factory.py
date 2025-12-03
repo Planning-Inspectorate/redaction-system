@@ -33,7 +33,7 @@ class RedactorFactory():
         }
         if invalid_types:
             raise DuplicateRedactorNameException(
-                f"The following Redactor implementation classes had duplicate names: {json.dumps(invalid_types, indent=4)}"
+                f"The following Redactor implementation classes had duplicate names: {json.dumps(invalid_types, indent=4, default=str)}"
             )
         return {
             k: v[0]
