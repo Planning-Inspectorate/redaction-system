@@ -34,6 +34,11 @@ def test__pdf_processor__extract_pdf_text():
 
 
 def test__pdf_processor__apply_provisional_text_redactions():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF should not contain the text identified by the provisional redactions
+    """
     with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = ["he's", "he", "Riker", "Phillipa", "him", "Commander Data", "him", "him"]
@@ -86,6 +91,12 @@ def test__pdf_processor__apply_provisional_text_redactions():
     ]
 )
 def test__pdf_processor__is_full_text_being_redacted(test_case):
+    """
+    - Given I have a sample of some text to redact, and a sample of the corresponding text near the bounding box
+    - When i call _is_full_text_being_redacted
+    - Then the text should only be marked for redaction is it is not a partial redaction of another word.
+      e.g, "he" is a partial redaction of "their" so should return False
+    """
     actual_text_at_rect = test_case[0]
     text_to_redact = test_case[1]
     expected_result = test_case[2]
