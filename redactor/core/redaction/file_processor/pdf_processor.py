@@ -12,6 +12,9 @@ from io import BytesIO
 from typing import Set, Type, List, Any, Dict, Tuple
 import pymupdf
 import json
+import string
+from unidecode import unidecode
+import unicodedata
 
 
 
@@ -36,7 +39,33 @@ class PDFProcessor(FileProcessor):
             for page in pdf
         )
         return page_text
-    
+
+    @classmethod
+    def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
+        """
+        Check if the text_to_redact is a full redaction of text_found_at_rect
+
+        :param str text_to_redact: The redaction text candidate
+        :param str text_found_at_rect: The full word found at the redaction candidate's bounding box (on the page)
+        :return bool: True if text_to_redact is a full redaction of text_found_at_rect (i.e. should the text be redacted)
+        """
+        def normalise_punctuation_unidecode(text: str) -> str:
+            return "".join(
+                c if not unicodedata.category(c).startswith('P') else unidecode(c) or c
+                for c in text
+            )
+        text_to_redact_normalised = normalise_punctuation_unidecode(text_to_redact).lower()
+        text_found_at_rect_normalised = normalise_punctuation_unidecode(text_found_at_rect).lower()
+        punctuation = string.punctuation
+        # Remove preceding/trailing punctuation and whitespace
+        found_text_cleaned = text_found_at_rect_normalised.lstrip(punctuation).rstrip(punctuation).strip()
+        match_result = text_to_redact_normalised == found_text_cleaned
+        if found_text_cleaned.endswith("'s"):
+            # Try to match by ignoring possessive markers
+            found_text_cleaned = found_text_cleaned[:-2]
+            match_result = match_result or text_to_redact_normalised == found_text_cleaned
+        return match_result
+
     def _apply_provisional_text_redactions(self, file_bytes: BytesIO, text_to_redact: List[str]):
         """
         Redact the given list of redaction strings as provisional redactions in the PDF bytes stream
@@ -46,7 +75,7 @@ class PDFProcessor(FileProcessor):
         :return BytesIO: Bytes stream for the PDF with provisional text redactions applied
         """
         pdf = pymupdf.open(stream=file_bytes)
-        instances_to_redact = []
+        instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
         for word_to_redact in text_to_redact:
             for page in pdf:
                 print("searchin for word: ", word_to_redact)
@@ -59,8 +88,14 @@ class PDFProcessor(FileProcessor):
             page, rect, word = redaction_inst
             print(f"        Applying highlight {i} for word {redaction_inst}")
             try:
-                highlight_annotation = page.add_highlight_annot(rect)
-                highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+                # Only redact text that is fully matched - do not apply partial redactions
+                actual_text_at_rect = page.get_textbox(rect)
+                actual_text_at_rect = ' '.join(actual_text_at_rect.split())
+                if self._is_full_text_being_redacted(word, actual_text_at_rect):
+                    highlight_annotation = page.add_highlight_annot(rect)
+                    highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+                else:
+                    print(f"Partial redaction found when attempting to redact '{word}'. The surroundig box contains '{actual_text_at_rect}'. Skipping")
             except Exception:
                 print(f"        Failed to add highlight for word {word}, at location '{rect}'")
         new_file_bytes = BytesIO()
