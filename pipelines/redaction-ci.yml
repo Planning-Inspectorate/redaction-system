@@ -101,7 +101,7 @@ extends:
             displayName: 'Publish coverage reports'
             inputs:
               codeCoverageTool: 'Cobertura'
-              summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
+              summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
           - script: |
               set -e
               cd redaction-system
