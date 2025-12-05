@@ -47,7 +47,7 @@ extends:
               python3 -m ruff check redactor
               python3 -m ruff format --check redactor
             displayName: 'Python code style check'
-      - name: RunUnitTestsJob
+      - name: RunTestsJob
         steps:
           - checkout: self
             clean: true
@@ -59,6 +59,51 @@ extends:
               set -e
               cd redaction-system
               python3 -m pip install -r redactor/requirements.txt
+            displayName: 'Install requirements'
+          - script: |
+              set -e
+              cd redaction-system
               export PYTHONPATH=$(pwd)
-              python3 -m pytest redactor/test/unit_test -vv -rP -n 4
-            displayName: 'Run pytest for unit tests'
+              python3 -m pytest redactor/test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="redactor/core" --cov-report=xml:unit_test_coverage.xml --cov-fail-under=$(unitTestCoverageThreshold)
+              python3 -m coverage report
+              mv .coverage .coverage.unit
+            displayName: 'Run unit tests'
+          - task: PublishTestResults@2
+            displayName: 'Publish unit test results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: '**/unit_test_results.xml'
+              testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
+              mergeTestResults: true
+          - script: |
+              set -e
+              cd redaction-system
+              export PYTHONPATH=$(pwd)
+              python3 -m pytest redactor/test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="redactor/core" --cov-report=xml:integration_test_coverage.xml --cov-fail-under=$(integrationTestCoverageThreshold)
+              python3 -m coverage report
+              mv .coverage .coverage.integration
+            displayName: 'Run integration tests'
+          - task: PublishTestResults@2
+            displayName: 'Publish integration test results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: '**/integration_test_results.xml'
+              testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
+              mergeTestResults: true
+          - script: |
+              set -e
+              cd redaction-system
+              python3 -m coverage combine
+              python3 -m coverage report
+              python3 -m coverage xml -o coverage.xml
+            displayName: 'Combine coverage reports'
+          - task: PublishCodeCoverageResults@1
+            displayName: 'Publish coverage reports'
+            inputs:
+              codeCoverageTool: 'Cobertura'
+              summaryFileLocation: '$(Build.SourcesDirectory)/coverage.xml'
+          - script: |
+              set -e
+              cd redaction-system
+              python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
+            displayName: 'Fail if test coverage is below the threshold'
