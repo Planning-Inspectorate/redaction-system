@@ -1,6 +1,10 @@
 from redactor.core.redaction.redactor.text_redactor import TextRedactor
-from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import LLMTextRedactionConfig
-from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import LLMTextRedactionResult
+from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
+    LLMTextRedactionConfig,
+)
+from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import (
+    LLMTextRedactionResult,
+)
 from redactor.core.util.llm.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
@@ -19,10 +23,9 @@ class LLMTextRedactor(TextRedactor):
 
     Loosely based on https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/structured-outputs?view=foundry-classic&tabs=python-secure%2Cdotnet-entra-id&pivots=programming-language-python
     """
+
     TEXT_SPLITTER = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=250,
-        separators=["\n\n", "\n", " ", ""]
+        chunk_size=500, chunk_overlap=250, separators=["\n\n", "\n", " ", ""]
     )
 
     @classmethod
@@ -43,16 +46,12 @@ class LLMTextRedactor(TextRedactor):
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],
-            template=(
-                f"{system_prompt}"
-                f"{'.'.join(redaction_rules)}"
-            ),
+            template=(f"{system_prompt}{'.'.join(redaction_rules)}"),
         )
         system_prompt_formatted = system_prompt_template.format()
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
-            input_variables=["chunk"],
-            template="{chunk}"
+            input_variables=["chunk"], template="{chunk}"
         )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
         # Identify redaction strings
@@ -62,8 +61,12 @@ class LLMTextRedactor(TextRedactor):
         responses: List[ParsedChatCompletion] = []
         for chunk in text_chunks:
             user_prompt_formatted = user_prompt_template.format(chunk=chunk)
-            response = llm_util.invoke_chain(system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat)
-            response_cleaned: LLMRedactionResultFormat = response.choices[0].message.parsed
+            response = llm_util.invoke_chain(
+                system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat
+            )
+            response_cleaned: LLMRedactionResultFormat = response.choices[
+                0
+            ].message.parsed
             redaction_strings = response_cleaned.redaction_strings
             responses.append(response)
             text_to_redact.extend(redaction_strings)
@@ -78,6 +81,6 @@ class LLMTextRedactor(TextRedactor):
             metadata=LLMTextRedactionResult.LLMResultMetadata(
                 input_token_count=input_token_count,
                 output_token_count=output_token_count,
-                total_token_count=total_token_count
-            )
+                total_token_count=total_token_count,
+            ),
         )

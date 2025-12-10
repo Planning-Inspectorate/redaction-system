@@ -1,4 +1,6 @@
-from redactor.core.redaction.config.redaction_result.redaction_result import RedactionResult
+from redactor.core.redaction.config.redaction_result.redaction_result import (
+    RedactionResult,
+)
 from typing import Tuple
 from dataclasses import dataclass, field
 

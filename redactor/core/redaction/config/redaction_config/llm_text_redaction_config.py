@@ -1,4 +1,6 @@
-from redactor.core.redaction.config.redaction_config.text_redaction_config import TextRedactionConfig
+from redactor.core.redaction.config.redaction_config.text_redaction_config import (
+    TextRedactionConfig,
+)
 from typing import List
 
 

@@ -1,15 +1,13 @@
 from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
-from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import LLMTextRedactionConfig
+from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
+    LLMTextRedactionConfig,
+)
 from io import BytesIO
 import pymupdf
 
 
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
-    return [
-        annotation
-        for page in pdf
-        for annotation in page.annots(annotation_class)
-    ]
+    return [annotation for page in pdf for annotation in page.annots(annotation_class)]
 
 
 def test__pdf_processor__redact():
@@ -20,9 +18,20 @@ def test__pdf_processor__redact():
     """
     with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         file_bytes = BytesIO(f.read())
-    expected_redacted_text = {"commander", "data", "you", "he", "him", "you", "he's", "them"}
+    expected_redacted_text = {
+        "commander",
+        "data",
+        "you",
+        "he",
+        "him",
+        "you",
+        "he's",
+        "them",
+    }
     pdf_before = pymupdf.open(stream=file_bytes)
-    page_annotations_before = get_pdf_annotations(pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT)
+    page_annotations_before = get_pdf_annotations(
+        pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
+    )
     assert not page_annotations_before
     redacted_file_bytes = PDFProcessor().redact(
         file_bytes,
@@ -38,24 +47,31 @@ def test__pdf_processor__redact():
                     redaction_rules=[
                         "The names of characters",
                         "Rank",
-                        "Genders, such as she, her, he, him, they, their"
-                    ]
+                        "Genders, such as she, her, he, him, they, their",
+                    ],
                 )
             ]
-        }
+        },
     )
     pdf_after = pymupdf.open(stream=redacted_file_bytes)
     actual_annotated_text = set()
     for page in pdf_after:
         for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
             annotation_rect = annotation.rect
-            actual_annotated_text.add(" ".join(page.get_textbox(annotation_rect).split()).lower())
+            actual_annotated_text.add(
+                " ".join(page.get_textbox(annotation_rect).split()).lower()
+            )
     matches = {
-        expected_result: any(expected_result in redaction_string for redaction_string in actual_annotated_text)
+        expected_result: any(
+            expected_result in redaction_string
+            for redaction_string in actual_annotated_text
+        )
         for expected_result in expected_redacted_text
     }
     acceptance_threshold = 0.75
-    match_percent = float(len(tuple(x for x in matches.values() if x))) / float(len(expected_redacted_text))
+    match_percent = float(len(tuple(x for x in matches.values() if x))) / float(
+        len(expected_redacted_text)
+    )
     error_message = (
         f"Expected a match threshold of at least {acceptance_threshold}, but was {match_percent}."
         f"\nExpected results {expected_redacted_text}\nActual results: {actual_annotated_text}"
@@ -70,10 +86,18 @@ def test__pdf_processor__apply():
     - Then the final redacted output should have the same content as our sample fully-redacted pdf
     """
     # Run the redaction process against the provisional redaction file
-    with open("redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf", "rb") as f:
+    with open(
+        "redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "rb",
+    ) as f:
         provisional_redaction_file_bytes = BytesIO(f.read())
-    provisional_redactions = get_pdf_annotations(pymupdf.open(stream=provisional_redaction_file_bytes), pymupdf.PDF_ANNOT_HIGHLIGHT)
-    assert provisional_redactions, "test__pdf_processor__apply requires a document that has provisional redactions - there were none found in the document"
+    provisional_redactions = get_pdf_annotations(
+        pymupdf.open(stream=provisional_redaction_file_bytes),
+        pymupdf.PDF_ANNOT_HIGHLIGHT,
+    )
+    assert provisional_redactions, (
+        "test__pdf_processor__apply requires a document that has provisional redactions - there were none found in the document"
+    )
     redacted_file_bytes = PDFProcessor().apply(
         provisional_redaction_file_bytes,
         {
@@ -88,14 +112,16 @@ def test__pdf_processor__apply():
                     redaction_rules=[
                         "The names of characters",
                         "Rank",
-                        "Genders, such as she, her, he, him, they, their"
-                    ]
+                        "Genders, such as she, her, he, him, they, their",
+                    ],
                 )
             ]
-        }
+        },
     )
     # Extract text from source and final documents
-    with open("redactor/test/resources/pdf/test_pdf_processor__redacted.pdf", "rb") as f:
+    with open(
+        "redactor/test/resources/pdf/test_pdf_processor__redacted.pdf", "rb"
+    ) as f:
         expected_redacted_document_bytes = BytesIO(f.read())
     expected_redacted_document_text = "\n".join(
         page.get_text()
@@ -103,7 +129,6 @@ def test__pdf_processor__apply():
     )
     redacted_document = pymupdf.open(stream=redacted_file_bytes)
     actual_redacted_document_text = "\n".join(
-        page.get_text()
-        for page in redacted_document
+        page.get_text() for page in redacted_document
     )
     assert expected_redacted_document_text == actual_redacted_document_text

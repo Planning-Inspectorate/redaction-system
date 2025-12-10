@@ -1,6 +1,10 @@
 from redactor.core.redaction.redactor.redactor import Redactor
-from redactor.core.redaction.config.redaction_config.image_redaction_config import ImageRedactionConfig
-from redactor.core.redaction.config.redaction_result.image_redaction_result import ImageRedactionResult
+from redactor.core.redaction.config.redaction_config.image_redaction_config import (
+    ImageRedactionConfig,
+)
+from redactor.core.redaction.config.redaction_result.image_redaction_result import (
+    ImageRedactionResult,
+)
 
 
 class ImageRedactor(Redactor):
@@ -8,6 +12,7 @@ class ImageRedactor(Redactor):
     Class that performs image redaction
 
     """
+
     @classmethod
     def get_name(cls) -> str:
         return "ImageRedaction"
@@ -21,7 +26,5 @@ class ImageRedactor(Redactor):
         image_to_redact = self.config["properties"]["image"]
         # Todo - need to implement this logic
         return ImageRedactionResult(
-            redaction_boxes=(),
-            image_dimensions=(0, 0),
-            source_image=image_to_redact
+            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
         )

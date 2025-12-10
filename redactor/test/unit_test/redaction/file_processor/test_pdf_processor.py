@@ -41,25 +41,43 @@ def test__pdf_processor__apply_provisional_text_redactions():
     """
     with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
-    redaction_strings = ["he's", "he", "Riker", "Phillipa", "him", "Commander Data", "him", "him"]
+    redaction_strings = [
+        "he's",
+        "he",
+        "Riker",
+        "Phillipa",
+        "him",
+        "Commander Data",
+        "him",
+        "him",
+    ]
     with mock.patch.object(PDFProcessor, "__init__", return_value=None):
-        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(document_bytes, redaction_strings)
-    
+        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+            document_bytes, redaction_strings
+        )
+
     # Generate expected redaction text from the raw document
-    with open("redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf", "rb") as f:
+    with open(
+        "redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "rb",
+    ) as f:
         expected_provisional_redaction_bytes = BytesIO(f.read())
     expected_annotated_text = []
     for page in pymupdf.open(stream=expected_provisional_redaction_bytes):
         for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
             annotation_rect = annotation.rect
-            expected_annotated_text.append(" ".join(page.get_textbox(annotation_rect).split()).lower())
-    
+            expected_annotated_text.append(
+                " ".join(page.get_textbox(annotation_rect).split()).lower()
+            )
+
     # Get the actual redacted text
     actual_annotated_text = []
     for page in pymupdf.open(stream=redacted_document_bytes):
         for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
             annotation_rect = annotation.rect
-            actual_annotated_text.append(" ".join(page.get_textbox(annotation_rect).split()).lower())
+            actual_annotated_text.append(
+                " ".join(page.get_textbox(annotation_rect).split()).lower()
+            )
 
     matches = {
         expected_text: expected_text in actual_annotated_text
@@ -79,16 +97,36 @@ def test__pdf_processor__apply_provisional_text_redactions():
         ("the", "he", False),  # Partial match should not be redacted
         ("then", "he", False),  # Partial match should not be redacted
         ("her", "he", False),  # Partial match should not be redacted
-        ("Bob-", "Bob", True), # A tring with punctuation at the end of the string should be redacted
-        ("-Bob", "Bob", True),  # A tring with punctuation at the start of the string should be redacted
-        ("Bob's", "Bob", True),  # A string ending with 's should be marked as a full word
-        ("Jean-Luc", "Jean-Luc", True), # A string with punctuation in the middle should be redacted
+        (
+            "Bob-",
+            "Bob",
+            True,
+        ),  # A tring with punctuation at the end of the string should be redacted
+        (
+            "-Bob",
+            "Bob",
+            True,
+        ),  # A tring with punctuation at the start of the string should be redacted
+        (
+            "Bob's",
+            "Bob",
+            True,
+        ),  # A string ending with 's should be marked as a full word
+        (
+            "Jean-Luc",
+            "Jean-Luc",
+            True,
+        ),  # A string with punctuation in the middle should be redacted
         ("Bob", "bob", True),  # Case should be ignored
         ("bob's", "bob", True),  # Possessive markers should be ignored, and be redacted
-        ("François", "François", True), # Non-english characters should be matched
-        ("François", "Francois", False), # Non-english characters should not be altered
-        (u"Bob\u2019s", "Bob", True),  # Bob's (with a non ascii apostrophe) should equivalent to "Bob's"
-    ]
+        ("François", "François", True),  # Non-english characters should be matched
+        ("François", "Francois", False),  # Non-english characters should not be altered
+        (
+            "Bob\u2019s",
+            "Bob",
+            True,
+        ),  # Bob's (with a non ascii apostrophe) should equivalent to "Bob's"
+    ],
 )
 def test__pdf_processor__is_full_text_being_redacted(test_case):
     """
@@ -100,7 +138,8 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     actual_text_at_rect = test_case[0]
     text_to_redact = test_case[1]
     expected_result = test_case[2]
-    error_message = (
-        f"Expected _is_full_text_being_redacted to return {expected_result} when trying to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
-    )
-    assert PDFProcessor._is_full_text_being_redacted(text_to_redact, actual_text_at_rect) is expected_result, error_message
+    error_message = f"Expected _is_full_text_being_redacted to return {expected_result} when trying to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
+    assert (
+        PDFProcessor._is_full_text_being_redacted(text_to_redact, actual_text_at_rect)
+        is expected_result
+    ), error_message

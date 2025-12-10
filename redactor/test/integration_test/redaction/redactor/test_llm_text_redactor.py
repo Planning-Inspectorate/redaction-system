@@ -1,5 +1,7 @@
 from redactor.core.redaction.redactor.llm_text_redactor import LLMTextRedactor
-from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import LLMTextRedactionConfig
+from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
+    LLMTextRedactionConfig,
+)
 
 
 def test__llm_text_redactor__redact():
@@ -21,8 +23,8 @@ def test__llm_text_redactor__redact():
         "redaction_rules": [
             "The names of characters",
             "Religions",
-            "Genders, such as she, her, he, him, they, their"
-        ]
+            "Genders, such as she, her, he, him, they, their",
+        ],
     }
     source_text = (
         "Did you ever hear the tragedy of Darth Plagueis the wise? I thought not, it's not a story the Jedi would tell you. It's a Sith legend. "
@@ -35,13 +37,26 @@ def test__llm_text_redactor__redact():
     redactor_inst = LLMTextRedactor(LLMTextRedactionConfig(text=source_text, **config))
     redaction_result = redactor_inst.redact()
     redaction_strings_cleaned = [x.lower() for x in redaction_result.redaction_strings]
-    expected_results = {"darth plagueis", "plagueis", "sith", "jedi", "he", "his", "himself"}
+    expected_results = {
+        "darth plagueis",
+        "plagueis",
+        "sith",
+        "jedi",
+        "he",
+        "his",
+        "himself",
+    }
     matches = {
-        expected_result: any(expected_result in redaction_string for redaction_string in redaction_strings_cleaned)
+        expected_result: any(
+            expected_result in redaction_string
+            for redaction_string in redaction_strings_cleaned
+        )
         for expected_result in expected_results
     }
     acceptance_threshold = 0.75
-    match_percent = float(len(tuple(x for x in matches.values() if x))) / float(len(expected_results))
+    match_percent = float(len(tuple(x for x in matches.values() if x))) / float(
+        len(expected_results)
+    )
     error_message = (
         f"Expected a match threshold of at least {acceptance_threshold}, but was {match_percent}."
         f"\nExpected results {expected_results}\nActual results: {redaction_strings_cleaned}"
