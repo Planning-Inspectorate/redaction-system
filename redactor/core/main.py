@@ -8,7 +8,9 @@ from io import BytesIO
 import magic
 
 
-def apply_provisional_redactions(config: Dict[str, Any], file_bytes: BytesIO):  # pragma: no cover
+def apply_provisional_redactions(
+    config: Dict[str, Any], file_bytes: BytesIO
+):  # pragma: no cover
     file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(
         config["file_format"]
     )
@@ -20,7 +22,9 @@ def apply_provisional_redactions(config: Dict[str, Any], file_bytes: BytesIO):  
     return processed_file_bytes
 
 
-def apply_final_redactions(config: Dict[str, Any], file_bytes: BytesIO):  # pragma: no cover
+def apply_final_redactions(
+    config: Dict[str, Any], file_bytes: BytesIO
+):  # pragma: no cover
     file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(
         config["file_format"]
     )
@@ -32,7 +36,9 @@ def apply_final_redactions(config: Dict[str, Any], file_bytes: BytesIO):  # prag
     return processed_file_bytes
 
 
-def main(file_name: str, file_bytes: BytesIO, config_name: str = None):  # pragma: no cover
+def main(
+    file_name: str, file_bytes: BytesIO, config_name: str = None
+):  # pragma: no cover
     file_format = magic.from_buffer(file_bytes.read(), mime=True)
     extension = file_format.split("/").pop()
     if file_name.endswith(f".{extension}"):
