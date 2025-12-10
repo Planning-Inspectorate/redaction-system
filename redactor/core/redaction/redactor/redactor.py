@@ -1,6 +1,12 @@
-from redactor.core.redaction.config.redaction_config.redaction_config import RedactionConfig
-from redactor.core.redaction.config.redaction_result.redaction_result import RedactionResult
-from redactor.core.redaction.redactor.exceptions import IncorrectRedactionConfigClassException
+from redactor.core.redaction.config.redaction_config.redaction_config import (
+    RedactionConfig,
+)
+from redactor.core.redaction.config.redaction_result.redaction_result import (
+    RedactionResult,
+)
+from redactor.core.redaction.redactor.exceptions import (
+    IncorrectRedactionConfigClassException,
+)
 from abc import ABC, abstractmethod
 from typing import Type
 
@@ -9,6 +15,7 @@ class Redactor(ABC):
     """
     Class that handles the redaction of items, according to a given config
     """
+
     def __init__(self, config: RedactionConfig):
         """
         :param RedactionConfig config: The configuration for the redaction
