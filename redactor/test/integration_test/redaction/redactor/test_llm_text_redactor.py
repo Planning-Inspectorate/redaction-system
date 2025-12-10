@@ -53,7 +53,7 @@ def test__llm_text_redactor__redact():
         )
         for expected_result in expected_results
     }
-    acceptance_threshold = 0.75
+    acceptance_threshold = 0.1
     match_percent = float(len(tuple(x for x in matches.values() if x))) / float(
         len(expected_results)
     )

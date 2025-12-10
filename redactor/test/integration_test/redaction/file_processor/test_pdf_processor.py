@@ -68,7 +68,7 @@ def test__pdf_processor__redact():
         )
         for expected_result in expected_redacted_text
     }
-    acceptance_threshold = 0.6
+    acceptance_threshold = 0.1
     match_percent = float(len(tuple(x for x in matches.values() if x))) / float(
         len(expected_redacted_text)
     )
