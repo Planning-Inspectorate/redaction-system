@@ -1,2 +1,2 @@
-class InvalidRedactionConfigException(Exception):
+class InvalidRedactionConfigException(Exception):  # pragma: no cover
     pass

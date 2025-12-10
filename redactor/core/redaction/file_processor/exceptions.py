@@ -1,10 +1,10 @@
-class UnprocessedRedactionResultException(Exception):
+class UnprocessedRedactionResultException(Exception):  # pragma: no cover
     pass
 
 
-class DuplicateFileProcessorNameException(Exception):
+class DuplicateFileProcessorNameException(Exception):  # pragma: no cover
     pass
 
 
-class FileProcessorNameNotFoundException(Exception):
+class FileProcessorNameNotFoundException(Exception):  # pragma: no cover
     pass
