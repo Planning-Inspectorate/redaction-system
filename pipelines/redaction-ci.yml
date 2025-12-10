@@ -97,10 +97,9 @@ extends:
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
-          - task: PublishCodeCoverageResults@1
+          - task: PublishCodeCoverageResults@2
             displayName: 'Publish coverage reports'
             inputs:
-              codeCoverageTool: 'Cobertura'
               summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
           - script: |
               set -e
