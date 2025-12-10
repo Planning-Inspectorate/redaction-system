@@ -97,6 +97,11 @@ extends:
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
+          - task: UseDotNet@2
+            displayName: 'Install latest .net'
+            inputs:
+              packageType: 'sdk'
+              version: '8.x'
           - task: PublishCodeCoverageResults@2
             displayName: 'Publish coverage reports'
             inputs:
