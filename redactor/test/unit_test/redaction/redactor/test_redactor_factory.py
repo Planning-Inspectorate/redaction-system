@@ -96,3 +96,15 @@ def test__redactor_factory__get__name_not_found():
     ):
         with pytest.raises(RedactorNameNotFoundException):
             RedactorFactory.get("redactorD")
+
+
+def test__redactor_factory__get__invalid_input():
+    """
+    - When I call redactor factory with an input that is not a string
+    - Then a value error should be raised to alert the user about invalid input
+    """
+    with mock.patch.object(
+        RedactorFactory, "REDACTOR_TYPES", [MockRedactorA, MockRedactorB, MockRedactorC]
+    ):
+        with pytest.raises(ValueError):
+            RedactorFactory.get(1)
