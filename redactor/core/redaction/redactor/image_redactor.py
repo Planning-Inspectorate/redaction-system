@@ -7,7 +7,7 @@ from redactor.core.redaction.config.redaction_result.image_redaction_result impo
 )
 
 
-class ImageRedactor(Redactor):
+class ImageRedactor(Redactor):  # pragma: no cover
     """
     Class that performs image redaction
 

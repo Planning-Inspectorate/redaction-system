@@ -5,6 +5,14 @@ import mock
 import pytest
 
 
+def test__pdf_processor__get_name():
+    """
+    - When get_name is called
+    - The return value must be a string
+    """
+    assert isinstance(PDFProcessor.get_name(), str)
+
+
 def test__pdf_processor__extract_pdf_text():
     """
     - Given I have a pdf with some text content
