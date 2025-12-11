@@ -64,7 +64,7 @@ extends:
               set -e
               cd redaction-system
               export PYTHONPATH=$(pwd)
-              python3 -m pytest redactor/test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="redactor/core" --cov-report=xml:unit_test_coverage.xml --cov-fail-under=$(unitTestCoverageThreshold)
+              python3 -m pytest redactor/test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov --cov-report=xml:unit_test_coverage.xml --cov-fail-under=$(unitTestCoverageThreshold)
               python3 -m coverage report
               mv .coverage .coverage.unit
             displayName: 'Run unit tests'
@@ -79,7 +79,7 @@ extends:
               set -e
               cd redaction-system
               export PYTHONPATH=$(pwd)
-              python3 -m pytest redactor/test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="redactor/core" --cov-report=xml:integration_test_coverage.xml --cov-fail-under=$(integrationTestCoverageThreshold)
+              python3 -m pytest redactor/test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov-report=xml:integration_test_coverage.xml --cov-fail-under=$(integrationTestCoverageThreshold)
               python3 -m coverage report
               mv .coverage .coverage.integration
             displayName: 'Run integration tests'
