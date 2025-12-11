@@ -64,7 +64,7 @@ def test__config_processor__load_config():
     }
     with mock.patch(
         "builtins.open", mock.mock_open(read_data=mock_config_file_content)
-    ) as mock_file:
+    ):
         assert ConfigProcessor.load_config("some_file") == expected_output
 
 
