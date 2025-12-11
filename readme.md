@@ -26,7 +26,10 @@ This repository defines the automated redaction that is available to PINS servic
 2. Install Python 3.13
 3. Create a virtual environment
 4. Install the requirements using `python3 -m pip install -r redactor/requirements.txt`
-5. Run specific Python files using `python3 path/to/file/to/run.py`
+5. You may need to run the below command to set up your Python environment
+   1. `export PYTHONPATH="${PYTHONPATH}:/./"`
+6. Run specific Python files using `python3 path/to/file/to/run.py`
+   1. NOTE: Currently the redaction process can be run using `redactor/core/main.py` , more info cam be found within this file
 
 # Environmment variables
 
