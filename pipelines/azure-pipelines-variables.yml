@@ -1,0 +1,5 @@
+variables:
+  tagPrefix: redaction
+  unitTestCoverageThreshold: 0
+  integrationTestCoverageThreshold: 0
+  totalTestCoverageThreshold: 0
