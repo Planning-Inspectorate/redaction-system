@@ -14,6 +14,7 @@ def test__llm_text_redactor__redact():
     """
     # To boost the overall quality of the result, and to make the test stricter, extra context has been added to the system prompt here
     config = {
+        "name": "config name",
         "redactor_type": "LLMTextRedaction",
         "model": "gpt-4.1-nano",
         "system_prompt": (

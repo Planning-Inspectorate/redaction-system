@@ -19,6 +19,8 @@ Temporary script that allows the redaction process to be triggered via the termi
 - The pdf you create should ideally be placed under `./samples/` so that it is not committed to GitHub
 - The process wil automatically figure out whether or not to apply provisional redactions or final redactions based on the file name
 """
+
+
 def apply_provisional_redactions(
     config: Dict[str, Any], file_bytes: BytesIO
 ):  # pragma: no cover
@@ -85,7 +87,9 @@ def main(
 
 
 if __name__ == "__main__":  # pragma: no cover
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
     parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
     args = parser.parse_args()
     file_to_redact = args.file_to_redact

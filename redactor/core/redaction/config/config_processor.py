@@ -34,6 +34,7 @@ class ConfigProcessor:
         flattened_redaction_config = [
             {"redactor_type": rule_config.get("redactor_type", None)}
             | rule_config.get("properties", dict())
+            | {"name": rule_config.get("name", dict())}
             for rule_config in redaction_config
         ]
         invalid_redaction_config = [
