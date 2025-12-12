@@ -60,6 +60,7 @@ def test__llm_text_redactor__redact():
     - Then I should receive a LLMTextRedactionResult with appropriate properties set
     """
     config = LLMTextRedactionConfig(
+        name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-4.1-nano",
         text="some text",

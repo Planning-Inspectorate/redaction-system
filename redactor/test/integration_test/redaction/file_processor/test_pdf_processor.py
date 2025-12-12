@@ -38,6 +38,7 @@ def test__pdf_processor__redact():
         {
             "redaction_rules": [
                 LLMTextRedactionConfig(
+                    name="config name",
                     redactor_type="LLMTextRedaction",
                     model="gpt-4.1-nano",
                     system_prompt=(
@@ -103,6 +104,7 @@ def test__pdf_processor__apply():
         {
             "redaction_rules": [
                 LLMTextRedactionConfig(
+                    name="config name",
                     redactor_type="LLMTextRedaction",
                     model="gpt-4.1-nano",
                     system_prompt=(

@@ -76,22 +76,26 @@ def test__config_processor__validate_and_filter_config():
     """
     file_processor_class = FileProcessorInst
     config = {
-        "redaction_rules": [{"redactor_type": "A"}],
+        "redaction_rules": [{"name": "redaction rule A", "redactor_type": "A"}],
         "other_property": [],
     }
     expected_output = {
-        "redaction_rules": [RedactionConfigInstA(redactor_type="A")],
+        "redaction_rules": [
+            RedactionConfigInstA(name="redaction rule A", redactor_type="A")
+        ],
         "other_property": [],
     }
     with mock.patch.object(
         ConfigProcessor,
         "validate_and_parse_redaction_config",
-        return_value=[RedactionConfigInstA(redactor_type="A")],
+        return_value=[RedactionConfigInstA(name="redaction rule A", redactor_type="A")],
     ):
         with mock.patch.object(
             ConfigProcessor,
             "filter_redaction_config",
-            return_value=[RedactionConfigInstA(redactor_type="A")],
+            return_value=[
+                RedactionConfigInstA(name="redaction rule A", redactor_type="A")
+            ],
         ):
             actual_output = ConfigProcessor.validate_and_filter_config(
                 config, file_processor_class
@@ -105,8 +109,8 @@ def test__config_processor__validate_and_parse_redaction_config():
     - When I call validate_and_parse_redaction_config
     - Then the config dictionary should be converted to a concrete RedactionConfig class, based on the redactor_type property
     """
-    config = [{"redactor_type": "A"}]
-    expected_output = [RedactionConfigInstA(redactor_type="A")]
+    config = [{"name": "redaction rule A", "redactor_type": "A"}]
+    expected_output = [RedactionConfigInstA(name="redaction rule A", redactor_type="A")]
     with mock.patch.object(
         RedactorFactory,
         "REDACTOR_TYPES",
@@ -127,9 +131,14 @@ def test__config_processor__convert_to_redaction_config():
         property_a: int
         property_b: int
 
-    config = {"redactor_type": "A", "property_a": 1, "property_b": 2}
+    config = {
+        "name": "config name",
+        "redactor_type": "A",
+        "property_a": 1,
+        "property_b": 2,
+    }
     expected_processed_config = ConfigInst(
-        redactor_type="A", property_a=1, property_b=2
+        name="config name", redactor_type="A", property_a=1, property_b=2
     )
     actual_processed_config = ConfigProcessor.convert_to_redaction_config(
         config, ConfigInst
