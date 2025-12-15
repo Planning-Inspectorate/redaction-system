@@ -5,10 +5,7 @@ from pathlib import Path
 
 import pytest
 
-try:
-    import pypdf as pdf_lib
-except ImportError:
-    import PyPDF2 as pdf_lib  # type: ignore
+import pypdf as pdf_lib
 
 
 # Extract pdf and concatenate text into one string
@@ -18,19 +15,11 @@ def extract_pdf_text(pdf_path: Path) -> str:
 
 
 # Search potential locations for file to redact
-def find_hbtCv_pdf(repo_root: Path) -> Path:
-    candidates = [
-        repo_root / "samples" / "hbtCv.pdf",
-        repo_root / "hbtCv.pdf",
-        repo_root / "redactor" / "test" / "e2e_test" / "data" / "hbtCv.pdf",
-    ]
-    for p in candidates:
-        if p.exists():
-            return p
-
-    raise FileNotFoundError(
-        "Could not find hbtCv.pdf. Looked in:\n" + "\n".join(str(p) for p in candidates)
-    )
+def find_pdf(repo_root: Path) -> Path:
+    pdf = repo_root / "redactor/test/e2e_test/data/name_number_email.pdf"
+    if not pdf.exists():
+        raise FileNotFoundError(f"Missing E2E fixture: {pdf}")
+    return pdf
 
 
 # Resolve any path issues
@@ -75,8 +64,8 @@ def test_e2e_generates_provisional_pdf(tmp_path: Path) -> None:
     samples_dir = tmp_path / "samples"
     samples_dir.mkdir(parents=True, exist_ok=True)
 
-    input_pdf_src = find_hbtCv_pdf(repo_root)
-    raw_input = samples_dir / "hbtCv.pdf"
+    input_pdf_src = find_pdf(repo_root)
+    raw_input = samples_dir / "name_number_email.pdf"
     raw_input.write_bytes(input_pdf_src.read_bytes())
 
     ensure_redactor_symlink(tmp_path, repo_root)
@@ -86,7 +75,7 @@ def test_e2e_generates_provisional_pdf(tmp_path: Path) -> None:
         f"Command failed.\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
     )
 
-    provisional = samples_dir / "hbtCv_PROVISIONAL.pdf"
+    provisional = samples_dir / "name_number_email_PROVISIONAL.pdf"
     assert provisional.exists(), f"Expected provisional output at {provisional}"
 
     txt = extract_pdf_text(provisional)
@@ -112,8 +101,8 @@ def test_e2e_generates_final_redacted_pdf(tmp_path: Path) -> None:
     samples_dir = tmp_path / "samples"
     samples_dir.mkdir(parents=True, exist_ok=True)
 
-    input_pdf_src = find_hbtCv_pdf(repo_root)
-    raw_input = samples_dir / "hbtCv.pdf"
+    input_pdf_src = find_pdf(repo_root)
+    raw_input = samples_dir / "name_number_email.pdf"
     raw_input.write_bytes(input_pdf_src.read_bytes())
 
     ensure_redactor_symlink(tmp_path, repo_root)
@@ -122,7 +111,7 @@ def test_e2e_generates_final_redacted_pdf(tmp_path: Path) -> None:
     result1 = run_module_redactor(tmp_path, repo_root, raw_input)
     assert result1.returncode == 0
 
-    provisional = samples_dir / "hbtCv_PROVISIONAL.pdf"
+    provisional = samples_dir / "name_number_email_PROVISIONAL.pdf"
     assert provisional.exists()
 
     # Use the created provisional to geberate the redacted version
@@ -130,7 +119,7 @@ def test_e2e_generates_final_redacted_pdf(tmp_path: Path) -> None:
     assert result2.returncode == 0
     assert "Applying final redactions" in result2.stdout
 
-    redacted = samples_dir / "hbtCv_REDACTED.pdf"
+    redacted = samples_dir / "name_number_email_REDACTED.pdf"
     assert redacted.exists()
 
     txt = extract_pdf_text(redacted)
