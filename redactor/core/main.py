@@ -54,7 +54,7 @@ def main(
 ):  # pragma: no cover
     file_format = magic.from_buffer(file_bytes.read(), mime=True)
     extension = file_format.split("/").pop()
-    if file_name.endswith(f".{extension}"):
+    if file_name.lower().endswith(f".{extension.lower()}"):
         file_name_without_extension = file_name.removesuffix(f".{extension}")
     else:
         raise ValueError(
