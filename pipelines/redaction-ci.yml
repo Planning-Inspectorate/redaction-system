@@ -93,6 +93,19 @@ extends:
           - script: |
               set -e
               cd redaction-system
+              export PYTHONPATH=$(pwd)
+              python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
+            displayName: 'Run e2e tests'
+          - task: PublishTestResults@2
+            displayName: 'Publish e2e test results'
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFiles: '**/e2e_test_results.xml'
+              testRunTitle: 'Redaction System e2e test report - $(Build.BuildId) - $(Build.SourceBranch)'
+              mergeTestResults: true
+          - script: |
+              set -e
+              cd redaction-system
               python3 -m coverage combine
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
