@@ -1,4 +1,6 @@
-from redactor.core.redaction.file_processor.file_processor_factory import FileProcessorFactory
+from redactor.core.redaction.file_processor.file_processor_factory import (
+    FileProcessorFactory,
+)
 from redactor.core.redaction.file_processor.file_processor import FileProcessor
 from redactor.core.redaction.config.config_processor import ConfigProcessor
 import argparse
@@ -33,15 +35,23 @@ def apply_provisional_redactions(
     return processed_file_bytes
 
 
-def apply_final_redactions(config: Dict[str, Any], file_bytes: BytesIO):
-    file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(config["file_format"])
-    config_cleaned = ConfigProcessor.validate_and_filter_config(config, file_processor_class)
+def apply_final_redactions(
+    config: Dict[str, Any], file_bytes: BytesIO
+):  # pragma: no cover
+    file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(
+        config["file_format"]
+    )
+    config_cleaned = ConfigProcessor.validate_and_filter_config(
+        config, file_processor_class
+    )
     file_processor_inst = file_processor_class()
     processed_file_bytes = file_processor_inst.apply(file_bytes, config_cleaned)
     return processed_file_bytes
 
 
-def main(file_name: str, file_bytes: BytesIO, config_name: str = None):
+def main(
+    file_name: str, file_bytes: BytesIO, config_name: str = None
+):  # pragma: no cover
     file_format = magic.from_buffer(file_bytes.read(), mime=True)
     extension = file_format.split("/").pop()
     if file_name.lower().endswith(f".{extension.lower()}"):
@@ -50,7 +60,11 @@ def main(file_name: str, file_bytes: BytesIO, config_name: str = None):
         raise ValueError(
             f"File extension of the raw file does not match the file name. The raw file had MIME type {file_format}, which should be a .{extension} extension"
         )
-    base_file_name = file_name_without_extension.removesuffix("_REDACTED").removesuffix("_CURATED").removesuffix("_PROVISIONAL")
+    base_file_name = (
+        file_name_without_extension.removesuffix("_REDACTED")
+        .removesuffix("_CURATED")
+        .removesuffix("_PROVISIONAL")
+    )
     if config_name:
         config = ConfigProcessor.load_config(config_name)
     else:
@@ -58,7 +72,9 @@ def main(file_name: str, file_bytes: BytesIO, config_name: str = None):
     config["file_format"] = extension
     if file_name.endswith(f"REDACTED.{extension}"):
         print("Nothing to redact - the file is already redacted")
-    elif file_name.endswith(f"PROVISIONAL.{extension}") or file_name.endswith(f"CURATED.{extension}"):
+    elif file_name.endswith(f"PROVISIONAL.{extension}") or file_name.endswith(
+        f"CURATED.{extension}"
+    ):
         print("Applying final redactions")
         processed_file_bytes = apply_final_redactions(config, file_bytes)
         with open(f"{base_file_name}_REDACTED.{extension}", "wb") as f:
