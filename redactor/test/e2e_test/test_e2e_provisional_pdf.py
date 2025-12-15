@@ -16,6 +16,7 @@ def extract_pdf_text(pdf_path: Path) -> str:
     reader = pdf_lib.PdfReader(str(pdf_path))
     return "".join((page.extract_text() or "") for page in reader.pages)
 
+
 # Search potential locations for file to redact
 def find_hbtCv_pdf(repo_root: Path) -> Path:
     candidates = [
@@ -30,6 +31,7 @@ def find_hbtCv_pdf(repo_root: Path) -> Path:
     raise FileNotFoundError(
         "Could not find hbtCv.pdf. Looked in:\n" + "\n".join(str(p) for p in candidates)
     )
+
 
 # Resolve any path issues
 def ensure_redactor_symlink(tmp_path: Path, repo_root: Path) -> None:
@@ -89,7 +91,7 @@ def test_e2e_generates_provisional_pdf(tmp_path: Path) -> None:
 
     txt = extract_pdf_text(provisional)
 
-    # Provisional = highlight only 
+    # Provisional = highlight only
     assert "John Doe" in txt
     assert "Stephen Doe" in txt
     assert "07555555555" in txt
@@ -137,7 +139,7 @@ def test_e2e_generates_final_redacted_pdf(tmp_path: Path) -> None:
     assert "John Doe" not in txt
     assert "Stephen Doe" not in txt
 
-    # Phone + email are NOT currently redacted 
+    # Phone + email are NOT currently redacted
     assert "07555555555" in txt
     assert "email@emailaddress.com" in txt
 
