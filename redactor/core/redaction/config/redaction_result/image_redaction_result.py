@@ -15,4 +15,4 @@ class ImageRedactionResult(RedactionResult):
     redaction_boxes: Tuple[Tuple[int, int, int, int]] = field(
         default_factory=lambda: ()
     )
-    """The list redaction boxes to draw on the image, in the image's local space"""
+    """The list redaction boxes to draw on the image, in the image's local space. This is of the form (top left corner x, top left corner y, width, height)"""

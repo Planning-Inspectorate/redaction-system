@@ -5,6 +5,8 @@ from redactor.core.redaction.config.redaction_config.image_redaction_config impo
 from redactor.core.redaction.config.redaction_result.image_redaction_result import (
     ImageRedactionResult,
 )
+from redactor.core.util.llm.azure_vision_util import AzureVisionUtil
+from PIL import Image, ImageDraw
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -22,9 +24,11 @@ class ImageRedactor(Redactor):  # pragma: no cover
         return ImageRedactionConfig
 
     def redact(self) -> ImageRedactionResult:
+        self.config: ImageRedactionConfig
         # Initialisation
-        image_to_redact = self.config["properties"]["image"]
-        # Todo - need to implement this logic
+        image_to_redact = self.config.image
+        vision_util = AzureVisionUtil()
+        image_rects = vision_util.detect_faces(image_to_redact)
         return ImageRedactionResult(
-            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
+            redaction_boxes=image_rects, image_dimensions=(image_to_redact.width, image_to_redact.height), source_image=image_to_redact
         )
