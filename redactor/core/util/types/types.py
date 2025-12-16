@@ -15,7 +15,7 @@ from PIL.Image import Image
 # This is baed on https://docs.pydantic.dev/latest/concepts/types/#handling-third-party-types
 
 
-class _ImageAnnotation():
+class _ImageAnnotation:
     @classmethod
     def __get_pydantic_core_schema__(
         cls,
@@ -65,6 +65,4 @@ class _ImageAnnotation():
         return handler(core_schema.int_schema())
 
 
-PydanticImage = Annotated[
-    Image, _ImageAnnotation
-]
+PydanticImage = Annotated[Image, _ImageAnnotation]
