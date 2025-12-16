@@ -25,6 +25,14 @@ class AzureVisionUtil():
         )
     
     def detect_faces(self, image: Image.Image, confidence_threshold: float = 0.5):
+        """
+        Detect faces in the given image
+        
+        :param Image.Image image: The image to analyse
+        :param  floatconfidence_threshold: Confidence threshold between 0 and 1
+        :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, box width, box height), for boxes
+                  with confidence above the threshold
+        """
         byte_stream = BytesIO()
         image.save(byte_stream, format="PNG")
         image_bytes = byte_stream.getvalue()
@@ -37,3 +45,19 @@ class AzureVisionUtil():
             for person in result.people.list
             if person.confidence >= confidence_threshold
         )
+
+    def detect_text(self, image: Image.Image):
+        """
+        Docstring text in the given image
+        
+        :param Image.Image image: The image to analyse
+        :returns: The text content of the image, with each individual "block" separated by " "
+        """
+        byte_stream = BytesIO()
+        image.save(byte_stream, format="PNG")
+        image_bytes = byte_stream.getvalue()
+        result = self.vision_client.analyze(
+            image_bytes,
+            [VisualFeatures.READ],
+        )
+        return " ".join([line.text for block in result.read.blocks for line in block.lines])
