@@ -30,5 +30,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
         vision_util = AzureVisionUtil()
         image_rects = vision_util.detect_faces(image_to_redact)
         return ImageRedactionResult(
-            redaction_boxes=image_rects, image_dimensions=(image_to_redact.width, image_to_redact.height), source_image=image_to_redact
+            redaction_boxes=image_rects,
+            image_dimensions=(image_to_redact.width, image_to_redact.height),
+            source_image=image_to_redact,
         )

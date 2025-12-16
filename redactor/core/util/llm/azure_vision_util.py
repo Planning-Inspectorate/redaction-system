@@ -12,7 +12,7 @@ from io import BytesIO
 import json
 
 
-class AzureVisionUtil():
+class AzureVisionUtil:
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
         self.api_key = os.environ.get("AZURE_VISION_KEY", None)
@@ -20,14 +20,13 @@ class AzureVisionUtil():
             ManagedIdentityCredential(), AzureCliCredential()
         )
         self.vision_client = ImageAnalysisClient(
-            endpoint=self.azure_endpoint,
-            credential=AzureKeyCredential(self.api_key)
+            endpoint=self.azure_endpoint, credential=AzureKeyCredential(self.api_key)
         )
-    
+
     def detect_faces(self, image: Image.Image, confidence_threshold: float = 0.5):
         """
         Detect faces in the given image
-        
+
         :param Image.Image image: The image to analyse
         :param  floatconfidence_threshold: Confidence threshold between 0 and 1
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, box width, box height), for boxes
@@ -41,7 +40,12 @@ class AzureVisionUtil():
             [VisualFeatures.PEOPLE],
         )
         return tuple(
-            (person.bounding_box.x, person.bounding_box.y, person.bounding_box.width, person.bounding_box.height)
+            (
+                person.bounding_box.x,
+                person.bounding_box.y,
+                person.bounding_box.width,
+                person.bounding_box.height,
+            )
             for person in result.people.list
             if person.confidence >= confidence_threshold
         )
@@ -49,7 +53,7 @@ class AzureVisionUtil():
     def detect_text(self, image: Image.Image):
         """
         Docstring text in the given image
-        
+
         :param Image.Image image: The image to analyse
         :returns: The text content of the image, with each individual "block" separated by " "
         """
@@ -60,4 +64,6 @@ class AzureVisionUtil():
             image_bytes,
             [VisualFeatures.READ],
         )
-        return " ".join([line.text for block in result.read.blocks for line in block.lines])
+        return " ".join(
+            [line.text for block in result.read.blocks for line in block.lines]
+        )
