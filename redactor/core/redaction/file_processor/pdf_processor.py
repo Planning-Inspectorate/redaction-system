@@ -25,6 +25,8 @@ import json
 import string
 from unidecode import unidecode
 import unicodedata
+from redactor.core.util.text_util import is_english_text
+from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
 
 
 class PDFProcessor(FileProcessor):
@@ -143,6 +145,13 @@ class PDFProcessor(FileProcessor):
 
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
+        if not is_english_text(pdf_text):
+            print(
+                "Language check: non-English or insufficient English content detected; skipping provisional redactions."
+            )
+            raise NonEnglishContentException(
+                "Detected non-English or insufficient English content in document; skipping provisional redactions."
+            )
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
         )
