@@ -92,6 +92,7 @@ def pdf_fixture(repo_root: Path):
 def test_e2e_generates_provisional_pdf(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
+    """Generate a provisional PDF containing unredacted PII from a valid pdf document."""
     src = pdf_fixture("name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -114,6 +115,7 @@ def test_e2e_generates_provisional_pdf(
 def test_e2e_generates_final_redacted_pdf(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
+    """Generate a final redacted PDF with personal names removed after provisional pass."""
     src = pdf_fixture("name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -149,6 +151,7 @@ def test_e2e_generates_final_redacted_pdf(
 def test_e2e_rejects_welsh_primary_language(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
+    """Skip provisional and redacted output when the document is primarily Welsh."""
     src = pdf_fixture("simple_welsh_language_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -179,6 +182,7 @@ def test_e2e_rejects_welsh_primary_language(
 def test_e2e_allows_english_primary_with_some_welsh(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
+    """Allow provisional redaction when English is dominant but Welsh text is present."""
     src = pdf_fixture("english_primary_with_some_welsh_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
