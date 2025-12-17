@@ -11,6 +11,7 @@ import pypdf as pdf_lib
 # Utilities
 # ----------------------------
 
+
 def extract_pdf_text(pdf_path: Path) -> str:
     reader = pdf_lib.PdfReader(str(pdf_path))
     return "".join((page.extract_text() or "") for page in reader.pages)
@@ -45,7 +46,9 @@ def fixture_pdf(repo_root: Path, filename: str) -> Path:
     return pdf
 
 
-def copy_fixture_to_samples(samples_dir: Path, src: Path, dest_name: str | None = None) -> Path:
+def copy_fixture_to_samples(
+    samples_dir: Path, src: Path, dest_name: str | None = None
+) -> Path:
     dest = samples_dir / (dest_name or src.name)
     dest.write_bytes(src.read_bytes())
     return dest
@@ -65,6 +68,7 @@ def redacted_path(samples_dir: Path, input_name: str) -> Path:
 # Pytest fixtures
 # ----------------------------
 
+
 @pytest.fixture
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -82,8 +86,11 @@ def samples_dir(tmp_path: Path, repo_root: Path) -> Path:
 # Tests
 # ----------------------------
 
+
 @pytest.mark.e2e
-def test_e2e_generates_provisional_pdf(tmp_path: Path, repo_root: Path, samples_dir: Path) -> None:
+def test_e2e_generates_provisional_pdf(
+    tmp_path: Path, repo_root: Path, samples_dir: Path
+) -> None:
     src = fixture_pdf(repo_root, "name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -103,7 +110,9 @@ def test_e2e_generates_provisional_pdf(tmp_path: Path, repo_root: Path, samples_
 
 
 @pytest.mark.e2e
-def test_e2e_generates_final_redacted_pdf(tmp_path: Path, repo_root: Path, samples_dir: Path) -> None:
+def test_e2e_generates_final_redacted_pdf(
+    tmp_path: Path, repo_root: Path, samples_dir: Path
+) -> None:
     src = fixture_pdf(repo_root, "name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -136,7 +145,9 @@ def test_e2e_generates_final_redacted_pdf(tmp_path: Path, repo_root: Path, sampl
 
 
 @pytest.mark.e2e
-def test_e2e_rejects_welsh_primary_language(tmp_path: Path, repo_root: Path, samples_dir: Path) -> None:
+def test_e2e_rejects_welsh_primary_language(
+    tmp_path: Path, repo_root: Path, samples_dir: Path
+) -> None:
     src = fixture_pdf(repo_root, "simple_welsh_language_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -148,8 +159,14 @@ def test_e2e_rejects_welsh_primary_language(tmp_path: Path, repo_root: Path, sam
     stdout = (result.stdout or "").strip()
 
     assert "Applying provisional redactions" in stdout
-    assert "Language check: non-English or insufficient English content detected; skipping provisional redactions." in stdout
-    assert "Detected non-English or insufficient English content in document; skipping provisional redactions." in stdout
+    assert (
+        "Language check: non-English or insufficient English content detected; skipping provisional redactions."
+        in stdout
+    )
+    assert (
+        "Detected non-English or insufficient English content in document; skipping provisional redactions."
+        in stdout
+    )
     assert "No provisional file will be generated for non-English content." in stdout
 
     assert not provisional_path(samples_dir, raw_input.name).exists()
@@ -157,7 +174,9 @@ def test_e2e_rejects_welsh_primary_language(tmp_path: Path, repo_root: Path, sam
 
 
 @pytest.mark.e2e
-def test_e2e_allows_english_primary_with_some_welsh(tmp_path: Path, repo_root: Path, samples_dir: Path) -> None:
+def test_e2e_allows_english_primary_with_some_welsh(
+    tmp_path: Path, repo_root: Path, samples_dir: Path
+) -> None:
     src = fixture_pdf(repo_root, "english_primary_with_some_welsh_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
@@ -167,5 +186,3 @@ def test_e2e_allows_english_primary_with_some_welsh(tmp_path: Path, repo_root: P
     )
 
     assert provisional_path(samples_dir, raw_input.name).exists()
-
-
