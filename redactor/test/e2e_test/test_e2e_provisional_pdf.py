@@ -4,25 +4,19 @@ import sys
 from pathlib import Path
 
 import pytest
-
 import pypdf as pdf_lib
 
 
-# Extract pdf and concatenate text into one string
+# ----------------------------
+# Utilities
+# ----------------------------
+
+
 def extract_pdf_text(pdf_path: Path) -> str:
     reader = pdf_lib.PdfReader(str(pdf_path))
     return "".join((page.extract_text() or "") for page in reader.pages)
 
 
-# Search potential locations for file to redact
-def find_pdf(repo_root: Path) -> Path:
-    pdf = repo_root / "redactor/test/e2e_test/data/name_number_email.pdf"
-    if not pdf.exists():
-        raise FileNotFoundError(f"Missing E2E fixture: {pdf}")
-    return pdf
-
-
-# Resolve any path issues
 def ensure_redactor_symlink(tmp_path: Path, repo_root: Path) -> None:
     redactor_link = tmp_path / "redactor"
     if not redactor_link.exists():
@@ -36,13 +30,7 @@ def run_module_redactor(
     env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
 
     return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "redactor.core.main",
-            "-f",
-            str(file_to_redact),
-        ],
+        [sys.executable, "-m", "redactor.core.main", "-f", str(file_to_redact)],
         cwd=str(tmp_path),
         env=env,
         capture_output=True,
@@ -50,37 +38,73 @@ def run_module_redactor(
     )
 
 
-@pytest.mark.e2e
-def test_e2e_generates_provisional_pdf(tmp_path: Path) -> None:
-    """
-    E2E:
-    - Given a raw PDF
-    - When the redaction CLI is run
-    - Then a provisional PDF is created
-    - And all sensitive text remains extractable
-    """
-    repo_root = Path(__file__).resolve().parents[3]
+def copy_fixture_to_samples(
+    samples_dir: Path, src: Path, dest_name: str | None = None
+) -> Path:
+    dest = samples_dir / (dest_name or src.name)
+    dest.write_bytes(src.read_bytes())
+    return dest
 
-    samples_dir = tmp_path / "samples"
-    samples_dir.mkdir(parents=True, exist_ok=True)
 
-    input_pdf_src = find_pdf(repo_root)
-    raw_input = samples_dir / "name_number_email.pdf"
-    raw_input.write_bytes(input_pdf_src.read_bytes())
+def provisional_path(samples_dir: Path, input_name: str) -> Path:
+    return samples_dir / f"{Path(input_name).stem}_PROVISIONAL.pdf"
 
+
+def redacted_path(samples_dir: Path, input_name: str) -> Path:
+    return samples_dir / f"{Path(input_name).stem}_REDACTED.pdf"
+
+
+# ----------------------------
+# Pytest fixtures
+# ----------------------------
+
+
+@pytest.fixture
+def repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture
+def samples_dir(tmp_path: Path, repo_root: Path) -> Path:
+    d = tmp_path / "samples"
+    d.mkdir(parents=True, exist_ok=True)
     ensure_redactor_symlink(tmp_path, repo_root)
+    return d
+
+
+@pytest.fixture
+def pdf_fixture(repo_root: Path):
+    def _get(filename: str) -> Path:
+        path = repo_root / "redactor/test/e2e_test/data" / filename
+        if not path.exists():
+            raise FileNotFoundError(f"Missing E2E fixture: {path}")
+        return path
+
+    return _get
+
+
+# ----------------------------
+# Tests
+# ----------------------------
+
+
+@pytest.mark.e2e
+def test_e2e_generates_provisional_pdf(
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
+) -> None:
+    """Generate a provisional PDF containing unredacted PII from a valid pdf document."""
+    src = pdf_fixture("name_number_email.pdf")
+    raw_input = copy_fixture_to_samples(samples_dir, src)
 
     result = run_module_redactor(tmp_path, repo_root, raw_input)
     assert result.returncode == 0, (
         f"Command failed.\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
     )
 
-    provisional = samples_dir / "name_number_email_PROVISIONAL.pdf"
+    provisional = provisional_path(samples_dir, raw_input.name)
     assert provisional.exists(), f"Expected provisional output at {provisional}"
 
     txt = extract_pdf_text(provisional)
-
-    # Provisional = highlight only
     assert "John Doe" in txt
     assert "Stephen Doe" in txt
     assert "07555555555" in txt
@@ -88,49 +112,83 @@ def test_e2e_generates_provisional_pdf(tmp_path: Path) -> None:
 
 
 @pytest.mark.e2e
-def test_e2e_generates_final_redacted_pdf(tmp_path: Path) -> None:
-    """
-    E2E:
-    - Given a raw PDF
-    - When the redaction CLI is run
-    - Then a final redacted PDF is created
-    - And all sensitive text is fully redacted
-    """
-    repo_root = Path(__file__).resolve().parents[3]
+def test_e2e_generates_final_redacted_pdf(
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
+) -> None:
+    """Generate a final redacted PDF with personal names removed after provisional pass."""
+    src = pdf_fixture("name_number_email.pdf")
+    raw_input = copy_fixture_to_samples(samples_dir, src)
 
-    samples_dir = tmp_path / "samples"
-    samples_dir.mkdir(parents=True, exist_ok=True)
-
-    input_pdf_src = find_pdf(repo_root)
-    raw_input = samples_dir / "name_number_email.pdf"
-    raw_input.write_bytes(input_pdf_src.read_bytes())
-
-    ensure_redactor_symlink(tmp_path, repo_root)
-
-    # Create the provisional
+    # Create provisional
     result1 = run_module_redactor(tmp_path, repo_root, raw_input)
-    assert result1.returncode == 0
+    assert result1.returncode == 0, (
+        f"Command failed.\n\nSTDOUT:\n{result1.stdout}\n\nSTDERR:\n{result1.stderr}\n"
+    )
 
-    provisional = samples_dir / "name_number_email_PROVISIONAL.pdf"
+    provisional = provisional_path(samples_dir, raw_input.name)
     assert provisional.exists()
 
-    # Use the created provisional to geberate the redacted version
+    # Create redacted
     result2 = run_module_redactor(tmp_path, repo_root, provisional)
-    assert result2.returncode == 0
-    assert "Applying final redactions" in result2.stdout
+    assert result2.returncode == 0, (
+        f"Command failed.\n\nSTDOUT:\n{result2.stdout}\n\nSTDERR:\n{result2.stderr}\n"
+    )
+    assert "Applying final redactions" in (result2.stdout or "")
 
-    redacted = samples_dir / "name_number_email_REDACTED.pdf"
+    redacted = redacted_path(samples_dir, raw_input.name)
     assert redacted.exists()
 
     txt = extract_pdf_text(redacted)
 
-    # Names are redacted (not extractable)
     assert "John Doe" not in txt
     assert "Stephen Doe" not in txt
-
-    # Phone + email are NOT currently redacted
     assert "07555555555" in txt
     assert "email@emailaddress.com" in txt
-
-    # Sanity check: doc still has content
     assert len(txt.strip()) > 0
+
+
+@pytest.mark.e2e
+def test_e2e_rejects_welsh_primary_language(
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
+) -> None:
+    """Skip provisional and redacted output when the document is primarily Welsh."""
+    src = pdf_fixture("simple_welsh_language_test.pdf")
+    raw_input = copy_fixture_to_samples(samples_dir, src)
+
+    result = run_module_redactor(tmp_path, repo_root, raw_input)
+    assert result.returncode == 0, (
+        "Command unexpectedly failed.\n\n"
+        f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
+    )
+
+    stdout = (result.stdout or "").strip()
+
+    assert "Applying provisional redactions" in stdout
+    assert (
+        "Language check: non-English or insufficient English content detected; skipping provisional redactions."
+        in stdout
+    )
+    assert (
+        "Detected non-English or insufficient English content in document; skipping provisional redactions."
+        in stdout
+    )
+    assert "No provisional file will be generated for non-English content." in stdout
+
+    assert not provisional_path(samples_dir, raw_input.name).exists()
+    assert not redacted_path(samples_dir, raw_input.name).exists()
+
+
+@pytest.mark.e2e
+def test_e2e_allows_english_primary_with_some_welsh(
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
+) -> None:
+    """Allow provisional redaction when English is dominant but Welsh text is present."""
+    src = pdf_fixture("english_primary_with_some_welsh_test.pdf")
+    raw_input = copy_fixture_to_samples(samples_dir, src)
+
+    result = run_module_redactor(tmp_path, repo_root, raw_input)
+    assert result.returncode == 0, (
+        f"Command failed.\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
+    )
+
+    assert provisional_path(samples_dir, raw_input.name).exists()
