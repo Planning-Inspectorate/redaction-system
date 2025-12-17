@@ -38,14 +38,6 @@ def run_module_redactor(
     )
 
 
-def fixture_pdf(repo_root: Path, filename: str) -> Path:
-    """Single place to resolve E2E PDF fixtures."""
-    pdf = repo_root / "redactor/test/e2e_test/data" / filename
-    if not pdf.exists():
-        raise FileNotFoundError(f"Missing E2E fixture: {pdf}")
-    return pdf
-
-
 def copy_fixture_to_samples(
     samples_dir: Path, src: Path, dest_name: str | None = None
 ) -> Path:
@@ -55,13 +47,11 @@ def copy_fixture_to_samples(
 
 
 def provisional_path(samples_dir: Path, input_name: str) -> Path:
-    stem = Path(input_name).stem
-    return samples_dir / f"{stem}_PROVISIONAL.pdf"
+    return samples_dir / f"{Path(input_name).stem}_PROVISIONAL.pdf"
 
 
 def redacted_path(samples_dir: Path, input_name: str) -> Path:
-    stem = Path(input_name).stem
-    return samples_dir / f"{stem}_REDACTED.pdf"
+    return samples_dir / f"{Path(input_name).stem}_REDACTED.pdf"
 
 
 # ----------------------------
@@ -82,6 +72,17 @@ def samples_dir(tmp_path: Path, repo_root: Path) -> Path:
     return d
 
 
+@pytest.fixture
+def pdf_fixture(repo_root: Path):
+    def _get(filename: str) -> Path:
+        path = repo_root / "redactor/test/e2e_test/data" / filename
+        if not path.exists():
+            raise FileNotFoundError(f"Missing E2E fixture: {path}")
+        return path
+
+    return _get
+
+
 # ----------------------------
 # Tests
 # ----------------------------
@@ -89,9 +90,9 @@ def samples_dir(tmp_path: Path, repo_root: Path) -> Path:
 
 @pytest.mark.e2e
 def test_e2e_generates_provisional_pdf(
-    tmp_path: Path, repo_root: Path, samples_dir: Path
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
-    src = fixture_pdf(repo_root, "name_number_email.pdf")
+    src = pdf_fixture("name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
     result = run_module_redactor(tmp_path, repo_root, raw_input)
@@ -111,9 +112,9 @@ def test_e2e_generates_provisional_pdf(
 
 @pytest.mark.e2e
 def test_e2e_generates_final_redacted_pdf(
-    tmp_path: Path, repo_root: Path, samples_dir: Path
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
-    src = fixture_pdf(repo_root, "name_number_email.pdf")
+    src = pdf_fixture("name_number_email.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
     # Create provisional
@@ -146,14 +147,15 @@ def test_e2e_generates_final_redacted_pdf(
 
 @pytest.mark.e2e
 def test_e2e_rejects_welsh_primary_language(
-    tmp_path: Path, repo_root: Path, samples_dir: Path
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
-    src = fixture_pdf(repo_root, "simple_welsh_language_test.pdf")
+    src = pdf_fixture("simple_welsh_language_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
     result = run_module_redactor(tmp_path, repo_root, raw_input)
     assert result.returncode == 0, (
-        f"Command unexpectedly failed.\n\nSTDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
+        "Command unexpectedly failed.\n\n"
+        f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}\n"
     )
 
     stdout = (result.stdout or "").strip()
@@ -175,9 +177,9 @@ def test_e2e_rejects_welsh_primary_language(
 
 @pytest.mark.e2e
 def test_e2e_allows_english_primary_with_some_welsh(
-    tmp_path: Path, repo_root: Path, samples_dir: Path
+    tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
 ) -> None:
-    src = fixture_pdf(repo_root, "english_primary_with_some_welsh_test.pdf")
+    src = pdf_fixture("english_primary_with_some_welsh_test.pdf")
     raw_input = copy_fixture_to_samples(samples_dir, src)
 
     result = run_module_redactor(tmp_path, repo_root, raw_input)
