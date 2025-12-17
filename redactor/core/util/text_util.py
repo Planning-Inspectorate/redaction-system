@@ -11,7 +11,7 @@ def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) ->
     - English probability exceeds the next-highest language by at least margin.
 
     Notes:
-    - Whitespace is normalized; empty/whitespace-only returns False.
+    - Whitespace is normalised; empty/whitespace-only returns False.
     - The detector is seeded for deterministic results.
     - On detection errors (e.g., too short/ambiguous text), returns False.
     """
@@ -19,13 +19,13 @@ def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) ->
     DetectorFactory.seed = 0
 
     # Normalize whitespace
-    normalized = " ".join(text.split())
-    if not normalized:
+    normalised = " ".join(text.split())
+    if not normalised:
         # No text to analyze; treat as non-English
         return False
 
     try:
-        langs = detect_langs(normalized)
+        langs = detect_langs(normalised)
         en_prob = next((lp.prob for lp in langs if lp.lang == "en"), 0.0)
         other_probs = [lp.prob for lp in langs if lp.lang != "en"]
         max_other = max(other_probs) if other_probs else 0.0
