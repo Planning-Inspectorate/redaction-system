@@ -3,6 +3,8 @@ from io import BytesIO
 import pymupdf
 import mock
 import pytest
+from redactor.core.util.text_util import is_english_text
+from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
 
 
 def test__pdf_processor__get_name():
@@ -151,3 +153,39 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
         PDFProcessor._is_full_text_being_redacted(text_to_redact, actual_text_at_rect)
         is expected_result
     ), error_message
+
+
+def _make_pdf_with_text(text: str) -> BytesIO:
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), text)
+    b = BytesIO()
+    doc.save(b)
+    b.seek(0)
+    return b
+
+
+def test__pdf_processor__redact_skips_non_english_raises_exception():
+    """
+    - Given a non-English PDF input
+    - When redact() is called
+    - Then it should raise NonEnglishContentException and not modify the original bytes
+    """
+    french_text = (
+        "Bonjour, ceci est un document de test. Ce fichier PDF contient du texte en français, "
+        "destiné à vérifier la détection de la langue. Il ne doit pas être traité pour la rédaction."
+    )
+    file_bytes = _make_pdf_with_text(french_text)
+
+    # Sanity check language detection
+    doc_text = "\n".join(page.get_text() for page in pymupdf.open(stream=file_bytes))
+    file_bytes.seek(0)
+    assert is_english_text(doc_text) is False
+
+    with pytest.raises(NonEnglishContentException):
+        PDFProcessor().redact(file_bytes, {"redaction_rules": []})
+
+    # Ensure original stream still represents a PDF without highlight annotations
+    pdf = pymupdf.open(stream=file_bytes)
+    annots = [a for p in pdf for a in p.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
+    assert not annots

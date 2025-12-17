@@ -7,6 +7,7 @@ import argparse
 from typing import Dict, Any, Type
 from io import BytesIO
 import magic
+from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
 
 
 """
@@ -81,7 +82,12 @@ def main(
             f.write(processed_file_bytes.getvalue())
     else:
         print("Applying provisional redactions")
-        processed_file_bytes = apply_provisional_redactions(config, file_bytes)
+        try:
+            processed_file_bytes = apply_provisional_redactions(config, file_bytes)
+        except NonEnglishContentException as e:
+            print(str(e))
+            print("No provisional file will be generated for non-English content.")
+            return
         with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
 
