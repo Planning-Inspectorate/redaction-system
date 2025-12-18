@@ -18,8 +18,9 @@ from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.file_processor.exceptions import (
     UnprocessedRedactionResultException,
 )
+from redactor.core.util.types.types import PydanticImage
 from io import BytesIO
-from typing import Set, Type, List, Any, Dict, Tuple
+from typing import Set, Type, List, Any, Dict, Tuple, Union
 import pymupdf
 import json
 import string
@@ -27,7 +28,20 @@ from unidecode import unidecode
 import unicodedata
 from redactor.core.util.text_util import is_english_text
 from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
+from PIL import Image
+from pydantic import BaseModel
 
+
+class PDFImageMetadata(BaseModel):
+    class Point(BaseModel):
+        x: Union[int, float]
+        y: Union[int, float]
+    relative_position_in_page: Point
+    source_image_resolution: Point
+    resolution_on_page: Point
+    file_format: str
+    image: PydanticImage
+    page_number: int
 
 class PDFProcessor(FileProcessor):
     """
@@ -48,6 +62,27 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         page_text = "\n".join(page.get_text() for page in pdf)
         return page_text
+
+    def _extract_pdf_images(self, file_bytes: BytesIO):
+        pdf = pymupdf.open(stream=file_bytes)
+        image_metadata_list: List[PDFImageMetadata] = []
+        for page_number, page in enumerate(pdf):
+            for image_xref in page.get_images(full=True):
+                image_details = pdf.extract_image(image_xref[0])
+                bounding_box = page.get_image_bbox(image_xref)
+                file_format = image_details["ext"]  # PIL doesnt like PNG files
+                image_bytes = BytesIO(image_details.get("image"))
+                image = Image.open(image_bytes)
+                image_metadata = PDFImageMetadata(
+                    relative_position_in_page=PDFImageMetadata.Point(x=bounding_box[0], y=bounding_box[1]),
+                    source_image_resolution=PDFImageMetadata.Point(x=image_details["width"], y=image_details["height"]),
+                    resolution_on_page=PDFImageMetadata.Point(x=image_details["xres"], y=image_details["yres"]),
+                    file_format=file_format,
+                    image=image,
+                    page_number=page_number
+                )
+                image_metadata_list.append(image_metadata)
+        return image_metadata_list
 
     @classmethod
     def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
@@ -87,6 +122,10 @@ class PDFProcessor(FileProcessor):
             )
         return match_result
 
+    def _add_provisional_redaction(self, page: pymupdf.Page, rect: pymupdf.Rect):
+        highlight_annotation = page.add_highlight_annot(rect)
+        highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+
     def _apply_provisional_text_redactions(
         self, file_bytes: BytesIO, text_to_redact: List[str]
     ):
@@ -115,8 +154,7 @@ class PDFProcessor(FileProcessor):
                 actual_text_at_rect = page.get_textbox(rect)
                 actual_text_at_rect = " ".join(actual_text_at_rect.split())
                 if self._is_full_text_being_redacted(word, actual_text_at_rect):
-                    highlight_annotation = page.add_highlight_annot(rect)
-                    highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+                    self._add_provisional_redaction(page, rect)
                 else:
                     print(
                         f"Partial redaction found when attempting to redact '{word}'. The surroundig box contains '{actual_text_at_rect}'. Skipping"
@@ -131,17 +169,46 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     def _apply_provisional_image_redactions(
-        self, file_bytes: BytesIO, boxes_to_redact: List[Tuple[int, int, int, int]]
+        self, file_bytes: BytesIO, redactions: Set[ImageRedactionResult]
     ):
         """
         Redact the given list of bounding boxes as provisional redactions in the PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param List[Tuple[int, int, int, int]] boxes_to_redact: The bounding boxes to redact in the document
+        :param List[ImageRedactionResult] redactions: The results of the image redaction analysis
         :return BytesIO: Bytes stream for the PDF with provisional image redactions applied
         """
-        # Todo
-        return file_bytes
+        pdf = pymupdf.open(stream=file_bytes)
+        pages = [page for page in pdf]
+        pdf_images = self._extract_pdf_images(file_bytes)
+        for pdf_image_metadata in pdf_images:
+            pdf_image = pdf_image_metadata.image
+            pdf_image_cleaned = pdf_image.convert("RGB")
+            page = pages[pdf_image_metadata.page_number]
+            for redaction_result in redactions:
+                relevant_image_metadata = [
+                    metadata
+                    for metadata in redaction_result.redaction_results
+                    if metadata.source_image.convert("RGB") == pdf_image_cleaned
+                ]
+                if relevant_image_metadata:
+                    bounding_boxes = relevant_image_metadata[0].redaction_boxes
+                    for bounding_box in bounding_boxes:
+                        rect = pymupdf.Rect(
+                            x0=bounding_box[0],
+                            y0=bounding_box[1],
+                            x1=bounding_box[0] + bounding_box[2],
+                            y1=bounding_box[1] + bounding_box[3]
+                        )
+                        rect_in_global_space = self._transform_bounding_box_to_global_space(rect)
+                        self._add_provisional_redaction(page, rect_in_global_space)
+        new_file_bytes = BytesIO()
+        pdf.save(new_file_bytes, deflate=True)
+        new_file_bytes.seek(0)
+        return new_file_bytes
+    
+    def _transform_bounding_box_to_global_space(self, bounding_box: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
+        return bounding_box
 
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
@@ -152,6 +219,7 @@ class PDFProcessor(FileProcessor):
             raise NonEnglishContentException(
                 "Detected non-English or insufficient English content in document; skipping provisional redactions."
             )
+        pdf_images = self._extract_pdf_images(file_bytes)
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
         )
@@ -159,25 +227,26 @@ class PDFProcessor(FileProcessor):
         for redaction_config in redaction_rules:
             if hasattr(redaction_config, "text"):
                 redaction_config.text = pdf_text
+            if hasattr(redaction_config, "images"):
+                redaction_config.images = [x.image for x in pdf_images]
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
             RedactorFactory.get(rule.redactor_type)(rule) for rule in redaction_rules
         ]
         # Generate redactions
-        redaction_results: Set[RedactionResult] = set()
+        # TODO convert back to a set
+        redaction_results: List[RedactionResult] = []
         for rule_to_apply in redaction_rules_to_apply:
-            redaction_results.add(rule_to_apply.redact())
-        text_redaction_results: Set[TextRedactionResult] = {
+            redaction_results.append(rule_to_apply.redact())
+        text_redaction_results: List[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
-        }
-        image_redaction_results: Set[ImageRedactionResult] = {
+        ]
+        image_redaction_results: List[ImageRedactionResult] = [
             x
             for x in redaction_results
             if issubclass(x.__class__, ImageRedactionResult)
-        }
-        unapplied_redaction_results = redaction_results.difference(
-            text_redaction_results
-        ).difference(image_redaction_results)
+        ]
+        unapplied_redaction_results = [x for x in redaction_results if x not in text_redaction_results + image_redaction_results]
         if unapplied_redaction_results:
             raise UnprocessedRedactionResultException(
                 "The following redaction results were generated by the PDFProcessor, but there is no mechanism to process them: "
@@ -194,13 +263,8 @@ class PDFProcessor(FileProcessor):
             file_bytes, text_redactions
         )
         ## Apply image redactions
-        image_redactions = [
-            redaction_box
-            for result in image_redaction_results
-            for redaction_box in result.redaction_boxes
-        ]
         new_file_bytes = self._apply_provisional_image_redactions(
-            new_file_bytes, image_redactions
+            new_file_bytes, image_redaction_results
         )
         return new_file_bytes
 
