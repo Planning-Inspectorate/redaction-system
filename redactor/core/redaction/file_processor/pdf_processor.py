@@ -76,7 +76,7 @@ class PDFProcessor(FileProcessor):
                 image_metadata = PDFImageMetadata(
                     relative_position_in_page=PDFImageMetadata.Point(x=bounding_box[0], y=bounding_box[1]),
                     source_image_resolution=PDFImageMetadata.Point(x=image_details["width"], y=image_details["height"]),
-                    resolution_on_page=PDFImageMetadata.Point(x=image_details["xres"], y=image_details["yres"]),
+                    resolution_on_page=PDFImageMetadata.Point(x=bounding_box[2]-bounding_box[0], y=bounding_box[3]-bounding_box[1]),
                     file_format=file_format,
                     image=image,
                     page_number=page_number
@@ -181,9 +181,12 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         pdf_images = self._extract_pdf_images(file_bytes)
-        for pdf_image_metadata in pdf_images:
+        for i, pdf_image_metadata in enumerate(pdf_images):
             pdf_image = pdf_image_metadata.image
+            pdf_image.save(f"pdfImage{i}.jpg")
             pdf_image_cleaned = pdf_image.convert("RGB")
+            pdf_loc = pdf_image_metadata.relative_position_in_page
+            pdf_size = pdf_image_metadata.resolution_on_page
             page = pages[pdf_image_metadata.page_number]
             for redaction_result in redactions:
                 relevant_image_metadata = [
@@ -199,6 +202,13 @@ class PDFProcessor(FileProcessor):
                             y0=bounding_box[1],
                             x1=bounding_box[0] + bounding_box[2],
                             y1=bounding_box[1] + bounding_box[3]
+                        )
+                        # Temp override
+                        rect = pymupdf.Rect(
+                            x0=pdf_loc.x,
+                            y0=pdf_loc.y,
+                            x1=pdf_loc.x + pdf_size.x,
+                            y1=pdf_loc.y + pdf_size.y
                         )
                         rect_in_global_space = self._transform_bounding_box_to_global_space(rect)
                         self._add_provisional_redaction(page, rect_in_global_space)
