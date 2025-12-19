@@ -26,10 +26,6 @@ provider "azurerm" {
 }
 
 provider "azurerm" {
-  features {}
-}
-
-provider "azurerm" {
   subscription_id                 = var.tooling_config.subscription_id
   alias                           = "tooling"
   resource_provider_registrations = "none"
