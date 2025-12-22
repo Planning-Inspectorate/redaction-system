@@ -28,6 +28,7 @@ from unidecode import unidecode
 import unicodedata
 from PIL import Image
 from pydantic import BaseModel
+import math
 
 
 class PDFImageMetadata(BaseModel):
@@ -68,6 +69,10 @@ class PDFProcessor(FileProcessor):
                 page: pymupdf.Page = page
                 image_details = pdf.extract_image(image_xref[0])
                 bounding_box, transform = page.get_image_bbox(image_xref, transform=True)
+                print("bounding_box:" , bounding_box)
+                angle = math.degrees(math.atan2(transform.b, transform.a))
+                x_scale = math.sqrt(math.pow(transform.a, 2) + math.pow(transform.b, 2))
+                y_scale = math.sqrt(math.pow(transform.c, 2) + math.pow(transform.d, 2))
                 transform: pymupdf.Matrix = transform
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
@@ -75,7 +80,7 @@ class PDFProcessor(FileProcessor):
                 image_metadata = PDFImageMetadata(
                     relative_position_in_page=Point(x=bounding_box[0], y=bounding_box[1]),
                     source_image_resolution=Point(x=image_details["width"], y=image_details["height"]),
-                    resolution_on_page=Point(x=bounding_box[2]-bounding_box[0], y=bounding_box[3]-bounding_box[1]),
+                    resolution_on_page=Point(x=x_scale, y=y_scale),
                     file_format=file_format,
                     image=image,
                     page_number=page_number,
@@ -215,28 +220,23 @@ class PDFProcessor(FileProcessor):
                 if relevant_image_metadata:
                     bounding_boxes = relevant_image_metadata[0].redaction_boxes
                     for bounding_box in bounding_boxes:
-                        rect = pymupdf.Rect(
+                        untransformed_bounding_box = pymupdf.Rect(
                             x0=bounding_box[0],
                             y0=bounding_box[1],
                             x1=bounding_box[0] + bounding_box[2],
                             y1=bounding_box[1] + bounding_box[3]
                         )
                         # Temp override
-                        rect = pymupdf.Rect(
+                        image_in_pdf = pymupdf.Rect(
                             x0=pdf_loc.x,
                             y0=pdf_loc.y,
                             x1=pdf_loc.x + pdf_size.x,
                             y1=pdf_loc.y + pdf_size.y
                         )
                         rect_in_global_space = self._transform_bounding_box_to_global_space(
-                            rect,
-                            pdf_size,
-                            pymupdf.Rect(
-                                pdf_loc.x,
-                                pdf_loc.y,
-                                pdf_loc.x + pdf_size.x,
-                                pdf_loc.y + pdf_size.y
-                            )
+                            untransformed_bounding_box,
+                            pymupdf.Matrix(*image_transform),
+                            (pdf_loc.x, pdf_loc.y)
                         )
                         self._add_provisional_redaction(page, rect_in_global_space)
         new_file_bytes = BytesIO()
@@ -244,19 +244,45 @@ class PDFProcessor(FileProcessor):
         new_file_bytes.seek(0)
         return new_file_bytes
 
-    def _transform_bounding_box_to_global_space(self, bounding_box: pymupdf.Rect, image_dimensions: Point, image_rect_in_pdf: pymupdf.Rect):
-        untransformed_rect = pymupdf.Rect(0, 0, image_dimensions.x, image_dimensions.y)
-        image_rect_in_pdf_normalised = pymupdf.Rect(
-            0,
-            0,
-            image_rect_in_pdf.x1 - image_rect_in_pdf.x0,
-            image_rect_in_pdf.y1 - image_rect_in_pdf.x0
-        )
-        print(image_rect_in_pdf_normalised)
-        #transform = bounding_box.torect(image_rect_in_pdf)
-        transform = image_rect_in_pdf_normalised.torect(untransformed_rect)
+    def _transform_bounding_box_to_global_space(self, bounding_box: pymupdf.Rect, transformation: pymupdf.Matrix, pdf_loc: Tuple[float, float]):
+        print("bounding_box:" , bounding_box)
+        angle = math.degrees(math.atan2(transformation.b, transformation.a))
+        x_scale = math.sqrt(math.pow(transformation.a, 2) + math.pow(transformation.b, 2))
+        y_scale = math.sqrt(math.pow(transformation.c, 2) + math.pow(transformation.d, 2))
+        print("x_scale:" , x_scale)
+        x_shift = transformation.e
+        y_shift = transformation.f
+        print(x_shift, y_shift)
+        x_shift_acc = pdf_loc[0]
+        y_shift_acc = pdf_loc[1]
+        print(x_shift_acc, y_shift_acc)
+        print("transformation: ", transformation)
+        translation_matrix = pymupdf.Matrix(1, 0, 0, 1, x_shift_acc, y_shift_acc)
+        scale_matrix = pymupdf.Matrix(x_scale, 0, 0, y_scale, 0, 0)
+        rotation_matrix = pymupdf.Matrix(angle)
+        final_transformation = scale_matrix * translation_matrix * rotation_matrix
+        xformed = pymupdf.Rect(bounding_box).transform(final_transformation)
+        #xformed = bounding_box
+        print("xformed:" , xformed)
+        return xformed
+        print("source image size: ", image_dimensions)
+        print("pdf size: ", image_pdf_dimensions)
+        # A rect representing the whole source image, without any transformations
+        source_image_rect = pymupdf.Rect(0, 0, image_dimensions.x, image_dimensions.y)
+        # A rect representing the whole source image, scaled in the PDF's space, without any transformations
+        pdf_image_rect = pymupdf.Rect(0, 0, image_pdf_dimensions.x, image_pdf_dimensions.y)
+        print("pdf_image_rect: ", pdf_image_rect)
+        # Calculate the transformation needed to scale the base image to the same image in the PDF's space
+        transform = source_image_rect.torect(pdf_image_rect)
+        # Transform the given bounding box (in image space) to the PDF's space
         transformed = bounding_box.transform(transform)
-        print(transformed)
+        # Calculate the transformation needed to convert the pdf_image_rect to the image_rect_in_pdf (i.e. with translation and rotation)
+        transform_to_loc_rot = pdf_image_rect.torect(image_rect_in_pdf)
+        print("image_rect_in_pdf:" , image_rect_in_pdf)
+        # Transform the scaled bounding box
+        transformed = transformed.transform(transform_to_loc_rot)
+        angle = math.degrees(math.atan2(transform_to_loc_rot.b, transform_to_loc_rot.a))
+        print("angle: ", angle)
         return transformed
 
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
