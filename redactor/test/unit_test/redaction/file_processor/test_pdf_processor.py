@@ -47,21 +47,32 @@ def test__pdf_processor__extract_pdf_images():
 
 
 def test__pdf_processor__transform_bounding_box_to_global_space__whole_image():
-    image_transform = ImageTransform(
-        position=Point(x=73.5, y=73.5),
-        rotation=0,
-        scale=Point(x=1, y=1)
+    bounding_box = pymupdf.Rect(
+        x0=0,
+        y0=0,
+        x1=100,
+        y1=100
+    ) # The bounding box covers the whole image
+    source_image_dimensions = pymupdf.Point(x=100, y=100)
+    pdf_image_dimensions = pymupdf.Point(x=75, y=75)
+    image_in_pdf_rect = pymupdf.Rect(
+        x0=73.5,
+        y0=73.5,
+        x1=148.5,
+        y1=148.5
     )
-    image_transform = pymupdf.Matrix(75.0, 0.0, -0.0, 75.0, 73.5, 73.5)
-
-    bounding_box = pymupdf.Rect(x0=0, y0=0, x1=100, y1=100)
-    expected_transformed_bounding_box = (
-        73.5,
-        73.5,
-        73.5 + 100,
-        73.5 + 100
+    expected_transformed_bounding_box = pymupdf.Rect(
+        x0=73.5,
+        y0=73.5,
+        x1=148.5,
+        y1=148.5
+    ) # Should match the image in the PDF, since we're redacting the whole image
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
+        bounding_box,
+        source_image_dimensions,
+        pdf_image_dimensions,
+        image_in_pdf_rect
     )
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(bounding_box, image_transform)
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
