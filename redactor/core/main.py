@@ -1,13 +1,13 @@
-from redactor.core.redaction.file_processor.file_processor_factory import (
+from redactor.core.file_processor import (
     FileProcessorFactory,
+    FileProcessor,
 )
-from redactor.core.redaction.file_processor.file_processor import FileProcessor
-from redactor.core.redaction.config.config_processor import ConfigProcessor
+from redactor.core.file_processor import ConfigProcessor
 import argparse
 from typing import Dict, Any, Type
 from io import BytesIO
 import magic
-from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
+from redactor.core.exceptions import NonEnglishContentException
 
 
 """
