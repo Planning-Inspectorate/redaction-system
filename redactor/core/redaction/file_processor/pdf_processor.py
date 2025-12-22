@@ -18,9 +18,9 @@ from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.file_processor.exceptions import (
     UnprocessedRedactionResultException,
 )
-from redactor.core.util.types.types import PydanticImage
+from redactor.core.util.types.types import PydanticImage, Point, ImageTransform
 from io import BytesIO
-from typing import Set, Type, List, Any, Dict, Tuple, Union
+from typing import Set, Type, List, Any, Dict, Tuple
 import pymupdf
 import json
 import string
@@ -31,15 +31,14 @@ from pydantic import BaseModel
 
 
 class PDFImageMetadata(BaseModel):
-    class Point(BaseModel):
-        x: Union[int, float]
-        y: Union[int, float]
     relative_position_in_page: Point
     source_image_resolution: Point
     resolution_on_page: Point
     file_format: str
     image: PydanticImage
     page_number: int
+    transform: Tuple[float, float, float, float, float, float]
+
 
 class PDFProcessor(FileProcessor):
     """
@@ -66,21 +65,40 @@ class PDFProcessor(FileProcessor):
         image_metadata_list: List[PDFImageMetadata] = []
         for page_number, page in enumerate(pdf):
             for image_xref in page.get_images(full=True):
+                page: pymupdf.Page = page
                 image_details = pdf.extract_image(image_xref[0])
-                bounding_box = page.get_image_bbox(image_xref)
+                bounding_box, transform = page.get_image_bbox(image_xref, transform=True)
+                transform: pymupdf.Matrix = transform
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
                 image_metadata = PDFImageMetadata(
-                    relative_position_in_page=PDFImageMetadata.Point(x=bounding_box[0], y=bounding_box[1]),
-                    source_image_resolution=PDFImageMetadata.Point(x=image_details["width"], y=image_details["height"]),
-                    resolution_on_page=PDFImageMetadata.Point(x=bounding_box[2]-bounding_box[0], y=bounding_box[3]-bounding_box[1]),
+                    relative_position_in_page=Point(x=bounding_box[0], y=bounding_box[1]),
+                    source_image_resolution=Point(x=image_details["width"], y=image_details["height"]),
+                    resolution_on_page=Point(x=bounding_box[2]-bounding_box[0], y=bounding_box[3]-bounding_box[1]),
                     file_format=file_format,
                     image=image,
-                    page_number=page_number
+                    page_number=page_number,
+                    transform=(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f)
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
+    
+    def _extract_unique_pdf_images(self, image_metadata: List[PDFImageMetadata]):
+        """
+        Process a list of PDFImageMetadata to only contain the unique images. A PDF may have an image repeated many times, for example in the header of
+        each page
+
+        :param List[PDFImageMetadata] image_metadata: The PDF image metadata (from _extract_pdf_images)
+        :return: A list of images
+        """
+        seen_images = []
+        for metadata in image_metadata:
+            image = metadata.image
+            cleaned_image = image.convert("RGB")
+            if not any(image == existing_image[1] for existing_image in seen_images):
+                seen_images.append((image, cleaned_image))
+        return [x[0] for x in seen_images]
 
     @classmethod
     def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
@@ -176,6 +194,7 @@ class PDFProcessor(FileProcessor):
         :param List[ImageRedactionResult] redactions: The results of the image redaction analysis
         :return BytesIO: Bytes stream for the PDF with provisional image redactions applied
         """
+        print(redactions)
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         pdf_images = self._extract_pdf_images(file_bytes)
@@ -186,6 +205,7 @@ class PDFProcessor(FileProcessor):
             pdf_loc = pdf_image_metadata.relative_position_in_page
             pdf_size = pdf_image_metadata.resolution_on_page
             page = pages[pdf_image_metadata.page_number]
+            image_transform = pdf_image_metadata.transform
             for redaction_result in redactions:
                 relevant_image_metadata = [
                     metadata
@@ -208,15 +228,36 @@ class PDFProcessor(FileProcessor):
                             x1=pdf_loc.x + pdf_size.x,
                             y1=pdf_loc.y + pdf_size.y
                         )
-                        rect_in_global_space = self._transform_bounding_box_to_global_space(rect)
+                        rect_in_global_space = self._transform_bounding_box_to_global_space(
+                            rect,
+                            pdf_size,
+                            pymupdf.Rect(
+                                pdf_loc.x,
+                                pdf_loc.y,
+                                pdf_loc.x + pdf_size.x,
+                                pdf_loc.y + pdf_size.y
+                            )
+                        )
                         self._add_provisional_redaction(page, rect_in_global_space)
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
         return new_file_bytes
-    
-    def _transform_bounding_box_to_global_space(self, bounding_box: Tuple[int, int, int, int]) -> Tuple[int, int, int, int]:
-        return bounding_box
+
+    def _transform_bounding_box_to_global_space(self, bounding_box: pymupdf.Rect, image_dimensions: Point, image_rect_in_pdf: pymupdf.Rect):
+        untransformed_rect = pymupdf.Rect(0, 0, image_dimensions.x, image_dimensions.y)
+        image_rect_in_pdf_normalised = pymupdf.Rect(
+            0,
+            0,
+            image_rect_in_pdf.x1 - image_rect_in_pdf.x0,
+            image_rect_in_pdf.y1 - image_rect_in_pdf.x0
+        )
+        print(image_rect_in_pdf_normalised)
+        #transform = bounding_box.torect(image_rect_in_pdf)
+        transform = image_rect_in_pdf_normalised.torect(untransformed_rect)
+        transformed = bounding_box.transform(transform)
+        print(transformed)
+        return transformed
 
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
@@ -229,7 +270,7 @@ class PDFProcessor(FileProcessor):
             if hasattr(redaction_config, "text"):
                 redaction_config.text = pdf_text
             if hasattr(redaction_config, "images"):
-                redaction_config.images = [x.image for x in pdf_images]
+                redaction_config.images = self._extract_unique_pdf_images(pdf_images)
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
             RedactorFactory.get(rule.redactor_type)(rule) for rule in redaction_rules
