@@ -1,12 +1,12 @@
 redaction_rules:
-- name: "Name and date redactor"
-  redactor_type: "LLMTextRedaction"
-  properties:
-    model: "gpt-4.1-nano"
-    system_prompt: "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: "
-    redaction_rules:
-    - "Find all human names in the text"
-    - "Find all dates in the test"
+#- name: "Name and date redactor"
+#  redactor_type: "LLMTextRedaction"
+#  properties:
+#    model: "gpt-4.1-nano"
+#    system_prompt: "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: "
+#    redaction_rules:
+#    - "Find all human names in the text"
+#    - "Find all dates in the test"
 - name: "Face redactor"
   redactor_type: "ImageRedaction"
 #- name: "Name and date image redactor"

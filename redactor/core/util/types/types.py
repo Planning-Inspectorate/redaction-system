@@ -1,6 +1,7 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Union
 
 from pydantic_core import core_schema
+from pydantic import Field
 
 from pydantic import (
     BaseModel,
@@ -66,3 +67,22 @@ class _ImageAnnotation:
 
 
 PydanticImage = Annotated[Image, _ImageAnnotation]
+
+
+class Point(BaseModel):
+    x: Union[int, float]
+    """A coordinate in the x axis"""
+    y: Union[int, float]
+    """A coordinate in the y axis"""
+
+
+class ImageTransform(BaseModel):
+    """
+    Represents a transform in 2D space
+    """
+    position: Point
+    """The x, y coordinates of the image in the parent document"""
+    rotation: int = Field(None, ge=-1, le=360)
+    """The rotation of the image in the parent document"""
+    scale: Point
+    """The scale of the image in the parent document"""

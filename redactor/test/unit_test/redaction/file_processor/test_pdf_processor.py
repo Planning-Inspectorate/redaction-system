@@ -1,4 +1,5 @@
 from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
+from redactor.core.util.types.types import Point, ImageTransform
 from io import BytesIO
 import pymupdf
 import mock
@@ -41,6 +42,52 @@ def test__pdf_processor__extract_pdf_text():
     actual_text = PDFProcessor()._extract_pdf_text(document_bytes)
     actual_text_split = " ".split(actual_text)
     assert expected_text_split == actual_text_split
+
+
+def test__pdf_processor__extract_pdf_images():
+    pass
+
+
+def test__pdf_processor__transform_bounding_box_to_global_space__whole_image():
+    image_transform = ImageTransform(
+        position=Point(x=73.5, y=73.5),
+        rotation=0,
+        scale=Point(x=1, y=1)
+    )
+    image_transform = pymupdf.Matrix(75.0, 0.0, -0.0, 75.0, 73.5, 73.5)
+
+    bounding_box = pymupdf.Rect(x0=0, y0=0, x1=100, y1=100)
+    expected_transformed_bounding_box = (
+        73.5,
+        73.5,
+        73.5 + 100,
+        73.5 + 100
+    )
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(bounding_box, image_transform)
+    assert expected_transformed_bounding_box == actual_transformed_bounding_box
+
+
+def test__pdf_processor__transform_bounding_box_to_global_space__rotated_image():
+    with open("redactor/test/resources/pdf/pdf_with_single_image.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    metadata = PDFProcessor()._extract_pdf_images(document_bytes)
+    1 + "a"
+    image_metadata = metadata[0]
+    image_transform = ImageTransform(
+        position=Point(x=73.5, y=73.5),
+        rotation=0,
+        scale=Point(x=1, y=1)
+    )
+
+    bounding_box = (0, 0, 100, 100)
+    expected_transformed_bounding_box = (
+        image_transform.position.x,
+        image_transform.position.y,
+        image_transform.position.x + 100,
+        image_transform.position.y + 100
+    )
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(bounding_box, image_transform)
+    assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
 def test__pdf_processor__apply_provisional_text_redactions():
