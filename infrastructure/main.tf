@@ -6,7 +6,7 @@
 # Create resource groups
 ############################################################################
 resource "azurerm_resource_group" "redaction_rg" {
-  name     = "pins-rg-${local.service_name}-${var.environment}-${local.location}"
+  name     = "pins-rg-${local.service_name}-${var.environment}-${local.location_short}"
   location = local.location
   tags     = local.tags
 }
@@ -19,7 +19,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   #checkov:skip=CKV_AZURE_33: Logging not implemented yet
   #checkov:skip=CKV2_AZURE_1: Customer Managed Keys not implemented
   #checkov:skip=CKV2_AZURE_33: Private endpoint TBA
-  name                             = "pinsst${local.service_name}${var.environment}${local.location}"
+  name                             = "pinsst${local.service_name}${var.environment}${local.location_short}"
   resource_group_name              = azurerm_resource_group.redaction_rg.name
   location                         = local.location
   account_tier                     = "Standard"
