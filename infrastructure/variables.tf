@@ -6,7 +6,7 @@ variable "environment" {
 variable "storage_account_replication_type" {
   description = "The storage redundancy setting"
   type        = string
-  default     = "GRS"
+  default     = "LRS"
 }
 
 variable "storage_retention_days" {
