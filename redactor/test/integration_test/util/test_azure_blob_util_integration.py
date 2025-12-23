@@ -43,9 +43,9 @@ sys.modules.setdefault("azure.core", azure_core_mod)
 sys.modules.setdefault("azure.core.exceptions", azure_core_ex_mod)
 
 # Import the classes under test
-import redactor.core.util.azure_blob_util as azure_blob_util
-from redactor.core.util.azure_blob_util import AzureBlobUtil
-from redactor.core.util.util import Util
+import redactor.core.util.azure_blob_util as azure_blob_util  # noqa: E402
+from redactor.core.util.azure_blob_util import AzureBlobUtil  # noqa: E402
+from redactor.core.util.util import Util  # noqa: E402
 
 
 class FakeDownloader:
