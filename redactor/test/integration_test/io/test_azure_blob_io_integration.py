@@ -1,46 +1,5 @@
 from io import BytesIO
-import sys
-import types
 import pytest
-
-# Stub azure modules to avoid requiring real Azure SDKs at import time
-azure_mod = types.ModuleType("azure")
-azure_identity_mod = types.ModuleType("azure.identity")
-azure_storage_mod = types.ModuleType("azure.storage")
-azure_storage_blob_mod = types.ModuleType("azure.storage.blob")
-azure_core_mod = types.ModuleType("azure.core")
-azure_core_ex_mod = types.ModuleType("azure.core.exceptions")
-
-
-class _StubAzureCliCredential:
-    pass
-
-
-class _StubManagedIdentityCredential:
-    pass
-
-
-class _StubChainedTokenCredential:
-    def __init__(self, *args, **kwargs):
-        pass
-
-
-class _StubBlobServiceClient:
-    def __init__(self, *args, **kwargs):
-        pass
-
-
-setattr(azure_identity_mod, "AzureCliCredential", _StubAzureCliCredential)
-setattr(azure_identity_mod, "ManagedIdentityCredential", _StubManagedIdentityCredential)
-setattr(azure_identity_mod, "ChainedTokenCredential", _StubChainedTokenCredential)
-setattr(azure_storage_blob_mod, "BlobServiceClient", _StubBlobServiceClient)
-
-sys.modules.setdefault("azure", azure_mod)
-sys.modules.setdefault("azure.identity", azure_identity_mod)
-sys.modules.setdefault("azure.storage", azure_storage_mod)
-sys.modules.setdefault("azure.storage.blob", azure_storage_blob_mod)
-sys.modules.setdefault("azure.core", azure_core_mod)
-sys.modules.setdefault("azure.core.exceptions", azure_core_ex_mod)
 
 # Import the classes under test (from io package)
 import redactor.core.io.azure_blob_io as azure_blob_io  # noqa: E402
@@ -97,7 +56,7 @@ class FakeBlobServiceClient:
 
 @pytest.fixture(autouse=True)
 def patch_blob_service_and_creds(monkeypatch):
-    # Patch credentials to simple dummies
+    # Patch credentials to simple dummies on the module under test (no global azure stubs)
     monkeypatch.setattr(azure_blob_io, "ManagedIdentityCredential", object)
     monkeypatch.setattr(azure_blob_io, "AzureCliCredential", object)
 
