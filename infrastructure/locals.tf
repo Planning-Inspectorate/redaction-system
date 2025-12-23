@@ -1,6 +1,7 @@
 locals {
-  location     = "uks"
-  service_name = "redaction"
+  location_short = "uks"
+  location       = "uksouth"
+  service_name   = "redaction"
   tags = {
     "CreatedBy" : "",
     "Environment" : var.environment,
