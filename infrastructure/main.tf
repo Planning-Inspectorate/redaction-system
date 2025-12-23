@@ -56,3 +56,39 @@ resource "azurerm_storage_container" "redaction_storage" {
 ############################################################################
 # Create Azure Function App
 ############################################################################
+
+resource "azurerm_service_plan" "redaction_system" {
+  name                = "pins-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  os_type             = "Linux"
+  sku_name            = "EP1"
+}
+
+resource "azurerm_linux_function_app" "redaction_system" {
+  name                = "pins-func-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+
+  storage_account_name       = azurerm_storage_account.redaction_storage.name
+  storage_account_access_key = azurerm_storage_account.redaction_storage.primary_access_key
+  service_plan_id            = azurerm_service_plan.redaction_system.id
+
+  site_config {
+    application_stack {
+      python_version = 3.13
+    }
+  }
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+############################################################################
+# Create Role Assignments
+############################################################################
+resource "azurerm_role_assignment" "function_app_storage_contributor" {
+  scope                = azurerm_storage_account.redaction_storage.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azurerm_linux_function_app.redaction_system.identity[0].principal_id
+}
