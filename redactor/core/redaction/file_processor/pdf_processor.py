@@ -160,7 +160,14 @@ class PDFProcessor(FileProcessor):
 
     def _add_provisional_redaction(self, page: pymupdf.Page, rect: pymupdf.Rect):
         highlight_annotation = page.add_highlight_annot(rect)
-        highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+        # Add the original rect in the subject, since highlight annotations may not have the same rect once created
+        # i.e. this is needed to ensure the final redactions are in the correct location
+        highlight_annotation.set_info(
+            {
+                "content": "REDACTION CANDIDATE",
+                "subject": str([rect.x0, rect.y0, rect.x1, rect.y1]),
+            }
+        )
 
     def _apply_provisional_text_redactions(
         self, file_bytes: BytesIO, text_to_redact: List[str]
@@ -218,9 +225,8 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         pdf_images = self._extract_pdf_images(file_bytes)
-        for i, pdf_image_metadata in enumerate(pdf_images):
+        for pdf_image_metadata in pdf_images:
             pdf_image = pdf_image_metadata.image
-            pdf_image.save(f"pdfImage{i}.jpg")
             pdf_image_cleaned = pdf_image.convert("RGB")
             page = pages[pdf_image_metadata.page_number]
             image_transform = pdf_image_metadata.image_transform_in_pdf
@@ -352,12 +358,29 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+        def is_float(string: str):
+            try:
+                float(string)
+                return True
+            except ValueError:
+                return False
+
         print("Redacting PDF")
         pdf = pymupdf.open(stream=file_bytes)
         for page in pdf:
             page_annotations = page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)
             for annotation in page_annotations:
                 annotation_rect = annotation.rect
+                if annotation.info["subject"]:
+                    try:
+                        subject_split = json.loads(annotation.info["subject"])
+                        if len(subject_split) == 4 and all(
+                            is_float(x) for x in subject_split
+                        ):
+                            subject_split_cleaned = [float(x) for x in subject_split]
+                            annotation_rect = pymupdf.Rect(subject_split_cleaned)
+                    except json.JSONDecodeError as e:
+                        pass
                 page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
                 page.delete_annot(annotation)
             page.apply_redactions()
