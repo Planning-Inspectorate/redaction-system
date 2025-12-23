@@ -29,7 +29,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
             return ImageRedactionResult(
                 redaction_results=tuple([
                     ImageRedactionResult.Result(
-                        redaction_boxes=tuple([(0, 0, 100, 100)]),
+                        redaction_boxes=tuple([(0, 50, 100, 10)]),
                         image_dimensions=(100, 100),
                         source_image=image_to_redact,
                     )

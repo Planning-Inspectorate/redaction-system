@@ -233,8 +233,6 @@ class PDFProcessor(FileProcessor):
                         rect_in_global_space = self._transform_bounding_box_to_global_space(
                             untransformed_bounding_box,
                             pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
-                            pdf_size,
-                            image_in_pdf,
                             pymupdf.Matrix(image_transform)
                         )
                         self._add_provisional_redaction(page, rect_in_global_space)
@@ -247,31 +245,23 @@ class PDFProcessor(FileProcessor):
         self,
         bounding_box: pymupdf.Rect,
         image_dimensions: Point,
-        image_pdf_dimensions: Point,
-        image_rect_in_pdf: pymupdf.Rect,
         image_transform: pymupdf.Matrix
     ):
-        print("source image size: ", image_dimensions)
-        print("pdf size: ", image_pdf_dimensions)
-        # A rect representing the whole source image, without any transformations
-        source_image_rect = pymupdf.Rect(0, 0, image_dimensions.x, image_dimensions.y)
-        # A rect representing the whole source image, scaled in the PDF's space, without any transformations
-        pdf_image_rect = pymupdf.Rect(0, 0, image_pdf_dimensions.x, image_pdf_dimensions.y)
-        print("pdf_image_rect: ", pdf_image_rect)
-        # Calculate the transformation needed to scale the base image to the same image in the PDF's space
-        transform = source_image_rect.torect(pdf_image_rect)
-        # Transform the given bounding box (in image space) to the PDF's space
-        transformed = bounding_box.transform(transform)
-        # Calculate the transformation needed to convert the pdf_image_rect to the image_rect_in_pdf (i.e. with translation and rotation)
-        transform_to_loc_rot = pdf_image_rect.torect(image_rect_in_pdf)
-        print("image_rect_in_pdf:" , image_rect_in_pdf)
-        # Transform the scaled bounding box
-        transformed = transformed.transform(transform_to_loc_rot)
-        #angle = math.degrees(math.atan2(image_transform.b, image_transform.a))
-        #rotation_matrix = pymupdf.Matrix(angle)
-        #print("rotation_matrix:" , rotation_matrix)
-        #transformed = transformed.transform(rotation_matrix)
-        #print("angle: ", angle)
+        # pymupdf transformations are relative the normalied bounding box (0, 0, 1, 1)
+        # Please see https://pymupdf.readthedocs.io/en/latest/page.html#Page.get_image_bbox
+        # and https://pymupdf.readthedocs.io/en/latest/app3.html#image-transformation-matrix
+        # because it can be confusing if you do not understand how it works under the hood
+
+        # Normalise the bounding box so that it is scaled relative to the source image's size
+        # i.e., the source image is (0, 0, 1, 1)
+        normalised_bbox = pymupdf.Rect(
+            bounding_box.x0 / image_dimensions.x,
+            bounding_box.y0 / image_dimensions.y,
+            bounding_box.x1 / image_dimensions.x,
+            bounding_box.y1 / image_dimensions.y
+        )
+        # Transform the normalised bounding box
+        transformed = normalised_bbox.transform(image_transform)
         return transformed
 
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
