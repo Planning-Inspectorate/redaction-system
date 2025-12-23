@@ -42,10 +42,9 @@ sys.modules.setdefault("azure.storage.blob", azure_storage_blob_mod)
 sys.modules.setdefault("azure.core", azure_core_mod)
 sys.modules.setdefault("azure.core.exceptions", azure_core_ex_mod)
 
-# Import the classes under test
-import redactor.core.util.azure_blob_util as azure_blob_util  # noqa: E402
-from redactor.core.util.azure_blob_util import AzureBlobUtil  # noqa: E402
-from redactor.core.util.util import Util  # noqa: E402
+# Import the classes under test (from io package)
+import redactor.core.io.azure_blob_io as azure_blob_io  # noqa: E402
+from redactor.core.io.azure_blob_io import AzureBlobIO  # noqa: E402
 
 
 class FakeDownloader:
@@ -64,18 +63,6 @@ class FakeContainerClient:
     def download_blob(self, blob_path: str):
         data = self._store.get(self._container, {}).get(blob_path, b"")
         return FakeDownloader(data)
-
-    def list_blobs(self, name_starts_with: str = ""):
-        # Yield objects with a 'name' attribute
-        class BlobObj:
-            def __init__(self, name):
-                self.name = name
-
-        entries = []
-        for name in self._store.get(self._container, {}):
-            if name.startswith(name_starts_with):
-                entries.append(BlobObj(name))
-        return entries
 
 
 class FakeBlobClient:
@@ -111,14 +98,14 @@ class FakeBlobServiceClient:
 @pytest.fixture(autouse=True)
 def patch_blob_service_and_creds(monkeypatch):
     # Patch credentials to simple dummies
-    monkeypatch.setattr(azure_blob_util, "ManagedIdentityCredential", object)
-    monkeypatch.setattr(azure_blob_util, "AzureCliCredential", object)
+    monkeypatch.setattr(azure_blob_io, "ManagedIdentityCredential", object)
+    monkeypatch.setattr(azure_blob_io, "AzureCliCredential", object)
 
     class DummyChain:
         def __init__(self, *args, **kwargs):
             pass
 
-    monkeypatch.setattr(azure_blob_util, "ChainedTokenCredential", DummyChain)
+    monkeypatch.setattr(azure_blob_io, "ChainedTokenCredential", DummyChain)
 
     # Patch BlobServiceClient to use a per-test registry so multiple calls share the same store
     registry = {}
@@ -130,12 +117,12 @@ def patch_blob_service_and_creds(monkeypatch):
             registry[account_url] = client
         return client
 
-    monkeypatch.setattr(azure_blob_util, "BlobServiceClient", factory)
+    monkeypatch.setattr(azure_blob_io, "BlobServiceClient", factory)
 
 
-def test_end_to_end_write_then_read_with_endpoint_from_util():
-    endpoint = Util.get_storage_account("acctint")
-    util = AzureBlobUtil(storage_endpoint=endpoint)
+def test_end_to_end_write_then_read_with_direct_endpoint():
+    endpoint = "https://acctint.blob.core.windows.net"
+    io = AzureBlobIO(storage_endpoint=endpoint)
 
     container = "docs"
     blob_path = "inbox/sample.pdf"
@@ -143,39 +130,21 @@ def test_end_to_end_write_then_read_with_endpoint_from_util():
 
     # Write
     stream = BytesIO(payload)
-    util.write(stream, container, blob_path)
+    io.write(stream, container, blob_path)
 
     # Read
-    out_stream = util.read(container, blob_path)
-    # Current implementation returns stream with data written and cursor at end
+    out_stream = io.read(container, blob_path)
     assert out_stream.getvalue() == payload
 
 
-def test_list_blobs_with_prefix_filters_marker_and_returns_files():
-    util = AzureBlobUtil(storage_name="acctint2")
-    container = "cont"
-    # Pre-populate via writes
-    util.write(
-        BytesIO(b"a"), container, "prefix/"
-    )  # directory marker simulation (zero-length is fine)
-    util.write(BytesIO(b"a1"), container, "prefix/file1.txt")
-    util.write(BytesIO(b"a2"), container, "prefix/file2.txt")
-    util.write(BytesIO(b"b"), container, "other/file3.txt")
-
-    # Exercise list_blobs
-    result = util.list_blobs(container, blob_path="prefix/")
-    # Current implementation filters trailing marker (endswith prefix)
-    assert result == ["prefix/file1.txt", "prefix/file2.txt"]
-
-
 def test_storage_name_constructs_blob_endpoint_and_allows_ops():
-    util = AzureBlobUtil(storage_name="acctint3")
-    assert util.storage_endpoint == "https://acctint3.blob.core.windows.net"
+    io = AzureBlobIO(storage_name="acctint3")
+    assert io.storage_endpoint == "https://acctint3.blob.core.windows.net"
 
     container = "c1"
     blob_path = "p/q.bin"
     data = b"xyz"
 
-    util.write(BytesIO(data), container, blob_path)
-    out = util.read(container, blob_path)
+    io.write(BytesIO(data), container, blob_path)
+    out = io.read(container, blob_path)
     assert out.getvalue() == data
