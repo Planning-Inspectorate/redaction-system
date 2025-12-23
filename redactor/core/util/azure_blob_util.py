@@ -11,11 +11,11 @@ class AzureBlobUtil:
     def __init__(self, storage_name: str = None, storage_endpoint: str = None):
         if not (storage_name or storage_endpoint):
             raise ValueError(
-                f"Expected one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobUtil()"
+                "Expected one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobUtil()"
             )
         if storage_name and storage_endpoint:
             raise ValueError(
-                f"Expected only one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobUtil(), not both"
+                "Expected only one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobUtil(), not both"
             )
         self.storage_name = storage_name
         self.credential = ChainedTokenCredential(
