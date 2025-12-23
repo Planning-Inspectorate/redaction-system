@@ -80,6 +80,7 @@ class ImageTransform(BaseModel):
     """
     Represents a transform in 2D space
     """
+
     position: Point
     """The x, y coordinates of the image in the parent document"""
     rotation: int = Field(None, ge=-1, le=360)

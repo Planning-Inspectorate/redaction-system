@@ -85,11 +85,21 @@ class PDFProcessor(FileProcessor):
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
                 image_metadata = PDFImageMetadata(
-                    source_image_resolution=(image_details["width"], image_details["height"]),
+                    source_image_resolution=(
+                        image_details["width"],
+                        image_details["height"],
+                    ),
                     file_format=file_format,
                     image=image,
                     page_number=page_number,
-                    image_transform_in_pdf=(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f)
+                    image_transform_in_pdf=(
+                        transform.a,
+                        transform.b,
+                        transform.c,
+                        transform.d,
+                        transform.e,
+                        transform.f,
+                    ),
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
@@ -227,12 +237,14 @@ class PDFProcessor(FileProcessor):
                             x0=bounding_box[0],
                             y0=bounding_box[1],
                             x1=bounding_box[0] + bounding_box[2],
-                            y1=bounding_box[1] + bounding_box[3]
+                            y1=bounding_box[1] + bounding_box[3],
                         )
-                        rect_in_global_space = self._transform_bounding_box_to_global_space(
-                            untransformed_bounding_box,
-                            pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
-                            pymupdf.Matrix(image_transform)
+                        rect_in_global_space = (
+                            self._transform_bounding_box_to_global_space(
+                                untransformed_bounding_box,
+                                pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
+                                pymupdf.Matrix(image_transform),
+                            )
                         )
                         self._add_provisional_redaction(page, rect_in_global_space)
         new_file_bytes = BytesIO()
@@ -244,21 +256,21 @@ class PDFProcessor(FileProcessor):
         self,
         bounding_box: pymupdf.Rect,
         image_dimensions: Point,
-        image_transform: pymupdf.Matrix
+        image_transform: pymupdf.Matrix,
     ):
         """
-            Convert a bounding box in the source image's space (i.e. the image's top left corner is (0, 0)) into
-            the PDF's spac
-            
-            i.e. If you have a bounding box that represents a region of the source image, then a new bounding box
-            is returned that represents where that bounding box will be for a specific instance of the image in
-            the PDF
+        Convert a bounding box in the source image's space (i.e. the image's top left corner is (0, 0)) into
+        the PDF's spac
 
-            :param pymupdf.Rect bounding_box: The bounding box in the image's space
-            :param Point image_dimensions: The dimensions of the source image
-            :param pymupdf.Matrix image_transform: The transformation matrix of the instance of the image in the PDF
+        i.e. If you have a bounding box that represents a region of the source image, then a new bounding box
+        is returned that represents where that bounding box will be for a specific instance of the image in
+        the PDF
 
-            :return pymupdf.Rect: The transformed bounding box in the PDF's space
+        :param pymupdf.Rect bounding_box: The bounding box in the image's space
+        :param Point image_dimensions: The dimensions of the source image
+        :param pymupdf.Matrix image_transform: The transformation matrix of the instance of the image in the PDF
+
+        :return pymupdf.Rect: The transformed bounding box in the PDF's space
         """
         # pymupdf transformations are relative the normalied bounding box (0, 0, 1, 1)
         # Please see https://pymupdf.readthedocs.io/en/latest/page.html#Page.get_image_bbox
@@ -271,7 +283,7 @@ class PDFProcessor(FileProcessor):
             bounding_box.x0 / image_dimensions.x,
             bounding_box.y0 / image_dimensions.y,
             bounding_box.x1 / image_dimensions.x,
-            bounding_box.y1 / image_dimensions.y
+            bounding_box.y1 / image_dimensions.y,
         )
         # Transform the normalised bounding box
         transformed = normalised_bbox.transform(image_transform)
@@ -313,7 +325,11 @@ class PDFProcessor(FileProcessor):
             for x in redaction_results
             if issubclass(x.__class__, ImageRedactionResult)
         ]
-        unapplied_redaction_results = [x for x in redaction_results if x not in text_redaction_results + image_redaction_results]
+        unapplied_redaction_results = [
+            x
+            for x in redaction_results
+            if x not in text_redaction_results + image_redaction_results
+        ]
         if unapplied_redaction_results:
             raise UnprocessedRedactionResultException(
                 "The following redaction results were generated by the PDFProcessor, but there is no mechanism to process them: "

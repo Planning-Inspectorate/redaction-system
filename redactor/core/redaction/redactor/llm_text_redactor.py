@@ -35,8 +35,14 @@ class LLMTextRedactor(TextRedactor):
     @classmethod
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
-    
-    def _analyse_text(self, text_to_redact: str, model: str, system_prompt: str, redaction_rules: List[str]):
+
+    def _analyse_text(
+        self,
+        text_to_redact: str,
+        model: str,
+        system_prompt: str,
+        redaction_rules: List[str],
+    ):
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],

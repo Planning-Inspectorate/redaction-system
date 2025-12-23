@@ -1,4 +1,7 @@
-from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor, PDFImageMetadata
+from redactor.core.redaction.file_processor.pdf_processor import (
+    PDFProcessor,
+    PDFImageMetadata,
+)
 from redactor.core.util.types.types import Point, ImageTransform
 from PIL import Image, ImageChops
 from io import BytesIO
@@ -51,7 +54,9 @@ def test__pdf_processor__extract_pdf_images():
     - When I call _extract_pdf_images
     - Then the image and its metadata should be returned as a list of PDFImageMetadata objects
     """
-    with open("redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb") as f:
+    with open(
+        "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
+    ) as f:
         document_bytes = BytesIO(f.read())
     with open("redactor/test/resources/test_image_horizontal.jpg", "rb") as f:
         image_bytes = BytesIO(f.read())
@@ -62,26 +67,16 @@ def test__pdf_processor__extract_pdf_images():
             file_format="jpeg",
             image=image,
             page_number=0,
-            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375)
+            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
         )
     ]
     actual_image_metadata = PDFProcessor()._extract_pdf_images(document_bytes)
     # We cannot compare images, so parse the expected/actual values to remove the image from the comparison
     expected_as_dict = [
-        {
-            k: v
-            for k,v in x
-            if k != "image"
-        }
-        for x in expected_image_metadata
+        {k: v for k, v in x if k != "image"} for x in expected_image_metadata
     ]
     actual_as_dict = [
-        {
-            k: v
-            for k,v in x
-            if k != "image"
-        }
-        for x in actual_image_metadata
+        {k: v for k, v in x if k != "image"} for x in actual_image_metadata
     ]
     actual_image = actual_image_metadata[0].image
     assert expected_as_dict == actual_as_dict
@@ -101,13 +96,17 @@ def test__pdf_processor__transform_bounding_box_to_global_space__translated_imag
     """
     bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
     source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375)  # Shifted in the document
+    transformation_matrix = pymupdf.Matrix(
+        75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375
+    )  # Shifted in the document
     # Sample taken from test__pdf_processor__translated_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(73.5, 125.5462646484375, 148.5, 133.0462646484375)
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
-        bounding_box,
-        source_image_dimensions,
-        transformation_matrix
+    expected_transformed_bounding_box = pymupdf.Rect(
+        73.5, 125.5462646484375, 148.5, 133.0462646484375
+    )
+    actual_transformed_bounding_box = (
+        PDFProcessor()._transform_bounding_box_to_global_space(
+            bounding_box, source_image_dimensions, transformation_matrix
+        )
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
@@ -124,13 +123,17 @@ def test__pdf_processor__transform_bounding_box_to_global_space__scale_image():
     """
     bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
     source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(37.5, 0.0, -0.0, 37.5, 73.5, 88.0462646484375)  # Scaled uniformly by 0.5
+    transformation_matrix = pymupdf.Matrix(
+        37.5, 0.0, -0.0, 37.5, 73.5, 88.0462646484375
+    )  # Scaled uniformly by 0.5
     # Sample taken from test__pdf_processor_scale_half_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(73.5, 106.7962646484375, 111.0, 110.5462646484375)
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
-        bounding_box,
-        source_image_dimensions,
-        transformation_matrix
+    expected_transformed_bounding_box = pymupdf.Rect(
+        73.5, 106.7962646484375, 111.0, 110.5462646484375
+    )
+    actual_transformed_bounding_box = (
+        PDFProcessor()._transform_bounding_box_to_global_space(
+            bounding_box, source_image_dimensions, transformation_matrix
+        )
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
@@ -153,14 +156,16 @@ def test__pdf_processor__transform_bounding_box_to_global_space__rotated_image()
         -53.03300476074219,
         53.03301239013672,
         126.53300476074219,
-        88.04627227783203
+        88.04627227783203,
     )  # Rotated by 45 degrees
     # Sample taken from test__pdf_processor__rotated_45_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(94.71320343017578, 114.56277465820312, 153.0495147705078, 172.89907836914062)
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
-        bounding_box,
-        source_image_dimensions,
-        transformation_matrix
+    expected_transformed_bounding_box = pymupdf.Rect(
+        94.71320343017578, 114.56277465820312, 153.0495147705078, 172.89907836914062
+    )
+    actual_transformed_bounding_box = (
+        PDFProcessor()._transform_bounding_box_to_global_space(
+            bounding_box, source_image_dimensions, transformation_matrix
+        )
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
@@ -183,14 +188,16 @@ def test__pdf_processor__transform_bounding_box_to_global_space__translated_scal
         -26.516502380371094,
         26.51650619506836,
         100.0165023803711,
-        88.0462646484375
+        88.0462646484375,
     )  # Positioned in the document, scaled by 0.5 and rotated 45 degrees
     # Sample taken from test__pdf_processor_scale_half_rotated_45_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(84.10659790039062, 101.30451965332031, 113.2747573852539, 130.47267150878906)
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
-        bounding_box,
-        source_image_dimensions,
-        transformation_matrix
+    expected_transformed_bounding_box = pymupdf.Rect(
+        84.10659790039062, 101.30451965332031, 113.2747573852539, 130.47267150878906
+    )
+    actual_transformed_bounding_box = (
+        PDFProcessor()._transform_bounding_box_to_global_space(
+            bounding_box, source_image_dimensions, transformation_matrix
+        )
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
@@ -207,13 +214,17 @@ def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_unifo
     """
     bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
     source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(75.0, 0.0, -0.0, 37.5, 73.5, 88.0462646484375) # Scaled in y axis by 0.5
+    transformation_matrix = pymupdf.Matrix(
+        75.0, 0.0, -0.0, 37.5, 73.5, 88.0462646484375
+    )  # Scaled in y axis by 0.5
     # Sample taken from test__pdf_processor__scale_half_y_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(73.5, 106.7962646484375, 148.5, 110.5462646484375)
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
-        bounding_box,
-        source_image_dimensions,
-        transformation_matrix
+    expected_transformed_bounding_box = pymupdf.Rect(
+        73.5, 106.7962646484375, 148.5, 110.5462646484375
+    )
+    actual_transformed_bounding_box = (
+        PDFProcessor()._transform_bounding_box_to_global_space(
+            bounding_box, source_image_dimensions, transformation_matrix
+        )
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 

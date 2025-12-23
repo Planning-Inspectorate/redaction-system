@@ -65,11 +65,20 @@ class AzureVisionUtil:
             [VisualFeatures.READ],
         )
         return {
-            line.text: (line.bounding_polygon[0].x, line.bounding_polygon[0].y, line.bounding_polygon[1].x, line.bounding_polygon[1].y)
+            line.text: (
+                line.bounding_polygon[0].x,
+                line.bounding_polygon[0].y,
+                line.bounding_polygon[1].x,
+                line.bounding_polygon[1].y,
+            )
             for block in result.read.blocks
             for line in block.lines
         }
-        [line.bounding_polygon[0] for block in result.read.blocks for line in block.lines]
+        [
+            line.bounding_polygon[0]
+            for block in result.read.blocks
+            for line in block.lines
+        ]
         return result
         return " ".join(
             [line.text for block in result.read.blocks for line in block.lines]
