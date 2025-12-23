@@ -34,7 +34,7 @@ import math
 
 
 class PDFImageMetadata(BaseModel):
-    source_image_resolution: Point
+    source_image_resolution: Tuple[float, float]
     """The dimensions of the source image"""
     file_format: str
     """The format of the image"""
@@ -85,7 +85,7 @@ class PDFProcessor(FileProcessor):
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
                 image_metadata = PDFImageMetadata(
-                    source_image_resolution=Point(x=image_details["width"], y=image_details["height"]),
+                    source_image_resolution=(image_details["width"], image_details["height"]),
                     file_format=file_format,
                     image=image,
                     page_number=page_number,

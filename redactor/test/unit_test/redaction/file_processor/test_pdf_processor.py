@@ -1,5 +1,6 @@
-from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
+from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor, PDFImageMetadata
 from redactor.core.util.types.types import Point, ImageTransform
+from PIL import Image, ImageChops
 from io import BytesIO
 import pymupdf
 import mock
@@ -45,7 +46,47 @@ def test__pdf_processor__extract_pdf_text():
 
 
 def test__pdf_processor__extract_pdf_images():
-    pass
+    """
+    - Given I have a PDF with an image
+    - When I call _extract_pdf_images
+    - Then the image and its metadata should be returned as a list of PDFImageMetadata objects
+    """
+    with open("redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    with open("redactor/test/resources/test_image_horizontal.jpg", "rb") as f:
+        image_bytes = BytesIO(f.read())
+    image = Image.open(image_bytes)
+    expected_image_metadata = [
+        PDFImageMetadata(
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=image,
+            page_number=0,
+            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375)
+        )
+    ]
+    actual_image_metadata = PDFProcessor()._extract_pdf_images(document_bytes)
+    # We cannot compare images, so parse the expected/actual values to remove the image from the comparison
+    expected_as_dict = [
+        {
+            k: v
+            for k,v in x
+            if k != "image"
+        }
+        for x in expected_image_metadata
+    ]
+    actual_as_dict = [
+        {
+            k: v
+            for k,v in x
+            if k != "image"
+        }
+        for x in actual_image_metadata
+    ]
+    actual_image = actual_image_metadata[0].image
+    assert expected_as_dict == actual_as_dict
+    # Comparing images is not possible due to lossy compression in the PDF, so just check an image is returned
+    assert isinstance(actual_image, Image.Image)
 
 
 def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
