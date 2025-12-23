@@ -48,56 +48,132 @@ def test__pdf_processor__extract_pdf_images():
     pass
 
 
-def test__pdf_processor__transform_bounding_box_to_global_space__whole_image():
-    bounding_box = pymupdf.Rect(
-        x0=0,
-        y0=0,
-        x1=100,
-        y1=100
-    ) # The bounding box covers the whole image
+def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
+    """
+    - Given I have an image of size 100x100, and a bounding box within that image
+    - When I call _transform_bounding_box_to_global_space with a transform representing a translation in the PDF
+    - Then the a Rect should be returned that represents the translated bounding box
+
+    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
+          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
+          into this test for automation
+    """
+    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
     source_image_dimensions = pymupdf.Point(x=100, y=100)
-    pdf_image_dimensions = pymupdf.Point(x=75, y=75)
-    image_in_pdf_rect = pymupdf.Rect(
-        x0=73.5,
-        y0=73.5,
-        x1=148.5,
-        y1=148.5
-    )
-    expected_transformed_bounding_box = pymupdf.Rect(
-        x0=73.5,
-        y0=73.5,
-        x1=148.5,
-        y1=148.5
-    ) # Should match the image in the PDF, since we're redacting the whole image
+    transformation_matrix = pymupdf.Matrix(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375)  # Shifted in the document
+    # Sample taken from test__pdf_processor__translated_image.pdf, which was manually inspected
+    expected_transformed_bounding_box = pymupdf.Rect(73.5, 125.5462646484375, 148.5, 133.0462646484375)
     actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
         bounding_box,
         source_image_dimensions,
-        pdf_image_dimensions,
-        image_in_pdf_rect
+        transformation_matrix
+    )
+    assert expected_transformed_bounding_box == actual_transformed_bounding_box
+
+
+def test__pdf_processor__transform_bounding_box_to_global_space__scale_image():
+    """
+    - Given I have an image of size 100x100, and a bounding box within that image
+    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and scale by 0.5 in the PDF
+    - Then the a Rect should be returned that represents the translated bounding box
+
+    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
+          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
+          into this test for automation
+    """
+    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
+    source_image_dimensions = pymupdf.Point(x=100, y=100)
+    transformation_matrix = pymupdf.Matrix(37.5, 0.0, -0.0, 37.5, 73.5, 88.0462646484375)  # Scaled uniformly by 0.5
+    # Sample taken from test__pdf_processor_scale_half_image.pdf, which was manually inspected
+    expected_transformed_bounding_box = pymupdf.Rect(73.5, 106.7962646484375, 111.0, 110.5462646484375)
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
+        bounding_box,
+        source_image_dimensions,
+        transformation_matrix
     )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
 def test__pdf_processor__transform_bounding_box_to_global_space__rotated_image():
-    with open("redactor/test/resources/pdf/pdf_with_single_image.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    metadata = PDFProcessor()._extract_pdf_images(document_bytes)
-    1 + "a"
-    image_metadata = metadata[0]
-    image_transform = ImageTransform(
-        position=Point(x=73.5, y=73.5),
-        rotation=0,
-        scale=Point(x=1, y=1)
-    )
+    """
+    - Given I have an image of size 100x100, and a bounding box within that image
+    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and 45 degree rotation in the PDF
+    - Then the a Rect should be returned that represents the translated bounding box
 
-    bounding_box = (0, 0, 100, 100)
-    expected_transformed_bounding_box = (
-        image_transform.position.x,
-        image_transform.position.y,
-        image_transform.position.x + 100,
-        image_transform.position.y + 100
+    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
+          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
+          into this test for automation
+    """
+    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
+    source_image_dimensions = pymupdf.Point(x=100, y=100)
+    transformation_matrix = pymupdf.Matrix(
+        53.03301239013672,
+        53.03300476074219,
+        -53.03300476074219,
+        53.03301239013672,
+        126.53300476074219,
+        88.04627227783203
+    )  # Rotated by 45 degrees
+    # Sample taken from test__pdf_processor__rotated_45_image.pdf, which was manually inspected
+    expected_transformed_bounding_box = pymupdf.Rect(94.71320343017578, 114.56277465820312, 153.0495147705078, 172.89907836914062)
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
+        bounding_box,
+        source_image_dimensions,
+        transformation_matrix
     )
-    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(bounding_box, image_transform)
+    assert expected_transformed_bounding_box == actual_transformed_bounding_box
+
+
+def test__pdf_processor__transform_bounding_box_to_global_space__translated_scaled_rotated_image():
+    """
+    - Given I have an image of size 100x100, and a bounding box within that image
+    - When I call _transform_bounding_box_to_global_space with a transform representing a translation scale by 0.5 and 45 degree rotation
+    - Then the a Rect should be returned that represents the translated bounding box
+
+    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
+          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
+          into this test for automation
+    """
+    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
+    source_image_dimensions = pymupdf.Point(x=100, y=100)
+    transformation_matrix = pymupdf.Matrix(
+        26.51650619506836,
+        26.516502380371094,
+        -26.516502380371094,
+        26.51650619506836,
+        100.0165023803711,
+        88.0462646484375
+    )  # Positioned in the document, scaled by 0.5 and rotated 45 degrees
+    # Sample taken from test__pdf_processor_scale_half_rotated_45_image.pdf, which was manually inspected
+    expected_transformed_bounding_box = pymupdf.Rect(84.10659790039062, 101.30451965332031, 113.2747573852539, 130.47267150878906)
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
+        bounding_box,
+        source_image_dimensions,
+        transformation_matrix
+    )
+    assert expected_transformed_bounding_box == actual_transformed_bounding_box
+
+
+def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_uniform_y_image():
+    """
+    - Given I have an image of size 100x100, and a bounding box within that image
+    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and non-uniform 0.5 scale in the y axis
+    - Then the a Rect should be returned that represents the translated bounding box
+
+    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
+          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
+          into this test for automation
+    """
+    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
+    source_image_dimensions = pymupdf.Point(x=100, y=100)
+    transformation_matrix = pymupdf.Matrix(75.0, 0.0, -0.0, 37.5, 73.5, 88.0462646484375) # Scaled in y axis by 0.5
+    # Sample taken from test__pdf_processor__scale_half_y_image.pdf, which was manually inspected
+    expected_transformed_bounding_box = pymupdf.Rect(73.5, 106.7962646484375, 148.5, 110.5462646484375)
+    actual_transformed_bounding_box = PDFProcessor()._transform_bounding_box_to_global_space(
+        bounding_box,
+        source_image_dimensions,
+        transformation_matrix
+    )
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 

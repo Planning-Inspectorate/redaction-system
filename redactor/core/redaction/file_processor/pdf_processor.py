@@ -34,14 +34,16 @@ import math
 
 
 class PDFImageMetadata(BaseModel):
-    relative_position_in_page: Point
     source_image_resolution: Point
-    resolution_on_page: Point
+    """The dimensions of the source image"""
     file_format: str
+    """The format of the image"""
     image: PydanticImage
-    bounding_box: Tuple[float, float, float, float]
+    """The image content"""
     page_number: int
-    transform: Tuple[float, float, float, float, float, float]
+    """The page the image belongs to (0-indexed)"""
+    image_transform_in_pdf: Tuple[float, float, float, float, float, float]
+    """The transform of the instance of the image in the PDF, represented as a pymupdf.Matrix"""
 
 
 class PDFProcessor(FileProcessor):
@@ -65,33 +67,33 @@ class PDFProcessor(FileProcessor):
         return page_text
 
     def _extract_pdf_images(self, file_bytes: BytesIO):
+        """
+        Return the images of the given PDF as a list of PDFImageMetadata objects
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :return List[PDFImageMetadata]: The metadata for the images of the PDF
+        """
         pdf = pymupdf.open(stream=file_bytes)
         image_metadata_list: List[PDFImageMetadata] = []
         for page_number, page in enumerate(pdf):
             for image_xref in page.get_images(full=True):
                 page: pymupdf.Page = page
                 image_details = pdf.extract_image(image_xref[0])
-                bounding_box, transform = page.get_image_bbox(image_xref, transform=True)
-                angle = math.degrees(math.atan2(transform.b, transform.a))
-                x_scale = math.sqrt(math.pow(transform.a, 2) + math.pow(transform.b, 2))
-                y_scale = math.sqrt(math.pow(transform.c, 2) + math.pow(transform.d, 2))
+                transform = page.get_image_bbox(image_xref, transform=True)[1]
                 transform: pymupdf.Matrix = transform
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
                 image_metadata = PDFImageMetadata(
-                    relative_position_in_page=Point(x=bounding_box[0], y=bounding_box[1]),
                     source_image_resolution=Point(x=image_details["width"], y=image_details["height"]),
-                    resolution_on_page=Point(x=x_scale, y=y_scale),
                     file_format=file_format,
                     image=image,
-                    bounding_box = (bounding_box.x0, bounding_box.y0, bounding_box.x1, bounding_box.y1),
                     page_number=page_number,
-                    transform=(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f)
+                    image_transform_in_pdf=(transform.a, transform.b, transform.c, transform.d, transform.e, transform.f)
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
-    
+
     def _extract_unique_pdf_images(self, image_metadata: List[PDFImageMetadata]):
         """
         Process a list of PDFImageMetadata to only contain the unique images. A PDF may have an image repeated many times, for example in the header of
@@ -210,11 +212,8 @@ class PDFProcessor(FileProcessor):
             pdf_image = pdf_image_metadata.image
             pdf_image.save(f"pdfImage{i}.jpg")
             pdf_image_cleaned = pdf_image.convert("RGB")
-            pdf_loc = pdf_image_metadata.relative_position_in_page
-            pdf_size = pdf_image_metadata.resolution_on_page
-            image_in_pdf = pymupdf.Rect(*pdf_image_metadata.bounding_box)
             page = pages[pdf_image_metadata.page_number]
-            image_transform = pdf_image_metadata.transform
+            image_transform = pdf_image_metadata.image_transform_in_pdf
             for redaction_result in redactions:
                 relevant_image_metadata = [
                     metadata
@@ -247,6 +246,20 @@ class PDFProcessor(FileProcessor):
         image_dimensions: Point,
         image_transform: pymupdf.Matrix
     ):
+        """
+            Convert a bounding box in the source image's space (i.e. the image's top left corner is (0, 0)) into
+            the PDF's spac
+            
+            i.e. If you have a bounding box that represents a region of the source image, then a new bounding box
+            is returned that represents where that bounding box will be for a specific instance of the image in
+            the PDF
+
+            :param pymupdf.Rect bounding_box: The bounding box in the image's space
+            :param Point image_dimensions: The dimensions of the source image
+            :param pymupdf.Matrix image_transform: The transformation matrix of the instance of the image in the PDF
+
+            :return pymupdf.Rect: The transformed bounding box in the PDF's space
+        """
         # pymupdf transformations are relative the normalied bounding box (0, 0, 1, 1)
         # Please see https://pymupdf.readthedocs.io/en/latest/page.html#Page.get_image_bbox
         # and https://pymupdf.readthedocs.io/en/latest/app3.html#image-transformation-matrix
