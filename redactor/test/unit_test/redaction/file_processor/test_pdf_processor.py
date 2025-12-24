@@ -2,6 +2,9 @@ from redactor.core.redaction.file_processor.pdf_processor import (
     PDFProcessor,
     PDFImageMetadata,
 )
+from redactor.core.redaction.config.redaction_result.image_redaction_result import (
+    ImageRedactionResult,
+)
 from PIL import Image
 from io import BytesIO
 import pymupdf
@@ -378,3 +381,114 @@ def test__pdf_processor__redact_skips_non_english_raises_exception():
     pdf = pymupdf.open(stream=file_bytes)
     annots = [a for p in pdf for a in p.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
     assert not annots
+
+
+def test__pdf_processor__extract_unique_pdf_images():
+    image_metadata = [
+        PDFImageMetadata(  # A
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=Image.new("RGB", (100, 100)),
+            page_number=0,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+        PDFImageMetadata(  # B
+            source_image_resolution=(101, 101),
+            file_format="jpeg",
+            image=Image.new("RGB", (101, 101)),
+            page_number=0,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+        PDFImageMetadata(  # C
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=Image.new("RGB", (100, 100), 255),
+            page_number=0,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+        PDFImageMetadata(  # D
+            source_image_resolution=(1000, 1000),
+            file_format="jpeg",
+            image=Image.new("RGB", (1000, 1000), 255),
+            page_number=1,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+        PDFImageMetadata(  # A copy of A
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=Image.new("RGB", (100, 100)),
+            page_number=1,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+        PDFImageMetadata(  # A copy of C
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=Image.new("RGB", (100, 100), 255),
+            page_number=2,
+            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
+        ),
+    ]
+    expected_output = [
+        image_metadata[0].image,
+        image_metadata[1].image,
+        image_metadata[2].image,
+        image_metadata[3].image,
+    ]
+    with mock.patch.object(PDFProcessor, "__init__", return_value=None):
+        actual_output = PDFProcessor()._extract_unique_pdf_images(image_metadata)
+        assert expected_output == actual_output
+
+
+def test__pdf_processor__apply_provisional_image_redactions():
+    with open(
+        "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
+    ) as f:
+        document_bytes = BytesIO(f.read())
+    with open(
+        "redactor/test/resources/pdf/test__pdf_processor__translated_image_PROVISIONAL.pdf",
+        "rb",
+    ) as f:
+        expected_provisional_redaction_bytes = BytesIO(f.read())
+    pdf = pymupdf.open(stream=document_bytes)
+    source_image = [
+        Image.open(BytesIO(pdf.extract_image(image[0]).get("image")))
+        for page in pdf
+        for image in page.get_images(full=True)
+    ][0]
+    redactions = [
+        ImageRedactionResult(
+            redaction_results=(
+                ImageRedactionResult.Result(
+                    image_dimensions=(100, 100),
+                    source_image=source_image,
+                    redaction_boxes=((0, 0, 100, 100),),
+                ),
+            )
+        )
+    ]
+    pdf_image_metadata = [
+        PDFImageMetadata(
+            source_image_resolution=(100, 100),
+            file_format="jpeg",
+            image=source_image,
+            page_number=0,
+            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
+        )
+    ]
+    with mock.patch.object(
+        PDFProcessor, "_extract_pdf_images", return_value=pdf_image_metadata
+    ):
+        redacted_document_bytes = PDFProcessor()._apply_provisional_image_redactions(
+            document_bytes, redactions
+        )
+    expected_annotation_rects = []
+    for page in pymupdf.open(stream=expected_provisional_redaction_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            expected_annotation_rects.append(annotation.rect)
+
+    # Get the actual redacted text
+    actual_annotated_rects = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            actual_annotated_rects.append(annotation.rect)
+    assert expected_annotation_rects == actual_annotated_rects

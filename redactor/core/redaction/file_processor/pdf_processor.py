@@ -211,7 +211,7 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     def _apply_provisional_image_redactions(
-        self, file_bytes: BytesIO, redactions: Set[ImageRedactionResult]
+        self, file_bytes: BytesIO, redactions: List[ImageRedactionResult]
     ):
         """
         Redact the given list of bounding boxes as provisional redactions in the PDF bytes stream
