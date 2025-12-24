@@ -5,7 +5,7 @@ from redactor.core.redaction.config.redaction_config.llm_text_redaction_config i
 from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import (
     LLMTextRedactionResult,
 )
-from redactor.core.util.llm.llm_util import LLMUtil
+from redactor.core.util.ai.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel
@@ -36,13 +36,13 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextRedactionResult:
-        # Initialisation
-        self.config: LLMTextRedactionConfig
-        model = self.config.model
-        system_prompt = self.config.system_prompt
-        text_to_redact = self.config.text
-        redaction_rules = self.config.redaction_rules
+    def _analyse_text(
+        self,
+        text_to_redact: str,
+        model: str,
+        system_prompt: str,
+        redaction_rules: List[str],
+    ):
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],
@@ -84,3 +84,12 @@ class LLMTextRedactor(TextRedactor):
                 total_token_count=total_token_count,
             ),
         )
+
+    def redact(self) -> LLMTextRedactionResult:
+        # Initialisation
+        self.config: LLMTextRedactionConfig
+        model = self.config.model
+        system_prompt = self.config.system_prompt
+        text_to_redact = self.config.text
+        redaction_rules = self.config.redaction_rules
+        return self._analyse_text(text_to_redact, model, system_prompt, redaction_rules)
