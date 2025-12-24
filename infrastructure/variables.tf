@@ -15,6 +15,18 @@ variable "storage_retention_days" {
   default     = 7
 }
 
+variable "log_retention_days" {
+  description = "The logging data retention period"
+  type        = number
+  default     = 7
+}
+
+variable "daily_log_cap" {
+  description = "The max amount of logging data that can be logged in a day"
+  type        = number
+  default     = 0.2
+}
+
 variable "tooling_config" {
   description = "Config for the tooling subscription resources"
   type = object({
