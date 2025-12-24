@@ -384,6 +384,11 @@ def test__pdf_processor__redact_skips_non_english_raises_exception():
 
 
 def test__pdf_processor__extract_unique_pdf_images():
+    """
+    - Given I have some image metadata that contains 6 images, 2 of which are duplicates of at least 1 of the other 4
+    - When I call _extract_unique_pdf_images
+    - Then only 4 unique images should be returned
+    """
     image_metadata = [
         PDFImageMetadata(  # A
             source_image_resolution=(100, 100),
@@ -440,6 +445,11 @@ def test__pdf_processor__extract_unique_pdf_images():
 
 
 def test__pdf_processor__apply_provisional_image_redactions():
+    """
+    - Given I have a PDF with a single image, and some redactions to apply to the image
+    - When I call _apply_provisional_image_redactions
+    - Then the redactions should be correctly applied to the document, and match a pre-baked example
+    """
     with open(
         "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
     ) as f:
