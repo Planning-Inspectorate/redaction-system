@@ -93,6 +93,31 @@ resource "azurerm_linux_function_app" "redaction_system" {
 }
 
 ############################################################################
+# Create App Insights
+############################################################################
+resource "azurerm_log_analytics_workspace" "redaction_system" {
+  name                = "pins-log-redaction-system-${var.environment}-${local.location_short}"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  sku                 = "PerGB2018"
+  retention_in_days   = var.log_retention_days
+  daily_quota_gb      = var.daily_log_cap
+
+  tags = local.tags
+}
+
+resource "azurerm_application_insights" "redaction_system" {
+  name                = "pins-ai-redaction-system-${var.environment}-${local.location_short}"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  application_type    = "other"
+  retention_in_days   = var.log_retention_days
+  workspace_id        = azurerm_log_analytics_workspace.redaction_system.id
+
+  tags = local.tags
+}
+
+############################################################################
 # Create Role Assignments
 ############################################################################
 resource "azurerm_role_assignment" "function_app_storage_contributor" {
