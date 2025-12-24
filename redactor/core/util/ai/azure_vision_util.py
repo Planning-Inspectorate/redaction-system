@@ -9,7 +9,10 @@ from azure.core.credentials import AzureKeyCredential
 import os
 from PIL import Image
 from io import BytesIO
-import json
+from dotenv import load_dotenv
+
+
+load_dotenv(verbose=True)
 
 
 class AzureVisionUtil:
@@ -76,13 +79,4 @@ class AzureVisionUtil:
             )
             for block in result.read.blocks
             for line in block.lines
-        )
-        [
-            line.bounding_polygon[0]
-            for block in result.read.blocks
-            for line in block.lines
-        ]
-        return result
-        return " ".join(
-            [line.text for block in result.read.blocks for line in block.lines]
         )
