@@ -3,6 +3,12 @@ from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
 from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
     LLMTextRedactionConfig,
 )
+from redactor.core.redaction.config.redaction_config.image_redaction_config import (
+    ImageRedactionConfig,
+)
+from redactor.core.redaction.config.redaction_config.image_llm_text_redaction_config import (
+    ImageLLMTextRedactionConfig,
+)
 
 
 def test__config_processor__process_config():
@@ -23,7 +29,18 @@ def test__config_processor__process_config():
                     "Find all human names in the text",
                     "Find all dates in the test",
                 ],
-            )
+            ),
+            ImageRedactionConfig(name="Face redactor", redactor_type="ImageRedaction"),
+            ImageLLMTextRedactionConfig(
+                name="Name and date redactor for images",
+                redactor_type="ImageLLMTextRedaction",
+                model="gpt-4.1-nano",
+                system_prompt="You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: ",
+                redaction_rules=[
+                    "Find all human names in the text",
+                    "Find all dates in the test",
+                ],
+            ),
         ],
         "provisional_redactions": None,
     }
