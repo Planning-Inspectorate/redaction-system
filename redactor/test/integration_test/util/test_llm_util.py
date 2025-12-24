@@ -1,4 +1,4 @@
-from redactor.core.util.llm.llm_util import LLMUtil
+from redactor.core.util.ai.llm_util import LLMUtil
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
 

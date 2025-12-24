@@ -6,7 +6,7 @@ from redactor.core.redaction.config.redaction_config.image_llm_text_redaction_co
 from redactor.core.redaction.config.redaction_result.image_redaction_result import (
     ImageRedactionResult,
 )
-from redactor.core.util.llm.azure_vision_util import AzureVisionUtil
+from redactor.core.util.ai.azure_vision_util import AzureVisionUtil
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):

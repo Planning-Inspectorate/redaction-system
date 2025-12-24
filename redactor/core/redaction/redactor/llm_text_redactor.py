@@ -5,7 +5,7 @@ from redactor.core.redaction.config.redaction_config.llm_text_redaction_config i
 from redactor.core.redaction.config.redaction_result.llm_text_redaction_result import (
     LLMTextRedactionResult,
 )
-from redactor.core.util.llm.llm_util import LLMUtil
+from redactor.core.util.ai.llm_util import LLMUtil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel

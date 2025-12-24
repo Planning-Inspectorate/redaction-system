@@ -5,7 +5,7 @@ from redactor.core.redaction.config.redaction_config.image_redaction_config impo
 from redactor.core.redaction.config.redaction_result.image_redaction_result import (
     ImageRedactionResult,
 )
-from redactor.core.util.llm.azure_vision_util import AzureVisionUtil
+from redactor.core.util.ai.azure_vision_util import AzureVisionUtil
 from typing import List
 
 
