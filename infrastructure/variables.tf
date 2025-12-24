@@ -18,7 +18,7 @@ variable "storage_retention_days" {
 variable "log_retention_days" {
   description = "The logging data retention period"
   type        = number
-  default     = 7
+  default     = 30
 }
 
 variable "daily_log_cap" {
