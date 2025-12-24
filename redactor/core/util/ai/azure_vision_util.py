@@ -73,8 +73,8 @@ class AzureVisionUtil:
                 (
                     line.bounding_polygon[0].x,
                     line.bounding_polygon[0].y,
-                    line.bounding_polygon[1].x,
-                    line.bounding_polygon[1].y,
+                    line.bounding_polygon[2].x,
+                    line.bounding_polygon[2].y,
                 ),
             )
             for block in result.read.blocks
