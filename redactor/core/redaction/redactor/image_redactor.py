@@ -25,7 +25,6 @@ class ImageRedactor(Redactor):  # pragma: no cover
 
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
-        self.config: ImageRedactionConfig
         # Initialisation
         results: List[ImageRedactionResult.Result] = []
         for image_to_redact in self.config.images:

@@ -26,24 +26,24 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         redaction_rules = self.config.redaction_rules
         results = []
         for image_to_redact in self.config.images:
-            image_to_redact = self.config.image
+            print("image: ", image_to_redact)
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
-            text_content = " ".join(text_rect_map.keys())
+            text_content = " ".join([x[0] for x in text_rect_map])
             redaction_strings = self._analyse_text(
                 text_content, model, system_prompt, redaction_rules
             ).redaction_strings
-            text_rects_to_redact = {
-                text: bounding_box
-                for text, bounding_box in text_rect_map.items()
+            text_rects_to_redact = tuple(
+                (text, bounding_box)
+                for text, bounding_box in text_rect_map
                 if text in redaction_strings
                 or any(
                     redaction_string in text for redaction_string in redaction_strings
                 )
-            }
+            )
             results.append(
                 ImageRedactionResult.Result(
-                    redaction_boxes=list(text_rects_to_redact.values()),
+                    redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
                     image_dimensions=(image_to_redact.width, image_to_redact.height),
                     source_image=image_to_redact,
                 )
