@@ -18,7 +18,7 @@ from redactor.core.redaction.redactor.image_redactor import ImageRedactor
 from redactor.core.redaction.file_processor.exceptions import (
     UnprocessedRedactionResultException,
 )
-from redactor.core.util.types.types import PydanticImage, Point, ImageTransform
+from redactor.core.util.types.types import PydanticImage
 from io import BytesIO
 from typing import Set, Type, List, Any, Dict, Tuple
 import pymupdf
@@ -30,7 +30,6 @@ from redactor.core.util.text_util import is_english_text
 from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
 from PIL import Image
 from pydantic import BaseModel
-import math
 
 
 class PDFImageMetadata(BaseModel):
@@ -261,7 +260,7 @@ class PDFProcessor(FileProcessor):
     def _transform_bounding_box_to_global_space(
         self,
         bounding_box: pymupdf.Rect,
-        image_dimensions: Point,
+        image_dimensions: pymupdf.Point,
         image_transform: pymupdf.Matrix,
     ):
         """

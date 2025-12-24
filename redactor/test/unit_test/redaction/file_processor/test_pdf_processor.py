@@ -2,8 +2,7 @@ from redactor.core.redaction.file_processor.pdf_processor import (
     PDFProcessor,
     PDFImageMetadata,
 )
-from redactor.core.util.types.types import Point, ImageTransform
-from PIL import Image, ImageChops
+from PIL import Image
 from io import BytesIO
 import pymupdf
 import mock
@@ -233,7 +232,8 @@ def test__pdf_processor__apply_provisional_text_redactions():
     """
     - Given I have a PDF with some provisional redactions
     - When I apply the redactions
-    - Then the provisional redactions should be removed, and the text content of the PDF should not contain the text identified by the provisional redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
     """
     with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
@@ -334,7 +334,10 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     actual_text_at_rect = test_case[0]
     text_to_redact = test_case[1]
     expected_result = test_case[2]
-    error_message = f"Expected _is_full_text_being_redacted to return {expected_result} when trying to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
+    error_message = (
+        f"Expected _is_full_text_being_redacted to return {expected_result} when trying "
+        f"to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
+    )
     assert (
         PDFProcessor._is_full_text_being_redacted(text_to_redact, actual_text_at_rect)
         is expected_result
