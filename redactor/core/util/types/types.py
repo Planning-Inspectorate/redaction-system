@@ -1,13 +1,10 @@
-from typing import Annotated, Any, Union
+from typing import Annotated, Any
 
 from pydantic_core import core_schema
-from pydantic import Field
 
 from pydantic import (
-    BaseModel,
     GetCoreSchemaHandler,
     GetJsonSchemaHandler,
-    ValidationError,
 )
 from pydantic.json_schema import JsonSchemaValue
 from PIL.Image import Image

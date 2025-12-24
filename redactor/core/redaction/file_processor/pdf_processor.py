@@ -377,7 +377,7 @@ class PDFProcessor(FileProcessor):
                         ):
                             subject_split_cleaned = [float(x) for x in subject_split]
                             annotation_rect = pymupdf.Rect(subject_split_cleaned)
-                    except json.JSONDecodeError as e:
+                    except json.JSONDecodeError:
                         pass
                 page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
                 page.delete_annot(annotation)
