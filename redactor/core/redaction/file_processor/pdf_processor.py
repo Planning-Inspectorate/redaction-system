@@ -220,7 +220,6 @@ class PDFProcessor(FileProcessor):
         :param List[ImageRedactionResult] redactions: The results of the image redaction analysis
         :return BytesIO: Bytes stream for the PDF with provisional image redactions applied
         """
-        print(redactions)
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         pdf_images = self._extract_pdf_images(file_bytes)
