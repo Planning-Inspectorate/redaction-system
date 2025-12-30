@@ -4,20 +4,23 @@ This repository defines the automated redaction that is available to PINS servic
 
 # Project structure
 ```
-├── redaction-system/           // The redaction-system folder can be in a directory of your choice
-│    ├── redactor/              // Where the redaction tool is defined
-│    │   ├── core/             // Where the core funcrtionality of the tool is defined
-│    │   │   ├── core/
-│    │   ├── io/                // Where functionality for reading/writing files is defined
-│    │   ├── redaction/         // Where functionality for redaction processes is defined
-│    │   │   ├── config/            // Where config files for redaction are defined
-│    │   │   ├── file_processor/    // Where scripts for redacting files are defined
-│    │   │   ├── redactor/          // Where scripts for redacting pieces of data are defined. *Files are composed of data
-│    │   ├── util/              // Where misc utility functionality is defined
+├── redaction-system/                     // The redaction-system folder can be in a directory of your choice
+│    ├── redactor/                        // Where the redaction tool is defined
+│    │   ├── core/                        // Where the core functionality of the tool is defined
+│    │   │   ├── config/                  // Where config files for redaction are defined
+│    │   │   ├── io/                      // Where functionality for reading/writing files is defined
+│    │   │   ├── util/                    // Where misc utility functionality is defined
+│    │   │   ├── file_processor.py        // Module for redacting files 
+│    │   │   ├── redactor.py              // Where scripts for redacting pieces of data are defined. *Files are composed of data
+│    │   │   ├── main.py                  // Script for executing the redaction process via terminal for a file
+│    │   │   ├── config.py                // Config and result classes
+│    │   │   ├── exceptions.py            // 
 │    ├── pipelines/
-│    │   ├── jobs/              // Where pipeline jobs are defined
-│    │   ├── steps/             // Where pipeline steps are defined
-│    │   └── scripts/          // Utility python/bash scripts are defined here
+│    │   ├── jobs/                        // Where pipeline jobs are defined
+│    │   ├── steps/                       // Where pipeline steps are defined
+│    │   └── scripts/                     // Utility python/bash scripts are defined here
+│    ├── infrastructure/
+│    │   └── environments/                // Utility python/bash scripts are defined here
 ```
 
 # Local setup
