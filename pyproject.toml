@@ -10,6 +10,7 @@ readme = "readme.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-identity",
+    "azure-monitor-opentelemetry",
     "azure-storage-blob",
     "langdetect",
     "langchain",
