@@ -20,7 +20,7 @@ from redactor.core.config import (
 from redactor.core.exceptions import (
     IncorrectRedactionConfigClassException,
 )
-from redactor.core.llm_util import LLMUtil
+from redactor.core.util.llm_util import LLMUtil
 from redactor.core.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,

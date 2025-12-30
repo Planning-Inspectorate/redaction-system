@@ -31,7 +31,7 @@ from redactor.core.config import (
     TextRedactionResult,
     ImageRedactionResult,
 )
-from redactor.core.text_util import is_english_text
+from redactor.core.util.text_util import is_english_text
 
 
 class FileProcessor(ABC):

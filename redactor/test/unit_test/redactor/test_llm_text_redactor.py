@@ -7,7 +7,7 @@ from redactor.core.config import (
     LLMTextRedactionConfig,
     LLMTextRedactionResult,
 )
-from redactor.core.llm_util import LLMUtil
+from redactor.core.util.llm_util import LLMUtil
 import mock
 
 

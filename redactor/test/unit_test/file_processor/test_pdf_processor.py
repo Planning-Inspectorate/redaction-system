@@ -3,7 +3,7 @@ from io import BytesIO
 import pymupdf
 import mock
 import pytest
-from redactor.core.text_util import is_english_text
+from redactor.core.util.text_util import is_english_text
 from redactor.core.exceptions import NonEnglishContentException
 
 
