@@ -32,6 +32,7 @@ from redactor.core.config import (
     ImageRedactionResult,
 )
 from redactor.core.util.text_util import is_english_text
+from redactor.core.util.logging_util import LoggingUtil, log_to_appins
 
 
 class FileProcessor(ABC):
@@ -144,6 +145,7 @@ class PDFProcessor(FileProcessor):
             )
         return match_result
 
+    @log_to_appins
     def _apply_provisional_text_redactions(
         self, file_bytes: BytesIO, text_to_redact: List[str]
     ):

@@ -3,25 +3,42 @@ from unittest.mock import patch
 from logging import Logger, getLogger
 
 from redactor.core.util.logging_util import (
-    LoggingUtil, configure_azure_monitor, log_to_appins
+    LoggingUtil, Singleton, configure_azure_monitor, log_to_appins
 )
 
-def test_logging_util_is_a_singleton():
-    with patch.object(LoggingUtil, "_initialise", return_value=None):
-        instance_a = LoggingUtil()
-        instance_b = LoggingUtil()
-        assert id(instance_a) == id(instance_b)
-        LoggingUtil._initialise.assert_called_once()
+@patch.object(LoggingUtil, "__init__", return_value=None)
+def test_logging_util_is_a_singleton(mock_init):
+    instance_a = LoggingUtil()
+    instance_b = LoggingUtil()
+    assert id(instance_a) == id(instance_b)
+    LoggingUtil.__init__.assert_called_once()
 
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
 @patch("uuid.uuid4", return_value="some_guid")
 @patch("redactor.core.util.logging_util.configure_azure_monitor")
-def test_logging_util__initialise(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
-    LoggingUtil._INSTANCE = None
+def test_logging_util__init(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
+    Singleton._INSTANCES = {}
     logging_util_inst = LoggingUtil()
     assert logging_util_inst.job_id == "some_guid"
     assert isinstance(logging_util_inst.logger, Logger)
     mock_configure_azure_monitor.assert_called_once()
+
+@patch("os.environ.get", return_value=None)
+def test_logging_util__init_no_appins_no_logfile(mock_env_get):
+    Singleton._INSTANCES = {}
+    with pytest.raises(RuntimeError) as excinfo:
+        LoggingUtil()
+    assert "APP_INSIGHTS_CONNECTION_STRING environment variable not set" in str(
+        excinfo.value
+    )
+
+@patch("os.environ.get", return_value=None)
+def test_logging_util__init_no_appins_with_logfile(mock_env_get):
+    Singleton._INSTANCES = {}
+    log_file = "test_log.log"
+    logging_util_inst = LoggingUtil(log_file=log_file)
+    assert isinstance(logging_util_inst.logger, Logger)
+    assert logging_util_inst.log_file == log_file
 
 @patch("redactor.core.util.logging_util.configure_azure_monitor")
 def get_new_logging_instance(mock_configure_azure_monitor):
@@ -69,10 +86,10 @@ def test_logging_util__log_exception(mock_logger_exception):
 
     Logger.exception.assert_called_once_with(f"{guid} : {error_message}")
 
-@patch.object(LoggingUtil, "_initialise", return_value=None)
+@patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins(mock_init, mock_log_info):
-    @log_to_appins()
+    @log_to_appins
     def my_function():
         return "Hello world"
 
@@ -86,10 +103,10 @@ def test_log_to_appins(mock_init, mock_log_info):
     )
     assert resp == "Hello world"
 
-@patch.object(LoggingUtil, "_initialise", return_value=None)
+@patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_args(mock_init, mock_log_info):
-    @log_to_appins()
+    @log_to_appins
     def my_function_with_args(a, b, c):
         return f"Hello world ({a}, {b}, {c})"
 
@@ -104,13 +121,13 @@ def test_log_to_appins__with_args(mock_init, mock_log_info):
     assert resp == "Hello world (1, 2, bob)"
 
 
-@patch.object(LoggingUtil, "_initialise", return_value=None)
+@patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 @patch.object(LoggingUtil, "log_exception", return_value=None)
 def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_exception):
     exception = Exception("Some exception")
 
-    @log_to_appins()
+    @log_to_appins
     def my_function_with_exception():
         raise exception
 
@@ -128,7 +145,7 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
         f"Exception raised in function my_function_with_exception: {exception}")
 
 
-@patch.object(LoggingUtil, "_initialise", return_value=None)
+@patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
     class MyClass:
@@ -149,7 +166,7 @@ def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
     assert resp == "Hello world"
 
 
-@patch.object(LoggingUtil, "_initialise", return_value=None)
+@patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_class_method(mock_init, mock_log_info):
     class MyClass:

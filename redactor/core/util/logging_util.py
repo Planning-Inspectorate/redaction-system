@@ -9,7 +9,7 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 load_dotenv(verbose=True)
 
 
-class LoggingUtil:
+class Singleton(type):
     """
     Singleton logging utility class that provides functionality to send logs to 
     app insights.
@@ -27,15 +27,27 @@ class LoggingUtil:
     https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-enable?tabs=python#enable-azure-monitor-opentelemetry-for-net-nodejs-python-and-java-applications
     """
 
-    _INSTANCE = None
+    _INSTANCES = {}
 
-    def __new__(cls, *args, **kwargs):
-        if not cls._INSTANCE:
-            cls._INSTANCE = super(LoggingUtil, cls).__new__(cls, *args, **kwargs)
-            cls._INSTANCE._initialise()
-        return cls._INSTANCE
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._INSTANCES:
+            # Create and initialise the singleton instance
+            cls._INSTANCES[cls] = super(Singleton, cls).__call__(cls, *args, **kwargs)
+        return cls._INSTANCES[cls]
 
-    def _initialise(self, namespace: str = "redactor_logs"):
+
+class LoggingUtil(metaclass=Singleton):
+    """
+    Logging utility class that provides functionality to send logs to app insights
+    """
+
+    job_id: uuid.UUID
+    logger: logging.Logger
+    log_file: str = None
+    namespace: str
+    log_level: int
+    
+    def __init__(self, *args, **kwargs):
         """
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which 
         is reused.
@@ -44,28 +56,43 @@ class LoggingUtil:
         cls._INSTANCE is not None
         """
         self.job_id = uuid.uuid4()
-        self.logger_name_space = namespace
+        self.namespace = kwargs.pop("namespace", "redactor_logs")
+        self.log_file = kwargs.pop("log_file", None)
+        self.log_level = kwargs.pop("log_level", logging.INFO)
 
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
         )
 
         if not app_insights_connection_string:
-            raise RuntimeError(
-                "APP_INSIGHTS_CONNECTION_STRING environment variable not set, "
-                "cannot initialise LoggingUtil"
-            )
+            # If no connection string is provided, log to file if specified
+            if self.log_file:
+                logging.basicConfig(
+                    filename=self.log_file,
+                    level=self.log_level,
+                )
+                self.logger = logging.getLogger(self.namespace)
+                self.logger.info(
+                    f"{self.job_id}: Logging initialised for "
+                    f"{self.namespace} to file {self.log_file}."
+                )
+                return
+            else:
+                raise RuntimeError(
+                    "APP_INSIGHTS_CONNECTION_STRING environment variable not set, "
+                    "cannot initialise LoggingUtil"
+                )
 
         # Configure OpenTelemetry to use Azure Monitor with the connection string
         configure_azure_monitor(
-            logger_name=self.logger_name_space, 
+            logger_name=self.namespace, 
             connection_string=app_insights_connection_string
         )
 
         # Create a logger
-        self.logger = logging.getLogger(self.logger_name_space)
-        self.logger.setLevel(logging.INFO)
-        self.log_info(f"{self.job_id}: Logging initialised for {self.logger_name_space}.")
+        self.logger = logging.getLogger(self.namespace)
+        self.logger.setLevel(self.log_level)
+        self.log_info(f"{self.job_id}: Logging initialised for {self.namespace}.")
 
     def log_info(self, msg: str):
         """
@@ -86,8 +113,12 @@ class LoggingUtil:
         self.logger.exception(f"{self.job_id} : {ex}")
 
 
-def log_to_appins(
-    _func=None, *, logger_name: str = None):
+def log_to_appins(_func=None, 
+                  *, 
+                  namespace: str = "redactor_logs",
+                  log_file: str = None,
+                  log_level: int = logging.INFO):
+
     """
     Decorator that adds extra logging to function calls
 
