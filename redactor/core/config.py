@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from PIL.Image import Image
 from pydantic import BaseModel
 
+
 class RedactionConfig(BaseModel):
     name: str
     redactor_type: str

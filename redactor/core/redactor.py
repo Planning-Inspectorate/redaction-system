@@ -60,12 +60,15 @@ class Redactor(ABC):
         """
         Check that the given config is of the expected type
 
-        :raises IncorrectRedactionConfigClassException: If the given config does not match the type returned by `get_redaction_config_class`
+        :raises IncorrectRedactionConfigClassException: If the given config does 
+        not match the type returned by `get_redaction_config_class`
         """
         expected_class = cls.get_redaction_config_class()
         if type(config) is not expected_class:
             raise IncorrectRedactionConfigClassException(
-                f"The config class provided to {cls.__qualname__}.redact is incorrect. Expected {expected_class.__qualname__}, but was {type(config)}"
+                f"The config class provided to {cls.__qualname__}.redact is "
+                f"incorrect. Expected {expected_class.__qualname__}, but was "
+                f"{type(config)}"
             )
 
     @abstractmethod
@@ -75,7 +78,8 @@ class Redactor(ABC):
 
 
         :param RedactionConfig config: The configuration for the redaction
-        :returns RedactionResult: A RedactionResult that holds the result of the redaction
+        :returns RedactionResult: A RedactionResult that holds the result of the 
+        redaction
         """
         pass
 
@@ -189,7 +193,8 @@ class ImageRedactor(Redactor):  # pragma: no cover
         image_to_redact = self.config["properties"]["image"]
         # Todo - need to implement this logic
         return ImageRedactionResult(
-            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
+            redaction_boxes=(), image_dimensions=(0, 0), 
+            source_image=image_to_redact
         )
 
 
@@ -217,7 +222,8 @@ class RedactorFactory:
         invalid_types = {k: v for k, v in name_map.items() if len(v) > 1}
         if invalid_types:
             raise DuplicateRedactorNameException(
-                f"The following Redactor implementation classes had duplicate names: {json.dumps(invalid_types, indent=4, default=str)}"
+                "The following Redactor implementation classes had duplicate names: "
+                + json.dumps(invalid_types, indent=4, default=str)
             )
         return {k: v[0] for k, v in name_map.items()}
 
@@ -226,9 +232,12 @@ class RedactorFactory:
         """
         Return the Redactor that is identified by the provided type name
 
-        :param str redactor_type: The Redactor type name (which aligns with the get_name method of the Redactor)
-        :return Type[Redactor]: The redactor instance identified by the provided redactor_type
-        :raises RedactorNameNotFoundException if the given redactor_type is not found
+        :param str redactor_type: The Redactor type name (which aligns with the 
+        get_name method of the Redactor)
+        :return Type[Redactor]: The redactor instance identified by the provided 
+        redactor_type
+        :raises RedactorNameNotFoundException if the given redactor_type is not 
+        found
         """
         if not isinstance(redactor_type, str):
             raise ValueError(

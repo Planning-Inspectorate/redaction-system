@@ -14,7 +14,7 @@ from unicodedata import category
 
 from redactor.core.redactor import (
     Redactor,
-    TextRedactor, 
+    TextRedactor,
     ImageRedactor,
     RedactorFactory,
 )
@@ -33,6 +33,7 @@ from redactor.core.config import (
 )
 from redactor.core.text_util import is_english_text
 
+
 class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
@@ -42,7 +43,8 @@ class FileProcessor(ABC):
     @abstractmethod
     def get_name(cls) -> str:
         """
-        :return str: A unique name for the FileProcessor implementation class. This should correspond to a subtype of a mime type returned by libmagic
+        :return str: A unique name for the FileProcessor implementation class. 
+        This should correspond to a subtype of a mime type returned by libmagic
         """
         pass
 
@@ -52,7 +54,8 @@ class FileProcessor(ABC):
         Add provisional redactions to the provided document
 
         :param BytesIO file_bytes: The file content as a bytes stream
-        :param Dict[str, Any] redaction_config: The redaction config to apply to the document
+        :param Dict[str, Any] redaction_config: The redaction config to apply 
+        to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
         pass
@@ -63,7 +66,8 @@ class FileProcessor(ABC):
         Convert provisional redactions to real redactions
 
         :param BytesIO file_bytes: The file content as a bytes stream
-        :param Dict[str, Any] redaction_config: The redaction config to apply to the document
+        :param Dict[str, Any] redaction_config: The redaction config to apply 
+        to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
         pass
@@ -100,13 +104,16 @@ class PDFProcessor(FileProcessor):
         return page_text
 
     @classmethod
-    def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
+    def _is_full_text_being_redacted(
+        cls, text_to_redact: str, text_found_at_rect: str):
         """
         Check if the text_to_redact is a full redaction of text_found_at_rect
 
         :param str text_to_redact: The redaction text candidate
-        :param str text_found_at_rect: The full word found at the redaction candidate's bounding box (on the page)
-        :return bool: True if text_to_redact is a full redaction of text_found_at_rect (i.e. should the text be redacted)
+        :param str text_found_at_rect: The full word found at the redaction 
+        candidate's bounding box (on the page)
+        :return bool: True if text_to_redact is a full redaction of 
+        text_found_at_rect (i.e. should the text be redacted)
         """
 
         def normalise_punctuation_unidecode(text: str) -> str:
@@ -141,11 +148,14 @@ class PDFProcessor(FileProcessor):
         self, file_bytes: BytesIO, text_to_redact: List[str]
     ):
         """
-        Redact the given list of redaction strings as provisional redactions in the PDF bytes stream
+        Redact the given list of redaction strings as provisional redactions in 
+        the PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param List[str] text_to_redact: The text strings to redact in the document
-        :return BytesIO: Bytes stream for the PDF with provisional text redactions applied
+        :param List[str] text_to_redact: The text strings to redact in the 
+        document
+        :return BytesIO: Bytes stream for the PDF with provisional text 
+        redactions applied
         """
         pdf = pymupdf.open(stream=file_bytes)
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
@@ -166,14 +176,18 @@ class PDFProcessor(FileProcessor):
                 actual_text_at_rect = " ".join(actual_text_at_rect.split())
                 if self._is_full_text_being_redacted(word, actual_text_at_rect):
                     highlight_annotation = page.add_highlight_annot(rect)
-                    highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
+                    highlight_annotation.set_info(
+                        {"content": "REDACTION CANDIDATE"})
                 else:
                     print(
-                        f"Partial redaction found when attempting to redact '{word}'. The surroundig box contains '{actual_text_at_rect}'. Skipping"
+                        "Partial redaction found when attempting to redact "
+                        f"'{word}'. The surroundig box contains "
+                        f"'{actual_text_at_rect}'. Skipping"
                     )
             except Exception:
                 print(
-                    f"        Failed to add highlight for word {word}, at location '{rect}'"
+                    f"        Failed to add highlight for word {word}, at "
+                    f"location '{rect}'"
                 )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
@@ -184,11 +198,14 @@ class PDFProcessor(FileProcessor):
         self, file_bytes: BytesIO, boxes_to_redact: List[Tuple[int, int, int, int]]
     ):
         """
-        Redact the given list of bounding boxes as provisional redactions in the PDF bytes stream
+        Redact the given list of bounding boxes as provisional redactions in the 
+        PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param List[Tuple[int, int, int, int]] boxes_to_redact: The bounding boxes to redact in the document
-        :return BytesIO: Bytes stream for the PDF with provisional image redactions applied
+        :param List[Tuple[int, int, int, int]] boxes_to_redact: The bounding 
+        boxes to redact in the document
+        :return BytesIO: Bytes stream for the PDF with provisional image 
+        redactions applied
         """
         # Todo
         return file_bytes
@@ -197,10 +214,12 @@ class PDFProcessor(FileProcessor):
         pdf_text = self._extract_pdf_text(file_bytes)
         if not is_english_text(pdf_text):
             print(
-                "Language check: non-English or insufficient English content detected; skipping provisional redactions."
+                "Language check: non-English or insufficient English content "
+                "detected; skipping provisional redactions."
             )
             raise NonEnglishContentException(
-                "Detected non-English or insufficient English content in document; skipping provisional redactions."
+                "Detected non-English or insufficient English content in "
+                "document; skipping provisional redactions."
             )
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
@@ -218,7 +237,8 @@ class PDFProcessor(FileProcessor):
         for rule_to_apply in redaction_rules_to_apply:
             redaction_results.add(rule_to_apply.redact())
         text_redaction_results: Set[TextRedactionResult] = {
-            x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
+            x for x in redaction_results if issubclass(
+                x.__class__, TextRedactionResult)
         }
         image_redaction_results: Set[ImageRedactionResult] = {
             x
@@ -230,11 +250,12 @@ class PDFProcessor(FileProcessor):
         ).difference(image_redaction_results)
         if unapplied_redaction_results:
             raise UnprocessedRedactionResultException(
-                "The following redaction results were generated by the PDFProcessor, but there is no mechanism to process them: "
+                "The following redaction results were generated by the "
+                "PDFProcessor, but there is no mechanism to process them: "
                 f"{json.dumps(list(unapplied_redaction_results), indent=4)}"
             )
         # Apply redactions
-        ## Apply text redactions
+        # Apply text redactions
         text_redactions = [
             redaction_string
             for result in text_redaction_results
@@ -243,7 +264,7 @@ class PDFProcessor(FileProcessor):
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions
         )
-        ## Apply image redactions
+        # Apply image redactions
         image_redactions = [
             redaction_box
             for result in image_redaction_results
@@ -254,7 +275,8 @@ class PDFProcessor(FileProcessor):
         )
         return new_file_bytes
 
-    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def apply(
+        self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         print("Redacting PDF")
         pdf = pymupdf.open(stream=file_bytes)
         for page in pdf:
@@ -292,28 +314,36 @@ class FileProcessorFactory:
         invalid_types = {k: v for k, v in name_map.items() if len(v) > 1}
         if invalid_types:
             raise DuplicateFileProcessorNameException(
-                f"The following FileProcessor implementation classes had duplicate names: {json.dumps(invalid_types, indent=4)}"
+                f"The following FileProcessor implementation classes had "
+                "duplicate names: {json.dumps(invalid_types, indent=4)}"
             )
         return {k: v[0] for k, v in name_map.items()}
 
     @classmethod
     def get(cls, processor_type: str) -> Type[FileProcessor]:
         """
-        Return the FileProcessor class that is identified by the provided type name
+        Return the FileProcessor class that is identified by the provided type 
+        name
 
-        :param str processor_type: The FileProcessor type name (which aligns with the get_name method of the FileProcessor)
-        :return Type[FileProcessor]: The file processor class identified by the provided processor_type
-        :raises FileProcessorNameNotFoundException: If the given processor_type is not found
-        :raises DuplicateFileProcessorNameException: If there is a problem with the underlying config defined in FileProcessorFactory.PROCESSORS
+        :param str processor_type: The FileProcessor type name (which aligns 
+        with the get_name method of the FileProcessor)
+        :return Type[FileProcessor]: The file processor class identified by the 
+        provided processor_type
+        :raises FileProcessorNameNotFoundException: If the given processor_type 
+        is not found
+        :raises DuplicateFileProcessorNameException: If there is a problem with 
+        the underlying config defined in FileProcessorFactory.PROCESSORS
         """
         if not isinstance(processor_type, str):
             raise ValueError(
-                f"FileProcessorFactory.get expected a str, but got a {type(processor_type)}"
+                "FileProcessorFactory.get expected a str, but got a "
+                f"'{type(processor_type)}'"
             )
         name_map = cls._validate_processor_types()
         if processor_type not in name_map:
             raise FileProcessorNameNotFoundException(
-                f"No file processor could be found for processor type '{processor_type}'"
+                "No file processor could be found for processor type "
+                f"'{processor_type}'"
             )
         return name_map[processor_type]
 
@@ -324,7 +354,8 @@ class FileProcessorFactory:
 
 class ConfigProcessor:
     """
-    Utility class that provides useful functions for validating and cleaning json config for the redaction process
+    Utility class that provides useful functions for validating and cleaning 
+    json config for the redaction process
     """
 
     @classmethod
@@ -332,10 +363,12 @@ class ConfigProcessor:
         cls, redaction_config: List[Dict[str, Any]]
     ):
         """
-        Validate that all of the given config is valid and convert the config into RedactionConfig objects
+        Validate that all of the given config is valid and convert the config 
+        into RedactionConfig objects
 
         :param List[Dict[str, Any]] redaction_config: The config to validate
-        :return List[RedactionConfig]: The validated config with redaction_config converted into a list of RedactionConfig objects
+        :return List[RedactionConfig]: The validated config with redaction_config 
+        converted into a list of RedactionConfig objects
         """
         all_redactors = RedactorFactory.REDACTOR_TYPES
         redaction_config_name_map = {
@@ -356,11 +389,13 @@ class ConfigProcessor:
         ]
         if invalid_redaction_config:
             raise InvalidRedactionConfigException(
-                f"The following redaction config items have no associated redactor_type: {json.dumps(invalid_redaction_config, indent=4)}"
+                "The following redaction config items have no associated "
+                f"redactor_type: {json.dumps(invalid_redaction_config, indent=4)}"
             )
         return [
             cls.convert_to_redaction_config(
-                rule_config, redaction_config_name_map.get(rule_config["redactor_type"])
+                rule_config, redaction_config_name_map.get(
+                    rule_config["redactor_type"])
             )
             for rule_config in flattened_redaction_config
         ]
@@ -370,10 +405,12 @@ class ConfigProcessor:
         cls, config: Dict[str, Any], redaction_config_class: Type[RedactionConfig]
     ):
         """
-        Validate that the given config is valid for the given redaction config class
+        Validate that the given config is valid for the given redaction config 
+        class
 
         :param Dict[str, Any] config: The config to validate
-        :param Type[RedactionConfig] redaction_config_class: The redaction config schema to check against
+        :param Type[RedactionConfig] redaction_config_class: The redaction 
+        config schema to check against
         """
         config_inst = redaction_config_class(**config)
         redaction_config_class.model_validate(config_inst)
@@ -386,11 +423,15 @@ class ConfigProcessor:
         file_processor_class: Type[FileProcessor],
     ):
         """
-        Remove the RedactionConfig items that are not applicable to the given FileProcessor class
+        Remove the RedactionConfig items that are not applicable to the given 
+        FileProcessor class
 
-        :param List[RedactionConfig] redaction_config: A list of RedactionConfig objects
-        :param Type[FileProcessor] file_processor_class: The file processor the config will be fed into
-        :return List[RedactionConfig]: The elements of the redaction_config that are applicable to the file_processor_class
+        :param List[RedactionConfig] redaction_config: A list of RedactionConfig
+        objects
+        :param Type[FileProcessor] file_processor_class: The file processor the 
+        config will be fed into
+        :return List[RedactionConfig]: The elements of the redaction_config that
+        are applicable to the file_processor_class
         """
         applicable_redactors = file_processor_class.get_applicable_redactors()
         applicable_config_classes = tuple(
@@ -408,10 +449,12 @@ class ConfigProcessor:
         cls, config: Dict[str, Any], file_processor_class: Type[FileProcessor]
     ):
         """
-        Validate the given config and filter it down to only contain the config that is applicable to the given file processor class
+        Validate the given config and filter it down to only contain the config 
+        that is applicable to the given file processor class
 
         :param Dict[str, Any] config: The json config to validate and filter
-        :param Type[FileProcessor] file_processor_class: The file processor class that the config is for
+        :param Type[FileProcessor] file_processor_class: The file processor 
+        class that the config is for
         :returns Dict[str, Any]: The filtered config
         """
         config_copy = deepcopy(config)
@@ -431,11 +474,13 @@ class ConfigProcessor:
         """
         Read the given yaml config file as a json object
 
-        :param str config_name: The config file name under `config/` to load. Default is `default`
+        :param str config_name: The config file name under `config/` to load. 
+        Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
         with open(
-            os.path.join("redactor", "core", "config", f"{config_name}.yaml"), "r"
+            os.path.join("redactor", "core", "config",
+                         f"{config_name}.yaml"), "r"
         ) as f:
             config = safe_load(f)
         return config

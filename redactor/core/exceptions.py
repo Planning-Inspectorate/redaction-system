@@ -1,6 +1,7 @@
 class InvalidRedactionConfigException(Exception):  # pragma: no cover
     pass
 
+
 class UnprocessedRedactionResultException(Exception):  # pragma: no cover
     pass
 
@@ -14,7 +15,8 @@ class FileProcessorNameNotFoundException(Exception):  # pragma: no cover
 
 
 class NonEnglishContentException(Exception):  # pragma: no cover
-    """Raised when a document is detected as non-English or insufficient English content"""
+    """Raised when a document is detected as non-English or insufficient 
+    English content"""
     pass
 
 

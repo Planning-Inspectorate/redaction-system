@@ -44,4 +44,3 @@ class LLMUtil:
             response_format=result_format,
         )
         return completion
-

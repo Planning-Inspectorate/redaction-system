@@ -11,14 +11,17 @@ from redactor.core.exceptions import NonEnglishContentException
 
 
 """
-Temporary script that allows the redaction process to be triggered via the terminal for a PDF
+Temporary script that allows the redaction process to be triggered via the 
+terminal for a PDF
 
 # Usage
 `python3 redactor/core/main.py --f "path/to/file.pdf`
 
 # Notes
-- The pdf you create should ideally be placed under `./samples/` so that it is not committed to GitHub
-- The process wil automatically figure out whether or not to apply provisional redactions or final redactions based on the file name
+- The pdf you create should ideally be placed under `./samples/` so that it is 
+  not committed to GitHub
+- The process wil automatically figure out whether or not to apply provisional 
+  redactions or final redactions based on the file name
 """
 
 
@@ -59,7 +62,9 @@ def main(
         file_name_without_extension = file_name.removesuffix(f".{extension}")
     else:
         raise ValueError(
-            f"File extension of the raw file does not match the file name. The raw file had MIME type {file_format}, which should be a .{extension} extension"
+            "File extension of the raw file does not match the file name. " 
+            f"The raw file had MIME type {file_format}, which should be a "
+            f".{extension} extension"
         )
     base_file_name = (
         file_name_without_extension.removesuffix("_REDACTED")
@@ -83,10 +88,12 @@ def main(
     else:
         print("Applying provisional redactions")
         try:
-            processed_file_bytes = apply_provisional_redactions(config, file_bytes)
+            processed_file_bytes = apply_provisional_redactions(
+                config, file_bytes)
         except NonEnglishContentException as e:
             print(str(e))
-            print("No provisional file will be generated for non-English content.")
+            print(
+                "No provisional file will be generated for non-English content.")
             return
         with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
@@ -96,7 +103,8 @@ if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
+    parser.add_argument(
+        "-f", "--file_to_redact", help="Path to the file to redact")
     args = parser.parse_args()
     file_to_redact = args.file_to_redact
     with open(file_to_redact, "rb") as f:
