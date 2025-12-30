@@ -113,11 +113,7 @@ class LoggingUtil(metaclass=Singleton):
         self.logger.exception(f"{self.job_id} : {ex}")
 
 
-def log_to_appins(_func=None, 
-                  *, 
-                  namespace: str = "redactor_logs",
-                  log_file: str = None,
-                  log_level: int = logging.INFO):
+def log_to_appins(_func=None, *args, **kwargs):
 
     """
     Decorator that adds extra logging to function calls
@@ -141,7 +137,7 @@ def log_to_appins(_func=None,
     def decorator_log(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            logger =  LoggingUtil()
+            logger = LoggingUtil()
 
             args_repr = [repr(a) for a in args]
             kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]

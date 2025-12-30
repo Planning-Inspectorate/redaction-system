@@ -1,13 +1,16 @@
+import magic
+import argparse
+
+from typing import Dict, Any, Type
+from io import BytesIO
+
+from redactor.core.exceptions import NonEnglishContentException
 from redactor.core.file_processor import (
     FileProcessorFactory,
     FileProcessor,
 )
 from redactor.core.file_processor import ConfigProcessor
-import argparse
-from typing import Dict, Any, Type
-from io import BytesIO
-import magic
-from redactor.core.exceptions import NonEnglishContentException
+from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 
 
 """
@@ -53,6 +56,7 @@ def apply_final_redactions(
     return processed_file_bytes
 
 
+@log_to_appins
 def main(
     file_name: str, file_bytes: BytesIO, config_name: str = None
 ):  # pragma: no cover
@@ -77,22 +81,22 @@ def main(
         config = ConfigProcessor.load_config()
     config["file_format"] = extension
     if file_name.endswith(f"REDACTED.{extension}"):
-        print("Nothing to redact - the file is already redacted")
+        LoggingUtil.log_info("Nothing to redact - the file is already redacted")
     elif file_name.endswith(f"PROVISIONAL.{extension}") or file_name.endswith(
         f"CURATED.{extension}"
     ):
-        print("Applying final redactions")
+        LoggingUtil.log_info("Applying final redactions")
         processed_file_bytes = apply_final_redactions(config, file_bytes)
         with open(f"{base_file_name}_REDACTED.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
     else:
-        print("Applying provisional redactions")
+        LoggingUtil.log_info("Applying provisional redactions")
         try:
             processed_file_bytes = apply_provisional_redactions(
                 config, file_bytes)
         except NonEnglishContentException as e:
-            print(str(e))
-            print(
+            LoggingUtil.log_info(str(e))
+            LoggingUtil.log_info(
                 "No provisional file will be generated for non-English content.")
             return
         with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:

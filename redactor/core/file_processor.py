@@ -163,15 +163,15 @@ class PDFProcessor(FileProcessor):
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
         for word_to_redact in text_to_redact:
             for page in pdf:
-                print("searchin for word: ", word_to_redact)
+                LoggingUtil.log_info("searchin for word: " + word_to_redact)
                 text_instances = page.search_for(word_to_redact)
                 for inst in text_instances:
                     instances_to_redact.append((page, inst, word_to_redact))
-        print(f"    Applying {len(instances_to_redact)} redaction highlights")
+        LoggingUtil.log_info(f"    Applying {len(instances_to_redact)} redaction highlights")
         # Apply provisional redaction highlights for the human-in-the-loop to review
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
-            print(f"        Applying highlight {i} for word {redaction_inst}")
+            LoggingUtil.log_info(f"        Applying highlight {i} for word {redaction_inst}")
             try:
                 # Only redact text that is fully matched - do not apply partial redactions
                 actual_text_at_rect = page.get_textbox(rect)
@@ -181,13 +181,13 @@ class PDFProcessor(FileProcessor):
                     highlight_annotation.set_info(
                         {"content": "REDACTION CANDIDATE"})
                 else:
-                    print(
+                    LoggingUtil.log_info(
                         "Partial redaction found when attempting to redact "
                         f"'{word}'. The surroundig box contains "
                         f"'{actual_text_at_rect}'. Skipping"
                     )
             except Exception:
-                print(
+                LoggingUtil.log_info(
                     f"        Failed to add highlight for word {word}, at "
                     f"location '{rect}'"
                 )
@@ -212,10 +212,11 @@ class PDFProcessor(FileProcessor):
         # Todo
         return file_bytes
 
+    @log_to_appins
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
         if not is_english_text(pdf_text):
-            print(
+            LoggingUtil.log_info(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
@@ -277,9 +278,10 @@ class PDFProcessor(FileProcessor):
         )
         return new_file_bytes
 
+    @log_to_appins
     def apply(
         self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
-        print("Redacting PDF")
+        LoggingUtil.log_info("Redacting PDF")
         pdf = pymupdf.open(stream=file_bytes)
         for page in pdf:
             page_annotations = page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)

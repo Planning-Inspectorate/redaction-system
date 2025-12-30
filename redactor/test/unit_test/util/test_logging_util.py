@@ -40,6 +40,7 @@ def test_logging_util__init_no_appins_with_logfile(mock_env_get):
     assert isinstance(logging_util_inst.logger, Logger)
     assert logging_util_inst.log_file == log_file
 
+
 @patch("redactor.core.util.logging_util.configure_azure_monitor")
 def get_new_logging_instance(mock_configure_azure_monitor):
     with patch.object(
@@ -102,6 +103,7 @@ def test_log_to_appins(mock_init, mock_log_info):
         f"{', '.join(args_repr + kwargs_repr)}"
     )
     assert resp == "Hello world"
+
 
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
