@@ -2,6 +2,49 @@
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "redactor"
+version = "0.0.1"
+description = "Redaction System"
+readme = "readme.md"
+requires-python = ">=3.13"
+dependencies = [
+    "azure-identity",
+    "azure-storage-blob",
+    "langdetect",
+    "langchain",
+    "langchain-text-splitters",
+    "openai",
+    "pydantic>=2.0.0",
+    "Pillow",
+    "PyYAML",
+    "python-magic-bin==0.4.14; platform_system == 'Windows'",
+    "python-magic==0.4.27; platform_system != 'Windows'",
+    "pypdf>=4.0.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3.13",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "mock",
+    "myst-parser",
+    "pre-commit",
+    "pytest",
+    "pytest-xdist",
+    "pytest-cov",
+    "ruff",
+    "toml",
+    "unidecode",
+]
+
+[tool.setuptools.packages.find]
+where = ["redactor"]
+
 # `coverage` configurations
 [tool.coverage.run]
 source = [
@@ -25,11 +68,11 @@ addopts = [
 ]
 doctest_optionflags = "NORMALIZE_WHITESPACE"
 testpaths = [
-    "./tests"
+    "redactor/test"
 ]
 
 # `bandit' configurations
 [tool.bandit]
-exclude_dirs = ["tests", "docs"]
+exclude_dirs = ["redactor/test"]
 skips = []
     
