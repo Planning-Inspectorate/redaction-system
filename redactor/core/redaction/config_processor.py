@@ -11,9 +11,10 @@ from redactor.core.redaction.exceptions import InvalidRedactionConfigException
 from redactor.core.redaction.config import RedactionConfig
 from redactor.core.redaction.file_processor import FileProcessor
 
+
 class ConfigProcessor:
     """
-    Utility class that provides useful functions for validating and cleaning 
+    Utility class that provides useful functions for validating and cleaning
     json config for the redaction process
     """
 
@@ -22,11 +23,11 @@ class ConfigProcessor:
         cls, redaction_config: List[Dict[str, Any]]
     ):
         """
-        Validate that all of the given config is valid and convert the config 
+        Validate that all of the given config is valid and convert the config
         into RedactionConfig objects
 
         :param List[Dict[str, Any]] redaction_config: The config to validate
-        :return List[RedactionConfig]: The validated config with redaction_config 
+        :return List[RedactionConfig]: The validated config with redaction_config
         converted into a list of RedactionConfig objects
         """
         all_redactors = RedactorFactory.REDACTOR_TYPES
@@ -34,7 +35,7 @@ class ConfigProcessor:
             redactor_class.get_name(): redactor_class.get_redaction_config_class()
             for redactor_class in all_redactors
         }
-        # Validate the redaction config, and convert the config into 
+        # Validate the redaction config, and convert the config into
         # RedactionConfig objects
         flattened_redaction_config = [
             {"redactor_type": rule_config.get("redactor_type", None)}
@@ -65,11 +66,11 @@ class ConfigProcessor:
         cls, config: Dict[str, Any], redaction_config_class: Type[RedactionConfig]
     ):
         """
-        Validate that the given config is valid for the given redaction config 
+        Validate that the given config is valid for the given redaction config
         class
 
         :param Dict[str, Any] config: The config to validate
-        :param Type[RedactionConfig] redaction_config_class: The redaction 
+        :param Type[RedactionConfig] redaction_config_class: The redaction
         config schema to check against
         """
         config_inst = redaction_config_class(**config)
@@ -83,12 +84,12 @@ class ConfigProcessor:
         file_processor_class: Type[FileProcessor],
     ):
         """
-        Remove the RedactionConfig items that are not applicable to the given 
+        Remove the RedactionConfig items that are not applicable to the given
         FileProcessor class
 
         :param List[RedactionConfig] redaction_config: A list of RedactionConfig
         objects
-        :param Type[FileProcessor] file_processor_class: The file processor the 
+        :param Type[FileProcessor] file_processor_class: The file processor the
         config will be fed into
         :return List[RedactionConfig]: The elements of the redaction_config that
         are applicable to the file_processor_class
@@ -109,21 +110,21 @@ class ConfigProcessor:
         cls, config: Dict[str, Any], file_processor_class: Type[FileProcessor]
     ):
         """
-        Validate the given config and filter it down to only contain the config 
+        Validate the given config and filter it down to only contain the config
         that is applicable to the given file processor class
 
         :param Dict[str, Any] config: The json config to validate and filter
-        :param Type[FileProcessor] file_processor_class: The file processor 
+        :param Type[FileProcessor] file_processor_class: The file processor
         class that the config is for
         :returns Dict[str, Any]: The filtered config
         """
         config_copy = deepcopy(config)
-        # Validate the redaction config, and convert the config into 
+        # Validate the redaction config, and convert the config into
         # RedactionConfig objects
         formatted_redaction_config = cls.validate_and_parse_redaction_config(
             config_copy["redaction_rules"]
         )
-        # Drop the config elements that are not applicable for the given file 
+        # Drop the config elements that are not applicable for the given file
         # processor
         filtered_redaction_config = cls.filter_redaction_config(
             formatted_redaction_config, file_processor_class
@@ -136,12 +137,11 @@ class ConfigProcessor:
         """
         Read the given yaml config file as a json object
 
-        :param str config_name: The config file name under `config/` to load. 
+        :param str config_name: The config file name under `config/` to load.
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        with open(
-            os.path.join("redactor","config", f"{config_name}.yaml"), "r"
-        ) as f:
+        config_path = os.path.join("redactor", "config", f"{config_name}.yaml")
+        with open(config_path, "r") as f:
             config = safe_load(f)
         return config

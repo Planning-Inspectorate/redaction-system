@@ -2,6 +2,7 @@ from typing import Tuple
 from dataclasses import dataclass, field
 from PIL.Image import Image
 
+
 @dataclass(frozen=True)
 class RedactionResult:
     pass

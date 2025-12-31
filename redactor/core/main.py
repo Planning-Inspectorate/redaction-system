@@ -62,7 +62,7 @@ def main(
         file_name_without_extension = file_name.removesuffix(f".{extension}")
     else:
         raise ValueError(
-            "File extension of the raw file does not match the file name. " 
+            "File extension of the raw file does not match the file name. "
             f"The raw file had MIME type {file_format}, which should be a "
             f".{extension} extension"
         )
@@ -88,12 +88,10 @@ def main(
     else:
         print("Applying provisional redactions")
         try:
-            processed_file_bytes = apply_provisional_redactions(
-                config, file_bytes)
+            processed_file_bytes = apply_provisional_redactions(config, file_bytes)
         except NonEnglishContentException as e:
             print(str(e))
-            print(
-                "No provisional file will be generated for non-English content.")
+            print("No provisional file will be generated for non-English content.")
             return
         with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
@@ -103,8 +101,7 @@ if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument(
-        "-f", "--file_to_redact", help="Path to the file to redact")
+    parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
     args = parser.parse_args()
     file_to_redact = args.file_to_redact
     with open(file_to_redact, "rb") as f:

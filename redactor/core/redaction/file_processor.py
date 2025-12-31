@@ -39,7 +39,7 @@ class FileProcessor(ABC):
     @abstractmethod
     def get_name(cls) -> str:
         """
-        :return str: A unique name for the FileProcessor implementation class. 
+        :return str: A unique name for the FileProcessor implementation class.
         This should correspond to a subtype of a mime type returned by libmagic
         """
         pass
@@ -50,7 +50,7 @@ class FileProcessor(ABC):
         Add provisional redactions to the provided document
 
         :param BytesIO file_bytes: The file content as a bytes stream
-        :param Dict[str, Any] redaction_config: The redaction config to apply 
+        :param Dict[str, Any] redaction_config: The redaction config to apply
         to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
@@ -62,7 +62,7 @@ class FileProcessor(ABC):
         Convert provisional redactions to real redactions
 
         :param BytesIO file_bytes: The file content as a bytes stream
-        :param Dict[str, Any] redaction_config: The redaction config to apply 
+        :param Dict[str, Any] redaction_config: The redaction config to apply
         to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
@@ -100,15 +100,14 @@ class PDFProcessor(FileProcessor):
         return page_text
 
     @classmethod
-    def _is_full_text_being_redacted(
-        cls, text_to_redact: str, text_found_at_rect: str):
+    def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
         """
         Check if the text_to_redact is a full redaction of text_found_at_rect
 
         :param str text_to_redact: The redaction text candidate
-        :param str text_found_at_rect: The full word found at the redaction 
+        :param str text_found_at_rect: The full word found at the redaction
         candidate's bounding box (on the page)
-        :return bool: True if text_to_redact is a full redaction of 
+        :return bool: True if text_to_redact is a full redaction of
         text_found_at_rect (i.e. should the text be redacted)
         """
 
@@ -144,13 +143,13 @@ class PDFProcessor(FileProcessor):
         self, file_bytes: BytesIO, text_to_redact: List[str]
     ):
         """
-        Redact the given list of redaction strings as provisional redactions in 
+        Redact the given list of redaction strings as provisional redactions in
         the PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param List[str] text_to_redact: The text strings to redact in the 
+        :param List[str] text_to_redact: The text strings to redact in the
         document
-        :return BytesIO: Bytes stream for the PDF with provisional text 
+        :return BytesIO: Bytes stream for the PDF with provisional text
         redactions applied
         """
         pdf = pymupdf.open(stream=file_bytes)
@@ -172,8 +171,7 @@ class PDFProcessor(FileProcessor):
                 actual_text_at_rect = " ".join(actual_text_at_rect.split())
                 if self._is_full_text_being_redacted(word, actual_text_at_rect):
                     highlight_annotation = page.add_highlight_annot(rect)
-                    highlight_annotation.set_info(
-                        {"content": "REDACTION CANDIDATE"})
+                    highlight_annotation.set_info({"content": "REDACTION CANDIDATE"})
                 else:
                     print(
                         "Partial redaction found when attempting to redact "
@@ -194,13 +192,13 @@ class PDFProcessor(FileProcessor):
         self, file_bytes: BytesIO, boxes_to_redact: List[Tuple[int, int, int, int]]
     ):
         """
-        Redact the given list of bounding boxes as provisional redactions in the 
+        Redact the given list of bounding boxes as provisional redactions in the
         PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param List[Tuple[int, int, int, int]] boxes_to_redact: The bounding 
+        :param List[Tuple[int, int, int, int]] boxes_to_redact: The bounding
         boxes to redact in the document
-        :return BytesIO: Bytes stream for the PDF with provisional image 
+        :return BytesIO: Bytes stream for the PDF with provisional image
         redactions applied
         """
         # Todo
@@ -233,8 +231,7 @@ class PDFProcessor(FileProcessor):
         for rule_to_apply in redaction_rules_to_apply:
             redaction_results.add(rule_to_apply.redact())
         text_redaction_results: Set[TextRedactionResult] = {
-            x for x in redaction_results if issubclass(
-                x.__class__, TextRedactionResult)
+            x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         }
         image_redaction_results: Set[ImageRedactionResult] = {
             x
@@ -271,8 +268,7 @@ class PDFProcessor(FileProcessor):
         )
         return new_file_bytes
 
-    def apply(
-        self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         print("Redacting PDF")
         pdf = pymupdf.open(stream=file_bytes)
         for page in pdf:
@@ -318,16 +314,16 @@ class FileProcessorFactory:
     @classmethod
     def get(cls, processor_type: str) -> Type[FileProcessor]:
         """
-        Return the FileProcessor class that is identified by the provided type 
+        Return the FileProcessor class that is identified by the provided type
         name
 
-        :param str processor_type: The FileProcessor type name (which aligns 
+        :param str processor_type: The FileProcessor type name (which aligns
         with the get_name method of the FileProcessor)
-        :return Type[FileProcessor]: The file processor class identified by the 
+        :return Type[FileProcessor]: The file processor class identified by the
         provided processor_type
-        :raises FileProcessorNameNotFoundException: If the given processor_type 
+        :raises FileProcessorNameNotFoundException: If the given processor_type
         is not found
-        :raises DuplicateFileProcessorNameException: If there is a problem with 
+        :raises DuplicateFileProcessorNameException: If there is a problem with
         the underlying config defined in FileProcessorFactory.PROCESSORS
         """
         if not isinstance(processor_type, str):
@@ -346,4 +342,3 @@ class FileProcessorFactory:
     @classmethod
     def get_all(cls) -> Set[Type[FileProcessor]]:
         return cls.PROCESSORS
-
