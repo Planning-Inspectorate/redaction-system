@@ -12,21 +12,21 @@ from yaml import safe_load
 from unidecode import unidecode
 from unicodedata import category
 
-from redactor.core.redactor import (
+from redactor.core.redaction.redactor import (
     Redactor,
     TextRedactor,
     ImageRedactor,
     RedactorFactory,
 )
-from redactor.core.exceptions import (
+from redactor.core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
     FileProcessorNameNotFoundException,
     UnprocessedRedactionResultException,
     NonEnglishContentException,
     InvalidRedactionConfigException,
 )
-from redactor.core.config import RedactionConfig
-from redactor.core.result import (
+from redactor.core.redaction.config import RedactionConfig
+from redactor.core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
     ImageRedactionResult,

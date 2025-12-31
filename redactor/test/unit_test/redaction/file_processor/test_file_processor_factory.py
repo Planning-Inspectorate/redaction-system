@@ -1,4 +1,4 @@
-from redactor.core.file_processor import (
+from redactor.core.redaction.file_processor import (
     FileProcessor,
     FileProcessorFactory,
 )

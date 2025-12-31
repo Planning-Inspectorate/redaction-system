@@ -1,6 +1,6 @@
-from redactor.core.config import RedactionConfig
-from redactor.core.file_processor import FileProcessor, ConfigProcessor
-from redactor.core.redactor import (
+from redactor.core.redaction.config import RedactionConfig
+from redactor.core.redaction.file_processor import FileProcessor, ConfigProcessor
+from redactor.core.redaction.redactor import (
     Redactor, 
     RedactorFactory,
 )

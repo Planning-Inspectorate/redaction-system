@@ -8,22 +8,22 @@ from langchain_core.prompts import PromptTemplate
 
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
-from redactor.core.config import (
+from redactor.core.redaction.config import (
     RedactionConfig,
     TextRedactionConfig,
     LLMTextRedactionConfig,
     ImageRedactionConfig,
 )
-from redactor.core.result import (
+from redactor.core.redaction.result import (
     LLMTextRedactionResult,
     ImageRedactionResult,
     RedactionResult,
 )
-from redactor.core.exceptions import (
+from redactor.core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
 from redactor.core.util.llm_util import LLMUtil
-from redactor.core.exceptions import (
+from redactor.core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
 )
