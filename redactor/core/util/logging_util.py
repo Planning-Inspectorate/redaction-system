@@ -1,7 +1,8 @@
 import os
 import logging
 import functools
-import uuid
+
+from uuid import uuid4, UUID
 from dotenv import load_dotenv
 
 from azure.monitor.opentelemetry import configure_azure_monitor
@@ -41,7 +42,7 @@ class LoggingUtil(metaclass=Singleton):
     Logging utility class that provides functionality to send logs to app insights
     """
 
-    job_id: uuid.UUID
+    job_id: UUID
     logger: logging.Logger
     log_file: str = None
     namespace: str
@@ -55,7 +56,7 @@ class LoggingUtil(metaclass=Singleton):
         __init__ cannot be used because it is always called by __new__, even if 
         cls._INSTANCE is not None
         """
-        self.job_id = uuid.uuid4()
+        self.job_id = uuid4()
         self.namespace = kwargs.pop("namespace", "redactor_logs")
         self.log_file = kwargs.pop("log_file", None)
         self.log_level = kwargs.pop("log_level", logging.INFO)
