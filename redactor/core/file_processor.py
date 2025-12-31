@@ -25,8 +25,8 @@ from redactor.core.exceptions import (
     NonEnglishContentException,
     InvalidRedactionConfigException,
 )
-from redactor.core.config import (
-    RedactionConfig,
+from redactor.core.config import RedactionConfig
+from redactor.core.result import (
     RedactionResult,
     TextRedactionResult,
     ImageRedactionResult,
@@ -375,7 +375,8 @@ class ConfigProcessor:
             redactor_class.get_name(): redactor_class.get_redaction_config_class()
             for redactor_class in all_redactors
         }
-        # Validate the redaction config, and convert the config into RedactionConfig objects
+        # Validate the redaction config, and convert the config into 
+        # RedactionConfig objects
         flattened_redaction_config = [
             {"redactor_type": rule_config.get("redactor_type", None)}
             | rule_config.get("properties", dict())
@@ -458,11 +459,13 @@ class ConfigProcessor:
         :returns Dict[str, Any]: The filtered config
         """
         config_copy = deepcopy(config)
-        # Validate the redaction config, and convert the config into RedactionConfig objects
+        # Validate the redaction config, and convert the config into 
+        # RedactionConfig objects
         formatted_redaction_config = cls.validate_and_parse_redaction_config(
             config_copy["redaction_rules"]
         )
-        # Drop the config elements that are not applicable for the given file processor
+        # Drop the config elements that are not applicable for the given file 
+        # processor
         filtered_redaction_config = cls.filter_redaction_config(
             formatted_redaction_config, file_processor_class
         )

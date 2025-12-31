@@ -13,8 +13,10 @@ from redactor.core.config import (
     RedactionResult,
     TextRedactionConfig,
     LLMTextRedactionConfig,
-    LLMTextRedactionResult,
     ImageRedactionConfig,
+)
+from redactor.core.result import (
+    LLMTextRedactionResult,
     ImageRedactionResult,
 )
 from redactor.core.exceptions import (
