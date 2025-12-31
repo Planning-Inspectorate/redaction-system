@@ -310,7 +310,7 @@ class FileProcessorFactory:
         invalid_types = {k: v for k, v in name_map.items() if len(v) > 1}
         if invalid_types:
             raise DuplicateFileProcessorNameException(
-                f"The following FileProcessor implementation classes had "
+                "The following FileProcessor implementation classes had "
                 "duplicate names: {json.dumps(invalid_types, indent=4)}"
             )
         return {k: v[0] for k, v in name_map.items()}
