@@ -2,7 +2,7 @@ from redactor.core.redaction.file_processor import (
     FileProcessorFactory,
     FileProcessor,
 )
-from redactor.core.redaction.file_processor import ConfigProcessor
+from redactor.core.redaction.config_processor import ConfigProcessor
 import argparse
 from typing import Dict, Any, Type
 from io import BytesIO

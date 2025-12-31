@@ -1,5 +1,6 @@
 from redactor.core.redaction.config import LLMTextRedactionConfig
-from redactor.core.redaction.file_processor import PDFProcessor, ConfigProcessor
+from redactor.core.redaction.file_processor import PDFProcessor
+from redactor.core.redaction.config_processor import ConfigProcessor
 
 
 def test__config_processor__process_config():
