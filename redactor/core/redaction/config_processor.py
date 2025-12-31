@@ -55,8 +55,7 @@ class ConfigProcessor:
             )
         return [
             cls.convert_to_redaction_config(
-                rule_config, redaction_config_name_map.get(
-                    rule_config["redactor_type"])
+                rule_config, redaction_config_name_map.get(rule_config["redactor_type"])
             )
             for rule_config in flattened_redaction_config
         ]
