@@ -10,7 +10,6 @@ from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
 from redactor.core.config import (
     RedactionConfig,
-    RedactionResult,
     TextRedactionConfig,
     LLMTextRedactionConfig,
     ImageRedactionConfig,
@@ -18,6 +17,7 @@ from redactor.core.config import (
 from redactor.core.result import (
     LLMTextRedactionResult,
     ImageRedactionResult,
+    RedactionResult,
 )
 from redactor.core.exceptions import (
     IncorrectRedactionConfigClassException,
