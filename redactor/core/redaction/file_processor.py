@@ -311,7 +311,7 @@ class FileProcessorFactory:
         if invalid_types:
             raise DuplicateFileProcessorNameException(
                 "The following FileProcessor implementation classes had "
-                "duplicate names: {json.dumps(invalid_types, indent=4)}"
+                f"duplicate names: {json.dumps(invalid_types, indent=4)}"
             )
         return {k: v[0] for k, v in name_map.items()}
 
