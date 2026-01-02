@@ -3,7 +3,7 @@ from unittest.mock import patch
 from logging import Logger, getLogger
 
 from redactor.core.util.logging_util import (
-    LoggingUtil, Singleton, configure_azure_monitor, log_to_appins
+    LoggingUtil, Singleton, log_to_appins
 )
 
 @patch.object(LoggingUtil, "__init__", return_value=None)
@@ -14,7 +14,7 @@ def test_logging_util_is_a_singleton(mock_init):
     LoggingUtil.__init__.assert_called_once()
 
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("uuid.uuid4", return_value="some_guid")
+@patch("redactor.core.util.logging_util.uuid4", return_value="some_guid")
 @patch("redactor.core.util.logging_util.configure_azure_monitor")
 def test_logging_util__init(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
     Singleton._INSTANCES = {}
@@ -33,10 +33,10 @@ def test_logging_util__init_no_appins_no_logfile(mock_env_get):
     )
 
 @patch("os.environ.get", return_value=None)
-def test_logging_util__init_no_appins_with_logfile(mock_env_get):
+def test_logging_util__init_no_appins_with_logfile(mock_env_get, tmp_path):
     Singleton._INSTANCES = {}
-    log_file = "test_log.log"
-    logging_util_inst = LoggingUtil(log_file=log_file)
+    log_file = f"{tmp_path}/test_log.log"
+    logging_util_inst = LoggingUtil(log_file=str(log_file))
     assert isinstance(logging_util_inst.logger, Logger)
     assert logging_util_inst.log_file == log_file
 
