@@ -1,5 +1,5 @@
-from redactor.core.redaction.file_processor import (
-    FileProcessor,
+from redactor.core.redaction.file_processor.file_processor import FileProcessor
+from redactor.core.redaction.file_processor.file_processor_factory import (
     FileProcessorFactory,
 )
 import pytest
