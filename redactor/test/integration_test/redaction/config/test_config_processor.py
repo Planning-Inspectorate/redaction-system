@@ -1,12 +1,8 @@
-from redactor.core.redaction.config.config_processor import ConfigProcessor
-from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
-from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
+from redactor.core.redaction.config_processor import ConfigProcessor
+from redactor.core.redaction.file_processor import PDFProcessor
+from redactor.core.redaction.config import (
     LLMTextRedactionConfig,
-)
-from redactor.core.redaction.config.redaction_config.image_redaction_config import (
     ImageRedactionConfig,
-)
-from redactor.core.redaction.config.redaction_config.image_llm_text_redaction_config import (
     ImageLLMTextRedactionConfig,
 )
 

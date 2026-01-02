@@ -1,9 +1,9 @@
-from redactor.core.redaction.redactor.image_redactor import ImageRedactor
-from redactor.core.util.ai.azure_vision_util import AzureVisionUtil
-from redactor.core.redaction.config.redaction_config.image_redaction_config import (
+from redactor.core.redaction.redactor import ImageRedactor
+from redactor.core.util.azure_vision_util import AzureVisionUtil
+from redactor.core.redaction.config import (
     ImageRedactionConfig,
 )
-from redactor.core.redaction.config.redaction_result.image_redaction_result import (
+from redactor.core.redaction.result import (
     ImageRedactionResult,
 )
 from PIL import Image

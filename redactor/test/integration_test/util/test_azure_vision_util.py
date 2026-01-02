@@ -1,4 +1,4 @@
-from redactor.core.util.ai.azure_vision_util import AzureVisionUtil
+from redactor.core.util.azure_vision_util import AzureVisionUtil
 from PIL import Image
 from io import BytesIO
 

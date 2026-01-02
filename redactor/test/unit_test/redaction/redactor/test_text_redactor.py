@@ -1,5 +1,5 @@
-from redactor.core.redaction.redactor.text_redactor import TextRedactor
-from redactor.core.redaction.config.redaction_config.redaction_config import (
+from redactor.core.redaction.redactor import TextRedactor
+from redactor.core.redaction.config import (
     RedactionConfig,
 )
 
