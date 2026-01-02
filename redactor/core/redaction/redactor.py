@@ -100,6 +100,13 @@ class LLMRedactionResultFormat(BaseModel):
     redaction_strings: list[str]
 
 
+OUTPUT_FORMAT_STRING = (
+    "<OutputFormat> You respond in JSON format. You return the "
+    "successfully extracted terms from the text in JSON list named "
+    "\"terms\". List them as they appear in the text. "
+    "</OutputFormat>"
+)
+
 class LLMTextRedactor(TextRedactor):
     """
     Class that performs text redaction using an LLM
@@ -119,35 +126,50 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextRedactionResult:
+    def create_system_prompt(
+        self, output_format_string: str = OUTPUT_FORMAT_STRING
+    ) -> str:
+        system_prompt = xml_format(self.config.system_prompt, "SystemRole")
+        joined_redaction_rules = xml_format(self.config.redaction_rules, "Terms")
+
+        # Add any constraints to the System prompt
+        if self.config.constraints:
+            joined_constraints = xml_format(self.config.constraints, "Constraints")
+        else: 
+            joined_constraints = ""
+
+        # Add the defined redaction rules to the System prompt
+        prompt_template_string = " ".join(
+            [system_prompt, joined_redaction_rules, output_format_string, joined_constraints]
+        )
+
+        system_prompt_template = PromptTemplate(
+            input_variables=["chunk"],
+            template=prompt_template_string,
+        )
+        return system_prompt_template.format()
+    
+    def redact(self, output_format_string: str = OUTPUT_FORMAT_STRING) -> LLMTextRedactionResult:
         # Initialisation
         self.config: LLMTextRedactionConfig
         model = self.config.model
-        system_prompt = f"<SystemRole> {self.config.system_prompt} </SystemRole>"
-        text_to_redact = self.config.text
-        redaction_rules = self.config.redaction_rules
-        formatted_redaction_rules = [f"<Terms> - {rule + '.' if not rule.endswith('.') else rule} </Terms>" for rule in redaction_rules]
-        joined_redaction_rules = " ".join(formatted_redaction_rules)
-        format_string = (
-            "<OutputFormat> You respond in JSON format. You return the successfully extracted terms from "
-            "the text in JSON list named \"redaction_strings\". List them as they appear in the text. </OutputFormat>"
-        )
-        # Add the defined redaction rules to the System prompt
-        system_prompt_template = PromptTemplate(
-            input_variables=["chunk"],
-            template=(f"{system_prompt} {joined_redaction_rules} {format_string}"),
-        )
-        system_prompt_formatted = system_prompt_template.format()
+
+        # Create system prompt from loaded config
+        system_prompt_formatted = self.create_system_prompt(output_format_string)
+
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
             input_variables=["chunk"], template="{chunk}"
         )
-        text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
+        text_chunks = self.TEXT_SPLITTER.split_text(self.config.text)
+
         # Identify redaction strings
         llm_util = LLMUtil(model)
         text_to_redact = []
+
         # Todo - add multithreading here
         responses: List[ParsedChatCompletion] = []
+
         for chunk in text_chunks:
             user_prompt_formatted = user_prompt_template.format(chunk=chunk)
             response = llm_util.invoke_chain(
@@ -159,13 +181,16 @@ class LLMTextRedactor(TextRedactor):
             redaction_strings = response_cleaned.redaction_strings
             responses.append(response)
             text_to_redact.extend(redaction_strings)
+
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
+
         # Collect metrics
         input_token_count = sum(x.usage.prompt_tokens for x in responses)
         output_token_count = sum(x.usage.completion_tokens for x in responses)
         total_token_count = input_token_count + output_token_count
-        return LLMTextRedactionResult(
+
+        text_redaction_result = LLMTextRedactionResult(
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(
                 input_token_count=input_token_count,
@@ -173,6 +198,16 @@ class LLMTextRedactor(TextRedactor):
                 total_token_count=total_token_count,
             ),
         )
+        return text_redaction_result
+
+def xml_format(input: str|list, format_string: str):
+    """Wrap the input string in XML tags of the given format string"""
+    if isinstance(input, list):
+        joined_input = " ".join(
+            [x + '.' if not x.endswith('.') else x for x in input]
+        )
+        return f"<{format_string}> {joined_input} </{format_string}>"
+    return f"<{format_string}> {input} </{format_string}>"
 
 class ImageRedactor(Redactor):  # pragma: no cover
     """

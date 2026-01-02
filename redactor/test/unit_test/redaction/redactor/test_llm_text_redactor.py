@@ -1,6 +1,7 @@
 from redactor.core.redaction.redactor import (
     LLMTextRedactor,
     LLMRedactionResultFormat,
+    OUTPUT_FORMAT_STRING
 )
 from redactor.core.redaction.config import (
     RedactionConfig,
@@ -48,6 +49,66 @@ def test__llm_text_redactor__get_redaction_config_class():
     """
     assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
 
+def test_llm_text_redactor__create_system_prompt():
+    """
+    - Given I have some llm redaction config
+    - When I call LLMTextRedactor.create_system_prompt
+    - Then the returned system prompt should be correctly formatted
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1-nano",
+        text="some text",
+        system_prompt="Some system prompt",
+        redaction_rules=[
+            "rule A",
+            "rule B",
+            "rule C",
+        ],
+        constraints=[
+            "constraint X",
+            "constraint Y",
+        ],
+    )
+    expected_system_prompt = (
+        "<SystemRole> Some system prompt </SystemRole> "
+        "<Terms> rule A. rule B. rule C. </Terms> "
+        f"{OUTPUT_FORMAT_STRING} "
+        "<Constraints> constraint X. constraint Y. </Constraints>"
+    )
+    llm_text_redactor = LLMTextRedactor(config)
+    llm_text_redactor.config = config
+    actual_system_prompt = llm_text_redactor.create_system_prompt()
+    assert expected_system_prompt == actual_system_prompt
+
+def test_llm_text_redactor__create_system_prompt_no_constraints():
+    """
+    - Given I have some llm redaction config
+    - When I call LLMTextRedactor.create_system_prompt with no constraints
+    - Then the returned system prompt should be correctly formatted
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1-nano",
+        text="some text",
+        system_prompt="Some system prompt",
+        redaction_rules=[
+            "rule A",
+            "rule B",
+            "rule C",
+        ],
+    )
+    expected_system_prompt = (
+        "<SystemRole> Some system prompt </SystemRole> "
+        "<Terms> rule A. rule B. rule C. </Terms> "
+        f"{OUTPUT_FORMAT_STRING} "
+    )
+    llm_text_redactor = LLMTextRedactor(config)
+    llm_text_redactor.config = config
+    actual_system_prompt = llm_text_redactor.create_system_prompt()
+    assert expected_system_prompt == actual_system_prompt
 
 def test__llm_text_redactor__redact():
     """
@@ -93,3 +154,4 @@ def test__llm_text_redactor__redact():
                 LLMTextRedactor.config = config
                 actual_result = LLMTextRedactor().redact()
                 assert expected_result == actual_result
+

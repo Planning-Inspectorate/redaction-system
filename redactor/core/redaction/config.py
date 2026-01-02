@@ -20,6 +20,8 @@ class LLMTextRedactionConfig(TextRedactionConfig):
     """The system prompt for the LLM"""
     redaction_rules: List[str]
     """A list of redaction rule strings to apply"""
+    constraints: List[str] = None
+    """A list of constraint strings to apply"""
 
 
 class ImageRedactionConfig(RedactionConfig):
