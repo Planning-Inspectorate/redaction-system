@@ -13,6 +13,7 @@ from redactor.core.redaction.config import (
     TextRedactionConfig,
     LLMTextRedactionConfig,
     ImageRedactionConfig,
+    ImageLLMTextRedactionConfig,
 )
 from redactor.core.redaction.result import (
     LLMTextRedactionResult,
@@ -23,6 +24,7 @@ from redactor.core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
 from redactor.core.util.llm_util import LLMUtil
+from redactor.core.util.azure_vision_util import AzureVisionUtil
 from redactor.core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
@@ -119,14 +121,13 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextRedactionResult:
-        # Initialisation
-        self.config: LLMTextRedactionConfig
-        model = self.config.model
-        system_prompt = self.config.system_prompt
-        text_to_redact = self.config.text
-        redaction_rules = self.config.redaction_rules
-
+    def _analyse_text(
+        self,
+        text_to_redact: str,
+        model: str,
+        system_prompt: str,
+        redaction_rules: List[str],
+    ):
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],
@@ -175,6 +176,15 @@ class LLMTextRedactor(TextRedactor):
             ),
         )
 
+    def redact(self) -> LLMTextRedactionResult:
+        # Initialisation
+        self.config: LLMTextRedactionConfig
+        model = self.config.model
+        system_prompt = self.config.system_prompt
+        text_to_redact = self.config.text
+        redaction_rules = self.config.redaction_rules
+        return self._analyse_text(text_to_redact, model, system_prompt, redaction_rules)
+
 
 class ImageRedactor(Redactor):  # pragma: no cover
     """
@@ -191,12 +201,67 @@ class ImageRedactor(Redactor):  # pragma: no cover
         return ImageRedactionConfig
 
     def redact(self) -> ImageRedactionResult:
+        self.config: ImageRedactionConfig
+        results: List[ImageRedactionResult.Result] = []
+        for image_to_redact in self.config.images:
+            vision_util = AzureVisionUtil()
+            image_rects = vision_util.detect_faces(image_to_redact)
+            results.append(
+                ImageRedactionResult.Result(
+                    redaction_boxes=image_rects,
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
+                )
+            )
+        return ImageRedactionResult(redaction_results=tuple(results))
+
+
+class ImageTextRedactor(ImageRedactor, TextRedactor):
+    """Redactors that redact text content in an image"""
+
+    pass
+
+
+class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
+    @classmethod
+    def get_name(cls) -> str:
+        return "ImageLLMTextRedaction"
+
+    @classmethod
+    def get_redaction_config_class(cls):
+        return ImageLLMTextRedactionConfig
+
+    def redact(self) -> ImageRedactionResult:
         # Initialisation
-        image_to_redact = self.config["properties"]["image"]
-        # Todo - need to implement this logic
-        return ImageRedactionResult(
-            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
-        )
+        self.config: ImageLLMTextRedactionConfig
+        model = self.config.model
+        system_prompt = self.config.system_prompt
+        redaction_rules = self.config.redaction_rules
+        results = []
+        for image_to_redact in self.config.images:
+            print("image: ", image_to_redact)
+            vision_util = AzureVisionUtil()
+            text_rect_map = vision_util.detect_text(image_to_redact)
+            text_content = " ".join([x[0] for x in text_rect_map])
+            redaction_strings = self._analyse_text(
+                text_content, model, system_prompt, redaction_rules
+            ).redaction_strings
+            text_rects_to_redact = tuple(
+                (text, bounding_box)
+                for text, bounding_box in text_rect_map
+                if text in redaction_strings
+                or any(
+                    redaction_string in text for redaction_string in redaction_strings
+                )
+            )
+            results.append(
+                ImageRedactionResult.Result(
+                    redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
+                )
+            )
+        return ImageRedactionResult(redaction_results=tuple(results))
 
 
 class RedactorFactory:
@@ -204,7 +269,11 @@ class RedactorFactory:
     Class for generating Redactor classes by name
     """
 
-    REDACTOR_TYPES: List[Type[Redactor]] = [LLMTextRedactor]
+    REDACTOR_TYPES: List[Type[Redactor]] = [
+        LLMTextRedactor,
+        ImageRedactor,
+        ImageLLMTextRedactor,
+    ]
     """The Redactor classes that are known to the factory"""
 
     @classmethod
