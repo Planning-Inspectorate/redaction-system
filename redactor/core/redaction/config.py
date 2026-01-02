@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
-from redactor.core.util.types.types import PydanticImage
+from redactor.core.util.types import PydanticImage
 
 
 class RedactionConfig(BaseModel):

@@ -28,7 +28,7 @@ from redactor.core.redaction.result import (
     ImageRedactionResult,
 )
 from redactor.core.util.text_util import is_english_text
-from redactor.core.util.types.types import PydanticImage
+from redactor.core.util.types import PydanticImage
 from PIL import Image
 from pydantic import BaseModel
 
