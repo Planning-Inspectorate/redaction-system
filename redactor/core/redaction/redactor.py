@@ -173,3 +173,77 @@ class LLMTextRedactor(TextRedactor):
                 total_token_count=total_token_count,
             ),
         )
+
+class ImageRedactor(Redactor):  # pragma: no cover
+    """
+    Class that performs image redaction
+
+    """
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "ImageRedaction"
+
+    @classmethod
+    def get_redaction_config_class(cls):
+        return ImageRedactionConfig
+
+    def redact(self) -> ImageRedactionResult:
+        # Initialisation
+        image_to_redact = self.config["properties"]["image"]
+        # Todo - need to implement this logic
+        return ImageRedactionResult(
+            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
+        )
+
+
+class RedactorFactory:
+    """
+    Class for generating Redactor classes by name
+    """
+
+    REDACTOR_TYPES: List[Type[Redactor]] = [LLMTextRedactor]
+    """The Redactor classes that are known to the factory"""
+
+    @classmethod
+    def _validate_redactor_types(cls):
+        """
+        Validate the REDACTOR_TYPES and return a map of type_name: Redactor
+        """
+        name_map: Dict[str, List[Type[Redactor]]] = dict()
+        for redactor_type in cls.REDACTOR_TYPES:
+            type_name = redactor_type.get_name()
+            if type_name in name_map:
+                name_map[type_name].append(redactor_type)
+            else:
+                name_map[type_name] = [redactor_type]
+        invalid_types = {k: v for k, v in name_map.items() if len(v) > 1}
+        if invalid_types:
+            raise DuplicateRedactorNameException(
+                "The following Redactor implementation classes had duplicate names: "
+                + json.dumps(invalid_types, indent=4, default=str)
+            )
+        return {k: v[0] for k, v in name_map.items()}
+
+    @classmethod
+    def get(cls, redactor_type: str) -> Type[Redactor]:
+        """
+        Return the Redactor that is identified by the provided type name
+
+        :param str redactor_type: The Redactor type name (which aligns with the
+        get_name method of the Redactor)
+        :return Type[Redactor]: The redactor instance identified by the provided
+        redactor_type
+        :raises RedactorNameNotFoundException if the given redactor_type is not
+        found
+        """
+        if not isinstance(redactor_type, str):
+            raise ValueError(
+                f"RedactorFactory.get expected a str, but got a {type(redactor_type)}"
+            )
+        name_map = cls._validate_redactor_types()
+        if redactor_type not in name_map:
+            raise RedactorNameNotFoundException(
+                f"No redactor could be found for redactor type '{redactor_type}'"
+            )
+        return name_map[redactor_type]
