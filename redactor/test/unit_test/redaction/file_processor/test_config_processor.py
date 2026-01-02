@@ -116,7 +116,21 @@ def test__config_processor__validate_and_parse_redaction_config():
         actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
         assert expected_output == actual_output
 
-
+def test_config_processor__validate_and_parse_redaction_config__with_list_of_configs():
+    config = [{"name": "redaction rule A", "redactor_type": "A"}, 
+              {"name": "redaction rule B", "redactor_type": "B"}]
+    expected_output = [
+        RedactionConfigInstA(name="redaction rule A", redactor_type="A"),
+        RedactionConfigInstB(name="redaction rule B", redactor_type="B"),    
+    ]
+    with mock.patch.object(
+        RedactorFactory,
+        "REDACTOR_TYPES",
+        [RedactorInstA, RedactorInstB, RedactorInstC],
+    ):
+        actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
+        assert expected_output == actual_output
+    
 def test__config_processor__convert_to_redaction_config():
     """
     - Given I have some valid config and a target RedactionConfig class I want to convert to

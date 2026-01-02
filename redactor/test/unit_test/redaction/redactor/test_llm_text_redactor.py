@@ -61,7 +61,7 @@ def test_llm_text_redactor__create_system_prompt():
         model="gpt-4.1-nano",
         text="some text",
         system_prompt="Some system prompt",
-        redaction_rules=[
+        redaction_terms=[
             "rule A",
             "rule B",
             "rule C",
@@ -72,10 +72,10 @@ def test_llm_text_redactor__create_system_prompt():
         ],
     )
     expected_system_prompt = (
-        "<SystemRole> Some system prompt </SystemRole> "
-        "<Terms> rule A. rule B. rule C. </Terms> "
-        f"{OUTPUT_FORMAT_STRING} "
-        "<Constraints> constraint X. constraint Y. </Constraints>"
+        "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
+        "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
+        f"{OUTPUT_FORMAT_STRING}\n\n"
+        "<Constraints>\n- constraint X\n- constraint Y\n</Constraints>"
     )
     llm_text_redactor = LLMTextRedactor(config)
     llm_text_redactor.config = config
@@ -94,16 +94,16 @@ def test_llm_text_redactor__create_system_prompt_no_constraints():
         model="gpt-4.1-nano",
         text="some text",
         system_prompt="Some system prompt",
-        redaction_rules=[
+        redaction_terms=[
             "rule A",
             "rule B",
             "rule C",
         ],
     )
     expected_system_prompt = (
-        "<SystemRole> Some system prompt </SystemRole> "
-        "<Terms> rule A. rule B. rule C. </Terms> "
-        f"{OUTPUT_FORMAT_STRING} "
+        "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
+        "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
+        f"{OUTPUT_FORMAT_STRING}"
     )
     llm_text_redactor = LLMTextRedactor(config)
     llm_text_redactor.config = config
@@ -122,7 +122,7 @@ def test__llm_text_redactor__redact():
         model="gpt-4.1-nano",
         text="some text",
         system_prompt="some system prompt",
-        redaction_rules=[
+        redaction_terms=[
             "rule A",
             "rule B",
             "rule C",

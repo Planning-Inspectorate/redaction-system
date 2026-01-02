@@ -4,7 +4,7 @@ redaction_rules:
   properties:
     model: "gpt-4.1"
     system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-    redaction_rules: 
+    redaction_terms: 
     - "People's names. List each part of the name separately."
     constraints:
     - "Do not include locations or organisations" 
@@ -16,7 +16,7 @@ redaction_rules:
   properties:
     model: "gpt-4.1"
     system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-    redaction_rules: 
+    redaction_terms: 
     - "Personal addresses and postcodes" 
     - "Personal email addresses, unless it's a Planning Inspectorate email"
     - "Telephone numbers, unless it's a Planning Inspectorate customer service team telephone number"
@@ -26,7 +26,7 @@ redaction_rules:
   properties:
     model: "gpt-4.1"
     system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-    redaction_rules: 
+    redaction_terms: 
     - "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text."
     - "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership"
     - "Criminal offence data, e.g. allegations, investigations, proceedings, penalties"
@@ -37,6 +37,6 @@ redaction_rules:
   properties:
     model: "gpt-4.1"
     system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-    redaction_rules: 
+    redaction_terms: 
     - "Dates of birth, and ages of people"
     - "The location of any of the following: badger sett, bat maternity roost, bird nest"
