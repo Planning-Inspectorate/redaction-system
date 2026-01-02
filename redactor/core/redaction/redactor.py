@@ -117,7 +117,7 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(self) -> LLMTextRedactionResult:
+    def redact(self, **kwargs) -> LLMTextRedactionResult:
         # Initialisation
         self.config: LLMTextRedactionConfig
         model = self.config.model
@@ -140,7 +140,7 @@ class LLMTextRedactor(TextRedactor):
 
         # Identify redaction strings
         # Initialise LLM interface
-        llm_util = LLMUtil(model)
+        llm_util = LLMUtil(model, **kwargs)
         text_to_redact_cleaned, token_counts = llm_util.redact_text(
             system_prompt_formatted,
             user_prompt_template,
