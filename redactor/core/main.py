@@ -1,24 +1,27 @@
-from redactor.core.redaction.file_processor.file_processor_factory import (
+from redactor.core.redaction.file_processor import (
     FileProcessorFactory,
+    FileProcessor,
 )
-from redactor.core.redaction.file_processor.file_processor import FileProcessor
-from redactor.core.redaction.config.config_processor import ConfigProcessor
+from redactor.core.redaction.config_processor import ConfigProcessor
 import argparse
 from typing import Dict, Any, Type
 from io import BytesIO
 import magic
-from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
+from redactor.core.redaction.exceptions import NonEnglishContentException
 
 
 """
-Temporary script that allows the redaction process to be triggered via the terminal for a PDF
+Temporary script that allows the redaction process to be triggered via the 
+terminal for a PDF
 
 # Usage
 `python3 redactor/core/main.py --f "path/to/file.pdf`
 
 # Notes
-- The pdf you create should ideally be placed under `./samples/` so that it is not committed to GitHub
-- The process wil automatically figure out whether or not to apply provisional redactions or final redactions based on the file name
+- The pdf you create should ideally be placed under `./samples/` so that it is 
+  not committed to GitHub
+- The process wil automatically figure out whether or not to apply provisional 
+  redactions or final redactions based on the file name
 """
 
 
@@ -59,7 +62,9 @@ def main(
         file_name_without_extension = file_name.removesuffix(f".{extension}")
     else:
         raise ValueError(
-            f"File extension of the raw file does not match the file name. The raw file had MIME type {file_format}, which should be a .{extension} extension"
+            "File extension of the raw file does not match the file name. "
+            f"The raw file had MIME type {file_format}, which should be a "
+            f".{extension} extension"
         )
     base_file_name = (
         file_name_without_extension.removesuffix("_REDACTED")

@@ -1,7 +1,5 @@
-from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
-from redactor.core.redaction.config.redaction_config.llm_text_redaction_config import (
-    LLMTextRedactionConfig,
-)
+from redactor.core.redaction.file_processor import PDFProcessor
+from redactor.core.redaction.config import LLMTextRedactionConfig
 from io import BytesIO
 import pymupdf
 

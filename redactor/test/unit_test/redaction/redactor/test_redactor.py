@@ -1,9 +1,8 @@
-from redactor.core.redaction.redactor.redactor import Redactor
-from redactor.core.redaction.redactor.exceptions import (
-    IncorrectRedactionConfigClassException,
-)
 import mock
 import pytest
+
+from redactor.core.redaction.redactor import Redactor
+from redactor.core.redaction.exceptions import IncorrectRedactionConfigClassException
 
 
 class MyRedactorImpl(Redactor):

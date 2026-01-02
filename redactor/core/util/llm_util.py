@@ -1,3 +1,4 @@
+import os
 from azure.identity import (
     ChainedTokenCredential,
     ManagedIdentityCredential,
@@ -6,7 +7,6 @@ from azure.identity import (
 from pydantic import BaseModel
 from openai import OpenAI
 from dotenv import load_dotenv
-import os
 
 
 load_dotenv(verbose=True)

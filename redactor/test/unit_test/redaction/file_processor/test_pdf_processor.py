@@ -1,10 +1,10 @@
-from redactor.core.redaction.file_processor.pdf_processor import PDFProcessor
+from redactor.core.redaction.file_processor import PDFProcessor
 from io import BytesIO
 import pymupdf
 import mock
 import pytest
 from redactor.core.util.text_util import is_english_text
-from redactor.core.redaction.file_processor.exceptions import NonEnglishContentException
+from redactor.core.redaction.exceptions import NonEnglishContentException
 
 
 def test__pdf_processor__get_name():
