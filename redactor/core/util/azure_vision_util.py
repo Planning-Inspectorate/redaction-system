@@ -56,7 +56,7 @@ class AzureVisionUtil:
 
     def detect_text(self, image: Image.Image):
         """
-        Docstring text in the given image
+        Return all text content of the given image, as a 2D tuple of <word, bounding box>
 
         :param Image.Image image: The image to analyse
         :returns: The text content of the image, with each individual "block" separated by " "
@@ -68,16 +68,18 @@ class AzureVisionUtil:
             image_bytes,
             [VisualFeatures.READ],
         )
+
         return tuple(
             (
-                line.text,
+                word.text,
                 (
-                    line.bounding_polygon[0].x,
-                    line.bounding_polygon[0].y,
-                    line.bounding_polygon[2].x,
-                    line.bounding_polygon[2].y,
+                    word.bounding_polygon[0].x,
+                    word.bounding_polygon[0].y,
+                    word.bounding_polygon[2].x,
+                    word.bounding_polygon[2].y,
                 ),
             )
             for block in result.read.blocks
             for line in block.lines
+            for word in line.words
         )
