@@ -1,8 +1,8 @@
-from redactor.core.redactor import (
+from redactor.core.redaction.redactor import (
     Redactor,
     RedactorFactory,
 )
-from redactor.core.exceptions import (
+from redactor.core.redaction.exceptions import (
     RedactorNameNotFoundException,
     DuplicateRedactorNameException,
 )

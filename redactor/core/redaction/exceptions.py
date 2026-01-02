@@ -15,8 +15,9 @@ class FileProcessorNameNotFoundException(Exception):  # pragma: no cover
 
 
 class NonEnglishContentException(Exception):  # pragma: no cover
-    """Raised when a document is detected as non-English or insufficient 
+    """Raised when a document is detected as non-English or insufficient
     English content"""
+
     pass
 
 

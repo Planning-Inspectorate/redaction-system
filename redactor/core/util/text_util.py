@@ -2,8 +2,7 @@ from langdetect import detect_langs, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
 
 
-def is_english_text(
-    text: str, threshold: float = 0.90, margin: float = 0.20) -> bool:
+def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) -> bool:
     """
     Detect whether text is English.
 

@@ -1,10 +1,11 @@
-from redactor.core.config import LLMTextRedactionConfig
-from redactor.core.file_processor import PDFProcessor, ConfigProcessor
+from redactor.core.redaction.config import LLMTextRedactionConfig
+from redactor.core.redaction.file_processor import PDFProcessor
+from redactor.core.redaction.config_processor import ConfigProcessor
 
 
 def test__config_processor__process_config():
     """
-    - Given I have the some config defined at redactor/core/config/default.yaml
+    - Given I have the some config defined at redactor/config/default.yaml
     - When I load the config and process it using validate_and_filter_config
     - Then the redaction rules should be filtered and processed into RedactionConfig classes
     """

@@ -4,12 +4,12 @@ import argparse
 from typing import Dict, Any, Type
 from io import BytesIO
 
-from redactor.core.exceptions import NonEnglishContentException
-from redactor.core.file_processor import (
+from redactor.core.redaction.exceptions import NonEnglishContentException
+from redactor.core.redaction.file_processor import (
     FileProcessorFactory,
     FileProcessor,
 )
-from redactor.core.file_processor import ConfigProcessor
+from redactor.core.redaction.config_processor import ConfigProcessor
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 
 
@@ -66,7 +66,7 @@ def main(
         file_name_without_extension = file_name.removesuffix(f".{extension}")
     else:
         raise ValueError(
-            "File extension of the raw file does not match the file name. " 
+            "File extension of the raw file does not match the file name. "
             f"The raw file had MIME type {file_format}, which should be a "
             f".{extension} extension"
         )
@@ -92,8 +92,7 @@ def main(
     else:
         LoggingUtil.log_info("Applying provisional redactions")
         try:
-            processed_file_bytes = apply_provisional_redactions(
-                config, file_bytes)
+            processed_file_bytes = apply_provisional_redactions(config, file_bytes)
         except NonEnglishContentException as e:
             LoggingUtil.log_info(str(e))
             LoggingUtil.log_info(
@@ -107,8 +106,7 @@ if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument(
-        "-f", "--file_to_redact", help="Path to the file to redact")
+    parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
     args = parser.parse_args()
     file_to_redact = args.file_to_redact
     with open(file_to_redact, "rb") as f:

@@ -8,20 +8,22 @@ from langchain_core.prompts import PromptTemplate
 
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
-from redactor.core.config import (
+from redactor.core.redaction.config import (
     RedactionConfig,
-    RedactionResult,
     TextRedactionConfig,
     LLMTextRedactionConfig,
-    LLMTextRedactionResult,
     ImageRedactionConfig,
-    ImageRedactionResult,
 )
-from redactor.core.exceptions import (
+from redactor.core.redaction.result import (
+    LLMTextRedactionResult,
+    ImageRedactionResult,
+    RedactionResult,
+)
+from redactor.core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
 from redactor.core.util.llm_util import LLMUtil
-from redactor.core.exceptions import (
+from redactor.core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
 )
@@ -60,7 +62,7 @@ class Redactor(ABC):
         """
         Check that the given config is of the expected type
 
-        :raises IncorrectRedactionConfigClassException: If the given config does 
+        :raises IncorrectRedactionConfigClassException: If the given config does
         not match the type returned by `get_redaction_config_class`
         """
         expected_class = cls.get_redaction_config_class()
@@ -78,7 +80,7 @@ class Redactor(ABC):
 
 
         :param RedactionConfig config: The configuration for the redaction
-        :returns RedactionResult: A RedactionResult that holds the result of the 
+        :returns RedactionResult: A RedactionResult that holds the result of the
         redaction
         """
         pass
@@ -193,10 +195,8 @@ class ImageRedactor(Redactor):  # pragma: no cover
         image_to_redact = self.config["properties"]["image"]
         # Todo - need to implement this logic
         return ImageRedactionResult(
-            redaction_boxes=(), image_dimensions=(0, 0), 
-            source_image=image_to_redact
+            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
         )
-
 
 
 class RedactorFactory:
@@ -232,11 +232,11 @@ class RedactorFactory:
         """
         Return the Redactor that is identified by the provided type name
 
-        :param str redactor_type: The Redactor type name (which aligns with the 
+        :param str redactor_type: The Redactor type name (which aligns with the
         get_name method of the Redactor)
-        :return Type[Redactor]: The redactor instance identified by the provided 
+        :return Type[Redactor]: The redactor instance identified by the provided
         redactor_type
-        :raises RedactorNameNotFoundException if the given redactor_type is not 
+        :raises RedactorNameNotFoundException if the given redactor_type is not
         found
         """
         if not isinstance(redactor_type, str):
