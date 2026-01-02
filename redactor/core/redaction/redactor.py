@@ -6,8 +6,6 @@ from pydantic import BaseModel
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
 
-from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
-
 from redactor.core.redaction.config import (
     RedactionConfig,
     TextRedactionConfig,
@@ -141,39 +139,23 @@ class LLMTextRedactor(TextRedactor):
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
 
         # Identify redaction strings
+        # Initialise LLM interface
         llm_util = LLMUtil(model)
-        text_to_redact = []
+        text_to_redact_cleaned, token_counts = llm_util.redact_text(
+            system_prompt_formatted,
+            user_prompt_template,
+            text_chunks,
+        )
 
-        # Todo - add multithreading here
-        responses: List[ParsedChatCompletion] = []
-        for chunk in text_chunks:
-            user_prompt_formatted = user_prompt_template.format(chunk=chunk)
-            response = llm_util.invoke_chain(
-                system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat
-            )
-            response_cleaned: LLMRedactionResultFormat = response.choices[
-                0
-            ].message.parsed
-            redaction_strings = response_cleaned.redaction_strings
-            responses.append(response)
-            text_to_redact.extend(redaction_strings)
-
-        # Remove duplicates
-        text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
-
-        # Collect metrics
-        input_token_count = sum(x.usage.prompt_tokens for x in responses)
-        output_token_count = sum(x.usage.completion_tokens for x in responses)
-        total_token_count = input_token_count + output_token_count
-
-        return LLMTextRedactionResult(
+        result = LLMTextRedactionResult(
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=input_token_count,
-                output_token_count=output_token_count,
-                total_token_count=total_token_count,
+                input_token_count=token_counts["input"],
+                output_token_count=token_counts["output"],
+                total_token_count=token_counts["input"] + token_counts["output"],
             ),
         )
+        return result
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
