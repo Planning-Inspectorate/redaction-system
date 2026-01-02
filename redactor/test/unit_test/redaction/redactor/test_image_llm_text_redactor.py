@@ -31,7 +31,11 @@ def test__image_llm_text_redactor__redact():
         name="config name",
         redactor_type="ImageLLMTextRedaction",
         model="gpt-4.1-nano",
-        images=[Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))],
+        images=[
+            Image.new("RGB", (1000, 1000)),
+            Image.new("RGB", (200, 100)),
+            Image.new("RGB", (1000, 1000)),
+        ],
         system_prompt="some system prompt",
         redaction_rules=[
             "rule A",
@@ -39,7 +43,7 @@ def test__image_llm_text_redactor__redact():
             "rule C",
         ],
     )
-    detect_faces_side_effects = (
+    detect_text_side_effects = (
         (
             ("Klingon", (10, 10, 50, 50)),
             ("Romulan", (100, 100, 50, 50)),
@@ -49,8 +53,11 @@ def test__image_llm_text_redactor__redact():
             ("Cardassian", (30, 30, 50, 50)),
             ("Vulcan", (4, 8, 12, 16)),
         ),
+        (
+            ("Klingon", (10, 10, 50, 50)),  # Two entries for the same word
+            ("Klingon", (100, 100, 50, 50)),
+        ),
     )
-    # Allies of the federation should be redacted
     expected_results = ImageRedactionResult(
         redaction_results=(
             ImageRedactionResult.Result(
@@ -66,6 +73,11 @@ def test__image_llm_text_redactor__redact():
                 source_image=config.images[1],
                 redaction_boxes=((4, 8, 12, 16),),
             ),
+            ImageRedactionResult.Result(
+                image_dimensions=(1000, 1000),
+                source_image=config.images[2],
+                redaction_boxes=((10, 10, 50, 50), (100, 100, 50, 50)),
+            ),
         )
     )
     mock_text_redaction_result = LLMTextRedactionResult(
@@ -76,7 +88,7 @@ def test__image_llm_text_redactor__redact():
     )
     with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
         with mock.patch.object(
-            AzureVisionUtil, "detect_text", side_effect=detect_faces_side_effects
+            AzureVisionUtil, "detect_text", side_effect=detect_text_side_effects
         ):
             with mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None):
                 with mock.patch.object(
