@@ -5,10 +5,10 @@
 ############################################################################
 # User groups
 ############################################################################
-#data "azuread_group" "redaction_engineers" {
-#  display_name = "pins-redaction-system-developers"
-#  #security_enabled = true
-#}
+data "azuread_group" "redaction_engineers" {
+  display_name = "pins-redaction-system-developers"
+  #security_enabled = true
+}
 
 ############################################################################
 # Create resource groups
@@ -126,8 +126,8 @@ resource "azurerm_role_assignment" "function_app_storage_contributor" {
   principal_id         = azurerm_linux_function_app.redaction_system.identity[0].principal_id
 }
 
-#resource "azurerm_role_assignment" "engineer_storage_contributor" {
-#  scope                = azurerm_storage_account.redaction_storage.id
-#  role_definition_name = "Storage Blob Data Contributor"
-#  principal_id         = data.azuread_group.redaction_engineers.object_id
-#}
+resource "azurerm_role_assignment" "engineer_storage_contributor" {
+  scope                = azurerm_storage_account.redaction_storage.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azuread_group.redaction_engineers.object_id
+}
