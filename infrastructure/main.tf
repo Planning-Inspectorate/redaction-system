@@ -131,3 +131,9 @@ resource "azurerm_role_assignment" "engineer_storage_contributor" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = data.azuread_group.redaction_engineers.object_id
 }
+
+resource "azurerm_role_assignment" "engineer_app_insights_contributor" {
+  scope                = azurerm_application_insights.redaction_system.id
+  role_definition_name = "Contributor"
+  principal_id         = data.azuread_group.redaction_engineers.object_id
+}
