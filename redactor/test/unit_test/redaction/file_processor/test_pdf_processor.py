@@ -60,7 +60,7 @@ def test__pdf_processor__extract_pdf_images():
         "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
     ) as f:
         document_bytes = BytesIO(f.read())
-    with open("redactor/test/resources/test_image_horizontal.jpg", "rb") as f:
+    with open("redactor/test/resources/image/test_image_horizontal.jpg", "rb") as f:
         image_bytes = BytesIO(f.read())
     image = Image.open(image_bytes)
     expected_image_metadata = [

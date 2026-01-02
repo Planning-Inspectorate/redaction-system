@@ -1,6 +1,7 @@
 from redactor.core.util.azure_vision_util import AzureVisionUtil
 from PIL import Image
 from io import BytesIO
+import os
 
 
 def test__azure_vision_util__detect_faces():
@@ -9,7 +10,10 @@ def test__azure_vision_util__detect_faces():
     - When I call AzureVisionUtil.detect_faces
     - The two faces should be identified
     """
-    with open("redactor/test/resources/image_with_faces.jpeg", "rb") as f:
+    with open(
+        os.path.join("redactor", "test", "resources", "image", "image_with_faces.jpeg"),
+        "rb",
+    ) as f:
         image = Image.open(BytesIO(f.read()))
         response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
@@ -23,7 +27,10 @@ def test__azure_vision_util__detect_text():
     - When I call AzureVisionUtil.detect_text
     - The text content of the image should be extracted, with each line represented by a bounding box
     """
-    with open("redactor/test/resources/image_with_text.jpg", "rb") as f:
+    with open(
+        os.path.join("redactor", "test", "resources", "image", "image_with_text.jpg"),
+        "rb",
+    ) as f:
         image = Image.open(BytesIO(f.read()))
         response = AzureVisionUtil().detect_text(image)
         # Azure Vision seems to be deterministic from testing
