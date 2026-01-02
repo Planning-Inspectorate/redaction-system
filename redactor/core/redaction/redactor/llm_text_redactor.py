@@ -40,13 +40,19 @@ class LLMTextRedactor(TextRedactor):
         # Initialisation
         self.config: LLMTextRedactionConfig
         model = self.config.model
-        system_prompt = self.config.system_prompt
+        system_prompt = f"<SystemRole> {self.config.system_prompt} </SystemRole>"
         text_to_redact = self.config.text
         redaction_rules = self.config.redaction_rules
+        formatted_redaction_rules = [f"<Terms> - {rule + '.' if not rule.endswith('.') else rule} </Terms>" for rule in redaction_rules]
+        joined_redaction_rules = " ".join(formatted_redaction_rules)
+        format_string = (
+            "<OutputFormat> You respond in JSON format. You return the successfully extracted terms from "
+            "the text in JSON list named \"redaction_strings\". List them as they appear in the text. </OutputFormat>"
+        )
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(
             input_variables=["chunk"],
-            template=(f"{system_prompt}{'.'.join(redaction_rules)}"),
+            template=(f"{system_prompt} {joined_redaction_rules} {format_string}"),
         )
         system_prompt_formatted = system_prompt_template.format()
         # The user's prompt will just be the raw text
