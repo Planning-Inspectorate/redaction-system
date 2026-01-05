@@ -251,7 +251,8 @@ class PDFProcessor(FileProcessor):
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
             LoggingUtil().log_info(
-                f"        Applying highlight {i} for word {redaction_inst}"
+                f"        Applying highlight {i} for word {word} at location '{rect}'"
+                f"on page {page.number}"
             )
             try:
                 # Only redact text that is fully matched - do not apply partial redactions

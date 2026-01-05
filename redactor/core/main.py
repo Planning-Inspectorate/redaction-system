@@ -94,7 +94,7 @@ def main(
         try:
             processed_file_bytes = apply_provisional_redactions(config, file_bytes)
         except NonEnglishContentException as e:
-            LoggingUtil().log_info(str(e))
+            LoggingUtil().log_exception(str(e))
             LoggingUtil().log_info(
                 "No provisional file will be generated for non-English content."
             )
