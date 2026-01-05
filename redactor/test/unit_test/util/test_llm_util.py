@@ -1,5 +1,4 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
 
 from redactor.core.redaction.redactor import LLMTextRedactor
 
@@ -11,7 +10,7 @@ from redactor.core.redaction.result import (
     LLMTextRedactionResult,
     LLMRedactionResultFormat,
 )
-from redactor.core.util.llm_util import LLMUtil, TokenSemaphore
+from redactor.core.util.llm_util import LLMUtil, TokenSemaphore, create_api_message
 from mock import patch
 
 
@@ -73,14 +72,25 @@ def test__token_semaphore__parallel():
     
     assert token_semaphore.tokens == 100
 
+
+def test__create_api_message():
+    system_prompt = "This is a system prompt."
+    user_prompt = "This is a user prompt."
+    expected_message = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    actual_message = create_api_message(system_prompt, user_prompt)
+    assert actual_message == expected_message
+
+
 def test__llm_util__num_tokens_consumed():
     llm_util = LLMUtil(model="gpt-4.1-nano", token_encoding_name="cl100k_base")
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
-    # encoding = 
-    # expected_num_tokens = 
     
-    # num_tokens = llm_util.num_tokens_consumed(system_prompt, user_prompt)
+    num_tokens = llm_util.num_tokens_consumed(system_prompt, user_prompt)
+    assert num_tokens == 16 # 6 in system + 10 
             
 
 # def test__llm_text_redactor__redact():

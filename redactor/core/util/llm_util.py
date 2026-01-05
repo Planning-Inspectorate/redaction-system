@@ -60,7 +60,7 @@ class TokenSemaphore:
             self.condition.notify_all()
 
 
-def create_messages(
+def create_api_message(
     system_prompt: str,
     user_prompt: str,
 ) -> List[dict]:
@@ -134,7 +134,7 @@ class LLMUtil:
         completion_tokens = self.n * self.max_tokens
         n_tokens = 0
         try:
-            for message in create_messages(system_prompt, user_prompt):
+            for message in create_api_message(system_prompt, user_prompt):
                 n_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
                 for key, value in message.items():
                     n_tokens += len(encoding.encode(value))
@@ -153,7 +153,7 @@ class LLMUtil:
     ):
         response = self.llm.chat.completions.parse(
             model=self.llm_model,
-            messages=create_messages(system_prompt, user_prompt),
+            messages=create_api_message(system_prompt, user_prompt),
             temperature=self.temperature,
             max_completion_tokens=self.max_tokens,
             response_format=response_format,
