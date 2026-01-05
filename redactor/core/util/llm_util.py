@@ -19,7 +19,7 @@ from openai import OpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 
-from redactor.core.redaction.redactor import LLMRedactionResultFormat
+from redactor.core.redaction.result import LLMRedactionResultFormat
 
 
 load_dotenv(verbose=True)

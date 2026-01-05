@@ -1,12 +1,13 @@
-from redactor.core.redaction.redactor import (
-    LLMTextRedactor,
-    LLMRedactionResultFormat,
-)
+from redactor.core.redaction.redactor import LLMTextRedactor
+
 from redactor.core.redaction.config import (
     RedactionConfig,
     LLMTextRedactionConfig,
 )
-from redactor.core.redaction.result import LLMTextRedactionResult
+from redactor.core.redaction.result import (
+    LLMTextRedactionResult,
+    LLMRedactionResultFormat,
+)
 from redactor.core.util.llm_util import LLMUtil
 import mock
 

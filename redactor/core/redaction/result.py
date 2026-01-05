@@ -1,6 +1,7 @@
 from typing import Tuple
 from dataclasses import dataclass, field
 from PIL.Image import Image
+from pydantic import BaseModel
 
 
 @dataclass(frozen=True)
@@ -36,3 +37,7 @@ class LLMTextRedactionResult(TextRedactionResult):
 
     metadata: LLMResultMetadata = field(default=None)
     """Any metadata provided by the LLM"""
+
+
+class LLMRedactionResultFormat(BaseModel):
+    redaction_strings: list[str]

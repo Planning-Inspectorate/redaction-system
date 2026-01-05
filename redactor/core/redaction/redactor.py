@@ -1,7 +1,6 @@
 import json
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
-from pydantic import BaseModel
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import PromptTemplate
@@ -93,9 +92,6 @@ class TextRedactor(Redactor):
     def get_redaction_config_class(cls):
         return TextRedactionConfig
 
-
-class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
 
 
 class LLMTextRedactor(TextRedactor):
