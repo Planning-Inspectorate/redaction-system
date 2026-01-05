@@ -56,7 +56,7 @@ extends:
               - task: AzureCLI@2
                 displayName: 'Deploy to function app'
                 inputs:
-                  azureSubscription: 'pins-rg-redaction-${{ parameters.env }}-uks'
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
