@@ -7,6 +7,7 @@ from redactor.core.util.logging_util import LoggingUtil, Singleton, log_to_appin
 
 @patch.object(LoggingUtil, "__init__", return_value=None)
 def test_logging_util_is_a_singleton(mock_init):
+    Singleton._INSTANCES = {}
     instance_a = LoggingUtil()
     instance_b = LoggingUtil()
     assert id(instance_a) == id(instance_b)
@@ -60,7 +61,7 @@ def test_logging_util__log_info(mock_logger_info):
     info_message = "some_info_message"
     logging_util_inst.log_info(info_message)
 
-    Logger.info.assert_called_once_with(f"{guid} : {info_message}")
+    Logger.info.assert_called_once_with(f"{guid}: {info_message}")
 
 
 @patch.object(Logger, "error", return_value=None)
@@ -74,7 +75,7 @@ def test_logging_util__log_error(mock_logger_error):
     error_message = "some_error_message"
     logging_util_inst.log_error(error_message)
 
-    Logger.error.assert_called_once_with(f"{guid} : {error_message}")
+    Logger.error.assert_called_once_with(f"{guid}: {error_message}")
 
 
 @patch.object(Logger, "exception", return_value=None)
@@ -88,7 +89,7 @@ def test_logging_util__log_exception(mock_logger_exception):
     error_message = "some_exception_message"
     logging_util_inst.log_exception(error_message)
 
-    Logger.exception.assert_called_once_with(f"{guid} : {error_message}")
+    Logger.exception.assert_called_once_with(f"{guid}: {error_message}")
 
 
 @patch.object(LoggingUtil, "__init__", return_value=None)

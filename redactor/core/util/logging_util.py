@@ -115,14 +115,14 @@ def log_to_appins(_func=None, *args, **kwargs):
     
     Example usage
     ```
-    @LoggingUtil.logging_to_appins
+    @log_to_appins
     def my_function_that_will_be_logged(param_a, param_b):
         ...
     ```
 
     ```
     @classmethod
-    @LoggingUtil.logging_to_appins
+    @log_to_appins
     def my_class_method_that_will_be_logged(cls, param_a, param_b):
         ...
     ```
