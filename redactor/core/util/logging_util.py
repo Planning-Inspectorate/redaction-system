@@ -15,15 +15,6 @@ class Singleton(type):
     Singleton logging utility class that provides functionality to send logs to 
     app insights.
 
-    Example usage
-    ```
-    from odw.core.util.logging_util import LoggingUtil
-    LoggingUtil().log_info("Some logging message)
-    @LoggingUtil.logging_to_appins
-    def my_function_that_will_have_automatic_logging_applied():
-        pass
-    ```
-
     This is based on
     https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-enable?tabs=python#enable-azure-monitor-opentelemetry-for-net-nodejs-python-and-java-applications
     """
@@ -40,6 +31,16 @@ class Singleton(type):
 class LoggingUtil(metaclass=Singleton):
     """
     Logging utility class that provides functionality to send logs to app insights
+    Example usage
+
+    ```
+    from redactor.core.util.logging_util import LoggingUtil
+    LoggingUtil().log_info("Some logging message)
+    @log_to_appins
+    def my_function_that_will_have_automatic_logging_applied():
+        LoggingUtil().log_info("Inside function")
+    ```
+
     """
     
     def __init__(self, *args, **kwargs):

@@ -4,10 +4,9 @@ import pytest
 import time
 
 from azure.identity import AzureCliCredential
-from uuid import uuid4
 from mock import patch
 
-from redactor.core.util.logging_util import log_to_appins
+from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 
 
 APP_INSIGHTS_TOKEN = (
@@ -15,7 +14,7 @@ APP_INSIGHTS_TOKEN = (
 )
 APP_INSIGHTS_CONNECTION_STRING = os.environ.get("APP_INSIGHTS_CONNECTION_STRING", None)
 APP_INSIGHTS_APP_ID = APP_INSIGHTS_CONNECTION_STRING.split("ApplicationId=")[1]
-JOB_ID = uuid4()
+JOB_ID = LoggingUtil().job_id # Get job ID created during other tests or create new one
 
 
 def query_app_insights(app_id: str, expected_message: str):

@@ -81,21 +81,21 @@ def main(
         config = ConfigProcessor.load_config()
     config["file_format"] = extension
     if file_name.endswith(f"REDACTED.{extension}"):
-        LoggingUtil.log_info("Nothing to redact - the file is already redacted")
+        LoggingUtil().log_info("Nothing to redact - the file is already redacted")
     elif file_name.endswith(f"PROVISIONAL.{extension}") or file_name.endswith(
         f"CURATED.{extension}"
     ):
-        LoggingUtil.log_info("Applying final redactions")
+        LoggingUtil().log_info("Applying final redactions")
         processed_file_bytes = apply_final_redactions(config, file_bytes)
         with open(f"{base_file_name}_REDACTED.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
     else:
-        LoggingUtil.log_info("Applying provisional redactions")
+        LoggingUtil().log_info("Applying provisional redactions")
         try:
             processed_file_bytes = apply_provisional_redactions(config, file_bytes)
         except NonEnglishContentException as e:
-            LoggingUtil.log_info(str(e))
-            LoggingUtil.log_info(
+            LoggingUtil().log_info(str(e))
+            LoggingUtil().log_info(
                 "No provisional file will be generated for non-English content."
             )
             return
