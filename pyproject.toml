@@ -9,6 +9,7 @@ description = "Redaction System"
 readme = "readme.md"
 requires-python = ">=3.13"
 dependencies = [
+    "azure-ai-vision-imageanalysis",
     "azure-identity",
     "azure-monitor-opentelemetry",
     "azure-storage-blob",
@@ -22,6 +23,7 @@ dependencies = [
     "python-magic-bin==0.4.14; platform_system == 'Windows'",
     "python-magic==0.4.27; platform_system != 'Windows'",
     "pypdf>=4.0.0",
+
 ]
 classifiers = [
     "Programming Language :: Python :: 3.13",

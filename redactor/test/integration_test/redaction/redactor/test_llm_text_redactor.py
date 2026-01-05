@@ -1,5 +1,7 @@
 from redactor.core.redaction.redactor import LLMTextRedactor
-from redactor.core.redaction.config import LLMTextRedactionConfig
+from redactor.core.redaction.config import (
+    LLMTextRedactionConfig,
+)
 
 
 def test__llm_text_redactor__redact():
