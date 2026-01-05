@@ -120,6 +120,7 @@ class LLMTextRedactor(TextRedactor):
         system_prompt = self.config.system_prompt
         text_to_redact = self.config.text
         redaction_rules = self.config.redaction_rules
+        # TODO Add LLM parameters to the config class
 
         # Add the defined redaction rules to the System prompt
         system_prompt_template = PromptTemplate(

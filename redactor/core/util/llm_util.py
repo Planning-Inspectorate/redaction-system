@@ -40,7 +40,7 @@ class TokenSemaphore:
     """
 
     def __init__(self, max_tokens: int):
-        self.max_tokens = max_tokens
+        self.tokens = max_tokens
         self.lock = threading.Lock()
         self.condition = threading.Condition(self.lock)
 
@@ -48,15 +48,26 @@ class TokenSemaphore:
         """Acquire the specified number of tokens from the semaphore."""
         with self.lock:
             # Wait until enough tokens are available
-            while tokens > self.max_tokens:
+            while tokens > self.tokens:
                 self.condition.wait()
-            self.max_tokens -= tokens
+                print("Waiting for tokens to be released...")
+            self.tokens -= tokens
 
     def release(self, tokens: int):
         """Release the specified number of tokens back to the semaphore."""
         with self.lock:
-            self.max_tokens += tokens
+            self.tokens += tokens
             self.condition.notify_all()
+
+
+def create_messages(
+    system_prompt: str,
+    user_prompt: str,
+) -> List[dict]:
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
 
 class LLMUtil:
@@ -64,7 +75,17 @@ class LLMUtil:
     Class that handles the interaction with a large-language model hosted on Azure
     """
 
-    def __init__(self, model: str = "gpt-4.1-nano", **kwargs):
+    def __init__(self, 
+                 model: str = "gpt-4.1-nano", 
+                 max_tokens: int = 1000,
+                 temperature: float = 0.5,
+                 request_rate_limit: int = 20,
+                 token_rate_limit: int = 40000,
+                 max_concurrent_requests: int = 5,
+                 n: int = 1,
+                 token_encoding_name: str = "cl100k_base",
+                 delay: int = 60,
+        ):
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
         self.api_key = os.environ.get("OPENAI_KEY", None)
         credential = ChainedTokenCredential(
@@ -80,29 +101,26 @@ class LLMUtil:
         self.llm_model = model
 
         # Parameters for parallel requests
-        self.max_tokens = kwargs.get("max_tokens", 1000)
-        self.temperature = kwargs.get("temperature", 0.5)  # Between 0 and 2
+        self.max_tokens = max_tokens  # max tokens per completion
+        self.temperature = temperature  # Between 0 and 2
 
-        self.request_rate_limit = kwargs.get(
-            "request_rate_limit", 20
-        )  # requests per minute
+        self.request_rate_limit = request_rate_limit  # requests per minute
         self.request_semaphore = Semaphore(self.request_rate_limit)
 
-        self.token_rate_limit = kwargs.get(
-            "token_rate_limit", 40000
-        )  # tokens per minute
+        self.token_rate_limit = token_rate_limit  # tokens per minute
         self.token_semaphore = TokenSemaphore(self.token_rate_limit)
 
-        self.max_concurrent_requests = kwargs.get("max_concurrent_requests", 5)
-        self.n = kwargs.get("n", 1)  # number of completions to generate per request
+        self.max_concurrent_requests = max_concurrent_requests
+        self.n = n  # number of completions to generate per request
 
         # Token encoding name for counting tokens - default to cl100k_base for GPT-4
-        self.token_encoding_name = kwargs.get("token_encoding_name", "cl100k_base")
+        self.token_encoding_name = token_encoding_name
+        self.delay = delay  # Delay in seconds for rate limiting calculations
 
         self.input_token_count = 0
         self.output_token_count = 0
 
-    def num_tokens_consumed_from_request(
+    def num_tokens_consumed(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -149,7 +167,7 @@ class LLMUtil:
     ) -> None:
         """Redact a single chunk of text using the LLM."""
         # Estimate tokens for the request
-        estimated_tokens = self.num_tokens_consumed_from_request(
+        estimated_tokens = self.num_tokens_consumed(
             system_prompt,
             user_prompt,
         )
@@ -185,7 +203,7 @@ class LLMUtil:
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(60 / self.request_rate_limit)  # Rate limiting delay
+            time.sleep(self.delay / self.request_rate_limit)  # Rate limiting delay
 
     def redact_text(
         self,
@@ -231,7 +249,8 @@ class LLMUtil:
     ) -> tuple[tuple[str, ...], dict]:
         """Parallelised version of redact_text to speed up processing of multiple chunks.
 
-        Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py"""
+        Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
+        """
 
         # Initialise LLM interface
         request_counter = 0
@@ -273,12 +292,3 @@ class LLMUtil:
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
         return (text_to_redact_cleaned, token_counts)
 
-
-def create_messages(
-    system_prompt: str,
-    user_prompt: str,
-) -> List[dict]:
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]

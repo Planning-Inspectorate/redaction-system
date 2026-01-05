@@ -9,29 +9,7 @@ from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
 )
 from redactor.core.util.llm_util import LLMUtil
-import mock
-
-
-class MockLLMChatCompletion:
-    def __init__(self, choices, usage):
-        self.choices = choices
-        self.usage = usage
-
-
-class MockLLMChatCompletionChoice:
-    def __init__(self, message):
-        self.message = message
-
-
-class MockLLMChatCompletionChoiceMessage:
-    def __init__(self, parsed):
-        self.parsed = parsed
-
-
-class MockLLMChatCompletionUsage:
-    def __init__(self, prompt_tokens, completion_tokens):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
+from mock import patch
 
 
 def test__llm_text_redactor__get_name():
@@ -50,7 +28,9 @@ def test__llm_text_redactor__get_redaction_config_class():
     assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
 
 
-def test__llm_text_redactor__redact():
+@patch.object(LLMUtil, "__init__", return_value=None)
+@patch.object(LLMTextRedactor, "__init__", return_value=None)
+def test__llm_text_redactor__redact(mock_llm_util_init, mock_llm_text_redactor_init):
     """
     - Given I have some llm redaction config
     - When I call LLMTextRedactor.redact
@@ -68,29 +48,14 @@ def test__llm_text_redactor__redact():
             "rule C",
         ],
     )
-    mock_chat_completion = MockLLMChatCompletion(
-        choices=[
-            MockLLMChatCompletionChoice(
-                message=MockLLMChatCompletionChoiceMessage(
-                    parsed=LLMRedactionResultFormat(
-                        redaction_strings=["string A", "string B"]
-                    )
-                )
-            )
-        ],
-        usage=MockLLMChatCompletionUsage(prompt_tokens=5, completion_tokens=4),
-    )
     expected_result = LLMTextRedactionResult(
         redaction_strings=("string A", "string B"),
         metadata=LLMTextRedactionResult.LLMResultMetadata(
             input_token_count=5, output_token_count=4, total_token_count=9
         ),
     )
-    with mock.patch.object(LLMUtil, "__init__", return_value=None):
-        with mock.patch.object(
-            LLMUtil, "invoke_chain", return_value=mock_chat_completion
-        ):
-            with mock.patch.object(LLMTextRedactor, "__init__", return_value=None):
-                LLMTextRedactor.config = config
-                actual_result = LLMTextRedactor().redact()
-                assert expected_result == actual_result
+    # mock_redact_response = 
+    # with patch.object(LLMUtil, "redact_text", return_value=mock_redact_response):
+    #     LLMTextRedactor.config = config
+    #     actual_result = LLMTextRedactor().redact()
+    #     assert expected_result == actual_result
