@@ -12,7 +12,7 @@ load_dotenv(verbose=True)
 
 class Singleton(type):
     """
-    Singleton logging utility class that provides functionality to send logs to 
+    Singleton logging utility class that provides functionality to send logs to
     app insights.
 
     This is based on
@@ -42,10 +42,10 @@ class LoggingUtil(metaclass=Singleton):
     ```
 
     """
-    
+
     def __init__(self, *args, **kwargs):
         """
-        Create a `LoggingUtil` instance. Only 1 instance is ever created, which 
+        Create a `LoggingUtil` instance. Only 1 instance is ever created, which
         is reused.
         """
         self.job_id = uuid4()
@@ -66,8 +66,7 @@ class LoggingUtil(metaclass=Singleton):
                 )
                 self.logger = logging.getLogger(self.namespace)
                 self.log_info(
-                    f"Logging initialised for "
-                    f"{self.namespace} to file {self.log_file}."
+                    f"Logging initialised for {self.namespace} to file {self.log_file}."
                 )
                 return
             else:
@@ -78,8 +77,7 @@ class LoggingUtil(metaclass=Singleton):
 
         # Configure OpenTelemetry to use Azure Monitor with the connection string
         configure_azure_monitor(
-            logger_name=self.namespace, 
-            connection_string=app_insights_connection_string
+            logger_name=self.namespace, connection_string=app_insights_connection_string
         )
 
         # Create a logger
@@ -107,12 +105,11 @@ class LoggingUtil(metaclass=Singleton):
 
 
 def log_to_appins(_func=None, *args, **kwargs):
-
     """
     Decorator that adds extra logging to function calls
 
     Based on https://ankitbko.github.io/blog/2021/04/logging-in-python/
-    
+
     Example usage
     ```
     @log_to_appins
@@ -127,6 +124,7 @@ def log_to_appins(_func=None, *args, **kwargs):
         ...
     ```
     """
+
     def decorator_log(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -136,9 +134,7 @@ def log_to_appins(_func=None, *args, **kwargs):
             kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
             signature = f"{', '.join(args_repr + kwargs_repr)}"
 
-            logger.log_info(
-                f"Function {func.__name__} called with args: {signature}"
-            )
+            logger.log_info(f"Function {func.__name__} called with args: {signature}")
 
             try:
                 return func(*args, **kwargs)

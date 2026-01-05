@@ -244,11 +244,15 @@ class PDFProcessor(FileProcessor):
                 text_instances = page.search_for(word_to_redact)
                 for inst in text_instances:
                     instances_to_redact.append((page, inst, word_to_redact))
-        LoggingUtil().log_info(f"    Applying {len(instances_to_redact)} redaction highlights")
+        LoggingUtil().log_info(
+            f"    Applying {len(instances_to_redact)} redaction highlights"
+        )
         # Apply provisional redaction highlights for the human-in-the-loop to review
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
-            LoggingUtil().log_info(f"        Applying highlight {i} for word {redaction_inst}")
+            LoggingUtil().log_info(
+                f"        Applying highlight {i} for word {redaction_inst}"
+            )
             try:
                 # Only redact text that is fully matched - do not apply partial redactions
                 actual_text_at_rect = page.get_textbox(rect)

@@ -14,7 +14,7 @@ APP_INSIGHTS_TOKEN = (
 )
 APP_INSIGHTS_CONNECTION_STRING = os.environ.get("APP_INSIGHTS_CONNECTION_STRING", None)
 APP_INSIGHTS_APP_ID = APP_INSIGHTS_CONNECTION_STRING.split("ApplicationId=")[1]
-JOB_ID = LoggingUtil().job_id # Get job ID created during other tests or create new one
+JOB_ID = LoggingUtil().job_id  # Get job ID created during other tests or create new one
 
 
 def query_app_insights(app_id: str, expected_message: str):
