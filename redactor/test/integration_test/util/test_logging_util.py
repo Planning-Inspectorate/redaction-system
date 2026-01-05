@@ -5,6 +5,7 @@ import time
 
 from azure.identity import AzureCliCredential
 from uuid import uuid4
+from mock import patch
 
 from redactor.core.util.logging_util import log_to_appins
 
@@ -31,7 +32,8 @@ def query_app_insights(app_id: str, expected_message: str):
 
 
 @pytest.fixture(autouse=True, scope="module")
-def run_logging_util():
+@patch("redactor.core.util.logging_util.uuid4", return_value=JOB_ID)
+def run_logging_util(mock_job_id):
     @log_to_appins
     def some_test_function(mock_arg_a: str, mock_arg_b: str):
         return f"some_test_function says '{mock_arg_a}' and '{mock_arg_b}'"
@@ -43,7 +45,6 @@ def run_logging_util():
 
 
 def test_logging_initialised():
-    
     expected_logging_initialised_message = (
         f"{JOB_ID}: Logging initialised for redactor_logs."
     )
@@ -54,13 +55,11 @@ def test_logging_initialised():
         "tables", [dict()])[0].get("rows", [])
     assert logging_initialised_traces, (
         f"Logging initialisation message not found for job with id {JOB_ID}.")
-    # if not logging_initialised_traces:
-    #     pytest.skip(f"Logging flush failed for job with id {JOB_ID}, but this is not a major issue - skipping the test")
 
 
 def test_logging_function_call():
     expected_logging_function_message = (
-        f"{JOB_ID} : Function some_test_function called with args: 'Hello', "
+        f"{JOB_ID}: Function some_test_function called with args: 'Hello', "
         "mock_arg_b='There'"
     )
     function_logging_query_response = query_app_insights(
@@ -69,5 +68,3 @@ def test_logging_function_call():
         "tables", [dict()])[0].get("rows", [])
     assert function_logging_traces, (
         f"Logging initialisation message not found for job with id {JOB_ID}.")
-    # if not function_logging_traces:
-    #     pytest.skip(f"Logging flush failed for job with id {JOB_ID}, but this is not a major issue - skipping the test")

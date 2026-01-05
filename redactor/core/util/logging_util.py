@@ -41,20 +41,11 @@ class LoggingUtil(metaclass=Singleton):
     """
     Logging utility class that provides functionality to send logs to app insights
     """
-
-    job_id: UUID
-    logger: logging.Logger
-    log_file: str = None
-    namespace: str
-    log_level: int
     
     def __init__(self, *args, **kwargs):
         """
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which 
         is reused.
-
-        __init__ cannot be used because it is always called by __new__, even if 
-        cls._INSTANCE is not None
         """
         self.job_id = uuid4()
         self.namespace = kwargs.pop("namespace", "redactor_logs")
@@ -73,8 +64,8 @@ class LoggingUtil(metaclass=Singleton):
                     level=self.log_level,
                 )
                 self.logger = logging.getLogger(self.namespace)
-                self.logger.info(
-                    f"{self.job_id}: Logging initialised for "
+                self.log_info(
+                    f"Logging initialised for "
                     f"{self.namespace} to file {self.log_file}."
                 )
                 return
@@ -93,25 +84,25 @@ class LoggingUtil(metaclass=Singleton):
         # Create a logger
         self.logger = logging.getLogger(self.namespace)
         self.logger.setLevel(self.log_level)
-        self.log_info(f"{self.job_id}: Logging initialised for {self.namespace}.")
+        self.log_info(f"Logging initialised for {self.namespace}.")
 
     def log_info(self, msg: str):
         """
         Log an information message
         """
-        self.logger.info(f"{self.job_id} : {msg}")
+        self.logger.info(f"{self.job_id}: {msg}")
 
     def log_error(self, msg: str):
         """
         Log an error message string
         """
-        self.logger.error(f"{self.job_id} : {msg}")
+        self.logger.error(f"{self.job_id}: {msg}")
 
     def log_exception(self, ex: Exception):
         """
         Log an exception
         """
-        self.logger.exception(f"{self.job_id} : {ex}")
+        self.logger.exception(f"{self.job_id}: {ex}")
 
 
 def log_to_appins(_func=None, *args, **kwargs):
