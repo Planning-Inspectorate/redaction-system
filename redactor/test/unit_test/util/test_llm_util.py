@@ -1,13 +1,9 @@
+import json
+
+from threading import Semaphore
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from redactor.core.redaction.redactor import LLMTextRedactor
-
-from redactor.core.redaction.config import (
-    RedactionConfig,
-    LLMTextRedactionConfig,
-)
 from redactor.core.redaction.result import (
-    LLMTextRedactionResult,
     LLMRedactionResultFormat,
 )
 from redactor.core.util.llm_util import LLMUtil, TokenSemaphore, create_api_message
@@ -35,16 +31,19 @@ class MockLLMChatCompletionUsage:
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
 
+
 def test__token_semaphore__acquire():
     token_semaphore = TokenSemaphore(max_tokens=100)
     token_semaphore.acquire(50)
     assert token_semaphore.tokens == 50
+
 
 def test__token_semaphore__release():
     token_semaphore = TokenSemaphore(max_tokens=100)
     token_semaphore.acquire(50)
     token_semaphore.release(30)
     assert token_semaphore.tokens == 80
+
 
 def test__token_semaphore__parallel():
     # Test that in a parallel scenario, only one thread waits when tokens are insufficient
@@ -53,7 +52,6 @@ def test__token_semaphore__parallel():
         self.acquire(60)
         # Simulate some processing
         self.release(60)
-        
 
     token_semaphore = TokenSemaphore(max_tokens=100)
     token_semaphore.task = task
@@ -69,7 +67,7 @@ def test__token_semaphore__parallel():
             assert future.done()
             # Ensure tokens are non-negative
             assert token_semaphore.tokens >= 0
-    
+
     assert token_semaphore.tokens == 100
 
 
@@ -85,55 +83,77 @@ def test__create_api_message():
 
 
 def test__llm_util__num_tokens_consumed():
-    llm_util = LLMUtil(model="gpt-4.1-nano", token_encoding_name="cl100k_base")
+    llm_util = LLMUtil(
+        model="gpt-4.1-nano", token_encoding_name="cl100k_base", max_tokens=1000, n=1
+    )
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
-    
-    num_tokens = llm_util.num_tokens_consumed(system_prompt, user_prompt)
-    assert num_tokens == 16 # 6 in system + 10 
-            
 
-# def test__llm_text_redactor__redact():
-#     """
-#     - Given I have some llm redaction config
-#     - When I call LLMTextRedactor.redact
-#     - Then I should receive a LLMTextRedactionResult with appropriate properties set
-#     """
-#     config = LLMTextRedactionConfig(
-#         name="config name",
-#         redactor_type="LLMTextRedaction",
-#         model="gpt-4.1-nano",
-#         text="some text",
-#         system_prompt="some system prompt",
-#         redaction_rules=[
-#             "rule A",
-#             "rule B",
-#             "rule C",
-#         ],
-#     )
-#     mock_chat_completion = MockLLMChatCompletion(
-#         choices=[
-#             MockLLMChatCompletionChoice(
-#                 message=MockLLMChatCompletionChoiceMessage(
-#                     parsed=LLMRedactionResultFormat(
-#                         redaction_strings=["string A", "string B"]
-#                     )
-#                 )
-#             )
-#         ],
-#         usage=MockLLMChatCompletionUsage(prompt_tokens=5, completion_tokens=4),
-#     )
-#     expected_result = LLMTextRedactionResult(
-#         redaction_strings=("string A", "string B"),
-#         metadata=LLMTextRedactionResult.LLMResultMetadata(
-#             input_token_count=5, output_token_count=4, total_token_count=9
-#         ),
-#     )
-#     with mock.patch.object(LLMUtil, "__init__", return_value=None):
-#         with mock.patch.object(
-#             LLMUtil, "redact_text", return_value=mock_chat_completion
-#         ):
-#             with mock.patch.object(LLMTextRedactor, "__init__", return_value=None):
-#                 LLMTextRedactor.config = config
-#                 actual_result = LLMTextRedactor().redact()
-#                 assert expected_result == actual_result
+    num_tokens = llm_util.num_tokens_consumed(system_prompt, user_prompt)
+    assert (
+        num_tokens == 1024
+    )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
+
+
+def create_mock_chat_completion(redaction_strings=["string A", "string B"], prompt_tokens=5, completion_tokens=4):
+    return MockLLMChatCompletion(
+        choices=[
+            MockLLMChatCompletionChoice(
+                message=MockLLMChatCompletionChoiceMessage(
+                    parsed=LLMRedactionResultFormat(
+                        redaction_strings=redaction_strings
+                    )
+                )
+            )
+        ],
+        usage=MockLLMChatCompletionUsage(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens),
+    )
+
+def get_redact_text_chunk_response(chat_completion):
+    response_cleaned = json.loads(chat_completion.choices[0].message.parsed)
+    redaction_strings = tuple(response_cleaned.redaction_strings)
+    return (response_cleaned, redaction_strings)
+
+
+@patch.object(Semaphore, "acquire")
+@patch.object(Semaphore, "release")
+@patch.object(LLMUtil, "num_tokens_consumed", return_value=10)
+@patch("redactor.core.util.llm_util.PromptTemplate")
+def test__llm_util___redact_text_chunk(
+    mock_acquire, mock_release, mock_num_tokens_consumed, mock_prompt_template
+):
+    mock_chat_completion = create_mock_chat_completion()
+    expected_result = get_redact_text_chunk_response(mock_chat_completion)
+
+    llm_util = LLMUtil()
+    with patch.object(LLMUtil, "invoke_chain", return_value=mock_chat_completion):
+        actual_result = llm_util._redact_text_chunk(
+            system_prompt="system prompt",
+            user_prompt="",
+        )
+
+    assert expected_result == actual_result
+
+    assert llm_util.input_token_count == 5
+    assert llm_util.output_token_count == 4
+
+    Semaphore.acquire.assert_called_once()
+    TokenSemaphore.assert_called_once()
+    TokenSemaphore.assert_called_once()
+
+
+@patch("redactor.core.util.llm_util.PromptTemplate")
+def test__llm_util__redact_text(mock_prompt_template):
+    llm_util = LLMUtil()
+
+    chunk_result = get_redact_text_chunk_response(create_mock_chat_completion())
+    expected_result = ([chunk_result], {"input": 5, "output": 4})
+
+    with patch.object(LLMUtil, "_redact_text_chunk", return_value=chunk_result):
+        actual_result = llm_util._redact_text(
+            system_prompt_formatted="system prompt",
+            user_prompt_template=mock_prompt_template,
+            text_chunks=["string A string B"],
+        )
+
+    assert expected_result == actual_result

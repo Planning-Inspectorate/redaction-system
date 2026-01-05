@@ -73,11 +73,23 @@ def create_api_message(
 class LLMUtil:
     """
     Class that handles the interaction with a large-language model hosted on Azure
+    
+    :param model: The OpenAI model to use
+    :param max_tokens: The maximum number of tokens per minute to generate in a 
+    single completion
+    :param temperature: The temperature to use for the LLM
+    :param request_rate_limit: The maximum number of requests per minute
+    :param token_rate_limit: The maximum number of tokens per minute
+    :param max_concurrent_requests: The maximum number of concurrent requests to make
+    :param n: The number of completions to generate per request
+    :param token_encoding_name: The name of the token encoding to use for counting tokens. 
+    Defaults to `cl100k_base` for GPT-4
+    :param delay: The delay in seconds to use for rate limiting calculations
     """
 
     def __init__(self, 
                  model: str = "gpt-4.1-nano", 
-                 max_tokens: int = 1000,
+                 max_tokens: int = 62500, # default to 25% of max 250k TPM
                  temperature: float = 0.5,
                  request_rate_limit: int = 20,
                  token_rate_limit: int = 40000,
@@ -160,7 +172,7 @@ class LLMUtil:
         )
         return response
 
-    def redact_text_chunk(
+    def _redact_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -218,7 +230,7 @@ class LLMUtil:
         for chunk in text_chunks:
             user_prompt_formatted = user_prompt_template.format(chunk=chunk)
 
-            response, redaction_strings = self.redact_text_chunk(
+            response, redaction_strings = self._redact_text_chunk(
                 system_prompt_formatted, user_prompt_formatted
             )
             responses.append(response)
@@ -261,7 +273,7 @@ class LLMUtil:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
-                    self.redact_text_chunk,
+                    self._redact_text_chunk,
                     system_prompt_formatted,
                     user_prompt_template.format(chunk=chunk),
                 ): chunk
