@@ -10,11 +10,10 @@ from mock import patch
 from redactor.core.util.logging_util import log_to_appins
 
 
-APP_INSIGHTS_TOKEN = AzureCliCredential().get_token(
-    "https://api.applicationinsights.io/.default").token
-APP_INSIGHTS_CONNECTION_STRING = os.environ.get(
-    "APP_INSIGHTS_CONNECTION_STRING", None
+APP_INSIGHTS_TOKEN = (
+    AzureCliCredential().get_token("https://api.applicationinsights.io/.default").token
 )
+APP_INSIGHTS_CONNECTION_STRING = os.environ.get("APP_INSIGHTS_CONNECTION_STRING", None)
 APP_INSIGHTS_APP_ID = APP_INSIGHTS_CONNECTION_STRING.split("ApplicationId=")[1]
 JOB_ID = uuid4()
 
@@ -23,9 +22,9 @@ def query_app_insights(app_id: str, expected_message: str):
     query = f'traces | where message contains "{expected_message}"'
     payload = {"query": query, "timespan": "PT30M"}
     resp = requests.post(
-        f"https://api.applicationinsights.io/v1/apps/{app_id}/query", 
-        json=payload, 
-        headers={"Authorization": f"Bearer {APP_INSIGHTS_TOKEN}"}
+        f"https://api.applicationinsights.io/v1/apps/{app_id}/query",
+        json=payload,
+        headers={"Authorization": f"Bearer {APP_INSIGHTS_TOKEN}"},
     )
     resp_json = resp.json()
     return resp_json
@@ -50,11 +49,14 @@ def test_logging_initialised():
     )
 
     logging_initialised_query_response = query_app_insights(
-        APP_INSIGHTS_APP_ID, expected_logging_initialised_message)
+        APP_INSIGHTS_APP_ID, expected_logging_initialised_message
+    )
     logging_initialised_traces = logging_initialised_query_response.get(
-        "tables", [dict()])[0].get("rows", [])
+        "tables", [dict()]
+    )[0].get("rows", [])
     assert logging_initialised_traces, (
-        f"Logging initialisation message not found for job with id {JOB_ID}.")
+        f"Logging initialisation message not found for job with id {JOB_ID}."
+    )
 
 
 def test_logging_function_call():
@@ -63,8 +65,11 @@ def test_logging_function_call():
         "mock_arg_b='There'"
     )
     function_logging_query_response = query_app_insights(
-        APP_INSIGHTS_APP_ID, expected_logging_function_message)
-    function_logging_traces = function_logging_query_response.get(
-        "tables", [dict()])[0].get("rows", [])
+        APP_INSIGHTS_APP_ID, expected_logging_function_message
+    )
+    function_logging_traces = function_logging_query_response.get("tables", [dict()])[
+        0
+    ].get("rows", [])
     assert function_logging_traces, (
-        f"Logging initialisation message not found for job with id {JOB_ID}.")
+        f"Logging initialisation message not found for job with id {JOB_ID}."
+    )

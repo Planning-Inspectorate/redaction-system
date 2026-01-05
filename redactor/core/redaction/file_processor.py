@@ -240,7 +240,7 @@ class PDFProcessor(FileProcessor):
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
         for word_to_redact in text_to_redact:
             for page in pdf:
-                LoggingUtil.log_info("searchin for word: " + word_to_redact)
+                LoggingUtil.log_info("Searching for word: " + word_to_redact)
                 text_instances = page.search_for(word_to_redact)
                 for inst in text_instances:
                     instances_to_redact.append((page, inst, word_to_redact))

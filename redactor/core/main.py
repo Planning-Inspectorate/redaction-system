@@ -96,7 +96,8 @@ def main(
         except NonEnglishContentException as e:
             LoggingUtil.log_info(str(e))
             LoggingUtil.log_info(
-                "No provisional file will be generated for non-English content.")
+                "No provisional file will be generated for non-English content."
+            )
             return
         with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:
             f.write(processed_file_bytes.getvalue())
