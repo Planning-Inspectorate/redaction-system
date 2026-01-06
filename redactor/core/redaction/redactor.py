@@ -2,9 +2,9 @@ import json
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
 from pydantic import BaseModel
+from langchain_core.prompts import PromptTemplate
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.prompts import PromptTemplate
 
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
@@ -102,14 +102,6 @@ class LLMRedactionResultFormat(BaseModel):
     redaction_strings: list[str]
 
 
-OUTPUT_FORMAT_STRING = (
-    "<OutputFormat> You respond in JSON format. You return the "
-    "successfully extracted terms from the text in JSON list named "
-    '"terms". List them as they appear in the text. '
-    "</OutputFormat>"
-)
-
-
 class LLMTextRedactor(TextRedactor):
     """
     Class that performs text redaction using an LLM
@@ -129,43 +121,14 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def _create_system_prompt(
-        self, output_format_string: str = OUTPUT_FORMAT_STRING
-    ) -> str:
-        system_prompt_list: List[str] = []
-        # Add the system role and redaction_terms to redact
-        system_prompt_list.append(xml_format(self.config.system_prompt, "SystemRole"))
-        system_prompt_list.append(
-            xml_format(self.config.redaction_terms, "Terms", as_list=True)
-        )
-
-        # Add the output format instructions
-        system_prompt_list.append(output_format_string)
-
-        # Add any constraints to the System prompt
-        if self.config.constraints:
-            system_prompt_list.append(
-                xml_format(self.config.constraints, "Constraints", as_list=True)
-            )
-
-        # Add the defined redaction rules to the System prompt
-        prompt_template_string = "\n\n".join(system_prompt_list)
-
-        system_prompt_template = PromptTemplate(
-            input_variables=["chunk"],
-            template=prompt_template_string,
-        )
-        return system_prompt_template.format()
-
     def redact(
         self, 
-        output_format_string: str = OUTPUT_FORMAT_STRING
     ) -> LLMTextRedactionResult:
         # Initialisation
         self.config: LLMTextRedactionConfig
 
         # Create system prompt from loaded config
-        system_prompt = self._create_system_prompt(output_format_string)
+        system_prompt = self.create_system_prompt()
 
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
@@ -210,22 +173,6 @@ class LLMTextRedactor(TextRedactor):
         )
         return text_redaction_result
 
-
-
-
-def xml_format(input: str | list, format_string: str, as_list: bool = False) -> str:
-    """Wrap the input string in XML tags of the given format string"""
-    if isinstance(input, list):
-        if as_list:
-            joined_input = "\n".join(
-                ["- " + x if not x.startswith("-") else x for x in input]
-            )
-        else:
-            joined_input = "\n".join(
-                [x + "." if not x.endswith(".") else x for x in input]
-            )
-        return f"<{format_string}>\n{joined_input}\n</{format_string}>"
-    return f"<{format_string}>\n{input}\n</{format_string}>"
 
 class ImageRedactor(Redactor):  # pragma: no cover
     """

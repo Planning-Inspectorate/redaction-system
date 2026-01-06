@@ -1,6 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel
 from redactor.core.util.types import PydanticImage
+from langchain_core.prompts import PromptTemplate
 
 
 class RedactionConfig(BaseModel):
@@ -23,10 +24,56 @@ class LLMTextRedactionConfigBase(RedactionConfig):
     """A list of redaction rule strings to apply"""
     constraints: List[str] = None
     """A list of constraint strings to apply"""
+    output_format: str = (
+        "<OutputFormat> You respond in JSON format. You return the "
+        "successfully extracted terms from the text in JSON list named "
+        '"terms". List them as they appear in the text. '
+        "</OutputFormat>"
+    )
 
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
-    pass
+
+    def create_system_prompt(self) -> str:
+        system_prompt_list: List[str] = []
+        # Add the system role and redaction_terms to redact
+        system_prompt_list.append(xml_format(self.system_prompt, "SystemRole"))
+        system_prompt_list.append(
+            xml_format(self.redaction_terms, "Terms", as_list=True)
+        )
+
+        # Add the output format instructions
+        system_prompt_list.append(self.output_format)
+
+        # Add any constraints to the System prompt
+        if self.constraints:
+            system_prompt_list.append(
+                xml_format(self.constraints, "Constraints", as_list=True)
+            )
+
+        # Add the defined redaction rules to the System prompt
+        prompt_template_string = "\n\n".join(system_prompt_list)
+
+        system_prompt_template = PromptTemplate(
+            input_variables=["chunk"],
+            template=prompt_template_string,
+        )
+        return system_prompt_template.format()
+
+
+def xml_format(input: str | list, format_string: str, as_list: bool = False) -> str:
+    """Wrap the input string in XML tags of the given format string"""
+    if isinstance(input, list):
+        if as_list:
+            joined_input = "\n".join(
+                ["- " + x if not x.startswith("-") else x for x in input]
+            )
+        else:
+            joined_input = "\n".join(
+                [x + "." if not x.endswith(".") else x for x in input]
+            )
+        return f"<{format_string}>\n{joined_input}\n</{format_string}>"
+    return f"<{format_string}>\n{input}\n</{format_string}>"
 
 
 class ImageRedactionConfig(RedactionConfig):
