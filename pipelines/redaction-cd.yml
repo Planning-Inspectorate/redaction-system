@@ -34,7 +34,7 @@ extends:
               # Create a zip file of all the files in the filelist.
               - script: |
                   cd $(Build.SourcesDirectory)/redactor
-                  xargs zip -r $(Build.ArtifactStagingDirectory)/functions.zip
+                  zip -r $(Build.ArtifactStagingDirectory)/functions.zip
                 displayName: 'Archive top level files'
               
               # Publish the zip file as an artifact to be used further in the pipeline.
