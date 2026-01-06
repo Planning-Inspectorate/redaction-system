@@ -20,6 +20,7 @@ class Singleton(type):
     """
 
     _INSTANCES = {}
+    # TODO implement thread safety in NRR-102: see https://stackoverflow.com/questions/51896862/how-to-create-singleton-class-with-arguments-in-python
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._INSTANCES:
@@ -33,9 +34,14 @@ class LoggingUtil(metaclass=Singleton):
     Logging utility class that provides functionality to send logs to app insights
     Example usage
 
+    kwargs:
+        job_id: Optional[str] # A unique job identifier
+        namespace: Optional[str] # The logging namespace
+        log_file: Optional[str] # If provided, logs will be written to this file if app insights is not configured
+        log_level: Optional[int] # The logging level, defaults to logging.INFO
     ```
     from redactor.core.util.logging_util import LoggingUtil
-    LoggingUtil().log_info("Some logging message)
+    LoggingUtil().log_info("Some logging message")
     @log_to_appins
     def my_function_that_will_have_automatic_logging_applied():
         LoggingUtil().log_info("Inside function")
@@ -43,12 +49,12 @@ class LoggingUtil(metaclass=Singleton):
 
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which
         is reused.
         """
-        self.job_id = uuid4()
+        self.job_id = kwargs.pop("job_id", uuid4())
         self.namespace = kwargs.pop("namespace", "redactor_logs")
         self.log_file = kwargs.pop("log_file", None)
         self.log_level = kwargs.pop("log_level", logging.INFO)
@@ -90,12 +96,6 @@ class LoggingUtil(metaclass=Singleton):
         Log an information message
         """
         self.logger.info(f"{self.job_id}: {msg}")
-
-    def log_error(self, msg: str):
-        """
-        Log an error message string
-        """
-        self.logger.error(f"{self.job_id}: {msg}")
 
     def log_exception(self, ex: Exception):
         """

@@ -64,20 +64,6 @@ def test_logging_util__log_info(mock_logger_info):
     Logger.info.assert_called_once_with(f"{guid}: {info_message}")
 
 
-@patch.object(Logger, "error", return_value=None)
-def test_logging_util__log_error(mock_logger_error):
-    logging_util_inst = get_new_logging_instance()
-    guid = "some_guid"
-
-    logging_util_inst.logger = getLogger()
-    logging_util_inst.job_id = guid
-
-    error_message = "some_error_message"
-    logging_util_inst.log_error(error_message)
-
-    Logger.error.assert_called_once_with(f"{guid}: {error_message}")
-
-
 @patch.object(Logger, "exception", return_value=None)
 def test_logging_util__log_exception(mock_logger_exception):
     logging_util_inst = get_new_logging_instance()
