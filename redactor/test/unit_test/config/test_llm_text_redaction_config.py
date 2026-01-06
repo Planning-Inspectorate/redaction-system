@@ -26,7 +26,7 @@ def test_llm_text_redactor__create_system_prompt():
     expected_system_prompt = (
         "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
         "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
-        f"{config.output_format_string}\n\n"
+        f"{config.output_format}\n\n"
         "<Constraints>\n- constraint X\n- constraint Y\n</Constraints>"
     )
     actual_system_prompt = config.create_system_prompt()
@@ -55,7 +55,7 @@ def test_llm_text_redactor__create_system_prompt_no_constraints():
     expected_system_prompt = (
         "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
         "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
-        f"{config.output_format_string}"
+        f"{config.output_format}"
     )
     actual_system_prompt = config.create_system_prompt()
 

@@ -1,7 +1,6 @@
 from redactor.core.redaction.redactor import (
     LLMTextRedactor,
     LLMRedactionResultFormat,
-    OUTPUT_FORMAT_STRING
 )
 from redactor.core.redaction.config import RedactionConfig, LLMTextRedactionConfig
 from redactor.core.util.llm_util import LLMUtil

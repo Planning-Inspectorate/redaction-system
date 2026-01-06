@@ -37,7 +37,7 @@ def test__image_llm_text_redactor__redact():
             Image.new("RGB", (1000, 1000)),
         ],
         system_prompt="some system prompt",
-        redaction_rules=[
+        redaction_terms=[
             "rule A",
             "rule B",
             "rule C",

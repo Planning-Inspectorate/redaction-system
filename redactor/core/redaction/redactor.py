@@ -121,20 +121,21 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def redact(
+    def _analyse_text(
         self, 
+        text_to_analyse: str,
     ) -> LLMTextRedactionResult:
         # Initialisation
         self.config: LLMTextRedactionConfig
 
         # Create system prompt from loaded config
-        system_prompt = self.create_system_prompt()
+        system_prompt = self.config.create_system_prompt()
 
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
             input_variables=["chunk"], template="{chunk}"
         )
-        text_chunks = self.TEXT_SPLITTER.split_text(self.config.text)
+        text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
 
         # Identify redaction strings
         llm_util = LLMUtil(self.config.model)
@@ -172,6 +173,10 @@ class LLMTextRedactor(TextRedactor):
             ),
         )
         return text_redaction_result
+
+    def redact(self) -> LLMTextRedactionResult:
+        self.config: LLMTextRedactionConfig
+        return self._analyse_text(self.config.text)
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -222,18 +227,18 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
     def redact(self) -> ImageRedactionResult:
         # Initialisation
         self.config: ImageLLMTextRedactionConfig
-        model = self.config.model
-        system_prompt = self.config.system_prompt
-        redaction_rules = self.config.redaction_rules
         results = []
+
         for image_to_redact in self.config.images:
             print("image: ", image_to_redact)
+
+            # Detect and analyse text in the image
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
-            redaction_strings = self._analyse_text(
-                text_content, model, system_prompt, redaction_rules
-            ).redaction_strings
+            redaction_strings = self._analyse_text(text_content).redaction_strings
+
+            # Identify text rectangles to redact based on redaction strings
             text_rects_to_redact = tuple(
                 (text, bounding_box)
                 for text, bounding_box in text_rect_map
@@ -242,6 +247,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     redaction_string in text for redaction_string in redaction_strings
                 )
             )
+
             results.append(
                 ImageRedactionResult.Result(
                     redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
@@ -249,6 +255,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     source_image=image_to_redact,
                 )
             )
+
         return ImageRedactionResult(redaction_results=tuple(results))
 
 

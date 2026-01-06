@@ -32,7 +32,7 @@ def test__config_processor__process_config():
                 redactor_type="ImageLLMTextRedaction",
                 model="gpt-4.1-nano",
                 system_prompt="You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: ",
-                redaction_rules=[
+                redaction_terms=[
                     "Find all human names in the text",
                     "Find all dates in the test",
                 ],
