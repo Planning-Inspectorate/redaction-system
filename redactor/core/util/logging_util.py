@@ -49,7 +49,7 @@ class LoggingUtil(metaclass=Singleton):
 
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which
         is reused.
