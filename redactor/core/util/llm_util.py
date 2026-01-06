@@ -19,7 +19,10 @@ from openai import OpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 
-from redactor.core.redaction.result import LLMRedactionResultFormat
+from redactor.core.redaction.result import (
+    LLMTextRedactionResult,
+    LLMRedactionResultFormat,
+)
 
 
 load_dotenv(verbose=True)
@@ -88,7 +91,7 @@ class LLMUtil:
     :param delay: The delay in seconds to use for rate limiting calculations
     """
 
-    # Azure Foundry quota limits and cost per 1M tokens - correct on 06/01/26
+    # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
     openai_models = {
         "gpt-4.1": {"token_rate_limit": 250000, "input_cost": 149, "output_cost": 593},
         "gpt-4.1-mini": {
@@ -128,8 +131,10 @@ class LLMUtil:
             base_url=f"{self.azure_endpoint}openai/v1/",
             api_key=self.api_key,
         )
-        
-        self._set_model_details(model) # sets llm_model, input_cost, output_cost
+
+        self._set_model_details(
+            model
+        )  # sets llm_model, input_token_cost, output_token_cost
 
         self.max_tokens = max_tokens  # max tokens per completion
         self.temperature = temperature  # Between 0 and 2
@@ -148,7 +153,9 @@ class LLMUtil:
         self.token_encoding_name = token_encoding_name
 
         self.delay = delay  # Delay in seconds for rate limiting calculations
-        self.budget = budget  # Budget in USD for LLM calls
+
+        self.total_cost = 0.0  # Total cost of LLM calls in GBP
+        self.budget = budget  # Budget in GBP for LLM calls
 
         self.input_token_count = 0
         self.output_token_count = 0
@@ -156,8 +163,9 @@ class LLMUtil:
     def _set_model_details(self, model: str):
         if model in self.openai_models:
             self.llm_model = model
-            self.input_cost = self.openai_models[model]["input_cost"]
-            self.output_cost = self.openai_models[model]["output_cost"]
+            # Set cost per token in GBP
+            self.input_token_cost = self.openai_models[model]["input_cost"] * 0.000001
+            self.output_token_cost = self.openai_models[model]["output_cost"] * 0.000001
         else:
             raise ValueError(f"Model {model} is not supported.")
 
@@ -174,7 +182,7 @@ class LLMUtil:
                     f"Token rate limit for model {self.llm_model} exceeds maximum. "
                     f"Setting to maximum of {self.token_rate_limit} tokens per minute."
                 )
-        else: # default to 50% of max token rate limit
+        else:  # default to 50% of max token rate limit
             self.token_rate_limit = int(
                 self.openai_models[self.llm_model]["token_rate_limit"] * 0.5
             )
@@ -219,7 +227,7 @@ class LLMUtil:
         )
         return response
 
-    def _redact_text_chunk(
+    def redact_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -242,11 +250,13 @@ class LLMUtil:
                     system_prompt, user_prompt, LLMRedactionResultFormat
                 )
 
-                response_cleaned: LLMRedactionResultFormat = response.choices[0].message.parsed
+                response_cleaned: LLMRedactionResultFormat = response.choices[
+                    0
+                ].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
 
-                self.input_token_count += response.usage.prompt_tokens
-                self.output_token_count += response.usage.completion_tokens
+                # Update token counts and costs
+                self._compute_costs(response)
 
                 return response, redaction_strings
             except json.JSONDecodeError:
@@ -263,6 +273,18 @@ class LLMUtil:
             self.request_semaphore.release()
             time.sleep(self.delay / self.request_rate_limit)  # Rate limiting delay
 
+    def _compute_costs(self, response: ParsedChatCompletion):
+        prompt_tokens = response.usage.prompt_tokens
+        completion_tokens = response.usage.completion_tokens
+
+        self.input_token_count += prompt_tokens
+        self.output_token_count += completion_tokens
+
+        self.total_cost += (
+            prompt_tokens * self.input_token_cost
+            + completion_tokens * self.output_token_cost
+        )
+
     def redact_text(
         self,
         system_prompt: str,
@@ -274,22 +296,29 @@ class LLMUtil:
 
         # Process each chunk
         for chunk in text_chunks:
-            response, redaction_strings = self._redact_text_chunk(
+            response, redaction_strings = self.redact_text_chunk(
                 system_prompt, user_prompt_template.format(chunk=chunk)
             )
             responses.append(response)
             text_to_redact.extend(redaction_strings)
+            self._compute_costs(response)
 
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
 
         # Collect metrics
-        token_counts = {
-            "input": sum(x.usage.prompt_tokens for x in responses),
-            "output": sum(x.usage.completion_tokens for x in responses),
-        }
+        result = LLMTextRedactionResult(
+            redaction_strings=text_to_redact_cleaned,
+            metadata=LLMTextRedactionResult.LLMResultMetadata(
+                input_token_count=self.input_token_count,
+                output_token_count=self.output_token_count,
+                total_token_count=self.input_token_count + self.output_token_count,
+                total_cost=self.total_cost,
+            ),
+        )
 
-        return text_to_redact_cleaned, token_counts
+        return result
+
 
     @retry(
         wait=wait_fixed(2),
@@ -317,7 +346,7 @@ class LLMUtil:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
-                    self._redact_text_chunk,
+                    self.redact_text_chunk,
                     system_prompt,
                     user_prompt_template.format(chunk=chunk),
                 ): chunk
@@ -331,19 +360,32 @@ class LLMUtil:
                     response, redaction_strings = future.result()
                     responses.append(response)
                     text_to_redact.extend(redaction_strings)
-
+                    self._compute_costs(response)
                 except Exception as e:
                     print(
                         f"Function call with chunk {chunk} generated an exception: {e}"
                     )
-
-        # Collect metrics
-        # TODO calculate costs
-        token_counts = {
-            "input": self.input_token_count,
-            "output": self.output_token_count,
-        }
+                    
+                # Check budget after each request
+                if self.budget and self.total_cost >= self.budget:
+                    print(
+                        f"Budget of £{self.budget} exceeded with total cost "
+                        f"£{self.total_cost}. Stopping further requests."
+                    )
+                    break
 
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
-        return (text_to_redact_cleaned, token_counts)
+
+        # Collect metrics
+        result = LLMTextRedactionResult(
+            redaction_strings=text_to_redact_cleaned,
+            metadata=LLMTextRedactionResult.LLMResultMetadata(
+                input_token_count=self.input_token_count,
+                output_token_count=self.output_token_count,
+                total_token_count=self.input_token_count + self.output_token_count,
+                total_cost=self.total_cost,
+            ),
+        )
+
+        return result

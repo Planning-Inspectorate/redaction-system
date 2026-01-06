@@ -31,9 +31,10 @@ class TextRedactionResult(RedactionResult):
 class LLMTextRedactionResult(TextRedactionResult):
     @dataclass(frozen=True)
     class LLMResultMetadata:
-        input_token_count: int = field()
-        output_token_count: int = field()
-        total_token_count: int = field()
+        input_token_count: int = field(default=0)
+        output_token_count: int = field(default=0)
+        total_token_count: int = field(default=0)
+        total_cost: float = field(default=0.0)
 
     metadata: LLMResultMetadata = field(default=None)
     """Any metadata provided by the LLM"""

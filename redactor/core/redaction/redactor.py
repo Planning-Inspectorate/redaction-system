@@ -139,21 +139,11 @@ class LLMTextRedactor(TextRedactor):
         llm_util = LLMUtil(model, **kwargs)
 
         # Identify redaction strings
-        text_to_redact_cleaned, token_counts = llm_util.redact_text(
+        return llm_util.redact_text(
             system_prompt_formatted,
             user_prompt_template,
             text_chunks,
         )
-
-        result = LLMTextRedactionResult(
-            redaction_strings=text_to_redact_cleaned,
-            metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=token_counts["input"],
-                output_token_count=token_counts["output"],
-                total_token_count=token_counts["input"] + token_counts["output"],
-            ),
-        )
-        return result
 
 
 class ImageRedactor(Redactor):  # pragma: no cover

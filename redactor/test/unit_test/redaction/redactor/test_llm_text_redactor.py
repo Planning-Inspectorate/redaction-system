@@ -47,14 +47,15 @@ def test__llm_text_redactor__redact(mock_llm_util_init, mock_llm_text_redactor_i
             "rule C",
         ],
     )
+
     expected_result = LLMTextRedactionResult(
         redaction_strings=("string A", "string B"),
         metadata=LLMTextRedactionResult.LLMResultMetadata(
-            input_token_count=5, output_token_count=4, total_token_count=9
+            input_token_count=5, output_token_count=4, total_token_count=9, total_cost=0.0
         ),
     )
-    # mock_redact_response = 
-    # with patch.object(LLMUtil, "redact_text", return_value=mock_redact_response):
-    #     LLMTextRedactor.config = config
-    #     actual_result = LLMTextRedactor().redact()
-    #     assert expected_result == actual_result
+
+    with patch.object(LLMUtil, "redact_text", return_value=mock_redact_response):
+        LLMTextRedactor.config = config
+        actual_result = LLMTextRedactor().redact()
+        assert expected_result == actual_result
