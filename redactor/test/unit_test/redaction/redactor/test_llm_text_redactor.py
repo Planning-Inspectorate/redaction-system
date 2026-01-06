@@ -6,7 +6,6 @@ from redactor.core.redaction.config import (
 )
 from redactor.core.redaction.result import (
     LLMTextRedactionResult,
-    LLMRedactionResultFormat,
 )
 from redactor.core.util.llm_util import LLMUtil
 from mock import patch

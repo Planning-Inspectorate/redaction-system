@@ -135,9 +135,10 @@ class LLMTextRedactor(TextRedactor):
         )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
 
-        # Identify redaction strings
         # Initialise LLM interface
         llm_util = LLMUtil(model, **kwargs)
+
+        # Identify redaction strings
         text_to_redact_cleaned, token_counts = llm_util.redact_text(
             system_prompt_formatted,
             user_prompt_template,
