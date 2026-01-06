@@ -33,7 +33,6 @@ class LLMTextRedactionConfigBase(RedactionConfig):
 
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
-
     def create_system_prompt(self) -> str:
         system_prompt_list: List[str] = []
         # Add the system role and redaction_terms to redact

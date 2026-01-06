@@ -21,7 +21,9 @@ def test__config_processor__process_config():
                 redactor_type="LLMTextRedaction",
                 model="gpt-4.1",
                 system_prompt="You are a thorough assistant that extracts all of the requested terms from a given text.",
-                redaction_terms=["People's names. List each part of the name separately."],
+                redaction_terms=[
+                    "People's names. List each part of the name separately."
+                ],
                 constraints=[
                     "Do not include locations or organisations",
                     "Do not include names of anything which is not a person",
@@ -29,7 +31,9 @@ def test__config_processor__process_config():
                     "Do not include those on whose behalf the text was written",
                 ],
             ),
-            ImageRedactionConfig(name="Image_Redactor_01", redactor_type="ImageRedaction"),
+            ImageRedactionConfig(
+                name="Image_Redactor_01", redactor_type="ImageRedaction"
+            ),
             ImageLLMTextRedactionConfig(
                 name="Image_Text_Redactor_01",
                 redactor_type="ImageLLMTextRedaction",
@@ -48,7 +52,5 @@ def test__config_processor__process_config():
         loaded_config, file_processor_class
     )
     for expected_rule in expected_parsed_config["redaction_rules"]:
-        assert expected_rule in actual_parsed_config["redaction_rules"], (
-            f"Expected redaction rule {expected_rule} not found in actual parsed config "
-            f"{[str(x) + '\n' for x in actual_parsed_config['redaction_rules']]}"
-        )
+        assert expected_rule in actual_parsed_config["redaction_rules"]
+    assert actual_parsed_config["provisional_redactions"] is None

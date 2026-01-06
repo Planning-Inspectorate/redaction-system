@@ -92,4 +92,3 @@ def test__llm_text_redactor__redact():
                 LLMTextRedactor.config = config
                 actual_result = LLMTextRedactor().redact()
                 assert expected_result == actual_result
-

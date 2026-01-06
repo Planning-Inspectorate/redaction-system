@@ -122,7 +122,7 @@ class LLMTextRedactor(TextRedactor):
         return LLMTextRedactionConfig
 
     def _analyse_text(
-        self, 
+        self,
         text_to_analyse: str,
     ) -> LLMTextRedactionResult:
         # Initialisation

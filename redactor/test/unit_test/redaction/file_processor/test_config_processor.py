@@ -124,7 +124,9 @@ def test__config_processor__validate_and_filter_config():
     }
 
     expected_output = {
-        "redaction_rules": [RedactionConfigInstA(name="redaction rule A", redactor_type="A")],
+        "redaction_rules": [
+            RedactionConfigInstA(name="redaction rule A", redactor_type="A")
+        ],
         "other_property": [],
     }
     with mock.patch.object(

@@ -102,7 +102,9 @@ if __name__ == "__main__":  # pragma: no cover
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
-    parser.add_argument("-c", "--config", help="Config file name to use", default="default")
+    parser.add_argument(
+        "-c", "--config", help="Config file name to use", default="default"
+    )
     args = parser.parse_args()
     file_to_redact = args.file_to_redact
     config = args.config

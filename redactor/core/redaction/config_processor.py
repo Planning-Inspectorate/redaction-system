@@ -132,7 +132,7 @@ class ConfigProcessor:
         filtered_redaction_config = cls.filter_redaction_config(
             formatted_redaction_config, file_processor_class
         )
-        config_copy.pop("redactors") 
+        config_copy.pop("redactors")
         config_copy["redaction_rules"] = filtered_redaction_config
         return config_copy
 

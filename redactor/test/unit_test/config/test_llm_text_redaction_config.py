@@ -1,5 +1,6 @@
 from redactor.core.redaction.config import LLMTextRedactionConfig
 
+
 def test_llm_text_redactor__create_system_prompt():
     """
     - Given I have some llm redaction config
@@ -32,6 +33,7 @@ def test_llm_text_redactor__create_system_prompt():
     actual_system_prompt = config.create_system_prompt()
 
     assert expected_system_prompt == actual_system_prompt
+
 
 def test_llm_text_redactor__create_system_prompt_no_constraints():
     """
