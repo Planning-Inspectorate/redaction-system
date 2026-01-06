@@ -48,10 +48,10 @@ def test__llm_text_redactor__get_redaction_config_class():
     """
     assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
 
-def test_llm_text_redactor__create_system_prompt():
+def test_llm_text_redactor___create_system_prompt():
     """
     - Given I have some llm redaction config
-    - When I call LLMTextRedactor.create_system_prompt
+    - When I call LLMTextRedactor._create_system_prompt
     - Then the returned system prompt should be correctly formatted
     """
     config = LLMTextRedactionConfig(
@@ -78,13 +78,13 @@ def test_llm_text_redactor__create_system_prompt():
     )
     llm_text_redactor = LLMTextRedactor(config)
     llm_text_redactor.config = config
-    actual_system_prompt = llm_text_redactor.create_system_prompt()
+    actual_system_prompt = llm_text_redactor._create_system_prompt()
     assert expected_system_prompt == actual_system_prompt
 
-def test_llm_text_redactor__create_system_prompt_no_constraints():
+def test_llm_text_redactor___create_system_prompt_no_constraints():
     """
     - Given I have some llm redaction config
-    - When I call LLMTextRedactor.create_system_prompt with no constraints
+    - When I call LLMTextRedactor._create_system_prompt with no constraints
     - Then the returned system prompt should be correctly formatted
     """
     config = LLMTextRedactionConfig(
@@ -106,7 +106,7 @@ def test_llm_text_redactor__create_system_prompt_no_constraints():
     )
     llm_text_redactor = LLMTextRedactor(config)
     llm_text_redactor.config = config
-    actual_system_prompt = llm_text_redactor.create_system_prompt()
+    actual_system_prompt = llm_text_redactor._create_system_prompt()
     assert expected_system_prompt == actual_system_prompt
 
 def test__llm_text_redactor__redact():
