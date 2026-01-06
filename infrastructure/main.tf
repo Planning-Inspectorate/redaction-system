@@ -136,7 +136,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
   location            = local.location
   resource_group_name = azurerm_resource_group.redaction_rg.name
   kind                = "ComputerVision"
-  sku_name            = "S0"
+  sku_name            = "F0"
 }
 
 ############################################################################
