@@ -13,6 +13,7 @@ from redactor.core.redaction.config import (
     TextRedactionConfig,
     LLMTextRedactionConfig,
     ImageRedactionConfig,
+    ImageLLMTextRedactionConfig,
 )
 from redactor.core.redaction.result import (
     LLMTextRedactionResult,
@@ -23,6 +24,7 @@ from redactor.core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
 from redactor.core.util.llm_util import LLMUtil
+from redactor.core.util.azure_vision_util import AzureVisionUtil
 from redactor.core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
@@ -127,7 +129,7 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def create_system_prompt(
+    def _create_system_prompt(
         self, output_format_string: str = OUTPUT_FORMAT_STRING
     ) -> str:
         system_prompt_list: List[str] = []
@@ -156,14 +158,14 @@ class LLMTextRedactor(TextRedactor):
         return system_prompt_template.format()
 
     def redact(
-        self, output_format_string: str = OUTPUT_FORMAT_STRING
+        self, 
+        output_format_string: str = OUTPUT_FORMAT_STRING
     ) -> LLMTextRedactionResult:
         # Initialisation
         self.config: LLMTextRedactionConfig
-        model = self.config.model
 
         # Create system prompt from loaded config
-        system_prompt_formatted = self.create_system_prompt(output_format_string)
+        system_prompt = self._create_system_prompt(output_format_string)
 
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
@@ -172,16 +174,16 @@ class LLMTextRedactor(TextRedactor):
         text_chunks = self.TEXT_SPLITTER.split_text(self.config.text)
 
         # Identify redaction strings
-        llm_util = LLMUtil(model)
+        llm_util = LLMUtil(self.config.model)
         text_to_redact = []
 
         # Todo - add multithreading here
         responses: List[ParsedChatCompletion] = []
 
         for chunk in text_chunks:
-            user_prompt_formatted = user_prompt_template.format(chunk=chunk)
+            user_prompt = user_prompt_template.format(chunk=chunk)
             response = llm_util.invoke_chain(
-                system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat
+                system_prompt, user_prompt, LLMRedactionResultFormat
             )
             response_cleaned: LLMRedactionResultFormat = response.choices[
                 0
@@ -209,6 +211,8 @@ class LLMTextRedactor(TextRedactor):
         return text_redaction_result
 
 
+
+
 def xml_format(input: str | list, format_string: str, as_list: bool = False) -> str:
     """Wrap the input string in XML tags of the given format string"""
     if isinstance(input, list):
@@ -222,7 +226,6 @@ def xml_format(input: str | list, format_string: str, as_list: bool = False) -> 
             )
         return f"<{format_string}>\n{joined_input}\n</{format_string}>"
     return f"<{format_string}>\n{input}\n</{format_string}>"
-
 
 class ImageRedactor(Redactor):  # pragma: no cover
     """
@@ -239,12 +242,67 @@ class ImageRedactor(Redactor):  # pragma: no cover
         return ImageRedactionConfig
 
     def redact(self) -> ImageRedactionResult:
+        self.config: ImageRedactionConfig
+        results: List[ImageRedactionResult.Result] = []
+        for image_to_redact in self.config.images:
+            vision_util = AzureVisionUtil()
+            image_rects = vision_util.detect_faces(image_to_redact)
+            results.append(
+                ImageRedactionResult.Result(
+                    redaction_boxes=image_rects,
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
+                )
+            )
+        return ImageRedactionResult(redaction_results=tuple(results))
+
+
+class ImageTextRedactor(ImageRedactor, TextRedactor):
+    """Redactors that redact text content in an image"""
+
+    pass
+
+
+class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
+    @classmethod
+    def get_name(cls) -> str:
+        return "ImageLLMTextRedaction"
+
+    @classmethod
+    def get_redaction_config_class(cls):
+        return ImageLLMTextRedactionConfig
+
+    def redact(self) -> ImageRedactionResult:
         # Initialisation
-        image_to_redact = self.config["properties"]["image"]
-        # Todo - need to implement this logic
-        return ImageRedactionResult(
-            redaction_boxes=(), image_dimensions=(0, 0), source_image=image_to_redact
-        )
+        self.config: ImageLLMTextRedactionConfig
+        model = self.config.model
+        system_prompt = self.config.system_prompt
+        redaction_rules = self.config.redaction_rules
+        results = []
+        for image_to_redact in self.config.images:
+            print("image: ", image_to_redact)
+            vision_util = AzureVisionUtil()
+            text_rect_map = vision_util.detect_text(image_to_redact)
+            text_content = " ".join([x[0] for x in text_rect_map])
+            redaction_strings = self._analyse_text(
+                text_content, model, system_prompt, redaction_rules
+            ).redaction_strings
+            text_rects_to_redact = tuple(
+                (text, bounding_box)
+                for text, bounding_box in text_rect_map
+                if text in redaction_strings
+                or any(
+                    redaction_string in text for redaction_string in redaction_strings
+                )
+            )
+            results.append(
+                ImageRedactionResult.Result(
+                    redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
+                )
+            )
+        return ImageRedactionResult(redaction_results=tuple(results))
 
 
 class RedactorFactory:
@@ -252,7 +310,11 @@ class RedactorFactory:
     Class for generating Redactor classes by name
     """
 
-    REDACTOR_TYPES: List[Type[Redactor]] = [LLMTextRedactor]
+    REDACTOR_TYPES: List[Type[Redactor]] = [
+        LLMTextRedactor,
+        ImageRedactor,
+        ImageLLMTextRedactor,
+    ]
     """The Redactor classes that are known to the factory"""
 
     @classmethod

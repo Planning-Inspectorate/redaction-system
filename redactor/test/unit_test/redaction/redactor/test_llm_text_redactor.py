@@ -3,12 +3,11 @@ from redactor.core.redaction.redactor import (
     LLMRedactionResultFormat,
     OUTPUT_FORMAT_STRING
 )
-from redactor.core.redaction.config import (
-    RedactionConfig,
-    LLMTextRedactionConfig,
-)
-from redactor.core.redaction.result import LLMTextRedactionResult
+from redactor.core.redaction.config import RedactionConfig, LLMTextRedactionConfig
 from redactor.core.util.llm_util import LLMUtil
+from redactor.core.redaction.result import (
+    LLMTextRedactionResult,
+)
 import mock
 
 

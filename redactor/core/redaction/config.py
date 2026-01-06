@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
+from redactor.core.util.types import PydanticImage
 
 
 class RedactionConfig(BaseModel):
@@ -13,7 +14,7 @@ class TextRedactionConfig(RedactionConfig):
     """The source text to redact"""
 
 
-class LLMTextRedactionConfig(TextRedactionConfig):
+class LLMTextRedactionConfigBase(RedactionConfig):
     model: str
     """The LLM to use"""
     system_prompt: str
@@ -24,5 +25,14 @@ class LLMTextRedactionConfig(TextRedactionConfig):
     """A list of constraint strings to apply"""
 
 
+class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
+    pass
+
+
 class ImageRedactionConfig(RedactionConfig):
+    images: Optional[List[PydanticImage]] = None
+    """The images to redact"""
+
+
+class ImageLLMTextRedactionConfig(ImageRedactionConfig, LLMTextRedactionConfig):
     pass

@@ -1,7 +1,4 @@
-from redactor.core.redaction.file_processor import (
-    FileProcessor,
-    FileProcessorFactory,
-)
+from redactor.core.redaction.file_processor import FileProcessor, FileProcessorFactory
 import pytest
 import mock
 
