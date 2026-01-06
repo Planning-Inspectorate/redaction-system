@@ -118,6 +118,28 @@ resource "azurerm_application_insights" "redaction_system" {
 }
 
 ############################################################################
+# Create Azure Open AI
+############################################################################
+resource "azurerm_cognitive_account" "open_ai" {
+  name                = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  kind                = "OpenAI"
+  sku_name            = "S0"
+}
+
+############################################################################
+# Create Azure Computer Vision
+############################################################################
+resource "azurerm_cognitive_account" "computer_vision" {
+  name                = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  kind                = "ComputerVision"
+  sku_name            = "S0"
+}
+
+############################################################################
 # Create Role Assignments
 ############################################################################
 resource "azurerm_role_assignment" "function_app_storage_contributor" {
