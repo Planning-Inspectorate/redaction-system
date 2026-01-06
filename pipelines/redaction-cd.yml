@@ -63,4 +63,5 @@ extends:
                     --resource-group 'pins-rg-redaction-${{ parameters.env }}-uks' \
                     --name 'pins-func-redaction-system-${{ parameters.env }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/functions.zip' \
-                    --build-remote true
+                    --build-remote true \
+                    --verbose
