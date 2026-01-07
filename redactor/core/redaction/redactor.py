@@ -1,4 +1,5 @@
 import json
+
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
 from pydantic import BaseModel
@@ -29,6 +30,7 @@ from redactor.core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
 )
+from redactor.core.util.logging_util import LoggingUtil, log_to_appins
 
 
 class Redactor(ABC):
@@ -231,6 +233,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
     def get_redaction_config_class(cls):
         return ImageLLMTextRedactionConfig
 
+    @log_to_appins
     def redact(self) -> ImageRedactionResult:
         # Initialisation
         self.config: ImageLLMTextRedactionConfig
@@ -239,7 +242,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         redaction_rules = self.config.redaction_rules
         results = []
         for image_to_redact in self.config.images:
-            print("image: ", image_to_redact)
+            LoggingUtil().log_info(f"image: {image_to_redact}")
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
