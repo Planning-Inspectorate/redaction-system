@@ -285,48 +285,13 @@ class LLMUtil:
             + completion_tokens * self.output_token_cost
         )
 
-    def redact_text(
-        self,
-        system_prompt: str,
-        user_prompt_template: PromptTemplate,
-        text_chunks: List[str],
-    ) -> tuple[tuple[str, ...], dict]:
-        text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
-
-        # Process each chunk
-        for chunk in text_chunks:
-            response, redaction_strings = self.redact_text_chunk(
-                system_prompt, user_prompt_template.format(chunk=chunk)
-            )
-            responses.append(response)
-            text_to_redact.extend(redaction_strings)
-            self._compute_costs(response)
-
-        # Remove duplicates
-        text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
-
-        # Collect metrics
-        result = LLMTextRedactionResult(
-            redaction_strings=text_to_redact_cleaned,
-            metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=self.input_token_count,
-                output_token_count=self.output_token_count,
-                total_token_count=self.input_token_count + self.output_token_count,
-                total_cost=self.total_cost,
-            ),
-        )
-
-        return result
-
-
     @retry(
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
         before_sleep=lambda retry_state: print("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
-    def redact_text_parallel(
+    def redact_text(
         self,
         system_prompt: str,
         user_prompt_template: PromptTemplate,
@@ -357,10 +322,10 @@ class LLMUtil:
 
                 request_counter += 1
                 try:
+                    # Get redaction result for chunk and append to overall results
                     response, redaction_strings = future.result()
                     responses.append(response)
                     text_to_redact.extend(redaction_strings)
-                    self._compute_costs(response)
                 except Exception as e:
                     print(
                         f"Function call with chunk {chunk} generated an exception: {e}"
