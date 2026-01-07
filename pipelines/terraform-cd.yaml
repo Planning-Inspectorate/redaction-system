@@ -22,9 +22,9 @@ extends:
   parameters:
     environments:
       - name: Dev
-      #- name: Test
-      #  dependsOn:
-      #    - Dev
+      - name: Test
+        dependsOn:
+          - Dev
       #- name: Prod
       #  dependsOn:
       #    - Training
