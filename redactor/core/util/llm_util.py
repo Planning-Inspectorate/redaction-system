@@ -23,13 +23,15 @@ from redactor.core.redaction.result import (
     LLMTextRedactionResult,
     LLMRedactionResultFormat,
 )
+from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 
 
 load_dotenv(verbose=True)
 
 
+@log_to_appins
 def handle_last_retry_error(retry_state):
-    print(
+    LoggingUtil().log_info(
         f"All retry attempts failed: {retry_state.outcome.exception()}\n"
         "Returning None for this chunk."
     )
@@ -47,13 +49,14 @@ class TokenSemaphore:
         self.lock = threading.Lock()
         self.condition = threading.Condition(self.lock)
 
+    @log_to_appins
     def acquire(self, tokens: int):
         """Acquire the specified number of tokens from the semaphore."""
         with self.lock:
             # Wait until enough tokens are available
             while tokens > self.tokens:
                 self.condition.wait()
-                print("Waiting for tokens to be released...")
+                LoggingUtil().log_info("Waiting for tokens to be released...")
             self.tokens -= tokens
 
     def release(self, tokens: int):
@@ -169,6 +172,7 @@ class LLMUtil:
         else:
             raise ValueError(f"Model {model} is not supported.")
 
+    @log_to_appins
     def _set_token_rate_limit(self, token_rate_limit: int = None):
         if token_rate_limit:
             if (
@@ -178,7 +182,7 @@ class LLMUtil:
                 self.token_rate_limit = self.openai_models[self.llm_model][
                     "token_rate_limit"
                 ]
-                print(
+                LoggingUtil().log_info(
                     f"Token rate limit for model {self.llm_model} exceeds maximum. "
                     f"Setting to maximum of {self.token_rate_limit} tokens per minute."
                 )
@@ -187,6 +191,7 @@ class LLMUtil:
                 self.openai_models[self.llm_model]["token_rate_limit"] * 0.5
             )
 
+    @log_to_appins
     def _num_tokens_consumed(
         self,
         system_prompt: str,
@@ -212,7 +217,7 @@ class LLMUtil:
             total_tokens = n_tokens + completion_tokens
             return total_tokens
         except Exception as e:
-            print(f"An error occurred while counting tokens: {e}")
+            LoggingUtil().log_exception(f"An error occurred while counting tokens: {e}")
             return 0
 
     def invoke_chain(
@@ -227,6 +232,7 @@ class LLMUtil:
         )
         return response
 
+    @log_to_appins
     def redact_text_chunk(
         self,
         system_prompt: str,
@@ -260,10 +266,10 @@ class LLMUtil:
 
                 return response, redaction_strings
             except json.JSONDecodeError:
-                print("Received invalid JSON response from LLM.")
+                LoggingUtil().log_exception("Received invalid JSON response from LLM.")
                 raise
             except Exception as e:
-                print(f"An error occurred while processing the chunk: {e}")
+                LoggingUtil().log_exception(f"An error occurred while processing the chunk: {e}")
                 raise
             finally:
                 # Release token semaphore
@@ -285,10 +291,11 @@ class LLMUtil:
             + completion_tokens * self.output_token_cost
         )
 
+    @log_to_appins
     @retry(
         wait=wait_fixed(2),
         stop=stop_after_attempt(3),
-        before_sleep=lambda retry_state: print("Retrying..."),
+        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
     def redact_text(
@@ -307,7 +314,7 @@ class LLMUtil:
         text_to_redact = []
         responses: List[ParsedChatCompletion] = []
 
-        with ThreadPoolExecutor(max_workers=self.request_rate_limit) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
@@ -327,15 +334,15 @@ class LLMUtil:
                     responses.append(response)
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
-                    print(
+                    LoggingUtil().log_exception(
                         f"Function call with chunk {chunk} generated an exception: {e}"
                     )
                     
                 # Check budget after each request
                 if self.budget and self.total_cost >= self.budget:
-                    print(
-                        f"Budget of £{self.budget} exceeded with total cost "
-                        f"£{self.total_cost}. Stopping further requests."
+                    LoggingUtil().log_info(
+                        f"Budget of £{self.budget:.2f} exceeded with total cost "
+                        f"£{self.total_cost:.2f}. Stopping further requests."
                     )
                     break
 

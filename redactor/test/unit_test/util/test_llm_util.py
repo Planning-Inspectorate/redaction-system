@@ -1,3 +1,4 @@
+from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from redactor.core.redaction.result import (
@@ -5,7 +6,7 @@ from redactor.core.redaction.result import (
     LLMTextRedactionResult,
 )
 from redactor.core.util.llm_util import LLMUtil, TokenSemaphore, create_api_message
-from mock import patch, Mock
+from redactor.core.util.logging_util import LoggingUtil
 
 
 class MockLLMChatCompletion:
@@ -172,7 +173,7 @@ def create_mock_redact_text_chunk(
 
 @patch("redactor.core.util.llm_util.PromptTemplate")
 def test__llm_util__redact_text(mock_prompt_template):
-    llm_util = LLMUtil(max_concurrent_requests=2)
+    llm_util = LLMUtil()
     llm_util.request_semaphore = Mock()
     llm_util.token_semaphore = Mock()
     llm_util.input_token_cost = 1
@@ -190,11 +191,11 @@ def test__llm_util__redact_text(mock_prompt_template):
         )
 
     assert actual_result.metadata == LLMTextRedactionResult.LLMResultMetadata(
-            input_token_count=10,
-            output_token_count=8,
-            total_token_count=18,
-            total_cost=26.0,
-        )
+        input_token_count=10,
+        output_token_count=8,
+        total_token_count=18,
+        total_cost=26.0,
+    )
     # Output may be unordered due to parallel execution
     assert set(actual_result.redaction_strings) == {"string A", "string B"}
 
@@ -207,3 +208,75 @@ def test__llm_util__redact_text(mock_prompt_template):
     assert llm_util.input_token_count == 10
     assert llm_util.output_token_count == 8
     assert llm_util.total_cost == 26.0
+
+
+@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
+@patch("redactor.core.util.logging_util.LoggingUtil")
+@patch("redactor.core.util.llm_util.PromptTemplate")
+def test__llm_util__redact_text__wait_for_tokens(
+    mock_num_tokens_consumed, mock_logging_util, mock_prompt_template
+):
+    llm_util = LLMUtil()
+    llm_util.token_semaphore.tokens = 12
+
+    mock_logging_util.log_info = Mock()
+    
+    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
+        mock_invoke_chain.side_effect = [
+            create_mock_chat_completion(["string A"]),
+            create_mock_chat_completion(["string B"]),
+        ]
+        actual_result = llm_util.redact_text(
+            system_prompt="system prompt",
+            user_prompt_template=mock_prompt_template,
+            text_chunks=["redaction string A", "redaction string B"],
+        )
+
+    assert actual_result.metadata == LLMTextRedactionResult.LLMResultMetadata(
+        input_token_count=10,
+        output_token_count=8,
+        total_token_count=18,
+        total_cost=26.0,
+    )
+    # Output may be unordered due to parallel execution
+    assert set(actual_result.redaction_strings) == {"string A", "string B"}
+    
+    mock_logging_util.log_info.assert_called_once_with(
+        "Waiting for tokens to be released...")
+
+
+@patch(LoggingUtil)
+@patch("redactor.core.util.llm_util.PromptTemplate")
+def test__llm_util__redact_text__budget_exceeded(mock_prompt_template):
+    llm_util = LLMUtil(budget=12.0)
+    llm_util.request_semaphore = Mock()
+    llm_util.token_semaphore = Mock()
+    llm_util.input_token_cost = 1
+    llm_util.output_token_cost = 2
+
+    llm_util.request_semaphore.acquire.side_effect = [
+        None,
+    ]
+
+    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
+        mock_invoke_chain.side_effect = [
+            create_mock_chat_completion(["string A"]),
+            create_mock_chat_completion(["string B"]),
+        ]
+        actual_result = llm_util.redact_text(
+            system_prompt="system prompt",
+            user_prompt_template=mock_prompt_template,
+            text_chunks=["redaction string A", "redaction string B"],
+        )
+
+    assert len(actual_result.redaction_strings) == 1
+
+    assert llm_util.request_semaphore.acquire.call_count == 1
+    assert llm_util.request_semaphore.release.call_count == 1
+
+    assert llm_util.token_semaphore.acquire.call_count == 1
+    assert llm_util.token_semaphore.release.call_count == 1
+
+    assert llm_util.input_token_count == 5
+    assert llm_util.output_token_count == 4
+    assert llm_util.total_cost == 13.0
