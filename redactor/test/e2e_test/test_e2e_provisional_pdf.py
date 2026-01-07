@@ -141,8 +141,8 @@ def test_e2e_generates_final_redacted_pdf(
 
     assert "John Doe" not in txt
     assert "Stephen Doe" not in txt
-    assert "07555555555" in txt
-    assert "email@emailaddress.com" in txt
+    assert "07555555555" not in txt
+    assert "email@emailaddress.com" not in txt
     assert len(txt.strip()) > 0
 
 

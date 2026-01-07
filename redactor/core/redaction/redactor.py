@@ -3,9 +3,9 @@ import json
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
 from pydantic import BaseModel
+from langchain_core.prompts import PromptTemplate
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.prompts import PromptTemplate
 
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
@@ -125,34 +125,31 @@ class LLMTextRedactor(TextRedactor):
 
     def _analyse_text(
         self,
-        text_to_redact: str,
-        model: str,
-        system_prompt: str,
-        redaction_rules: List[str],
-    ):
-        # Add the defined redaction rules to the System prompt
-        system_prompt_template = PromptTemplate(
-            input_variables=["chunk"],
-            template=(f"{system_prompt}{'.'.join(redaction_rules)}"),
-        )
-        system_prompt_formatted = system_prompt_template.format()
+        text_to_analyse: str,
+    ) -> LLMTextRedactionResult:
+        # Initialisation
+        self.config: LLMTextRedactionConfig
+
+        # Create system prompt from loaded config
+        system_prompt = self.config.create_system_prompt()
 
         # The user's prompt will just be the raw text
         user_prompt_template = PromptTemplate(
             input_variables=["chunk"], template="{chunk}"
         )
-        text_chunks = self.TEXT_SPLITTER.split_text(text_to_redact)
+        text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
 
         # Identify redaction strings
-        llm_util = LLMUtil(model)
+        llm_util = LLMUtil(self.config.model)
         text_to_redact = []
 
         # Todo - add multithreading here
         responses: List[ParsedChatCompletion] = []
+
         for chunk in text_chunks:
-            user_prompt_formatted = user_prompt_template.format(chunk=chunk)
+            user_prompt = user_prompt_template.format(chunk=chunk)
             response = llm_util.invoke_chain(
-                system_prompt_formatted, user_prompt_formatted, LLMRedactionResultFormat
+                system_prompt, user_prompt, LLMRedactionResultFormat
             )
             response_cleaned: LLMRedactionResultFormat = response.choices[
                 0
@@ -169,7 +166,7 @@ class LLMTextRedactor(TextRedactor):
         output_token_count = sum(x.usage.completion_tokens for x in responses)
         total_token_count = input_token_count + output_token_count
 
-        return LLMTextRedactionResult(
+        text_redaction_result = LLMTextRedactionResult(
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(
                 input_token_count=input_token_count,
@@ -177,15 +174,11 @@ class LLMTextRedactor(TextRedactor):
                 total_token_count=total_token_count,
             ),
         )
+        return text_redaction_result
 
     def redact(self) -> LLMTextRedactionResult:
-        # Initialisation
         self.config: LLMTextRedactionConfig
-        model = self.config.model
-        system_prompt = self.config.system_prompt
-        text_to_redact = self.config.text
-        redaction_rules = self.config.redaction_rules
-        return self._analyse_text(text_to_redact, model, system_prompt, redaction_rules)
+        return self._analyse_text(self.config.text)
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -237,18 +230,18 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
     def redact(self) -> ImageRedactionResult:
         # Initialisation
         self.config: ImageLLMTextRedactionConfig
-        model = self.config.model
-        system_prompt = self.config.system_prompt
-        redaction_rules = self.config.redaction_rules
         results = []
+
         for image_to_redact in self.config.images:
+            # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
+
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
-            redaction_strings = self._analyse_text(
-                text_content, model, system_prompt, redaction_rules
-            ).redaction_strings
+            redaction_strings = self._analyse_text(text_content).redaction_strings
+
+            # Identify text rectangles to redact based on redaction strings
             text_rects_to_redact = tuple(
                 (text, bounding_box)
                 for text, bounding_box in text_rect_map
@@ -257,6 +250,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     redaction_string in text for redaction_string in redaction_strings
                 )
             )
+
             results.append(
                 ImageRedactionResult.Result(
                     redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
@@ -264,6 +258,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     source_image=image_to_redact,
                 )
             )
+
         return ImageRedactionResult(redaction_results=tuple(results))
 
 

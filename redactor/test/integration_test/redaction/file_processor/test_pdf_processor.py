@@ -45,7 +45,7 @@ def test__pdf_processor__redact():
                         "You will be sent text to analyse. The text is a quote from Star Trek. "
                         "Please find all strings in the text that adhere to the following rules: "
                     ),
-                    redaction_rules=[
+                    redaction_terms=[
                         "The names of characters",
                         "Rank",
                         "Genders, such as she, her, he, him, they, their",
@@ -111,7 +111,7 @@ def test__pdf_processor__apply():
                         "You will be sent text to analyse. The text is a quote from Star Trek. "
                         "Please find all strings in the text that adhere to the following rules: "
                     ),
-                    redaction_rules=[
+                    redaction_terms=[
                         "The names of characters",
                         "Rank",
                         "Genders, such as she, her, he, him, they, their",

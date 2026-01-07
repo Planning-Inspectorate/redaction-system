@@ -60,7 +60,7 @@ def test__llm_text_redactor__redact():
         model="gpt-4.1-nano",
         text="some text",
         system_prompt="some system prompt",
-        redaction_rules=[
+        redaction_terms=[
             "rule A",
             "rule B",
             "rule C",
