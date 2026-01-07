@@ -55,10 +55,11 @@ class TokenSemaphore:
         with self.lock:
             # Wait until enough tokens are available
             while tokens > self.tokens:
-                self.condition.wait()
                 LoggingUtil().log_info("Waiting for tokens to be released...")
+                self.condition.wait()
             self.tokens -= tokens
 
+    @log_to_appins
     def release(self, tokens: int):
         """Release the specified number of tokens back to the semaphore."""
         with self.lock:
@@ -157,11 +158,11 @@ class LLMUtil:
 
         self.delay = delay  # Delay in seconds for rate limiting calculations
 
-        self.total_cost = 0.0  # Total cost of LLM calls in GBP
         self.budget = budget  # Budget in GBP for LLM calls
 
         self.input_token_count = 0
         self.output_token_count = 0
+        self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     def _set_model_details(self, model: str):
         if model in self.openai_models:
@@ -194,8 +195,7 @@ class LLMUtil:
     @log_to_appins
     def _num_tokens_consumed(
         self,
-        system_prompt: str,
-        user_prompt: str,
+        api_messages: str,
     ):
         """
         Estimate the number of tokens consumed by a request to the LLM
@@ -206,7 +206,7 @@ class LLMUtil:
         completion_tokens = self.n * self.max_tokens
         n_tokens = 0
         try:
-            for message in create_api_message(system_prompt, user_prompt):
+            for message in api_messages:
                 n_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
                 for key, value in message.items():
                     n_tokens += len(encoding.encode(value))
@@ -221,11 +221,11 @@ class LLMUtil:
             return 0
 
     def invoke_chain(
-        self, system_prompt: str, user_prompt: str, response_format: BaseModel
+        self, api_messages: str, response_format: BaseModel
     ):
         response = self.llm.chat.completions.parse(
             model=self.llm_model,
-            messages=create_api_message(system_prompt, user_prompt),
+            messages=api_messages,
             temperature=self.temperature,
             max_tokens=self.max_tokens,
             response_format=response_format,
@@ -240,10 +240,8 @@ class LLMUtil:
     ) -> None:
         """Redact a single chunk of text using the LLM."""
         # Estimate tokens for the request
-        estimated_tokens = self._num_tokens_consumed(
-            system_prompt,
-            user_prompt,
-        )
+        api_messages = create_api_message(system_prompt, user_prompt)
+        estimated_tokens = self._num_tokens_consumed(api_messages)
 
         # Acquire request semaphore
         self.request_semaphore.acquire()
@@ -253,7 +251,7 @@ class LLMUtil:
             self.token_semaphore.acquire(estimated_tokens)
             try:
                 response = self.invoke_chain(
-                    system_prompt, user_prompt, LLMRedactionResultFormat
+                    api_messages, LLMRedactionResultFormat
                 )
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[

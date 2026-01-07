@@ -1,12 +1,14 @@
+from logging import Logger
+import time
 from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 
 from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
 from redactor.core.util.llm_util import LLMUtil, TokenSemaphore, create_api_message
-from redactor.core.util.logging_util import LoggingUtil
 
 
 class MockLLMChatCompletion:
@@ -47,25 +49,33 @@ def test__token_semaphore__release():
 def test__token_semaphore__parallel():
     # Test that in a parallel scenario, only one thread waits when tokens are insufficient
     # Define a task that tries to acquire more tokens than available
-    def task(self):
-        self.acquire(60)
+    def task(self, tokens: int):
+        self.acquire(tokens)
         # Simulate some processing
-        self.release(60)
+        time.sleep(10)
+        self.release(tokens)
 
     token_semaphore = TokenSemaphore(max_tokens=100)
     token_semaphore.task = task
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    tokens_requested = [80, 80]
+    possible_tokens = [20, 100]
+
+    with ThreadPoolExecutor(max_workers=3) as executor:
         # Submit tasks to the executor
         future_to_semaphore = {
-            executor.submit(token_semaphore.task, token_semaphore): token_semaphore
+            executor.submit(token_semaphore.task, token_semaphore, x): x
+            for x in tokens_requested
         }
-        # Check wait was called in only one of the tasks
         for future in as_completed(future_to_semaphore):
             # Ensure the task completed successfully
             assert future.done()
             # Ensure tokens are non-negative
-            assert token_semaphore.tokens >= 0
+            if token_semaphore.tokens in possible_tokens:
+                assert True
+                possible_tokens.remove(token_semaphore.tokens)
+            else:
+                assert False, f"{token_semaphore.tokens} not in {possible_tokens}"
 
     assert token_semaphore.tokens == 100
 
@@ -88,7 +98,9 @@ def test__llm_util___num_tokens_consumed():
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
 
-    num_tokens = llm_util._num_tokens_consumed(system_prompt, user_prompt)
+    num_tokens = llm_util._num_tokens_consumed(
+        create_api_message(system_prompt, user_prompt)
+    )
     assert (
         num_tokens == 1024
     )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
@@ -144,8 +156,7 @@ def test__llm_util__redact_text_chunk(mock_num_tokens_consumed, mock_prompt_temp
 
     with patch.object(LLMUtil, "invoke_chain", return_value=mock_chat_completion):
         actual_result = llm_util.redact_text_chunk(
-            system_prompt="system prompt",
-            user_prompt="",
+            system_prompt="system prompt", user_prompt=""
         )
 
     assert expected_result == actual_result
@@ -210,17 +221,15 @@ def test__llm_util__redact_text(mock_prompt_template):
     assert llm_util.total_cost == 26.0
 
 
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-@patch("redactor.core.util.logging_util.LoggingUtil")
 @patch("redactor.core.util.llm_util.PromptTemplate")
-def test__llm_util__redact_text__wait_for_tokens(
-    mock_num_tokens_consumed, mock_logging_util, mock_prompt_template
-):
+def test__llm_util__redact_text__wait_for_tokens(mock_prompt_template):
     llm_util = LLMUtil()
-    llm_util.token_semaphore.tokens = 12
+    llm_util._num_tokens_consumed = Mock()
+    llm_util._num_tokens_consumed.return_value = 10
+    llm_util.token_semaphore.tokens = 5
+    llm_util.input_token_cost = 1
+    llm_util.output_token_cost = 2
 
-    mock_logging_util.log_info = Mock()
-    
     with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [
             create_mock_chat_completion(["string A"]),
@@ -238,14 +247,18 @@ def test__llm_util__redact_text__wait_for_tokens(
         total_token_count=18,
         total_cost=26.0,
     )
+
     # Output may be unordered due to parallel execution
     assert set(actual_result.redaction_strings) == {"string A", "string B"}
-    
-    mock_logging_util.log_info.assert_called_once_with(
-        "Waiting for tokens to be released...")
+
+    assert llm_util.token_semaphore.tokens == 5
+
+    assert llm_util.input_token_count == 10
+    assert llm_util.output_token_count == 8
+    assert llm_util.total_cost == 26.0
 
 
-@patch(LoggingUtil)
+@patch("redactor.core.util.logging_util.LoggingUtil")
 @patch("redactor.core.util.llm_util.PromptTemplate")
 def test__llm_util__redact_text__budget_exceeded(mock_prompt_template):
     llm_util = LLMUtil(budget=12.0)
