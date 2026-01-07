@@ -1,5 +1,7 @@
 from redactor.core.redaction.redactor import TextRedactor
-from redactor.core.redaction.config import RedactionConfig
+from redactor.core.redaction.config import (
+    RedactionConfig,
+)
 
 
 def test__text_redactor_get_redaction_config_class():
