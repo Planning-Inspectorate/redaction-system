@@ -16,9 +16,9 @@ def redact(req: func.HttpRequest) -> func.HttpResponse:
         json.dumps(
             {
                 "message": f"The redaction function was successfully called with the parameters {req}"
-            },
-            mimetype="application/json",
+            }
         ),
+        mimetype="application/json",
         status_code=200,
     )
 
@@ -30,8 +30,8 @@ def ping(req: func.HttpRequest) -> func.HttpResponse:
     """
     return func.HttpResponse(
         json.dumps(
-            {"message": f"You have successfully interacted with the redaction system!"},
-            mimetype="application/json",
+            {"message": f"You have successfully interacted with the redaction system!"}
         ),
+        mimetype="application/json",
         status_code=200,
     )
