@@ -1,34 +1,28 @@
 #from redactor.core.redaction_manager import RedactionManager
 import azure.functions as func
 import azure.durable_functions as df
-import json
-from uuid import uuid4
+from typing import Dict, Any
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 # An HTTP-triggered function with a Durable Functions client binding
-@app.route(route="orchestrators/{functionName}")
+@app.route(route="orchestrators")
 @app.durable_client_input(client_name="client")
-async def http_start(req: func.HttpRequest, client: df.DurableOrchestrationClient):
-    function_name = req.route_params.get('functionName')
-    print("req json: ", req.get_json())
-    instance_id = await client.start_new(function_name, client_input=req.get_json())
+async def trigger_redaction(req: func.HttpRequest, client: df.DurableOrchestrationClient):
+    instance_id = await client.start_new("redaction_orchestrator", client_input=req.get_json())
     response = client.create_check_status_response(req, instance_id)
     return response
 
 # Orchestrator
 @app.orchestration_trigger(context_name="context")
-def hello_orchestrator(context: df.DurableOrchestrationContext):
+def redaction_orchestrator(context: df.DurableOrchestrationContext):
     input_params = context.get_input()
-    print("input_params: ", input_params)
-    result1 = yield context.call_activity("hello", "Seattle")
-    result2 = yield context.call_activity("hello", "Tokyo")
-    result3 = yield context.call_activity("hello", "London")
+    result = yield context.call_activity("redact_task", input_params)
 
-    return [result1, result2, result3]
+    return [result]
 
 # Activity
 @app.activity_trigger(input_name="city")
-def hello(city: str):
-    return f"Hello {city}"
+def redact_task(params: Dict[str, Any]):
+    return f"Redact task called with {params}"
