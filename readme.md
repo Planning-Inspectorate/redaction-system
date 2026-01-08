@@ -14,7 +14,6 @@ This repository defines the automated redaction that is available to PINS servic
 │    │   │   │   ├── redactor.py              // Where scripts for redacting pieces of data are defined. *Files are composed of data
 │    │   │   │   ├── file_processor.py        // Module for redacting files 
 │    │   │   │   ├── config_processor.py      // Module for processing config files 
-│    │   │   │   ├── main.py                  // Script for executing the redaction process via terminal for a file
 │    │   │   │   ├── config.py                // Redaction config classes
 │    │   │   │   ├── result.py                // Redaction result classes
 │    │   │   │   ├── exceptions.py            // Custom exceptions 
@@ -43,7 +42,6 @@ This repository defines the automated redaction that is available to PINS servic
 
 ## Running python files locally
 - Run specific Python files using `python3 path/to/file/to/run.py`
-    - NOTE: Currently the redaction process can be run using `redactor/core/main.py` , more info cam be found within this file
 
 ## Running the function app
 - Install the core functions tools https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=macos%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python

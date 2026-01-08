@@ -1,7 +1,6 @@
 [run]
 omit = 
     redactor/test/*
-    redactor/core/main.py
 [report]
 exclude_lines = 
     pragma: no cover
