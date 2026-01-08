@@ -1,4 +1,3 @@
-from logging import Logger
 import time
 from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -70,7 +69,7 @@ def test__token_semaphore__parallel():
         for future in as_completed(future_to_semaphore):
             # Ensure the task completed successfully
             assert future.done()
-            # Ensure tokens are either 20 (waiting for other task to release) 
+            # Ensure tokens are either 20 (waiting for other task to release)
             # or 100 (acquired after release)
             if token_semaphore.tokens in possible_tokens:
                 assert True
@@ -143,8 +142,7 @@ def test__llm_util___compute_costs():
 
 
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-@patch("redactor.core.util.llm_util.PromptTemplate")
-def test__llm_util__redact_text_chunk(mock_num_tokens_consumed, mock_prompt_template):
+def test__llm_util__redact_text_chunk(mock_num_tokens_consumed):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
     expected_result = (mock_chat_completion, redaction_strings)
@@ -183,8 +181,7 @@ def create_mock_redact_text_chunk(
     return (mock_chat_completion, redaction_strings)
 
 
-@patch("redactor.core.util.llm_util.PromptTemplate")
-def test__llm_util__redact_text(mock_prompt_template):
+def test__llm_util__redact_text():
     llm_util = LLMUtil()
     llm_util.request_semaphore = Mock()
     llm_util.token_semaphore = Mock()
@@ -198,7 +195,6 @@ def test__llm_util__redact_text(mock_prompt_template):
         ]
         actual_result = llm_util.redact_text(
             system_prompt="system prompt",
-            user_prompt_template=mock_prompt_template,
             text_chunks=["redaction string A", "redaction string B"],
         )
 
@@ -222,8 +218,8 @@ def test__llm_util__redact_text(mock_prompt_template):
     assert llm_util.output_token_count == 8
     assert llm_util.total_cost == 26.0
 
-@patch("redactor.core.util.llm_util.PromptTemplate")
-def test__llm_util__redact_text__budget_exceeded(mock_prompt_template):
+
+def test__llm_util__redact_text__budget_exceeded():
     llm_util = LLMUtil(max_concurrent_requests=1, budget=12.0)
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
@@ -235,7 +231,6 @@ def test__llm_util__redact_text__budget_exceeded(mock_prompt_template):
         ]
         actual_result = llm_util.redact_text(
             system_prompt="system prompt",
-            user_prompt_template=mock_prompt_template,
             text_chunks=["redaction string A", "redaction string B"],
         )
 

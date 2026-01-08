@@ -109,6 +109,7 @@ class LLMUtil:
             "output_cost": 30,
         },
     }
+    USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
     def __init__(
         self,
@@ -221,9 +222,7 @@ class LLMUtil:
             LoggingUtil().log_exception(f"An error occurred while counting tokens: {e}")
             return 0
 
-    def invoke_chain(
-        self, api_messages: str, response_format: BaseModel
-    ):
+    def invoke_chain(self, api_messages: str, response_format: BaseModel):
         response = self.llm.chat.completions.parse(
             model=self.llm_model,
             messages=api_messages,
@@ -251,9 +250,7 @@ class LLMUtil:
             # Acquire token semaphore
             self.token_semaphore.acquire(estimated_tokens)
             try:
-                response = self.invoke_chain(
-                    api_messages, LLMRedactionResultFormat
-                )
+                response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
                     0
@@ -268,7 +265,9 @@ class LLMUtil:
                 LoggingUtil().log_exception("Received invalid JSON response from LLM.")
                 raise
             except Exception as e:
-                LoggingUtil().log_exception(f"An error occurred while processing the chunk: {e}")
+                LoggingUtil().log_exception(
+                    f"An error occurred while processing the chunk: {e}"
+                )
                 raise
             finally:
                 # Release token semaphore
@@ -300,7 +299,6 @@ class LLMUtil:
     def redact_text(
         self,
         system_prompt: str,
-        user_prompt_template: PromptTemplate,
         text_chunks: List[str],
     ) -> tuple[tuple[str, ...], dict]:
         """Parallelised version of redact_text to speed up processing of multiple chunks.
@@ -319,7 +317,7 @@ class LLMUtil:
                 executor.submit(
                     self.redact_text_chunk,
                     system_prompt,
-                    user_prompt_template.format(chunk=chunk),
+                    self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
                 ): chunk
                 for chunk in text_chunks
             }
@@ -336,7 +334,7 @@ class LLMUtil:
                     LoggingUtil().log_exception(
                         f"Function call with chunk {chunk} generated an exception: {e}"
                     )
-                    
+
                 # Check budget after each request
                 if self.budget and self.total_cost >= self.budget:
                     LoggingUtil().log_info(

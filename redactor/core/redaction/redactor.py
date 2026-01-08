@@ -97,7 +97,6 @@ class TextRedactor(Redactor):
         return TextRedactionConfig
 
 
-
 class LLMTextRedactor(TextRedactor):
     """
     Class that performs text redaction using an LLM
@@ -117,11 +116,7 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def _analyse_text(
-        self,
-        text_to_analyse: str,
-        **kwargs
-    ) -> LLMTextRedactionResult:
+    def _analyse_text(self, text_to_analyse: str, **kwargs) -> LLMTextRedactionResult:
         # Initialisation
         # TODO Add LLM parameters to the config class
         self.config: LLMTextRedactionConfig
@@ -130,9 +125,6 @@ class LLMTextRedactor(TextRedactor):
         system_prompt = self.config.create_system_prompt()
 
         # The user's prompt will just be the raw text
-        user_prompt_template = PromptTemplate(
-            input_variables=["chunk"], template="{chunk}"
-        )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
 
         # Initialise LLM interface
@@ -141,7 +133,6 @@ class LLMTextRedactor(TextRedactor):
         # Identify redaction strings
         return llm_util.redact_text(
             system_prompt,
-            user_prompt_template,
             text_chunks,
         )
 

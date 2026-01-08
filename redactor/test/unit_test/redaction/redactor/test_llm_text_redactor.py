@@ -1,3 +1,5 @@
+from mock import patch
+
 from redactor.core.redaction.redactor import LLMTextRedactor
 
 from redactor.core.redaction.config import (
@@ -8,7 +10,9 @@ from redactor.core.redaction.result import (
     LLMTextRedactionResult,
 )
 from redactor.core.util.llm_util import LLMUtil
-from mock import patch
+
+from redactor.test.unit_test.util.test_llm_util import create_mock_chat_completion
+
 
 def test__llm_text_redactor__get_name():
     """
@@ -26,35 +30,31 @@ def test__llm_text_redactor__get_redaction_config_class():
     assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
 
 
-# @patch.object(LLMUtil, "__init__", return_value=None)
-# @patch.object(LLMTextRedactor, "__init__", return_value=None)
-# def test__llm_text_redactor__redact(mock_llm_util_init, mock_llm_text_redactor_init):
-#     """
-#     - Given I have some llm redaction config
-#     - When I call LLMTextRedactor.redact
-#     - Then I should receive a LLMTextRedactionResult with appropriate properties set
-#     """
-#     config = LLMTextRedactionConfig(
-#         name="config name",
-#         redactor_type="LLMTextRedaction",
-#         model="gpt-4.1-nano",
-#         text="some text",
-#         system_prompt="some system prompt",
-#         redaction_terms=[
-#             "rule A",
-#             "rule B",
-#             "rule C",
-#         ],
-#     )
+@patch.object(LLMTextRedactor, "__init__", return_value=None)
+def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
+    """
+    - Given I have some llm redaction config
+    - When I call LLMTextRedactor.redact
+    - Then I should receive a LLMTextRedactionResult with appropriate properties set
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1-nano",
+        system_prompt="some system prompt",
+        redaction_terms=[
+            "rule A",
+            "rule B",
+            "rule C",
+        ],
+    )
 
-#     expected_result = LLMTextRedactionResult(
-#         redaction_strings=("string A", "string B"),
-#         metadata=LLMTextRedactionResult.LLMResultMetadata(
-#             input_token_count=5, output_token_count=4, total_token_count=9, total_cost=0.0
-#         ),
-#     )
+    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
+        with patch.object(
+            LLMUtil, "redact_text", return_value=None
+        ) as mock_redact_text:
+            LLMTextRedactor.config = config
+            LLMTextRedactor()._analyse_text("some text to analyse")
 
-#     with patch.object(LLMUtil, "redact_text", return_value=mock_redact_response):
-#         LLMTextRedactor.config = config
-#         actual_result = LLMTextRedactor().redact()
-#         assert expected_result == actual_result
+    mock_llm_util_init.assert_called_once_with("gpt-4.1-nano")
+    mock_redact_text.assert_called_once()

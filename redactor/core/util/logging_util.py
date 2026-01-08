@@ -18,6 +18,7 @@ class Singleton(type):
 
     This is based on
     https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-enable?tabs=python#enable-azure-monitor-opentelemetry-for-net-nodejs-python-and-java-applications
+    Thread safety based on https://stackoverflow.com/questions/51896862/how-to-create-singleton-class-with-arguments-in-python
     """
 
     _INSTANCES = {}
@@ -28,7 +29,9 @@ class Singleton(type):
             with cls._SINGLETON_LOCK:
                 if cls not in cls._INSTANCES:
                     # Create and initialise the singleton instance
-                    cls._INSTANCES[cls] = super(Singleton, cls).__call__(cls, *args, **kwargs)
+                    cls._INSTANCES[cls] = super(Singleton, cls).__call__(
+                        cls, *args, **kwargs
+                    )
         return cls._INSTANCES[cls]
 
 
