@@ -5,6 +5,9 @@ from typing import Dict, Any
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
+# This is based on the below documentation
+# https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview?tabs=in-process%2Cnodejs-v3%2Cv2-model&pivots=python#async-http
+# https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-python-vscode
 
 # An HTTP-triggered function with a Durable Functions client binding
 @app.route(route="orchestrators")
@@ -23,6 +26,6 @@ def redaction_orchestrator(context: df.DurableOrchestrationContext):
     return [result]
 
 # Activity
-@app.activity_trigger(input_name="city")
+@app.activity_trigger(input_name="params")
 def redact_task(params: Dict[str, Any]):
     return f"Redact task called with {params}"
