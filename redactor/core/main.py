@@ -11,6 +11,7 @@ from redactor.core.redaction.file_processor import (
 )
 from redactor.core.redaction.config_processor import ConfigProcessor
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
+from redactor.core.io.io_factory import IOFactory
 
 
 """
@@ -54,6 +55,34 @@ def apply_final_redactions(
     file_processor_inst = file_processor_class()
     processed_file_bytes = file_processor_inst.apply(file_bytes, config_cleaned)
     return processed_file_bytes
+
+
+def redact(params: Dict[str, Any]):
+    try_apply_provisional_redactions = params.get("tryApplyProvisionalRedactions")
+    config_name = params.get("configName", "default")
+    file_kind = params.get("fileKind")
+    callback_details: Dict[str, Any] = params.get("callbackDetails")
+    storage_kind = callback_details.get("storageKind")
+    storage_properties: Dict[str, Any] = callback_details.get("properties")
+    file_to_read = storage_properties.pop("fileToRead")
+
+    # Load the data
+    callback_io_inst = IOFactory.get(storage_kind)(storage_properties)
+    file_data = callback_io_inst.read(storage_properties)
+
+    # Load redaction config
+    config = ConfigProcessor.load_config(config_name)
+    file_format = magic.from_buffer(file_data.read(), mime=True)
+    extension = file_format.split("/").pop()
+    config["file_format"] = extension
+
+    # Process the data
+    file_processor_inst = FileProcessorFactory.get(file_kind)()
+    proposed_redaction_file_data = file_data
+    #proposed_redaction_file_data = file_processor_inst.redact(file_data, )
+
+    # Write the data
+    callback_io_inst.write(proposed_redaction_file_data, storage_properties)
 
 
 @log_to_appins
@@ -103,6 +132,22 @@ def main(
             f.write(processed_file_bytes.getvalue())
 
 
+redact(
+    {
+        "tryApplyProvisionalRedactions": True,
+        "ruleName": "default",
+        "fileKind": "pdf",
+        "callbackDetails": {
+            "storageKind": "sharepoint",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "fileToRead": "path/to/file/to/redact.pdf",
+                "storage_name": "pinsstredactiondevuks"
+            }
+        }
+    }
+)
+'''
 if __name__ == "__main__":  # pragma: no cover
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -117,3 +162,4 @@ if __name__ == "__main__":  # pragma: no cover
     with open(file_to_redact, "rb") as f:
         file_bytes = BytesIO(f.read())
     main(file_to_redact, file_bytes, config)
+'''
