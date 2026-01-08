@@ -40,40 +40,5 @@ extends:
                   sudo apt-get update
                   sudo apt-get install azure-functions-core-tools-4
                   cd $(Build.SourcesDirectory)/redactor
-                  ls
-                  func pack
-                  echo "generated package"
-                  ls
-                  mv redactor.zip $(Build.ArtifactStagingDirectory)/redactor.zip
-                  ls
-                displayName: 'Archive top level files'
-              
-              # Publish the zip file as an artifact to be used further in the pipeline.
-              - task: PublishBuildArtifacts@1
-                displayName: 'Publish build artifact'
-                inputs:
-                  PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-                  ArtifactName: 'FunctionCode'
-              
-              # Download the artifact first - the zip file.
-              - task: DownloadBuildArtifacts@1
-                displayName: 'Download function code artifact'
-                inputs:
-                  buildType: 'current'
-                  artifactName: 'FunctionCode'
-                  downloadPath: '$(System.ArtifactsDirectory)'
-
-              # Use the Azure CLI to deploy the zip file to the Function App in Azure.
-              - task: AzureCLI@2
-                displayName: 'Deploy to function app'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-${{ parameters.env }}-uks' \
-                    --name 'pins-func-redaction-system-${{ parameters.env }}-uks' \
-                    --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
-                    --build-remote true \
-                    --verbose
+                  func azure functionapp publish 'pins-func-redaction-system-${{ parameters.env }}-uks'
+                displayName: 'Deploy function app'
