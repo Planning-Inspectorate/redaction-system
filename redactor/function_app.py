@@ -16,7 +16,7 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 """
 
 # An HTTP-triggered function with a Durable Functions client binding
-@app.route(route="orchestrators", methods=["POST"])
+@app.route(route="redact", methods=["POST"])
 @app.durable_client_input(client_name="client")
 async def trigger_redaction(req: func.HttpRequest, client: df.DurableOrchestrationClient):
     """
@@ -31,9 +31,9 @@ async def trigger_redaction(req: func.HttpRequest, client: df.DurableOrchestrati
 
 # Orchestrator
 @app.orchestration_trigger(context_name="context")
-def _redaction_orchestrator(context: df.DurableOrchestrationContext):
+def redaction_orchestrator(context: df.DurableOrchestrationContext):
     """
-    Private orchestrator of the redaction process
+    Orchestrator of the redaction process
     """
     input_params = context.get_input()
     result = yield context.call_activity("_redact_task", input_params)
@@ -42,8 +42,8 @@ def _redaction_orchestrator(context: df.DurableOrchestrationContext):
 
 # Activity
 @app.activity_trigger(input_name="params")
-def _redact_task(params: Dict[str, Any]):
+def redact_task(params: Dict[str, Any]):
     """
-    Private task which completes the redaction process
+    Task which completes the redaction process
     """
     return f"Redact task called with {params}"
