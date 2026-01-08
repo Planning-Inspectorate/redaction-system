@@ -2,34 +2,36 @@ import azure.functions as func
 import datetime
 import json
 import logging
+import json
 
 app = func.FunctionApp()
 
+
 @app.route(route="redact", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def redact(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Redact HTTP POST method, which allows the redaction system to be interacted with by the user
+    """
     return func.HttpResponse(
-        "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response.",
-        status_code=200
+        json.dumps(
+            {
+                "message": f"The redaction function was successfully called with the parameters {req}"
+            },
+            mimetype="application/json",
+        ),
+        status_code=200,
     )
 
 
-@app.route(route="api", auth_level=func.AuthLevel.FUNCTION)
-def api(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
-
-    name = req.params.get('name')
-    if not name:
-        try:
-            req_body = req.get_json()
-        except ValueError:
-            pass
-        else:
-            name = req_body.get('name')
-
-    if name:
-        return func.HttpResponse(f"Hello, {name}. This HTTP triggered function executed successfully.")
-    else:
-        return func.HttpResponse(
-             "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response.",
-             status_code=200
-        )
+@app.route(route="ping", auth_level=func.AuthLevel.FUNCTION)
+def ping(req: func.HttpRequest) -> func.HttpResponse:
+    """
+    Function for testing connectivity to the redaction system. Returns a simple json response
+    """
+    return func.HttpResponse(
+        json.dumps(
+            {"message": f"You have successfully interacted with the redaction system!"},
+            mimetype="application/json",
+        ),
+        status_code=200,
+    )
