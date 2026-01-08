@@ -1,5 +1,5 @@
-from core.redaction_manager import RedactionManager
 import azure.functions as func
+from core.redaction_manager import RedactionManager
 import azure.durable_functions as df
 from typing import Dict, Any
 
