@@ -118,6 +118,7 @@ class RedactionManager():
             self.log_exception(e)
             LoggingUtil().log_exception(e)
 
+'''
 RedactionManager().try_redact(
     {
         "tryApplyProvisionalRedactions": True,
@@ -143,3 +144,4 @@ RedactionManager().try_redact(
         }
     }
 )
+'''

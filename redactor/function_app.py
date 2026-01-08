@@ -1,35 +1,31 @@
+#from redactor.core.redaction_manager import RedactionManager
 import azure.functions as func
+import azure.durable_functions as df
 import json
-import json
+from uuid import uuid4
 
-app = func.FunctionApp()
-
-
-@app.route(route="redact", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
-def redact(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Redact HTTP POST method, which allows the redaction system to be interacted with by the user
-    """
-    return func.HttpResponse(
-        json.dumps(
-            {
-                "message": f"The redaction function was successfully called with the parameters {req}"
-            }
-        ),
-        mimetype="application/json",
-        status_code=200,
-    )
+app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
-@app.route(route="ping", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
-def ping(req: func.HttpRequest) -> func.HttpResponse:
-    """
-    Function for testing connectivity to the redaction system. Returns a simple json response
-    """
-    return func.HttpResponse(
-        json.dumps(
-            {"message": f"You have successfully interacted with the redaction system!"}
-        ),
-        mimetype="application/json",
-        status_code=200,
-    )
+# An HTTP-triggered function with a Durable Functions client binding
+@app.route(route="orchestrators/{functionName}")
+@app.durable_client_input(client_name="client")
+async def http_start(req: func.HttpRequest, client):
+    function_name = req.route_params.get('functionName')
+    instance_id = await client.start_new(function_name)
+    response = client.create_check_status_response(req, instance_id)
+    return response
+
+# Orchestrator
+@app.orchestration_trigger(context_name="context")
+def hello_orchestrator(context):
+    result1 = yield context.call_activity("hello", "Seattle")
+    result2 = yield context.call_activity("hello", "Tokyo")
+    result3 = yield context.call_activity("hello", "London")
+
+    return [result1, result2, result3]
+
+# Activity
+@app.activity_trigger(input_name="city")
+def hello(city: str):
+    return f"Hello {city}"
