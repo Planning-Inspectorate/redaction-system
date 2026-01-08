@@ -1,17 +1,15 @@
 import magic
-import argparse
 
-from typing import Dict, Any, Type
-from io import BytesIO
+from typing import Dict, Any
 
-from redactor.core.redaction.exceptions import NonEnglishContentException
 from redactor.core.redaction.file_processor import (
     FileProcessorFactory,
-    FileProcessor,
 )
 from redactor.core.redaction.config_processor import ConfigProcessor
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 from redactor.core.io.io_factory import IOFactory
+from redactor.core.io.azure_blob_io import AzureBlobIO
+from uuid import uuid4
 import re
 
 
@@ -29,35 +27,6 @@ terminal for a PDF
   redactions or final redactions based on the file name
 """
 
-
-def apply_provisional_redactions(
-    config: Dict[str, Any], file_bytes: BytesIO
-):  # pragma: no cover
-    file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(
-        config["file_format"]
-    )
-    config_cleaned = ConfigProcessor.validate_and_filter_config(
-        config, file_processor_class
-    )
-    file_processor_inst = file_processor_class()
-    processed_file_bytes = file_processor_inst.redact(file_bytes, config_cleaned)
-    return processed_file_bytes
-
-
-def apply_final_redactions(
-    config: Dict[str, Any], file_bytes: BytesIO
-):  # pragma: no cover
-    file_processor_class: Type[FileProcessor] = FileProcessorFactory.get(
-        config["file_format"]
-    )
-    config_cleaned = ConfigProcessor.validate_and_filter_config(
-        config, file_processor_class
-    )
-    file_processor_inst = file_processor_class()
-    processed_file_bytes = file_processor_inst.apply(file_bytes, config_cleaned)
-    return processed_file_bytes
-
-
 def convert_kwargs_for_io(some_parameters: Dict[str, Any]):
     """
     Process the input dictionary which contains camel case keys into a dictionary with snake case keys
@@ -68,7 +37,10 @@ def convert_kwargs_for_io(some_parameters: Dict[str, Any]):
     }
 
 
+@log_to_appins
 def redact(params: Dict[str, Any]):
+    run_id = uuid4()
+    LoggingUtil(job_id=run_id)
     try_apply_provisional_redactions = params.get("tryApplyProvisionalRedactions")
     config_name = params.get("configName", "default")
     file_kind = params.get("fileKind")
@@ -80,71 +52,49 @@ def redact(params: Dict[str, Any]):
     write_storage_kind = write_details.get("storageKind")
     write_storage_properties: Dict[str, Any] = convert_kwargs_for_io(write_details.get("properties"))
 
+    # Set up connection to redaction storage
+    redaction_storage_io_inst = AzureBlobIO(
+        storage_name="pinsstredactiondevuks",
+    )
+
     # Load the data
     read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
     file_data = read_io_inst.read(**read_storage_properties)
+    file_data.seek(0)
+
+    file_processor_class = FileProcessorFactory.get(file_kind)
 
     # Load redaction config
     config = ConfigProcessor.load_config(config_name)
     file_format = magic.from_buffer(file_data.read(), mime=True)
     extension = file_format.split("/").pop()
     config["file_format"] = extension
+    config_cleaned = ConfigProcessor.validate_and_filter_config(
+        config, file_processor_class
+    )
+
+    # Store a copy of the raw data in redaction storage before processing begins
+    redaction_storage_io_inst.write(
+        file_data,
+        container_name="redactiondata",
+        blob_path=f"{run_id}/raw.{extension}"
+    )
 
     # Process the data
-    file_processor_inst = FileProcessorFactory.get(file_kind)()
-    proposed_redaction_file_data = file_processor_inst.redact(file_data, config)
+    file_processor_inst = file_processor_class()
+    proposed_redaction_file_data = file_processor_inst.redact(file_data, config_cleaned)
 
-    # Write the data
+    # Store a copy of the proposed redactions in redaction storage
+    redaction_storage_io_inst.write(
+        proposed_redaction_file_data,
+        container_name="redactiondata",
+        blob_path=f"{run_id}/proposed.{extension}"
+    )
+    proposed_redaction_file_data.seek(0)
+
+    # Write the data back to the sender's desired location
     write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
     write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
-
-
-@log_to_appins
-def main(
-    file_name: str, file_bytes: BytesIO, config_name: str = None
-):  # pragma: no cover
-    file_format = magic.from_buffer(file_bytes.read(), mime=True)
-    extension = file_format.split("/").pop()
-    if file_name.lower().endswith(f".{extension.lower()}"):
-        file_name_without_extension = file_name.removesuffix(f".{extension}")
-    else:
-        raise ValueError(
-            "File extension of the raw file does not match the file name. "
-            f"The raw file had MIME type {file_format}, which should be a "
-            f".{extension} extension"
-        )
-    base_file_name = (
-        file_name_without_extension.removesuffix("_REDACTED")
-        .removesuffix("_CURATED")
-        .removesuffix("_PROVISIONAL")
-    )
-    if config_name:
-        config = ConfigProcessor.load_config(config_name)
-    else:
-        config = ConfigProcessor.load_config()
-    config["file_format"] = extension
-    if file_name.endswith(f"REDACTED.{extension}"):
-        LoggingUtil().log_info("Nothing to redact - the file is already redacted")
-    elif file_name.endswith(f"PROVISIONAL.{extension}") or file_name.endswith(
-        f"CURATED.{extension}"
-    ):
-        LoggingUtil().log_info("Applying final redactions")
-        processed_file_bytes = apply_final_redactions(config, file_bytes)
-        with open(f"{base_file_name}_REDACTED.{extension}", "wb") as f:
-            f.write(processed_file_bytes.getvalue())
-    else:
-        LoggingUtil().log_info("Applying provisional redactions")
-        try:
-            processed_file_bytes = apply_provisional_redactions(config, file_bytes)
-        except NonEnglishContentException as e:
-            LoggingUtil().log_exception(str(e))
-            LoggingUtil().log_info(
-                "No provisional file will be generated for non-English content."
-            )
-            return
-        with open(f"{base_file_name}_PROVISIONAL.{extension}", "wb") as f:
-            f.write(processed_file_bytes.getvalue())
-
 
 redact(
     {
@@ -171,19 +121,3 @@ redact(
         }
     }
 )
-'''
-if __name__ == "__main__":  # pragma: no cover
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument("-f", "--file_to_redact", help="Path to the file to redact")
-    parser.add_argument(
-        "-c", "--config", help="Config file name to use", default="default"
-    )
-    args = parser.parse_args()
-    file_to_redact = args.file_to_redact
-    config = args.config
-    with open(file_to_redact, "rb") as f:
-        file_bytes = BytesIO(f.read())
-    main(file_to_redact, file_bytes, config)
-'''
