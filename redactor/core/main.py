@@ -67,8 +67,8 @@ def redact(params: Dict[str, Any]):
     file_to_read = storage_properties.pop("fileToRead")
 
     # Load the data
-    callback_io_inst = IOFactory.get(storage_kind)(storage_properties)
-    file_data = callback_io_inst.read(storage_properties)
+    callback_io_inst = IOFactory.get(storage_kind)(**storage_properties)
+    file_data = callback_io_inst.read(**storage_properties)
 
     # Load redaction config
     config = ConfigProcessor.load_config(config_name)
@@ -138,11 +138,12 @@ redact(
         "ruleName": "default",
         "fileKind": "pdf",
         "callbackDetails": {
-            "storageKind": "sharepoint",
+            "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
                 "fileToRead": "path/to/file/to/redact.pdf",
-                "storage_name": "pinsstredactiondevuks"
+                "storage_name": "pinsstredactiondevuks",
+                "container_name": "hbttest"
             }
         }
     }
