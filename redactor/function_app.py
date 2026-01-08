@@ -12,8 +12,8 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.durable_client_input(client_name="client")
 async def http_start(req: func.HttpRequest, client: df.DurableOrchestrationClient):
     function_name = req.route_params.get('functionName')
-    print("req params: ", req.params)
-    instance_id = await client.start_new(function_name, client_input=req.params)
+    print("req json: ", req.get_json())
+    instance_id = await client.start_new(function_name, client_input=req.get_json())
     response = client.create_check_status_response(req, instance_id)
     return response
 
