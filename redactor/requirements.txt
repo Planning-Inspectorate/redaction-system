@@ -1,4 +1,5 @@
 azure-ai-vision-imageanalysis==1.0.0
+azure-functions==1.24.0
 azure-identity==1.25.1
 azure-storage-blob==12.23.1
 coverage==7.12.0
