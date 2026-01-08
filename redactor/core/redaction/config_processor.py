@@ -39,8 +39,8 @@ class ConfigProcessor:
         # Validate the redaction config, and convert the config into RedactionConfig objects
         flattened_redaction_config = []
         for redactor in redaction_config.get("redactors", []):
-            redactor_type = get("redactor_type", None)
-            for rule in get("redaction_rules", []):
+            redactor_type = redactor.get("redactor_type", None)
+            for rule in redactor.get("redaction_rules", []):
                 flattened_redaction_config.append(
                     {"redactor_type": redactor_type, **rule}
                 )
@@ -145,7 +145,7 @@ class ConfigProcessor:
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = os.path.join("redactor", "config", f"{config_name}.yaml")
+        config_path = os.path.join("config", f"{config_name}.yaml")
         with open(config_path, "r") as f:
             config = safe_load(f)
         return config
