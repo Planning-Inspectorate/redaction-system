@@ -10,10 +10,6 @@ from azure.core.credentials import AzureKeyCredential
 import os
 from PIL import Image
 from io import BytesIO
-from dotenv import load_dotenv
-
-
-load_dotenv(verbose=True)
 
 
 class AzureVisionUtil:

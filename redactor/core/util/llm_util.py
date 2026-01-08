@@ -6,10 +6,6 @@ from azure.identity import (
 )
 from pydantic import BaseModel
 from openai import OpenAI
-from dotenv import load_dotenv
-
-
-load_dotenv(verbose=True)
 
 
 class LLMUtil:

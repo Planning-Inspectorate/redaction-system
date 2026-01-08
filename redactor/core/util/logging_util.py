@@ -3,11 +3,9 @@ import logging
 import functools
 
 from uuid import uuid4
-from dotenv import load_dotenv
 
 from azure.monitor.opentelemetry import configure_azure_monitor
 
-load_dotenv(verbose=True)
 
 
 class Singleton(type):
