@@ -15,6 +15,7 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.durable_client_input(client_name="client")
 async def http_start(req: func.HttpRequest, client: df.DurableOrchestrationClient):
     function_name = req.route_params.get('functionName')
+    print("request params: ", req.params)
     run_id = await client.start_new(function_name, client_input=req.params)
     response = client.create_check_status_response(req, run_id)
     return response
@@ -22,11 +23,16 @@ async def http_start(req: func.HttpRequest, client: df.DurableOrchestrationClien
 # Orchestrator
 @app.orchestration_trigger(context_name="context")
 def redact_orchestrator(context: df.DurableOrchestrationContext):
-    result = yield context.call_activity("redact", context.get_input())
+    print("orchestrator called")
+    func_input = context.get_input()
+    print("func_input: ", func_input)
+    result = yield context.call_activity("redact", func_input)
+    print("result received")
     return [result]
 
 # Activity
 @app.activity_trigger(input_name="params")
 def redact(params: Dict[str, Any]):
+    print("redact called, waiting for 30 seconds")
     time.sleep(30)
     return params
