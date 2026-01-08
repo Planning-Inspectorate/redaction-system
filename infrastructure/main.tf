@@ -86,6 +86,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     application_stack {
       python_version = 3.13
     }
+    application_insights_key = azurerm_application_insights.redaction_system.instrumentation_key
   }
   identity {
     type = "SystemAssigned"
