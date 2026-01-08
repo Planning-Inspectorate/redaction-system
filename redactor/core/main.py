@@ -12,6 +12,7 @@ from redactor.core.redaction.file_processor import (
 from redactor.core.redaction.config_processor import ConfigProcessor
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 from redactor.core.io.io_factory import IOFactory
+import re
 
 
 """
@@ -57,18 +58,31 @@ def apply_final_redactions(
     return processed_file_bytes
 
 
+def convert_kwargs_for_io(some_parameters: Dict[str, Any]):
+    """
+    Process the input dictionary which contains camel case keys into a dictionary with snake case keys
+    """
+    return {
+        re.sub(r"([a-z])([A-Z])", r"\1_\2", k).lower(): v
+        for k, v in some_parameters.items()
+    }
+
+
 def redact(params: Dict[str, Any]):
     try_apply_provisional_redactions = params.get("tryApplyProvisionalRedactions")
     config_name = params.get("configName", "default")
     file_kind = params.get("fileKind")
-    callback_details: Dict[str, Any] = params.get("callbackDetails")
-    storage_kind = callback_details.get("storageKind")
-    storage_properties: Dict[str, Any] = callback_details.get("properties")
-    file_to_read = storage_properties.pop("fileToRead")
+    read_details: Dict[str, Any] = params.get("readDetails")
+    read_torage_kind = read_details.get("storageKind")
+    read_storage_properties: Dict[str, Any] = convert_kwargs_for_io(read_details.get("properties"))
+
+    write_details: Dict[str, Any] = params.get("writeDetails")
+    write_storage_kind = write_details.get("storageKind")
+    write_storage_properties: Dict[str, Any] = convert_kwargs_for_io(write_details.get("properties"))
 
     # Load the data
-    callback_io_inst = IOFactory.get(storage_kind)(**storage_properties)
-    file_data = callback_io_inst.read(**storage_properties)
+    read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
+    file_data = read_io_inst.read(**read_storage_properties)
 
     # Load redaction config
     config = ConfigProcessor.load_config(config_name)
@@ -78,11 +92,11 @@ def redact(params: Dict[str, Any]):
 
     # Process the data
     file_processor_inst = FileProcessorFactory.get(file_kind)()
-    proposed_redaction_file_data = file_data
-    #proposed_redaction_file_data = file_processor_inst.redact(file_data, )
+    proposed_redaction_file_data = file_processor_inst.redact(file_data, config)
 
     # Write the data
-    callback_io_inst.write(proposed_redaction_file_data, storage_properties)
+    write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
+    write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
 
 
 @log_to_appins
@@ -137,13 +151,22 @@ redact(
         "tryApplyProvisionalRedactions": True,
         "ruleName": "default",
         "fileKind": "pdf",
-        "callbackDetails": {
+        "readDetails": {
             "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
-                "fileToRead": "path/to/file/to/redact.pdf",
-                "storage_name": "pinsstredactiondevuks",
-                "container_name": "hbttest"
+                "blobPath": "hbtCv.pdf",
+                "storageName": "pinsstredactiondevuks",
+                "containerName": "hbttest"
+            }
+        },
+        "writeDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                "storageName": "pinsstredactiondevuks",
+                "containerName": "hbttest"
             }
         }
     }
