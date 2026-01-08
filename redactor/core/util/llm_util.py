@@ -96,7 +96,7 @@ class LLMUtil:
     """
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
-    openai_models = {
+    OPENAI_MODELS = {
         "gpt-4.1": {"token_rate_limit": 250000, "input_cost": 149, "output_cost": 593},
         "gpt-4.1-mini": {
             "token_rate_limit": 250000,
@@ -164,12 +164,13 @@ class LLMUtil:
         self.output_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
+    @log_to_appins
     def _set_model_details(self, model: str):
-        if model in self.openai_models:
+        if model in self.OPENAI_MODELS:
             self.llm_model = model
             # Set cost per token in GBP
-            self.input_token_cost = self.openai_models[model]["input_cost"] * 0.000001
-            self.output_token_cost = self.openai_models[model]["output_cost"] * 0.000001
+            self.input_token_cost = self.OPENAI_MODELS[model]["input_cost"] * 0.000001
+            self.output_token_cost = self.OPENAI_MODELS[model]["output_cost"] * 0.000001
         else:
             raise ValueError(f"Model {model} is not supported.")
 
@@ -178,9 +179,9 @@ class LLMUtil:
         if token_rate_limit:
             if (
                 token_rate_limit
-                > self.openai_models[self.llm_model]["token_rate_limit"]
+                > self.OPENAI_MODELS[self.llm_model]["token_rate_limit"]
             ):
-                self.token_rate_limit = self.openai_models[self.llm_model][
+                self.token_rate_limit = self.OPENAI_MODELS[self.llm_model][
                     "token_rate_limit"
                 ]
                 LoggingUtil().log_info(
@@ -189,7 +190,7 @@ class LLMUtil:
                 )
         else:  # default to 50% of max token rate limit
             self.token_rate_limit = int(
-                self.openai_models[self.llm_model]["token_rate_limit"] * 0.5
+                self.OPENAI_MODELS[self.llm_model]["token_rate_limit"] * 0.5
             )
 
     @log_to_appins
