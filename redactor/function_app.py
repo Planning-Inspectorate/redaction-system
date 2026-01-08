@@ -1,5 +1,6 @@
 import azure.functions as func
-from core.redaction_manager import RedactionManager
+#from core.redaction_manager import RedactionManager
+from core.redaction_mgr import some_function
 import azure.durable_functions as df
 from typing import Dict, Any
 
@@ -53,4 +54,5 @@ def redact_task(params: Dict[str, Any]):
     Task which completes the redaction process
     """
     job_id = params.pop("job_id")
-    return RedactionManager(job_id).try_redact(params)
+    return some_function(params)
+    #return RedactionManager(job_id).try_redact(params)
