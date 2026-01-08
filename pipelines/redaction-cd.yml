@@ -34,6 +34,7 @@ extends:
               # Create a zip file of all the files in the filelist.
               - script: |
                   cd $(Build.SourcesDirectory)/redactor
+                  ls
                   find . -maxdepth 1 -type f | sed 's|^\./||' > $(Build.SourcesDirectory)/redactor/filelist.txt
                   cat $(Build.SourcesDirectory)/redactor/filelist.txt | xargs zip -r $(Build.ArtifactStagingDirectory)/redactor.zip
                 displayName: 'Archive top level files'
