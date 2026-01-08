@@ -1,7 +1,5 @@
 import azure.functions as func
-import datetime
 import json
-import logging
 import json
 
 app = func.FunctionApp()
@@ -23,7 +21,7 @@ def redact(req: func.HttpRequest) -> func.HttpResponse:
     )
 
 
-@app.route(route="ping", auth_level=func.AuthLevel.FUNCTION)
+@app.route(route="ping", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def ping(req: func.HttpRequest) -> func.HttpResponse:
     """
     Function for testing connectivity to the redaction system. Returns a simple json response
