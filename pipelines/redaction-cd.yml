@@ -40,5 +40,5 @@ extends:
                   sudo apt-get update
                   sudo apt-get install azure-functions-core-tools-4
                   cd $(Build.SourcesDirectory)/redactor
-                  func azure functionapp publish 'pins-func-redaction-system-${{ parameters.env }}-uks'
+                  func azure functionapp publish 'pins-func-redaction-system-${{ parameters.env }}-uks' --python
                 displayName: 'Deploy function app'
