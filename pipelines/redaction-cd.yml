@@ -33,10 +33,15 @@ extends:
               
               # Create a zip file of all the files in the filelist.
               - script: |
+                  set -e
+                  apt-get install azure-functions-core-tools-4
                   cd $(Build.SourcesDirectory)/redactor
                   ls
-                  find . -maxdepth 1 -type f | sed 's|^\./||' > $(Build.SourcesDirectory)/redactor/filelist.txt
-                  cat $(Build.SourcesDirectory)/redactor/filelist.txt | xargs zip -r $(Build.ArtifactStagingDirectory)/redactor.zip
+                  func pack
+                  echo "generated package"
+                  ls
+                  mv redactor.zip $(Build.ArtifactStagingDirectory)/redactor.zip
+                  ls
                 displayName: 'Archive top level files'
               
               # Publish the zip file as an artifact to be used further in the pipeline.
