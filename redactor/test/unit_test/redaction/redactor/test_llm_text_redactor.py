@@ -1,10 +1,10 @@
-from redactor.core.redaction.redactor import (
+from core.redaction.redactor import (
     LLMTextRedactor,
     LLMRedactionResultFormat,
 )
-from redactor.core.redaction.config import RedactionConfig, LLMTextRedactionConfig
-from redactor.core.util.llm_util import LLMUtil
-from redactor.core.redaction.result import (
+from core.redaction.config import RedactionConfig, LLMTextRedactionConfig
+from core.util.llm_util import LLMUtil
+from core.redaction.result import (
     LLMTextRedactionResult,
 )
 import mock
@@ -37,7 +37,7 @@ def test__llm_text_redactor__get_name():
     - When get_name is called
     - The return value must be a string
     """
-    assert isinstance(LLMTextRedactor.get_name(), str)
+    assert isinstance(LLMTextget_name(), str)
 
 
 def test__llm_text_redactor__get_redaction_config_class():
@@ -45,13 +45,13 @@ def test__llm_text_redactor__get_redaction_config_class():
     - When get_redaction_config_class is called for the LLMTextRedactor class
     - The return value must be an instance of RedactionConfig
     """
-    assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
+    assert issubclass(LLMTextget_redaction_config_class(), RedactionConfig)
 
 
 def test__llm_text_redactor__redact():
     """
     - Given I have some llm redaction config
-    - When I call LLMTextRedactor.redact
+    - When I call LLMTextredact
     - Then I should receive a LLMTextRedactionResult with appropriate properties set
     """
     config = LLMTextRedactionConfig(
@@ -89,6 +89,6 @@ def test__llm_text_redactor__redact():
             LLMUtil, "invoke_chain", return_value=mock_chat_completion
         ):
             with mock.patch.object(LLMTextRedactor, "__init__", return_value=None):
-                LLMTextRedactor.config = config
+                LLMTextconfig = config
                 actual_result = LLMTextRedactor().redact()
                 assert expected_result == actual_result

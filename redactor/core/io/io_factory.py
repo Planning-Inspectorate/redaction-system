@@ -1,5 +1,5 @@
-from redactor.core.io.storage_io import StorageIO
-from redactor.core.io.azure_blob_io import AzureBlobIO
+from core.io.storage_io import StorageIO
+from core.io.azure_blob_io import AzureBlobIO
 from typing import Type, List
 
 

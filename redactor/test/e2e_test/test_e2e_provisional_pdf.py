@@ -30,7 +30,7 @@ def run_module_redactor(
     env["PYTHONPATH"] = str(repo_root) + os.pathsep + env.get("PYTHONPATH", "")
 
     return subprocess.run(
-        [sys.executable, "-m", "redactor.core.main", "-f", str(file_to_redact)],
+        [sys.executable, "-m", "core.main", "-f", str(file_to_redact)],
         cwd=str(tmp_path),
         env=env,
         capture_output=True,

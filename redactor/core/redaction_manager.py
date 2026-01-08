@@ -1,12 +1,12 @@
 import magic
 from typing import Dict, Any
-from redactor.core.redaction.file_processor import (
+from core.redaction.file_processor import (
     FileProcessorFactory,
 )
-from redactor.core.redaction.config_processor import ConfigProcessor
-from redactor.core.util.logging_util import log_to_appins, LoggingUtil
-from redactor.core.io.io_factory import IOFactory
-from redactor.core.io.azure_blob_io import AzureBlobIO
+from core.redaction.config_processor import ConfigProcessor
+from core.util.logging_util import log_to_appins, LoggingUtil
+from core.io.io_factory import IOFactory
+from core.io.azure_blob_io import AzureBlobIO
 import re
 import traceback
 

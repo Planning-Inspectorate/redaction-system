@@ -6,10 +6,10 @@ from yaml import safe_load
 
 from typing import Type, List, Any, Dict
 
-from redactor.core.redaction.redactor import RedactorFactory
-from redactor.core.redaction.exceptions import InvalidRedactionConfigException
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
+from core.redaction.redactor import RedactorFactory
+from core.redaction.exceptions import InvalidRedactionConfigException
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
 
 
 class ConfigProcessor:
@@ -39,8 +39,8 @@ class ConfigProcessor:
         # Validate the redaction config, and convert the config into RedactionConfig objects
         flattened_redaction_config = []
         for redactor in redaction_config.get("redactors", []):
-            redactor_type = redactor.get("redactor_type", None)
-            for rule in redactor.get("redaction_rules", []):
+            redactor_type = get("redactor_type", None)
+            for rule in get("redaction_rules", []):
                 flattened_redaction_config.append(
                     {"redactor_type": redactor_type, **rule}
                 )

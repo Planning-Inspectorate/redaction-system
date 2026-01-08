@@ -1,4 +1,4 @@
-#from redactor.core.redaction_manager import RedactionManager
+from core.redaction_manager import RedactionManager
 import azure.functions as func
 import azure.durable_functions as df
 from typing import Dict, Any
@@ -25,8 +25,8 @@ async def trigger_redaction(req: func.HttpRequest, client: df.DurableOrchestrati
     This asynchronously triggers the process, and returns a response object containing callback info
     for the caller to check the status via the `statusQueryGetUri` property of the json response
     """
-    instance_id = await client.start_new("redaction_orchestrator", client_input=req.get_json())
-    response = client.create_check_status_response(req, instance_id)
+    run_id = await client.start_new("redaction_orchestrator", client_input=req.get_json())
+    response = client.create_check_status_response(req, run_id)
     return response
 
 # Orchestrator
@@ -35,9 +35,8 @@ def redaction_orchestrator(context: df.DurableOrchestrationContext):
     """
     Orchestrator of the redaction process
     """
-    input_params = context.get_input()
+    input_params = context.get_input() | {"job_id": context.instance_id}
     result = yield context.call_activity("_redact_task", input_params)
-
     return [result]
 
 # Activity
@@ -46,4 +45,5 @@ def redact_task(params: Dict[str, Any]):
     """
     Task which completes the redaction process
     """
-    return f"Redact task called with {params}"
+    job_id = params.pop("job_id")
+    return RedactionManager(job_id).redact(params)

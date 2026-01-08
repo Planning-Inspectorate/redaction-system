@@ -1,9 +1,9 @@
-from redactor.core.redaction.redactor import ImageRedactor
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.redaction.config import (
+from core.redaction.redactor import ImageRedactor
+from core.util.azure_vision_util import AzureVisionUtil
+from core.redaction.config import (
     ImageRedactionConfig,
 )
-from redactor.core.redaction.result import (
+from core.redaction.result import (
     ImageRedactionResult,
 )
 from PIL import Image
@@ -11,17 +11,17 @@ import mock
 
 
 def test__image_redactor__get_name():
-    assert ImageRedactor.get_name() == "ImageRedaction"
+    assert Imageget_name() == "ImageRedaction"
 
 
 def test__image_redactor__get_redaction_config_class():
-    assert ImageRedactor.get_redaction_config_class() == ImageRedactionConfig
+    assert Imageget_redaction_config_class() == ImageRedactionConfig
 
 
 def test__image_redactor__redact():
     """
     - Given I have some redaction config (containing two images)
-    - When I call ImageRedactor.redact
+    - When I call Imageredact
     - If the underlying analysis tool returns three bounding boxes, then these should be returned alongside metedata about the analysed image
     """
     config = ImageRedactionConfig(

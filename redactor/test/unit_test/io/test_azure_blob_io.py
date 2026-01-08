@@ -2,8 +2,8 @@ from io import BytesIO
 import pytest
 
 # Import the module and class under test
-import redactor.core.io.azure_blob_io as azure_blob_io
-from redactor.core.io.azure_blob_io import AzureBlobIO
+import core.io.azure_blob_io as azure_blob_io
+from core.io.azure_blob_io import AzureBlobIO
 
 
 class DummyManagedIdentityCredential:

@@ -1,5 +1,5 @@
-from redactor.core.redaction.redactor import Redactor
-from redactor.core.redaction.exceptions import (
+from core.redaction.redactor import Redactor
+from core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
 import mock
@@ -26,7 +26,7 @@ def test__redactor__init():
     with mock.patch.object(Redactor, "_validate_redaction_config", return_value=None):
         config = {"attribute": "some value"}
         inst = MyRedactorImpl(config)
-        Redactor._validate_redaction_config.assert_called_once_with(config)
+        _validate_redaction_config.assert_called_once_with(config)
         assert inst.config == config
 
 
@@ -38,7 +38,7 @@ def test__redactor__validate_redaction_config__with_expected_class():
     """
     with mock.patch.object(Redactor, "get_redaction_config_class", return_value=object):
         config = object()
-        is_valid = Redactor._validate_redaction_config(config)
+        is_valid = _validate_redaction_config(config)
         assert is_valid is None
 
 
@@ -61,4 +61,4 @@ def test__redactor__validate_redaction_config__with_unexpected_class():
     with mock.patch.object(Redactor, "get_redaction_config_class", return_value=B):
         config = C()
         with pytest.raises(IncorrectRedactionConfigClassException):
-            Redactor._validate_redaction_config(config)
+            _validate_redaction_config(config)

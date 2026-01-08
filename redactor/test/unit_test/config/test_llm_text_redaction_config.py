@@ -1,10 +1,10 @@
-from redactor.core.redaction.config import LLMTextRedactionConfig
+from core.redaction.config import LLMTextRedactionConfig
 
 
 def test_llm_text_redactor__create_system_prompt():
     """
     - Given I have some llm redaction config
-    - When I call LLMTextRedactor._create_system_prompt
+    - When I call LLMText_create_system_prompt
     - Then the returned system prompt should be correctly formatted
     """
     config = LLMTextRedactionConfig(
@@ -38,7 +38,7 @@ def test_llm_text_redactor__create_system_prompt():
 def test_llm_text_redactor__create_system_prompt_no_constraints():
     """
     - Given I have some llm redaction config
-    - When I call LLMTextRedactor._create_system_prompt with no constraints
+    - When I call LLMText_create_system_prompt with no constraints
     - Then the returned system prompt should be correctly formatted
     """
     config = LLMTextRedactionConfig(

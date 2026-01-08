@@ -2,8 +2,8 @@ from io import BytesIO
 import pytest
 
 # Import the classes under test (from io package)
-import redactor.core.io.azure_blob_io as azure_blob_io  # noqa: E402
-from redactor.core.io.azure_blob_io import AzureBlobIO  # noqa: E402
+import core.io.azure_blob_io as azure_blob_io  # noqa: E402
+from core.io.azure_blob_io import AzureBlobIO  # noqa: E402
 
 
 class FakeDownloader:

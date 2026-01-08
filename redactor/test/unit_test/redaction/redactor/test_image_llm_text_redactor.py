@@ -1,22 +1,22 @@
-from redactor.core.redaction.redactor import (
+from core.redaction.redactor import (
     ImageLLMTextRedactor,
 )
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.redaction.config import (
+from core.util.azure_vision_util import AzureVisionUtil
+from core.redaction.config import (
     ImageLLMTextRedactionConfig,
 )
-from redactor.core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
+from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
 from PIL import Image
 import mock
 
 
 def test__image_redactor__get_name():
-    assert ImageLLMTextRedactor.get_name() == "ImageLLMTextRedaction"
+    assert ImageLLMTextget_name() == "ImageLLMTextRedaction"
 
 
 def test__image_redactor__get_redaction_config_class():
     assert (
-        ImageLLMTextRedactor.get_redaction_config_class() == ImageLLMTextRedactionConfig
+        ImageLLMTextget_redaction_config_class() == ImageLLMTextRedactionConfig
     )
 
 
