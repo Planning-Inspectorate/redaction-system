@@ -15,19 +15,25 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 
 """
 
+
 # An HTTP-triggered function with a Durable Functions client binding
 @app.route(route="redact", methods=["POST"])
 @app.durable_client_input(client_name="client")
-async def trigger_redaction(req: func.HttpRequest, client: df.DurableOrchestrationClient):
+async def trigger_redaction(
+    req: func.HttpRequest, client: df.DurableOrchestrationClient
+):
     """
     This function is called via HTTP post and triggers the redaction process.
 
     This asynchronously triggers the process, and returns a response object containing callback info
     for the caller to check the status via the `statusQueryGetUri` property of the json response
     """
-    run_id = await client.start_new("redaction_orchestrator", client_input=req.get_json())
+    run_id = await client.start_new(
+        "redaction_orchestrator", client_input=req.get_json()
+    )
     response = client.create_check_status_response(req, run_id)
     return response
+
 
 # Orchestrator
 @app.orchestration_trigger(context_name="context")
@@ -36,8 +42,9 @@ def redaction_orchestrator(context: df.DurableOrchestrationContext):
     Orchestrator of the redaction process
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
-    result = yield context.call_activity("_redact_task", input_params)
+    result = yield context.call_activity("redact_task", input_params)
     return [result]
+
 
 # Activity
 @app.activity_trigger(input_name="params")
