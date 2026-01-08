@@ -53,4 +53,4 @@ def redact_task(params: Dict[str, Any]):
     Task which completes the redaction process
     """
     job_id = params.pop("job_id")
-    return RedactionManager(job_id).redact(params)
+    return RedactionManager(job_id).try_redact(params)

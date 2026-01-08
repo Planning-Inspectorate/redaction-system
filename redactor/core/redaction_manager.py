@@ -112,11 +112,23 @@ class RedactionManager():
         """
         Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
         """
+        base_response = {
+            "parameters": params,
+            "id": self.job_id,
+        }
+        status = "SUCCESS"
+        message = "Redaction process complete"
         try:
             self.redact(params)
         except Exception as e:
             self.log_exception(e)
             LoggingUtil().log_exception(e)
+            status = "FAIL"
+            message = f"Redaction process failed with the following error: {e}"
+        return base_response | {
+            "status": status,
+            "message": message
+        }
 
 '''
 RedactionManager().try_redact(
