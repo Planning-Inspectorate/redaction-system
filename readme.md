@@ -45,6 +45,11 @@ This repository defines the automated redaction that is available to PINS servic
 
 ## Running the function app
 - Install the core functions tools https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=macos%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
+- Install azurite
+  - https://github.com/Azure/Azurite
+  - e.g: `npm install -g azurite`
+  - Run azurite using the command `azurite`
+  - Ensure the commands related to azurite are run in a separate terminal
 - run `func start`
 - You can then connect to the function via http requests, or via the Azure portal
 
