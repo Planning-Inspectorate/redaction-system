@@ -34,7 +34,7 @@ extends:
               # Create a zip file of all the files in the filelist.
               - script: |
                   set -e
-                  apt-get install azure-functions-core-tools-4
+                  sudo apt-get install azure-functions-core-tools-4
                   cd $(Build.SourcesDirectory)/redactor
                   ls
                   func pack
