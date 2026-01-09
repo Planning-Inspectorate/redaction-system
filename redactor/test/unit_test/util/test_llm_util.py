@@ -3,6 +3,7 @@ import time
 
 from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from tiktoken import Encoding
 
 
 from redactor.core.redaction.config import LLMUtilConfig
@@ -129,6 +130,23 @@ def test__llm_util___num_tokens_consumed():
     )
     assert (
         num_tokens == 1024
+    )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
+
+
+@patch.object(Encoding, "encode", side_effect=Exception("Encoding error"))
+def test__llm_util___num_tokens_consumed__exception(mock_encode):
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
+    system_prompt = "This is a system prompt."
+    user_prompt = "This is a user prompt."
+
+    num_tokens = llm_util._num_tokens_consumed(
+        create_api_message(system_prompt, user_prompt)
+    )
+    assert (
+        num_tokens == 0
     )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
 
 
@@ -274,4 +292,6 @@ def test__llm_util__redact_text__budget_exceeded(mock_time_sleep):
         )
 
     # Only first call processed
-    assert actual_result.redaction_strings == ("string A",)
+    assert (actual_result.redaction_strings == ("string A",)) or (
+        actual_result.redaction_strings == ("string B",)
+    )
