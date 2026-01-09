@@ -132,7 +132,7 @@ class LLMUtil:
 
         if not self.config.max_concurrent_requests:
             self.config.max_concurrent_requests = min(
-                32, (os.process_cpu_count() or 1) + 4
+                32, (os.cpu_count() or 1) + 4
             )
 
         self.token_semaphore = TokenSemaphore(self.config.token_rate_limit)
