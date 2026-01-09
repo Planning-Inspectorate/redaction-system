@@ -88,7 +88,7 @@ def pdf_fixture(repo_root: Path):
 # ----------------------------
 
 
-#@pytest.mark.e2e
+# @pytest.mark.e2e
 @pytest.mark.skip(reason="Failing due to main.py being removed")
 def test_e2e_generates_provisional_pdf(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
@@ -112,7 +112,7 @@ def test_e2e_generates_provisional_pdf(
     assert "email@emailaddress.com" in txt
 
 
-#@pytest.mark.e2e
+# @pytest.mark.e2e
 @pytest.mark.skip(reason="Failing due to main.py being removed")
 def test_e2e_generates_final_redacted_pdf(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
@@ -148,7 +148,7 @@ def test_e2e_generates_final_redacted_pdf(
     assert len(txt.strip()) > 0
 
 
-#@pytest.mark.e2e
+# @pytest.mark.e2e
 @pytest.mark.skip(reason="Failing due to main.py being removed")
 def test_e2e_rejects_welsh_primary_language(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture
@@ -167,7 +167,7 @@ def test_e2e_rejects_welsh_primary_language(
     assert not redacted_path(samples_dir, raw_input.name).exists()
 
 
-#@pytest.mark.e2e
+# @pytest.mark.e2e
 @pytest.mark.skip(reason="Failing due to main.py being removed")
 def test_e2e_allows_english_primary_with_some_welsh(
     tmp_path: Path, repo_root: Path, samples_dir: Path, pdf_fixture

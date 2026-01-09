@@ -121,9 +121,7 @@ def test__pdf_processor__apply():
         },
     )
     # Extract text from source and final documents
-    with open(
-        "test/resources/pdf/test_pdf_processor__redacted.pdf", "rb"
-    ) as f:
+    with open("test/resources/pdf/test_pdf_processor__redacted.pdf", "rb") as f:
         expected_redacted_document_bytes = BytesIO(f.read())
     expected_redacted_document_text = "\n".join(
         page.get_text()
