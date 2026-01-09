@@ -4,7 +4,7 @@ import threading
 import time
 
 from typing import List
-from tenacity import retry, wait_fixed, stop_after_attempt
+from tenacity import retry, wait_random_exponential, stop_after_attempt
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from azure.identity import (
@@ -85,14 +85,21 @@ class LLMUtil:
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
     OPENAI_MODELS = {
-        "gpt-4.1": {"token_rate_limit": 250000, "input_cost": 149, "output_cost": 593},
+        "gpt-4.1": {
+            "token_rate_limit": 250000,
+            "request_rate_limit": 250,
+            "input_cost": 149,
+            "output_cost": 593,
+        },
         "gpt-4.1-mini": {
             "token_rate_limit": 250000,
+            "request_rate_limit": 250,
             "input_cost": 30,
             "output_cost": 119,
         },
         "gpt-4.1-nano": {
             "token_rate_limit": 250000,
+            "request_rate_limit": 250,
             "input_cost": 8,
             "output_cost": 30,
         },
@@ -102,10 +109,11 @@ class LLMUtil:
     def __init__(
         self,
         model: str = "gpt-4.1-nano",
-        max_tokens: int = 1000,
+        max_tokens: int = 1000, # default to 2x max chunk size of 500
         temperature: float = 0.5,
-        request_rate_limit: int = 10, # assigns number of threads
-        token_rate_limit: int = None,  # default to 50% of max 250k TPM
+        max_concurrent_requests: int = None, # defaults to logical CPU count + 4
+        request_rate_limit: int = None,  # default to 20% of max RPM 
+        token_rate_limit: int = None,  # default to 20% of max TPM
         n: int = 1,
         token_encoding_name: str = "cl100k_base",
         budget: float = None,
@@ -124,12 +132,12 @@ class LLMUtil:
         )
 
         self._set_model_details(
-            model, token_rate_limit
-        )  # sets llm_model, input_token_cost, output_token_cost and token_rate_limit
-        self.token_semaphore = TokenSemaphore(self.token_rate_limit)
+            model, token_rate_limit, request_rate_limit
+        )  # sets llm_model, input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
+        self.max_concurrent_requests = max_concurrent_requests
 
-        self.request_rate_limit = request_rate_limit  # requests per minute
-        self.request_semaphore = threading.Semaphore(self.request_rate_limit)
+        self.token_semaphore = TokenSemaphore(self.token_rate_limit)
+        self.request_semaphore = threading.Semaphore(self.max_concurrent_requests)
 
         self.max_tokens = max_tokens  # max tokens per completion
         self.temperature = temperature  # Between 0 and 2
@@ -146,15 +154,17 @@ class LLMUtil:
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
-    def _set_model_details(self, model: str, token_rate_limit: int = None):
+    def _set_model_details(self, model: str, token_rate_limit: int = None, request_rate_limit: int = None):
         try:
             model_details = self.OPENAI_MODELS[model]
             self.llm_model = model
             # Set cost per token in GBP
             self.input_token_cost = model_details["input_cost"] * 0.000001
             self.output_token_cost = model_details["output_cost"] * 0.000001
+
+            # Set token rate limit per minute
             if token_rate_limit:
-                if (token_rate_limit > model_details["token_rate_limit"]):
+                if token_rate_limit > model_details["token_rate_limit"]:
                     self.token_rate_limit = model_details["token_rate_limit"]
                     LoggingUtil().log_info(
                         f"Token rate limit for model {self.llm_model} exceeds maximum. "
@@ -163,9 +173,21 @@ class LLMUtil:
                 else:
                     self.token_rate_limit = token_rate_limit
             else:  # default to 50% of max token rate limit
-                self.token_rate_limit = int(
-                    model_details["token_rate_limit"] * 0.5
-                )
+                self.token_rate_limit = int(model_details["token_rate_limit"] * 0.2)
+
+            # Set request rate limit per minute
+            if request_rate_limit:
+                if request_rate_limit > model_details["request_rate_limit"]:
+                    self.request_rate_limit = model_details["request_rate_limit"]
+                    LoggingUtil().log_info(
+                        f"Request rate limit for model {self.llm_model} exceeds maximum. "
+                        f"Setting to maximum of {self.request_rate_limit} requests per minute."
+                    )
+                else:
+                    self.request_rate_limit = request_rate_limit
+            else:  # default to 50% of max request rate limit
+                self.request_rate_limit = int(model_details["request_rate_limit"] * 0.2)
+
         except KeyError:
             raise ValueError(f"Model {model} is not supported.")
 
@@ -265,9 +287,10 @@ class LLMUtil:
         )
 
     @log_to_appins
+    # exponential backoff to increase wait time between retrieshttps://platform.openai.com/docs/guides/rate-limits
     @retry(
-        wait=wait_fixed(2),
-        stop=stop_after_attempt(3),
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
@@ -286,7 +309,7 @@ class LLMUtil:
         text_to_redact = []
         responses: List[ParsedChatCompletion] = []
 
-        with ThreadPoolExecutor(max_workers=self.request_rate_limit) as executor:
+        with ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
