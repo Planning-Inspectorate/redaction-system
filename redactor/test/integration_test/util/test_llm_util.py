@@ -1,3 +1,4 @@
+from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.util.llm_util import LLMUtil
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
@@ -15,11 +16,18 @@ def test__llm_util__invoke_chain__responds():
     - When we invoke the LLMUtil
     - Then we should receive a ParsedChatCompletion response from the LLM
     """
-    system_prompt = "Respond with a json list"
-    prompt = "Hello there"
-    result_format = SampleResultFormat
-    llm_util_inst = LLMUtil()
-    completion = llm_util_inst.invoke_chain(system_prompt, prompt, result_format)
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util_inst = LLMUtil(llm_util_config)
+
+    api_messages = [
+        {"role": "system", "content": "Respond with a json list"},
+        {"role": "user", "content": "Hello there"},
+    ]
+    response_format = SampleResultFormat
+    completion = llm_util_inst.invoke_chain(api_messages, response_format)
+
     assert isinstance(completion, ParsedChatCompletion)
 
 
@@ -31,11 +39,19 @@ def test__llm_util__invoke_chain__has_correct_response_format():
     - When we invoke the LLMUtil
     - Then the completion response should contain a value that is an instance of our supplied result format
     """
-    system_prompt = "Respond with a json list"
-    prompt = "Hello there"
-    result_format = SampleResultFormat
-    llm_util_inst = LLMUtil()
-    completion = llm_util_inst.invoke_chain(system_prompt, prompt, result_format)
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util_inst = LLMUtil(llm_util_config)
+
+    api_messages = [
+        {"role": "system", "content": "Respond with a json list"},
+        {"role": "user", "content": "Hello there"},
+    ]
+    response_format = SampleResultFormat
+
+    completion = llm_util_inst.invoke_chain(api_messages, response_format)
     formatted_result = completion.choices[0].message.parsed
-    assert isinstance(formatted_result, result_format)
+
+    assert isinstance(formatted_result, response_format)
     assert formatted_result.some_strings

@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 import functools
 
 from uuid import uuid4
@@ -17,15 +18,20 @@ class Singleton(type):
 
     This is based on
     https://learn.microsoft.com/en-us/azure/azure-monitor/app/opentelemetry-enable?tabs=python#enable-azure-monitor-opentelemetry-for-net-nodejs-python-and-java-applications
+    Thread safety based on https://stackoverflow.com/questions/51896862/how-to-create-singleton-class-with-arguments-in-python
     """
 
     _INSTANCES = {}
-    # TODO implement thread safety in NRR-102: see https://stackoverflow.com/questions/51896862/how-to-create-singleton-class-with-arguments-in-python
+    _SINGLETON_LOCK = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._INSTANCES:
-            # Create and initialise the singleton instance
-            cls._INSTANCES[cls] = super(Singleton, cls).__call__(cls, *args, **kwargs)
+            with cls._SINGLETON_LOCK:
+                if cls not in cls._INSTANCES:
+                    # Create and initialise the singleton instance
+                    cls._INSTANCES[cls] = super(Singleton, cls).__call__(
+                        cls, *args, **kwargs
+                    )
         return cls._INSTANCES[cls]
 
 
