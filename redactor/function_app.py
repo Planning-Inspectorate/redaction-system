@@ -1,7 +1,9 @@
 import azure.functions as func
-from core.redaction_manager import RedactionManager
 import azure.durable_functions as df
 from typing import Dict, Any
+import logging
+import json
+
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -28,8 +30,19 @@ async def trigger_redaction(
     This asynchronously triggers the process, and returns a response object containing callback info
     for the caller to check the status via the `statusQueryGetUri` property of the json response
     """
+    try:
+        request_params = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "error": "The json payload is missing from the request - unable to trigger the redaction process"
+                }
+            )
+        )
+    logging.info("request params: ", request_params)
     run_id = await client.start_new(
-        "redaction_orchestrator", client_input=req.get_json()
+        "redaction_orchestrator", client_input=request_params
     )
     response = client.create_check_status_response(req, run_id)
     return response
@@ -52,5 +65,8 @@ def redact_task(params: Dict[str, Any]):
     """
     Task which completes the redaction process
     """
+    # Import inside this function so that the function app has a chance to start
+    # Exceptions will instead be raised when this function is trigger
+    from core.redaction_manager import RedactionManager
     job_id = params.pop("job_id")
     return RedactionManager(job_id).try_redact(params)

@@ -3,6 +3,7 @@ azure-functions==1.24.0
 azure-functions-durable==1.4.0
 azure-identity==1.25.1
 azure-storage-blob==12.23.1
+python-dotenv==1.2.1
 coverage==7.12.0
 langchain==1.1.0
 langchain-text-splitters==1.0.0

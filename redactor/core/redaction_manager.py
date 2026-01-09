@@ -1,5 +1,5 @@
-import magic
-from typing import Dict, Any
+#import magic
+from typing import Dict, Any, Optional
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -7,8 +7,35 @@ from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import log_to_appins, LoggingUtil
 from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
+from pydantic import BaseModel
 import re
 import traceback
+from dotenv import load_dotenv
+
+
+load_dotenv(verbose=True, override=True)
+
+
+
+class JsonPayloadStructure(BaseModel):
+    """
+    Validator for the payload for the web request for the redaction process
+    """
+    class ReadDetails(BaseModel):
+        storageKind: str
+        teamEmail: Optional[str]
+        properties: Dict[str, Any]
+    
+    class WriteDetails(BaseModel):
+        storageKind: str
+        properties: Dict[str, Any]
+
+    tryApplyProvisionalRedactions: Optional[bool] = True
+    skipRedaction: Optional[bool] = False
+    ruleName: Optional[str] = "default"
+    fileKind: str
+    readDetails: ReadDetails = None
+    writeDetails: WriteDetails = None
 
 
 class RedactionManager():
@@ -25,7 +52,11 @@ class RedactionManager():
             re.sub(r"([a-z])([A-Z])", r"\1_\2", k).lower(): v
             for k, v in some_parameters.items()
         }
-    
+
+    def validate_json_payload(self, payload: Dict[str, Any]):
+        model_inst = JsonPayloadStructure(**payload)
+        JsonPayloadStructure.model_validate(model_inst)
+
     @log_to_appins
     def redact(self, params: Dict[str, Any]):
         """
@@ -57,7 +88,9 @@ class RedactionManager():
 
         # Load redaction config
         config = ConfigProcessor.load_config(config_name)
-        file_format = magic.from_buffer(file_data.read(), mime=True)
+        #file_format = magic.from_buffer(file_data.read(), mime=True)
+        # Temp for now
+        file_format = "application/pdf"
         extension = file_format.split("/").pop()
         config["file_format"] = extension
         config_cleaned = ConfigProcessor.validate_and_filter_config(
@@ -119,6 +152,7 @@ class RedactionManager():
         status = "SUCCESS"
         message = "Redaction process complete"
         try:
+            self.validate_json_payload(params)
             self.redact(params)
         except Exception as e:
             self.log_exception(e)
@@ -131,7 +165,7 @@ class RedactionManager():
         }
 
 '''
-RedactionManager().try_redact(
+RedactionManager("a").try_redact(
     {
         "tryApplyProvisionalRedactions": True,
         "skipRedaction": True,
