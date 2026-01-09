@@ -2,7 +2,7 @@ from io import BytesIO
 import pytest
 
 # Import the module and class under test
-import redactor.core.io.azure_blob_io as azure_blob_io
+import core.io.azure_blob_io as azure_blob_io
 from core.io.azure_blob_io import AzureBlobIO
 
 
@@ -94,7 +94,7 @@ def test_read_returns_stream_with_downloaded_content(monkeypatch):
     io = AzureBlobIO(storage_name="acct")
 
     # Act
-    out = io.read("container", "folder/blob.pdf")
+    out = io.read(container_name="container", blob_path="folder/blob.pdf")
 
     # Assert: current code returns a BytesIO with data filled
     assert isinstance(out, BytesIO)
@@ -115,7 +115,7 @@ def test_write_passes_stream_and_blockblob(monkeypatch):
     data_stream = BytesIO(b"payload")
 
     # Act
-    io.write(data_stream, "container", "path/to/blob.bin")
+    io.write(data_stream, container_name="container", blob_path="path/to/blob.bin")
 
     # Assert
     assert fake_blob_client.last_args is not None

@@ -1,4 +1,4 @@
-# import magic
+# import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
 from typing import Dict, Any, Optional
 from core.redaction.file_processor import (
     FileProcessorFactory,
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import re
 import traceback
 from dotenv import load_dotenv
+import mimetypes
 
 
 load_dotenv(verbose=True, override=True)
@@ -92,6 +93,7 @@ class RedactionManager:
 
         # Load redaction config
         config = ConfigProcessor.load_config(config_name)
+        # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
         # file_format = magic.from_buffer(file_data.read(), mime=True)
         # Temp for now
         file_format = "application/pdf"
