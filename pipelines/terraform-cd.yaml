@@ -25,9 +25,9 @@ extends:
       - name: Test
         dependsOn:
           - Dev
-      #- name: Prod
-      #  dependsOn:
-      #    - Training
+      - name: Prod
+        dependsOn:
+          - Test
     serviceConnectionPrefix: Azure DevOps Pipelines - Redaction System - Infrastructure
     storageAccountName: pinssttfstateredaction
     resourceGroupName: pins-rg-shared-terraform-uks
