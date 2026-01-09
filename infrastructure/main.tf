@@ -87,9 +87,21 @@ resource "azurerm_linux_function_app" "redaction_system" {
       python_version = 3.13
     }
     application_insights_key = azurerm_application_insights.redaction_system.instrumentation_key
+    cors {
+      allowed_origins = ["https://portal.azure.com"]
+    }
   }
   identity {
     type = "SystemAssigned"
+  }
+  app_settings = {
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.account_key};EndpointSuffix=core.windows.net"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT"           = "true"
+    "OPENAI_ENDPOINT"                          = azurerm_cognitive_account.open_ai.endpoint
+    "OPENAI_KEY"                               = azurerm_cognitive_account.open_ai.primary_access_key
+    "AZURE_VISION_ENDPOINT"                    = azurerm_cognitive_account.computer_vision.endpoint
+    "AZURE_VISION_KEY"                         = azurerm_cognitive_account.computer_vision.primary_access_key
+    "APP_INSIGHTS_CONNECTION_STRING"           = azurerm_application_insights.redaction_system.connection_string
   }
 }
 
