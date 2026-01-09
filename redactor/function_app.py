@@ -1,4 +1,3 @@
-
 ...
 import azure.functions as func
 import azure.durable_functions as df
@@ -66,5 +65,6 @@ def redact_task(params: Dict[str, Any]):
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager
+
     job_id = params.pop("job_id")
     return RedactionManager(job_id).try_redact(params)

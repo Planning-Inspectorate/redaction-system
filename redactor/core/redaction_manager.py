@@ -1,4 +1,4 @@
-#import magic
+# import magic
 from typing import Dict, Any, Optional
 from core.redaction.file_processor import (
     FileProcessorFactory,
@@ -16,16 +16,16 @@ from dotenv import load_dotenv
 load_dotenv(verbose=True, override=True)
 
 
-
 class JsonPayloadStructure(BaseModel):
     """
     Validator for the payload for the web request for the redaction process
     """
+
     class ReadDetails(BaseModel):
         storageKind: str
         teamEmail: Optional[str]
         properties: Dict[str, Any]
-    
+
     class WriteDetails(BaseModel):
         storageKind: str
         properties: Dict[str, Any]
@@ -38,7 +38,7 @@ class JsonPayloadStructure(BaseModel):
     writeDetails: WriteDetails = None
 
 
-class RedactionManager():
+class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = job_id
         # Ensure the job id is set to the job id
@@ -67,12 +67,16 @@ class RedactionManager():
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
         read_torage_kind = read_details.get("storageKind")
-        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(read_details.get("properties"))
+        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+            read_details.get("properties")
+        )
         skip_redaction = params.get("skipRedaction", False)
 
         write_details: Dict[str, Any] = params.get("writeDetails")
         write_storage_kind = write_details.get("storageKind")
-        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(write_details.get("properties"))
+        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+            write_details.get("properties")
+        )
 
         # Set up connection to redaction storage
         redaction_storage_io_inst = AzureBlobIO(
@@ -88,7 +92,7 @@ class RedactionManager():
 
         # Load redaction config
         config = ConfigProcessor.load_config(config_name)
-        #file_format = magic.from_buffer(file_data.read(), mime=True)
+        # file_format = magic.from_buffer(file_data.read(), mime=True)
         # Temp for now
         file_format = "application/pdf"
         extension = file_format.split("/").pop()
@@ -101,7 +105,7 @@ class RedactionManager():
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/raw.{extension}"
+            blob_path=f"{self.job_id}/raw.{extension}",
         )
 
         # Process the data
@@ -113,13 +117,15 @@ class RedactionManager():
             proposed_redaction_file_data.seek(0)
         else:
             file_processor_inst = file_processor_class()
-            proposed_redaction_file_data = file_processor_inst.redact(file_data, config_cleaned)
+            proposed_redaction_file_data = file_processor_inst.redact(
+                file_data, config_cleaned
+            )
 
         # Store a copy of the proposed redactions in redaction storage
         redaction_storage_io_inst.write(
             proposed_redaction_file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/proposed.{extension}"
+            blob_path=f"{self.job_id}/proposed.{extension}",
         )
         proposed_redaction_file_data.seek(0)
 
@@ -131,13 +137,15 @@ class RedactionManager():
         """
         Store an exception log in the redaction storage account
         """
-        error_trace = "".join(traceback.TracebackException.from_exception(exception).format())
+        error_trace = "".join(
+            traceback.TracebackException.from_exception(exception).format()
+        )
         AzureBlobIO(
             storage_name="pinsstredactiondevuks",
         ).write(
             error_trace.encode("utf-8"),
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/exception.txt"
+            blob_path=f"{self.job_id}/exception.txt",
         )
 
     @log_to_appins
@@ -159,12 +167,10 @@ class RedactionManager():
             LoggingUtil().log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
-        return base_response | {
-            "status": status,
-            "message": message
-        }
+        return base_response | {"status": status, "message": message}
 
-'''
+
+"""
 RedactionManager("a").try_redact(
     {
         "tryApplyProvisionalRedactions": True,
@@ -191,4 +197,4 @@ RedactionManager("a").try_redact(
         }
     }
 )
-'''
+"""

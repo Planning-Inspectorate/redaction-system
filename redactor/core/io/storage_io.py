@@ -24,13 +24,9 @@ class StorageIO(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def read(
-        self, **kwargs: Any
-    ) -> BytesIO:  # pragma: no cover - interface only
+    def read(self, **kwargs: Any) -> BytesIO:  # pragma: no cover - interface only
         raise NotImplementedError
 
     @abstractmethod
-    def write(
-        self, data_bytes: BytesIO, **kwargs: Any
-    ) -> None:  # pragma: no cover
+    def write(self, data_bytes: BytesIO, **kwargs: Any) -> None:  # pragma: no cover
         raise NotImplementedError
