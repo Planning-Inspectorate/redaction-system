@@ -4,6 +4,27 @@ from redactor.core.util.types import PydanticImage
 from langchain_core.prompts import PromptTemplate
 
 
+class LLMUtilConfig(BaseModel):
+    model: str
+    """The LLM model to use"""
+    max_tokens: Optional[int] = 1000
+    """Maximum number of tokens per completion"""
+    temperature: Optional[float] = 0.5
+    """LLM sampling temperature"""
+    request_rate_limit: Optional[int] = None  
+    """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
+    token_rate_limit: Optional[int] = None  
+    """Number of tokens allowed per minute. Defaults to 20% of model max TPM."""
+    max_concurrent_requests: Optional[int] = None
+    """Number of concurrent requests to allow. Assigns the number of threads."""
+    token_encoding_name: Optional[str] = "cl100k_base"
+    """The token encoding name to use for estimating token counts"""
+    n: Optional[int] = 1
+    """Number of completions to generate per prompt"""
+    budget: Optional[float] = None 
+    """The budget in GBP for LLM usage"""
+
+
 class RedactionConfig(BaseModel):
     name: str
     redactor_type: str
@@ -15,9 +36,7 @@ class TextRedactionConfig(RedactionConfig):
     """The source text to redact"""
 
 
-class LLMTextRedactionConfigBase(RedactionConfig):
-    model: str
-    """The LLM to use"""
+class LLMTextRedactionConfigBase(RedactionConfig, LLMUtilConfig):
     system_prompt: str
     """The system prompt for the LLM"""
     redaction_terms: List[str]
@@ -30,6 +49,7 @@ class LLMTextRedactionConfigBase(RedactionConfig):
         '"terms". List them as they appear in the text. '
         "</OutputFormat>"
     )
+
 
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):

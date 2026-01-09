@@ -56,5 +56,5 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
             LLMTextRedactor.config = config
             LLMTextRedactor()._analyse_text("some text to analyse")
 
-    mock_llm_util_init.assert_called_once_with("gpt-4.1-nano")
+    mock_llm_util_init.assert_called_once_with(config)
     mock_redact_text.assert_called_once()

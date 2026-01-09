@@ -2,7 +2,6 @@ import json
 
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
-from langchain_core.prompts import PromptTemplate
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -128,7 +127,7 @@ class LLMTextRedactor(TextRedactor):
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
 
         # Initialise LLM interface
-        llm_util = LLMUtil(self.config.model, **kwargs)
+        llm_util = LLMUtil(self.config)
 
         # Identify redaction strings
         return llm_util.redact_text(

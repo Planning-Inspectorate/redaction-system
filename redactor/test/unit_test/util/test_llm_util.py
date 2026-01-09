@@ -5,6 +5,7 @@ from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
+from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
@@ -85,30 +86,41 @@ def test__create_api_message():
 
 
 def test__llm_util____init__():
-    llm_util = LLMUtil("gpt-4.1-nano", token_rate_limit=2000)
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        token_rate_limit=2000,
+    )
+    llm_util = LLMUtil(llm_util_config)
 
-    assert llm_util.llm_model == "gpt-4.1-nano"
-    assert llm_util.token_rate_limit == 2000
+    assert llm_util.config.token_rate_limit == 2000
 
     assert llm_util.input_token_cost == 8 * 0.000001
     assert llm_util.output_token_cost == 30 * 0.000001
 
 
 def test__llm_util___set_model_details__exceeds_token_rate_limit():
-    llm_util = LLMUtil("gpt-4.1-nano", token_rate_limit=1000000)
-    assert llm_util.token_rate_limit == 250000
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        token_rate_limit=300000,  # Exceeds max for gpt-4.1-nano
+    )
+    llm_util = LLMUtil(llm_util_config)
+    assert llm_util.config.token_rate_limit == 250000
 
 
 def test__llm_util___set_model_details__invalid_model():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nan0",
+    )
     with pytest.raises(ValueError) as exc:
-        LLMUtil("gpt-4.1-nan0")
+        LLMUtil(llm_util_config)
     assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
 
 
 def test__llm_util___num_tokens_consumed():
-    llm_util = LLMUtil(
-        model="gpt-4.1-nano", token_encoding_name="cl100k_base", max_tokens=1000, n=1
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
     )
+    llm_util = LLMUtil(llm_util_config)
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
 
@@ -138,9 +150,10 @@ def create_mock_chat_completion(
 
 
 def test__llm_util___compute_costs():
-    llm_util = LLMUtil(
-        model="gpt-4.1-nano", token_encoding_name="cl100k_base", max_tokens=1000, n=1
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
     )
+    llm_util = LLMUtil(llm_util_config)
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
 
@@ -161,7 +174,10 @@ def test__llm_util__redact_text_chunk(mock_num_tokens_consumed):
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
     expected_result = (mock_chat_completion, redaction_strings)
 
-    llm_util = LLMUtil()
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
     llm_util.request_semaphore = Mock()
     llm_util.token_semaphore = Mock()
     llm_util.input_token_cost = 1
@@ -196,7 +212,10 @@ def create_mock_redact_text_chunk(
 
 
 def test__llm_util__redact_text():
-    llm_util = LLMUtil()
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
     llm_util.request_semaphore = Mock()
     llm_util.token_semaphore = Mock()
     llm_util.input_token_cost = 1
@@ -235,7 +254,12 @@ def test__llm_util__redact_text():
 
 @patch("time.sleep", return_value=None)
 def test__llm_util__redact_text__budget_exceeded(mock_time_sleep):
-    llm_util = LLMUtil(request_rate_limit=1, budget=12.0)
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        request_rate_limit=1,
+        budget=12.0,
+    )
+    llm_util = LLMUtil(llm_util_config)
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
 

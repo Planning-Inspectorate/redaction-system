@@ -18,6 +18,7 @@ from openai import OpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 
+from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
     LLMTextRedactionResult,
     LLMRedactionResultFormat,
@@ -108,16 +109,11 @@ class LLMUtil:
 
     def __init__(
         self,
-        model: str = "gpt-4.1-nano",
-        max_tokens: int = 1000, # default to 2x max chunk size of 500
-        temperature: float = 0.5,
-        max_concurrent_requests: int = None, # defaults to logical CPU count + 4
-        request_rate_limit: int = None,  # default to 20% of max RPM 
-        token_rate_limit: int = None,  # default to 20% of max TPM
-        n: int = 1,
-        token_encoding_name: str = "cl100k_base",
-        budget: float = None,
+        config: LLMUtilConfig,
     ):
+        self.config: LLMUtilConfig = config
+
+        # Initialize OpenAI client for Azure
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
         self.api_key = os.environ.get("OPENAI_KEY", None)
         credential = ChainedTokenCredential(
@@ -131,68 +127,60 @@ class LLMUtil:
             api_key=self.api_key,
         )
 
-        self._set_model_details(
-            model, token_rate_limit, request_rate_limit
-        )  # sets llm_model, input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
-        if max_concurrent_requests:
-            self.max_concurrent_requests = max_concurrent_requests
-        else:
-            self.max_concurrent_requests = min(32, (os.process_cpu_count() or 1) + 4)
+        # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
+        self._set_model_details()
 
-        self.token_semaphore = TokenSemaphore(self.token_rate_limit)
-        self.request_semaphore = threading.Semaphore(self.max_concurrent_requests)
+        if not self.config.max_concurrent_requests:
+            self.config.max_concurrent_requests = min(
+                32, (os.process_cpu_count() or 1) + 4
+            )
 
-        self.max_tokens = max_tokens  # max tokens per completion
-        self.temperature = temperature  # Between 0 and 2
-
-        self.n = n  # number of completions to generate per request
-
-        # Token encoding name for counting tokens - default to cl100k_base for GPT-4
-        self.token_encoding_name = token_encoding_name
-
-        self.budget = budget  # Budget in GBP for LLM calls
+        self.token_semaphore = TokenSemaphore(self.config.token_rate_limit)
+        self.request_semaphore = threading.Semaphore(
+            self.config.max_concurrent_requests
+        )
 
         self.input_token_count = 0
         self.output_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
-    def _set_model_details(self, model: str, token_rate_limit: int = None, request_rate_limit: int = None):
+    def _set_model_details(self):
         try:
-            model_details = self.OPENAI_MODELS[model]
-            self.llm_model = model
+            # Get specified model
+            model_details = self.OPENAI_MODELS[self.config.model]
+
             # Set cost per token in GBP
             self.input_token_cost = model_details["input_cost"] * 0.000001
             self.output_token_cost = model_details["output_cost"] * 0.000001
 
-            # Set token rate limit per minute
-            if token_rate_limit:
-                if token_rate_limit > model_details["token_rate_limit"]:
-                    self.token_rate_limit = model_details["token_rate_limit"]
+            # Validate and set token rate limit per minute
+            if self.config.token_rate_limit:
+                if self.config.token_rate_limit > model_details["token_rate_limit"]:
+                    self.config.token_rate_limit = model_details["token_rate_limit"]
                     LoggingUtil().log_info(
-                        f"Token rate limit for model {self.llm_model} exceeds maximum. "
-                        f"Setting to maximum of {self.token_rate_limit} tokens per minute."
+                        f"Token rate limit for model {self.config.model} exceeds maximum. "
+                        f"Setting to maximum of {self.config.token_rate_limit} tokens per minute."
                     )
-                else:
-                    self.token_rate_limit = token_rate_limit
-            else:  # default to 50% of max token rate limit
-                self.token_rate_limit = int(model_details["token_rate_limit"] * 0.2)
+            else:  # default to 20% of max token rate limit
+                self.config.token_rate_limit = int(
+                    model_details["token_rate_limit"] * 0.2
+                )
 
-            # Set request rate limit per minute
-            if request_rate_limit:
-                if request_rate_limit > model_details["request_rate_limit"]:
+            # Validate and set request rate limit per minute
+            if self.config.request_rate_limit:
+                if self.config.request_rate_limit > model_details["request_rate_limit"]:
                     self.request_rate_limit = model_details["request_rate_limit"]
                     LoggingUtil().log_info(
                         f"Request rate limit for model {self.llm_model} exceeds maximum. "
                         f"Setting to maximum of {self.request_rate_limit} requests per minute."
                     )
-                else:
-                    self.request_rate_limit = request_rate_limit
-            else:  # default to 50% of max request rate limit
-                self.request_rate_limit = int(model_details["request_rate_limit"] * 0.2)
-
+            else:  # default to 20% of max request rate limit
+                self.config.request_rate_limit = int(
+                    model_details["request_rate_limit"] * 0.2
+                )
         except KeyError:
-            raise ValueError(f"Model {model} is not supported.")
+            raise ValueError(f"Model {self.config.model} is not supported.")
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -204,8 +192,8 @@ class LLMUtil:
 
         Based on https://github.com/openai/openai-cookbook/blob/970d8261fbf6206718fe205e88e37f4745f9cf76/examples/api_request_parallel_processor.py#L339
         """
-        encoding = get_encoding(self.token_encoding_name)
-        completion_tokens = self.n * self.max_tokens
+        encoding = get_encoding(self.config.token_encoding_name)
+        completion_tokens = self.config.n * self.config.max_tokens
         n_tokens = 0
         try:
             for message in api_messages:
@@ -224,10 +212,10 @@ class LLMUtil:
 
     def invoke_chain(self, api_messages: str, response_format: BaseModel):
         response = self.llm.chat.completions.parse(
-            model=self.llm_model,
+            model=self.config.model,
             messages=api_messages,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
             response_format=response_format,
         )
         return response
@@ -275,7 +263,7 @@ class LLMUtil:
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(60 / self.request_rate_limit)  # Rate limiting delay
+            time.sleep(60 / self.config.request_rate_limit)  # Rate limiting delay
 
     def _compute_costs(self, response: ParsedChatCompletion):
         prompt_tokens = response.usage.prompt_tokens
@@ -312,7 +300,9 @@ class LLMUtil:
         text_to_redact = []
         responses: List[ParsedChatCompletion] = []
 
-        with ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
+        with ThreadPoolExecutor(
+            max_workers=self.config.max_concurrent_requests
+        ) as executor:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
@@ -337,9 +327,9 @@ class LLMUtil:
                     )
 
                 # Check budget after each request
-                if self.budget and self.total_cost >= self.budget:
+                if self.config.budget and self.total_cost >= self.config.budget:
                     LoggingUtil().log_info(
-                        f"Budget of £{self.budget:.2f} exceeded with total cost "
+                        f"Budget of £{self.config.budget:.2f} exceeded with total cost "
                         f"£{self.total_cost:.2f}. Stopping further requests."
                     )
                     break
