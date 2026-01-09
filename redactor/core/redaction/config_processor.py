@@ -6,10 +6,10 @@ from yaml import safe_load
 
 from typing import Type, List, Any, Dict
 
-from redactor.core.redaction.redactor import RedactorFactory
-from redactor.core.redaction.exceptions import InvalidRedactionConfigException
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
+from core.redaction.redactor import RedactorFactory
+from core.redaction.exceptions import InvalidRedactionConfigException
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
 
 
 class ConfigProcessor:

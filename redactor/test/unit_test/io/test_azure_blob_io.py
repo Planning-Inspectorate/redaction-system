@@ -3,7 +3,7 @@ import pytest
 
 # Import the module and class under test
 import redactor.core.io.azure_blob_io as azure_blob_io
-from redactor.core.io.azure_blob_io import AzureBlobIO
+from core.io.azure_blob_io import AzureBlobIO
 
 
 class DummyManagedIdentityCredential:

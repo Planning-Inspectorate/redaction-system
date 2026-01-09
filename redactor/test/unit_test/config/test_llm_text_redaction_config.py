@@ -1,4 +1,4 @@
-from redactor.core.redaction.config import LLMTextRedactionConfig
+from core.redaction.config import LLMTextRedactionConfig
 
 
 def test_llm_text_redactor__create_system_prompt():
