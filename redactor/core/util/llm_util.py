@@ -134,7 +134,10 @@ class LLMUtil:
         self._set_model_details(
             model, token_rate_limit, request_rate_limit
         )  # sets llm_model, input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
-        self.max_concurrent_requests = max_concurrent_requests
+        if max_concurrent_requests:
+            self.max_concurrent_requests = max_concurrent_requests
+        else:
+            self.max_concurrent_requests = min(32, (os.process_cpu_count() or 1) + 4)
 
         self.token_semaphore = TokenSemaphore(self.token_rate_limit)
         self.request_semaphore = threading.Semaphore(self.max_concurrent_requests)
