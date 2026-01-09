@@ -134,6 +134,7 @@ class RedactionManager():
 RedactionManager().try_redact(
     {
         "tryApplyProvisionalRedactions": True,
+        "skipRedaction": True,
         "ruleName": "default",
         "fileKind": "pdf",
         "readDetails": {
