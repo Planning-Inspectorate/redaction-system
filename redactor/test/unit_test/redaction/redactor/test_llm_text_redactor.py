@@ -6,12 +6,7 @@ from redactor.core.redaction.config import (
     RedactionConfig,
     LLMTextRedactionConfig,
 )
-from redactor.core.redaction.result import (
-    LLMTextRedactionResult,
-)
 from redactor.core.util.llm_util import LLMUtil
-
-from redactor.test.unit_test.util.test_llm_util import create_mock_chat_completion
 
 
 def test__llm_text_redactor__get_name():

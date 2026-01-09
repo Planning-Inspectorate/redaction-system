@@ -278,7 +278,7 @@ class LLMUtil:
         )
 
     @log_to_appins
-    # exponential backoff to increase wait time between retrieshttps://platform.openai.com/docs/guides/rate-limits
+    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
     @retry(
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
