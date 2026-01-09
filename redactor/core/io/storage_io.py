@@ -18,14 +18,19 @@ class StorageIO(ABC):
     def __init__(self, **kwargs: Any) -> None:
         self.kwargs = kwargs
 
+    @classmethod
+    @abstractmethod
+    def get_kind(cls) -> str:  # pragma: no cover - interface only
+        raise NotImplementedError
+
     @abstractmethod
     def read(
-        self, container_name: str, blob_path: str
+        self, **kwargs: Any
     ) -> BytesIO:  # pragma: no cover - interface only
         raise NotImplementedError
 
     @abstractmethod
     def write(
-        self, data_bytes: BytesIO, container_name: str, blob_path: str
+        self, data_bytes: BytesIO, **kwargs: Any
     ) -> None:  # pragma: no cover
         raise NotImplementedError
