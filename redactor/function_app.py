@@ -1,5 +1,5 @@
 """
-The redaction function is implemented using the async-http pattern using Azure Durable Functions. 
+The redaction function is implemented using the async-http pattern using Azure Durable Functions.
 Information about this pattern can be found in the below documentation
 https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview?tabs=in-process%2Cnodejs-v3%2Cv2-model&pivots=python#async-http
 https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-python-vscode
