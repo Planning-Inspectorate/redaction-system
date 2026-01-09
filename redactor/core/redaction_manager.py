@@ -11,7 +11,6 @@ from pydantic import BaseModel
 import re
 import traceback
 from dotenv import load_dotenv
-import mimetypes
 
 
 load_dotenv(verbose=True, override=True)
@@ -63,7 +62,6 @@ class RedactionManager:
         """
         Perform a redaction using the supplied parameters
         """
-        try_apply_provisional_redactions = params.get("tryApplyProvisionalRedactions")
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
@@ -154,6 +152,34 @@ class RedactionManager:
     def try_redact(self, params: Dict[str, Any]):
         """
         Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
+
+        Expected input structure
+        ```
+        {
+            "tryApplyProvisionalRedactions": True,
+            "skipRedaction": True,
+            "ruleName": "default",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            }
+        }
+        ```
         """
         base_response = {
             "parameters": params,
@@ -170,33 +196,3 @@ class RedactionManager:
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
         return base_response | {"status": status, "message": message}
-
-
-"""
-RedactionManager("a").try_redact(
-    {
-        "tryApplyProvisionalRedactions": True,
-        "skipRedaction": True,
-        "ruleName": "default",
-        "fileKind": "pdf",
-        "readDetails": {
-            "storageKind": "AzureBlob",
-            "teamEmail": "someAccount@planninginspectorate.gov.uk",
-            "properties": {
-                "blobPath": "hbtCv.pdf",
-                "storageName": "pinsstredactiondevuks",
-                "containerName": "hbttest"
-            }
-        },
-        "writeDetails": {
-            "storageKind": "AzureBlob",
-            "teamEmail": "someAccount@planninginspectorate.gov.uk",
-            "properties": {
-                "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
-                "storageName": "pinsstredactiondevuks",
-                "containerName": "hbttest"
-            }
-        }
-    }
-)
-"""

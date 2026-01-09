@@ -1,19 +1,18 @@
-...
-import azure.functions as func
-import azure.durable_functions as df
-from typing import Dict, Any
-import logging
-import json
-
-
-app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
-
 """
 The redaction function is implemented using the async-http pattern using Azure Durable Functions. 
 Information about this pattern can be found in the below documentation
 https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-functions-overview?tabs=in-process%2Cnodejs-v3%2Cv2-model&pivots=python#async-http
 https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-python-vscode
 """
+
+import logging
+import azure.functions as func
+import azure.durable_functions as df
+import json
+from typing import Dict, Any
+
+
+app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 # An HTTP-triggered function with a Durable Functions client binding
@@ -64,7 +63,7 @@ def redact_task(params: Dict[str, Any]):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from core.redaction_manager import RedactionManager
+    from core.redaction_manager import RedactionManager  # noqa: F402
 
     job_id = params.pop("job_id")
     return RedactionManager(job_id).try_redact(params)
