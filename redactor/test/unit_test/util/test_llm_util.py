@@ -1,4 +1,6 @@
+import pytest
 import time
+
 from mock import patch, Mock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -45,7 +47,7 @@ def test__token_semaphore__release():
     assert token_semaphore.tokens == 80
 
 
-def test__token_semaphore__parallel():
+def test__token_semaphore__insufficient_tokens():
     # Test that in a parallel scenario, only one thread waits when tokens are insufficient
     # Define a task that tries to acquire more tokens than available
     def task(self, tokens: int):
@@ -60,7 +62,7 @@ def test__token_semaphore__parallel():
     tokens_requested = [80, 80]
     possible_tokens = [20, 100]
 
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         # Submit tasks to the executor
         future_to_semaphore = {
             executor.submit(token_semaphore.task, token_semaphore, x): x
@@ -89,6 +91,27 @@ def test__create_api_message():
     ]
     actual_message = create_api_message(system_prompt, user_prompt)
     assert actual_message == expected_message
+
+
+def test__llm_util____init__():
+    llm_util = LLMUtil("gpt-4.1-nano", token_rate_limit=2000)
+
+    assert llm_util.llm_model == "gpt-4.1-nano"
+    assert llm_util.token_rate_limit == 2000
+
+    assert llm_util.input_token_cost == 8 * 0.000001
+    assert llm_util.output_token_cost == 30 * 0.000001
+
+
+def test__llm_util___set_model_details__exceeds_token_rate_limit():
+    llm_util = LLMUtil("gpt-4.1-nano", token_rate_limit=1000000)
+    assert llm_util.token_rate_limit == 250000
+
+
+def test__llm_util___set_model_details__invalid_model():
+    with pytest.raises(ValueError) as exc:
+        LLMUtil("gpt-4.1-nan0")
+    assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
 
 
 def test__llm_util___num_tokens_consumed():
@@ -219,8 +242,9 @@ def test__llm_util__redact_text():
     assert llm_util.total_cost == 26.0
 
 
-def test__llm_util__redact_text__budget_exceeded():
-    llm_util = LLMUtil(max_concurrent_requests=1, budget=12.0)
+@patch("time.sleep", return_value=None)
+def test__llm_util__redact_text__budget_exceeded(mock_time_sleep):
+    llm_util = LLMUtil(request_rate_limit=1, budget=12.0)
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
 

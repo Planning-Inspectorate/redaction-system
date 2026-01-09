@@ -5,7 +5,6 @@ import time
 
 from typing import List
 from tenacity import retry, wait_fixed, stop_after_attempt
-from threading import Semaphore
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from azure.identity import (
@@ -44,15 +43,16 @@ class TokenSemaphore:
     Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
     """
 
+    _LOCK = threading.Lock()
+
     def __init__(self, max_tokens: int):
         self.tokens = max_tokens
-        self.lock = threading.Lock()
-        self.condition = threading.Condition(self.lock)
+        self.condition = threading.Condition(self._LOCK)
 
     @log_to_appins
     def acquire(self, tokens: int):
         """Acquire the specified number of tokens from the semaphore."""
-        with self.lock:
+        with self._LOCK:
             # Wait until enough tokens are available
             while tokens > self.tokens:
                 LoggingUtil().log_info("Waiting for tokens to be released...")
@@ -62,19 +62,9 @@ class TokenSemaphore:
     @log_to_appins
     def release(self, tokens: int):
         """Release the specified number of tokens back to the semaphore."""
-        with self.lock:
+        with self._LOCK:
             self.tokens += tokens
             self.condition.notify_all()
-
-
-def create_api_message(
-    system_prompt: str,
-    user_prompt: str,
-) -> List[dict]:
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
 
 
 class LLMUtil:
@@ -88,11 +78,9 @@ class LLMUtil:
     :param request_rate_limit: The maximum number of requests per minute, which
     the number of concurrent requests is limited to
     :param token_rate_limit: The maximum number of tokens per minute
-    :param max_concurrent_requests: The maximum number of concurrent requests to make
     :param n: The number of completions to generate per request
     :param token_encoding_name: The name of the token encoding to use for counting tokens.
     Defaults to `cl100k_base` for GPT-4
-    :param delay: The delay in seconds to use for rate limiting calculations
     """
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
@@ -116,12 +104,10 @@ class LLMUtil:
         model: str = "gpt-4.1-nano",
         max_tokens: int = 1000,
         temperature: float = 0.5,
-        request_rate_limit: int = 10,
+        request_rate_limit: int = 10, # assigns number of threads
         token_rate_limit: int = None,  # default to 50% of max 250k TPM
-        max_concurrent_requests: int = 5,
         n: int = 1,
         token_encoding_name: str = "cl100k_base",
-        delay: int = 60,
         budget: float = None,
     ):
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
@@ -138,26 +124,20 @@ class LLMUtil:
         )
 
         self._set_model_details(
-            model
-        )  # sets llm_model, input_token_cost, output_token_cost
+            model, token_rate_limit
+        )  # sets llm_model, input_token_cost, output_token_cost and token_rate_limit
+        self.token_semaphore = TokenSemaphore(self.token_rate_limit)
+
+        self.request_rate_limit = request_rate_limit  # requests per minute
+        self.request_semaphore = threading.Semaphore(self.request_rate_limit)
 
         self.max_tokens = max_tokens  # max tokens per completion
         self.temperature = temperature  # Between 0 and 2
 
-        self.request_rate_limit = request_rate_limit  # requests per minute
-        self.request_semaphore = Semaphore(self.request_rate_limit)
-
-        # Parameters for parallel requests
-        self._set_token_rate_limit(token_rate_limit)  # tokens per minute
-        self.token_semaphore = TokenSemaphore(self.token_rate_limit)
-
-        self.max_concurrent_requests = max_concurrent_requests
         self.n = n  # number of completions to generate per request
 
         # Token encoding name for counting tokens - default to cl100k_base for GPT-4
         self.token_encoding_name = token_encoding_name
-
-        self.delay = delay  # Delay in seconds for rate limiting calculations
 
         self.budget = budget  # Budget in GBP for LLM calls
 
@@ -166,33 +146,28 @@ class LLMUtil:
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
-    def _set_model_details(self, model: str):
-        if model in self.OPENAI_MODELS:
+    def _set_model_details(self, model: str, token_rate_limit: int = None):
+        try:
+            model_details = self.OPENAI_MODELS[model]
             self.llm_model = model
             # Set cost per token in GBP
-            self.input_token_cost = self.OPENAI_MODELS[model]["input_cost"] * 0.000001
-            self.output_token_cost = self.OPENAI_MODELS[model]["output_cost"] * 0.000001
-        else:
-            raise ValueError(f"Model {model} is not supported.")
-
-    @log_to_appins
-    def _set_token_rate_limit(self, token_rate_limit: int = None):
-        if token_rate_limit:
-            if (
-                token_rate_limit
-                > self.OPENAI_MODELS[self.llm_model]["token_rate_limit"]
-            ):
-                self.token_rate_limit = self.OPENAI_MODELS[self.llm_model][
-                    "token_rate_limit"
-                ]
-                LoggingUtil().log_info(
-                    f"Token rate limit for model {self.llm_model} exceeds maximum. "
-                    f"Setting to maximum of {self.token_rate_limit} tokens per minute."
+            self.input_token_cost = model_details["input_cost"] * 0.000001
+            self.output_token_cost = model_details["output_cost"] * 0.000001
+            if token_rate_limit:
+                if (token_rate_limit > model_details["token_rate_limit"]):
+                    self.token_rate_limit = model_details["token_rate_limit"]
+                    LoggingUtil().log_info(
+                        f"Token rate limit for model {self.llm_model} exceeds maximum. "
+                        f"Setting to maximum of {self.token_rate_limit} tokens per minute."
+                    )
+                else:
+                    self.token_rate_limit = token_rate_limit
+            else:  # default to 50% of max token rate limit
+                self.token_rate_limit = int(
+                    model_details["token_rate_limit"] * 0.5
                 )
-        else:  # default to 50% of max token rate limit
-            self.token_rate_limit = int(
-                self.OPENAI_MODELS[self.llm_model]["token_rate_limit"] * 0.5
-            )
+        except KeyError:
+            raise ValueError(f"Model {model} is not supported.")
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -275,7 +250,7 @@ class LLMUtil:
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(self.delay / self.request_rate_limit)  # Rate limiting delay
+            time.sleep(60 / self.request_rate_limit)  # Rate limiting delay
 
     def _compute_costs(self, response: ParsedChatCompletion):
         prompt_tokens = response.usage.prompt_tokens
@@ -311,7 +286,7 @@ class LLMUtil:
         text_to_redact = []
         responses: List[ParsedChatCompletion] = []
 
-        with ThreadPoolExecutor(max_workers=self.max_concurrent_requests) as executor:
+        with ThreadPoolExecutor(max_workers=self.request_rate_limit) as executor:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
@@ -323,8 +298,8 @@ class LLMUtil:
             }
             for future in as_completed(future_to_chunk):
                 chunk = future_to_chunk[future]
-
                 request_counter += 1
+
                 try:
                     # Get redaction result for chunk and append to overall results
                     response, redaction_strings = future.result()
@@ -358,3 +333,13 @@ class LLMUtil:
         )
 
         return result
+
+
+def create_api_message(
+    system_prompt: str,
+    user_prompt: str,
+) -> List[dict]:
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
