@@ -101,14 +101,12 @@ class LLMUtil:
         # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
 
-        if not self.config.max_concurrent_requests:
-            self.config.max_concurrent_requests = min(32, (os.cpu_count() or 1) + 4)
+        # Validate and set max concurrent requests
+        self._set_workers(self.config.max_concurrent_requests)
+        self.request_semaphore = Semaphore(self.config.max_concurrent_requests)
 
         self.token_semaphore = TokenSemaphore(
             self.config.token_rate_limit, self.config.token_timeout
-        )
-        self.request_semaphore = Semaphore(
-            self.config.max_concurrent_requests
         )
 
         self.input_token_count = 0
@@ -152,6 +150,16 @@ class LLMUtil:
                 )
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
+
+    def _set_workers(self, n: int = None) -> int:
+        """Determine the number of worker threads to use, capped at 32 or 
+        (os.cpu_count() or 1) + 4."""
+        max_workers = min(32, (os.cpu_count() or 1) + 4)
+        if n:
+            if n < 1 or n > max_workers:
+                self.config.max_concurrent_requests = max_workers
+        else:
+            self.config.max_concurrent_requests = max_workers
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -213,7 +221,7 @@ class LLMUtil:
         self,
         system_prompt: str,
         user_prompt: str,
-    ) -> tuple:
+    ) -> tuple[ParsedChatCompletion, List[str]]:
         """Redact a single chunk of text using the LLM."""
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
@@ -294,6 +302,14 @@ class LLMUtil:
         text_to_redact = []
         responses: List[ParsedChatCompletion] = []
 
+        # Check max concurrent requests
+        if self.config.max_concurrent_requests > 32:
+            self._set_workers()
+            LoggingUtil().log_info(
+                "Max concurrent requests exceeds maximum. "
+                f"Setting to {self.config.max_concurrent_requests}."
+            )
+        
         with ThreadPoolExecutor(
             max_workers=self.config.max_concurrent_requests
         ) as executor:
@@ -335,6 +351,7 @@ class LLMUtil:
         result = LLMTextRedactionResult(
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(
+                request_count=request_counter,
                 input_token_count=self.input_token_count,
                 output_token_count=self.output_token_count,
                 total_token_count=self.input_token_count + self.output_token_count,

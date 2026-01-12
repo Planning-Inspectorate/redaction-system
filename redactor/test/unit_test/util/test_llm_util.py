@@ -1,8 +1,10 @@
+import os
 import pytest
 
 from mock import patch, Mock
 from tiktoken import Encoding
 from tenacity import wait_none, stop_after_attempt
+from concurrent.futures import ThreadPoolExecutor
 
 from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
@@ -56,6 +58,15 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit():
     assert llm_util.config.token_rate_limit == 250000
 
 
+def test__llm_util___set_model_details__exceeds_request_rate_limit():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        token_rate_limit=300,  # Exceeds max for gpt-4.1-nano
+    )
+    llm_util = LLMUtil(llm_util_config)
+    assert llm_util.config.token_rate_limit == 300
+
+
 def test__llm_util___set_model_details__invalid_model():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nan0",
@@ -63,6 +74,37 @@ def test__llm_util___set_model_details__invalid_model():
     with pytest.raises(ValueError) as exc:
         LLMUtil(llm_util_config)
     assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
+
+
+@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+def test__llm_util___set_workers__none_given(mock_cpu_count):
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    assert llm_util.config.max_concurrent_requests == 12
+
+
+@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+def test__llm_util___set_workers__exceeds_cpu_count(mock_cpu_count):
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        max_concurrent_requests=40,
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    assert llm_util.config.max_concurrent_requests == 12
+
+
+@patch("redactor.core.util.llm_util.os.cpu_count", return_value=40)
+def test__llm_util___set_workers__high_cpu_count(mock_cpu_count):
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    assert llm_util.config.max_concurrent_requests == 32
 
 
 def test__llm_util___num_tokens_consumed():
@@ -237,16 +279,6 @@ def test__llm_util___analyse_text_chunk__retry_on_exception(mock_invoke_chain):
     assert actual_result[1] == redaction_strings
 
 
-def create_mock__analyse_text_chunk(
-    redaction_strings=["string A", "string B"], prompt_tokens=5, completion_tokens=4
-):
-    mock_chat_completion = create_mock_chat_completion(
-        redaction_strings, prompt_tokens, completion_tokens
-    )
-    redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
-    return (mock_chat_completion, redaction_strings)
-
-
 def test__llm_util__analyse_text():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -268,6 +300,7 @@ def test__llm_util__analyse_text():
         )
 
     assert actual_result.metadata == LLMTextRedactionResult.LLMResultMetadata(
+        request_count=2,
         input_token_count=10,
         output_token_count=8,
         total_token_count=18,
@@ -286,6 +319,66 @@ def test__llm_util__analyse_text():
     assert llm_util.input_token_count == 10
     assert llm_util.output_token_count == 8
     assert llm_util.total_cost == 26.0
+
+
+@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
+def test__llm_util__analyse_text__check_pool_size():
+    llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
+    llm_util = LLMUtil(llm_util_config)
+
+    with (
+        patch.object(
+            ThreadPoolExecutor, "submit", return_value=None
+        ) as mock_executor_submit,
+        patch("redactor.core.util.llm_util.as_completed", return_value=[]),
+        patch.object(
+            ThreadPoolExecutor, "__init__", return_value=None
+        ) as mock_executor_init,
+        patch.object(
+            ThreadPoolExecutor, "__exit__", return_value=None
+        ) as mock_executor_exit,
+    ):
+        llm_util.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["redaction string A", "redaction string B"] * 2,
+        )
+
+    mock_executor_init.assert_called_once_with(max_workers=4)
+    assert mock_executor_submit.call_count == 4
+    mock_executor_exit.assert_called_once()
+
+
+@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
+@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
+    llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
+    llm_util = LLMUtil(llm_util_config)
+
+    # Override to test that the value is respected
+    llm_util.config.max_concurrent_requests = 40
+
+    with (
+        patch.object(
+            ThreadPoolExecutor, "submit", return_value=None
+        ) as mock_executor_submit,
+        patch("redactor.core.util.llm_util.as_completed", return_value=[]),
+        patch.object(
+            ThreadPoolExecutor, "__init__", return_value=None
+        ) as mock_executor_init,
+        patch.object(
+            ThreadPoolExecutor, "__exit__", return_value=None
+        ) as mock_executor_exit,
+    ):
+        llm_util.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["redaction string A", "redaction string B"] * 2,
+        )
+
+    assert llm_util.config.max_concurrent_requests == 12
+
+    mock_executor_init.assert_called_once_with(max_workers=12)
+    assert mock_executor_submit.call_count == 4
+    mock_executor_exit.assert_called_once()
 
 
 @patch("time.sleep", return_value=None)

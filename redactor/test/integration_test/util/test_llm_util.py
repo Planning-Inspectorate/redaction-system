@@ -76,5 +76,7 @@ def test__llm_util__analyse_text():
         text_chunks,
     )
 
+    assert llm_util_inst.max_concurrent_requests > 1
+    assert llm_util_inst.max_concurrent_requests <= 32
     assert isinstance(result, LLMTextRedactionResult)
     assert set(result.redaction_strings) == {"SECRET123", "CONFIDENTIAL456"}

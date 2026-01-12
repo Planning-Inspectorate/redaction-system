@@ -36,6 +36,7 @@ class TextRedactionResult(RedactionResult):
 class LLMTextRedactionResult(TextRedactionResult):
     @dataclass(frozen=True)
     class LLMResultMetadata:
+        request_count: int = field(default=0)
         input_token_count: int = field(default=0)
         output_token_count: int = field(default=0)
         total_token_count: int = field(default=0)
