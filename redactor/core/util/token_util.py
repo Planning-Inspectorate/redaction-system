@@ -1,4 +1,4 @@
-import threading
+from threading import Condition, Lock
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
 
 
@@ -8,31 +8,41 @@ class TokenSemaphore:
     Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
     """
 
-    _LOCK = threading.Lock()
-
     def __init__(self, max_tokens: int, timeout: float = 60.0):
         self.tokens = max_tokens
         self.timeout = timeout
-        self.condition = threading.Condition(self._LOCK)
+        self._condition = Condition(Lock())
+
+    def __repr__(self) -> str:
+        cls = self.__class__
+        return (
+            f"<{cls.__module__}.{cls.__qualname__} at {id(self):#x}:"
+            f" tokens={self.tokens}, timeout={self.timeout}>"
+        )
 
     @log_to_appins
-    def acquire(self, tokens: int):
+    def acquire(self, tokens: int) -> None:
         """Acquire the specified number of tokens from the semaphore."""
-        with self._LOCK:
+        with self._condition:
             # Wait until enough tokens are available
             while tokens > self.tokens:
                 LoggingUtil().log_info("Waiting for tokens to be released...")
                 # returns True if notified (tokens available), False on timeout
-                available = self.condition.wait(timeout=self.timeout)
+                available = self._condition.wait(timeout=self.timeout)
                 if not available:
                     raise TimeoutError(
                         "Timeout while waiting for tokens to be released."
                     )
             self.tokens -= tokens
 
+    __enter__ = acquire
+
     @log_to_appins
-    def release(self, tokens: int):
+    def release(self, tokens: int) -> None:
         """Release the specified number of tokens back to the semaphore."""
-        with self._LOCK:
+        with self._condition:
             self.tokens += tokens
-            self.condition.notify_all()
+            self._condition.notify_all()
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.release()

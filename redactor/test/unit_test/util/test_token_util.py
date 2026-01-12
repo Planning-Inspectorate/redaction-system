@@ -18,17 +18,18 @@ def test__token_semaphore__release():
     assert token_semaphore.tokens == 80
 
 
+def token_semaphore_task(self, tokens: int):
+    self.acquire(tokens)
+    # Simulate some processing
+    self.release(tokens)
+
+
 def test__token_semaphore__insufficient_tokens():
     # Test that in a parallel scenario, only one thread waits when tokens are insufficient
     # Define a task that tries to acquire more tokens than available
-    def task(self, tokens: int):
-        self.acquire(tokens)
-        # Simulate some processing
-        time.sleep(1)
-        self.release(tokens)
 
     token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.task = task
+    token_semaphore.task = token_semaphore_task
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         # Submit tasks to the executor
