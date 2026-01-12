@@ -1,6 +1,5 @@
 import azure.functions as func
 import json
-import json
 
 app = func.FunctionApp()
 
@@ -28,7 +27,7 @@ def ping(req: func.HttpRequest) -> func.HttpResponse:
     """
     return func.HttpResponse(
         json.dumps(
-            {"message": f"You have successfully interacted with the redaction system!"}
+            {"message": "You have successfully interacted with the redaction system!"}
         ),
         mimetype="application/json",
         status_code=200,
