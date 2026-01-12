@@ -181,6 +181,16 @@ class LLMUtil:
             LoggingUtil().log_exception(f"An error occurred while counting tokens: {e}")
             return 0
 
+    def create_api_message(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> List[dict]:
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
     def invoke_chain(self, api_messages: str, response_format: BaseModel):
         response = self.llm.chat.completions.parse(
             model=self.config.model,
@@ -206,7 +216,7 @@ class LLMUtil:
     ) -> tuple:
         """Redact a single chunk of text using the LLM."""
         # Estimate tokens for the request
-        api_messages = create_api_message(system_prompt, user_prompt)
+        api_messages = self.create_api_message(system_prompt, user_prompt)
         estimated_tokens = self._num_tokens_consumed(api_messages)
 
         # Acquire request semaphore
@@ -214,11 +224,10 @@ class LLMUtil:
             timeout=self.config.request_timeout
         )  # returns True if acquired, False on timeout
         if not thread_available:
-            with TimeoutError(
+            LoggingUtil().log_exception(
                 "Timeout while waiting for request semaphore to be available."
-            ) as te:
-                LoggingUtil().log_exception(str(te))
-                raise te
+            )
+            raise TimeoutError
 
         try:
             # Acquire token semaphore
@@ -334,13 +343,3 @@ class LLMUtil:
         )
 
         return result
-
-
-def create_api_message(
-    system_prompt: str,
-    user_prompt: str,
-) -> List[dict]:
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]

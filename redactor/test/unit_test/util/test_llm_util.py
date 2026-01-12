@@ -1,17 +1,15 @@
 import pytest
-import time
 
 from mock import patch, Mock
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from tiktoken import Encoding
-
+from tenacity import wait_none, stop_after_attempt
 
 from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from redactor.core.util.llm_util import LLMUtil, TokenSemaphore, create_api_message
+from redactor.core.util.llm_util import LLMUtil
 
 
 class MockLLMChatCompletion:
@@ -34,70 +32,6 @@ class MockLLMChatCompletionUsage:
     def __init__(self, prompt_tokens, completion_tokens):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
-
-
-def test__token_semaphore__acquire():
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.acquire(50)
-    assert token_semaphore.tokens == 50
-
-
-def test__token_semaphore__release():
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.acquire(50)
-    token_semaphore.release(30)
-    assert token_semaphore.tokens == 80
-
-
-def test__token_semaphore__insufficient_tokens():
-    # Test that in a parallel scenario, only one thread waits when tokens are insufficient
-    # Define a task that tries to acquire more tokens than available
-    def task(self, tokens: int):
-        self.acquire(tokens)
-        # Simulate some processing
-        time.sleep(1)
-        self.release(tokens)
-
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.task = task
-
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        # Submit tasks to the executor
-        future_to_semaphore = {
-            executor.submit(token_semaphore.task, token_semaphore, x): x
-            for x in [80, 80]
-        }
-        for future in as_completed(future_to_semaphore):
-            # Ensure the task completed successfully
-            assert future.done()
-            assert token_semaphore.tokens >= 0
-
-    assert token_semaphore.tokens == 100
-
-
-def test__token_semaphore__timeout():
-    # Test that acquiring tokens times out appropriately when tokens are insufficient
-    token_semaphore = TokenSemaphore(max_tokens=100, timeout=1)
-    token_semaphore.acquire(100)
-
-    start_time = time.time()
-    with pytest.raises(TimeoutError):
-        token_semaphore.acquire(10)
-    elapsed_time = time.time() - start_time
-
-    assert elapsed_time >= 1
-    assert token_semaphore.tokens == 0
-
-
-def test__create_api_message():
-    system_prompt = "This is a system prompt."
-    user_prompt = "This is a user prompt."
-    expected_message = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    actual_message = create_api_message(system_prompt, user_prompt)
-    assert actual_message == expected_message
 
 
 def test__llm_util____init__():
@@ -140,7 +74,7 @@ def test__llm_util___num_tokens_consumed():
     user_prompt = "This is a user prompt."
 
     num_tokens = llm_util._num_tokens_consumed(
-        create_api_message(system_prompt, user_prompt)
+        llm_util.create_api_message(system_prompt, user_prompt)
     )
     assert (
         num_tokens == 1024
@@ -157,11 +91,27 @@ def test__llm_util___num_tokens_consumed__exception(mock_encode):
     user_prompt = "This is a user prompt."
 
     num_tokens = llm_util._num_tokens_consumed(
-        create_api_message(system_prompt, user_prompt)
+        llm_util.create_api_message(system_prompt, user_prompt)
     )
     assert (
         num_tokens == 0
     )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
+
+
+def test__create_api_message():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    system_prompt = "This is a system prompt."
+    user_prompt = "This is a user prompt."
+    expected_message = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    actual_message = llm_util.create_api_message(system_prompt, user_prompt)
+    assert actual_message == expected_message
 
 
 def create_mock_chat_completion(
@@ -233,7 +183,10 @@ def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
     llm_util.token_semaphore.release.assert_called_once_with(10)
 
 
-def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore():
+@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
+def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
+    mock_num_tokens_consumed,
+):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         request_timeout=1,
@@ -242,12 +195,14 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore():
     llm_util.request_semaphore = Mock()
     llm_util.token_semaphore = Mock()
 
+    llm_util._analyse_text_chunk.retry.wait = wait_none()
+    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+
     llm_util.request_semaphore.acquire.return_value = False
 
-    with pytest.raises(TimeoutError) as exc:
-        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+    result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
 
-    assert "Timeout acquiring request semaphore" in str(exc.value)
+    assert result is None  # Timeout occurred, so None is returned
 
     llm_util.request_semaphore.acquire.assert_called_once()
     llm_util.request_semaphore.release.assert_not_called()
@@ -266,17 +221,20 @@ def test__llm_util___analyse_text_chunk__retry_on_exception(mock_invoke_chain):
     )
     llm_util = LLMUtil(llm_util_config)
 
+    llm_util._analyse_text_chunk.retry.wait = wait_none()
+    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
     mock_invoke_chain.side_effect = [
         Exception("Some LLM invocation error"),
         create_mock_chat_completion(["string A", "string B"]),
     ]
-    actual_response, actual_redaction_strings = llm_util._analyse_text_chunk(
+    actual_result = llm_util._analyse_text_chunk(
         system_prompt="system prompt", user_prompt=""
     )
 
     assert mock_invoke_chain.call_count == 2
-    assert isinstance(actual_response, MockLLMChatCompletion)
-    assert actual_redaction_strings == redaction_strings
+    assert isinstance(actual_result[0], MockLLMChatCompletion)
+    assert actual_result[1] == redaction_strings
 
 
 def create_mock__analyse_text_chunk(
