@@ -300,8 +300,7 @@ def test__llm_util___analyse_text_chunk__exception(
 
     assert result is None  # Exception occurred, so None is returned
     LoggingUtil.log_exception.assert_called_with(
-        "An error occurred while processing the chunk: "
-        "Some LLM invocation error"
+        "An error occurred while processing the chunk: Some LLM invocation error"
     )
 
 
