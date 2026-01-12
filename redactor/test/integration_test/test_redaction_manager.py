@@ -122,7 +122,10 @@ def test__redaction__manager__try_redact__skip_redaction():
             },
         },
     }
-    manager.try_redact(params)
+    response = manager.try_redact(params)
+    assert response["status"] == "SUCCESS", (
+        f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+    )
     blob_client = container_client.get_blob_client(
         "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
     )
@@ -180,7 +183,10 @@ def test__redaction__manager__try_redact():
             },
         },
     }
-    manager.try_redact(params)
+    response = manager.try_redact(params)
+    assert response["status"] == "SUCCESS", (
+        f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+    )
     blob_client = container_client.get_blob_client(
         "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
     )
@@ -218,7 +224,8 @@ def test__redaction_manager__try_redact__failure():
     guid = f"test-{uuid4()}"
     manager = RedactionManager(guid)
     params = {"an example bad payload": None}
-    manager.try_redact(params)
+    response = manager.try_redact(params)
+    assert response["status"] == "FAIL"
     container_client = blob_service_client.get_container_client("redactiondata")
     blob_client = container_client.get_blob_client(f"{guid}/exception.txt")
     assert blob_client.exists()
