@@ -104,6 +104,6 @@ def test_storage_name_constructs_blob_endpoint_and_allows_ops():
     blob_path = "p/q.bin"
     data = b"xyz"
 
-    io.write(BytesIO(data), container_name=container, blob_path=container)
+    io.write(BytesIO(data), container_name=container, blob_path=blob_path)
     out = io.read(container_name=container, blob_path=blob_path)
     assert out.getvalue() == data
