@@ -94,7 +94,7 @@ extends:
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
+              python3 -m pytest -m test/e2e_test -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
           - task: PublishTestResults@2
             displayName: 'Publish e2e test results'
