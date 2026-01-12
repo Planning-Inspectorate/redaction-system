@@ -1,5 +1,4 @@
 import pytest
-import time
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from redactor.core.util.llm_util import TokenSemaphore
