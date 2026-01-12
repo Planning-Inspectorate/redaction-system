@@ -1,7 +1,9 @@
-from redactor.core.redaction.config import LLMUtilConfig
-from redactor.core.util.llm_util import LLMUtil
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
+
+from redactor.core.redaction.config import LLMUtilConfig
+from redactor.core.redaction.result import LLMTextRedactionResult
+from redactor.core.util.llm_util import LLMUtil
 
 
 class SampleResultFormat(BaseModel):
@@ -55,3 +57,24 @@ def test__llm_util__invoke_chain__has_correct_response_format():
 
     assert isinstance(formatted_result, response_format)
     assert formatted_result.some_strings
+
+
+def test__llm_util__analyse_text():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util_inst = LLMUtil(llm_util_config)
+
+    system_prompt = "Identify redaction strings in the text"
+    text_chunks = [
+        "This is some sample text that contains a redaction string: SECRET123.",
+        "Here is another redaction string: CONFIDENTIAL456.",
+    ] * 10 # Repeat to increase number of chunks
+
+    result = llm_util_inst.analyse_text(
+        system_prompt,
+        text_chunks,
+    )
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert set(result.redaction_strings) == {"SECRET123", "CONFIDENTIAL456"}

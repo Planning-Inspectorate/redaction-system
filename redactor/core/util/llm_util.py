@@ -1,6 +1,5 @@
 import os
 import json
-import threading
 import time
 
 from typing import List
@@ -17,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
+from threading import Semaphore
 
 from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
@@ -107,7 +107,7 @@ class LLMUtil:
         self.token_semaphore = TokenSemaphore(
             self.config.token_rate_limit, self.config.token_timeout
         )
-        self.request_semaphore = threading.Semaphore(
+        self.request_semaphore = Semaphore(
             self.config.max_concurrent_requests
         )
 
@@ -283,7 +283,7 @@ class LLMUtil:
         self,
         system_prompt: str,
         text_chunks: List[str],
-    ) -> tuple[tuple[str, ...], dict]:
+    ) -> LLMTextRedactionResult:
         """Analyse multiple text chunks for redaction in parallel using the LLM.
 
         Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
