@@ -41,7 +41,15 @@ async def trigger_redaction(
         "redaction_orchestrator", client_input=request_params
     )
     response = client.create_check_status_response(req, run_id)
-    return response
+    respose_body = json.loads(response.get_body().decode("utf-8"))
+    # Return a response with a simplified body
+    return func.HttpResponse(
+        json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
+        status_code=response.status_code,
+        headers=response.headers,
+        mimetype="application/json",
+        charset=response.charset,
+    )
 
 
 # Orchestrator
@@ -52,7 +60,7 @@ def redaction_orchestrator(context: df.DurableOrchestrationContext):
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
     result = yield context.call_activity("redact_task", input_params)
-    return [result]
+    return result
 
 
 # Activity
