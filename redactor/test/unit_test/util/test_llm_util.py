@@ -4,7 +4,6 @@ from mock import patch, Mock
 from tiktoken import Encoding
 from tenacity import wait_none, stop_after_attempt
 from concurrent.futures import ThreadPoolExecutor
-from logging import Logger
 
 from redactor.core.redaction.config import LLMUtilConfig
 from redactor.core.redaction.result import (
@@ -37,11 +36,6 @@ class MockLLMChatCompletionUsage:
         self.completion_tokens = completion_tokens
 
 
-@pytest.fixture(autouse=True)
-def patch_logging_util(monkeypatch):
-    monkeypatch.setattr(LoggingUtil(), "job_id", "some_guid")
-
-
 def test__llm_util____init__():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -55,7 +49,7 @@ def test__llm_util____init__():
     assert llm_util.output_token_cost == 30 * 0.000001
 
 
-@patch.object(Logger, "info", return_value=None)
+@patch.object(LoggingUtil, "log_info", return_value=None)
 def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_logger_info):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -64,13 +58,13 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_logger_inf
     llm_util = LLMUtil(llm_util_config)
 
     assert llm_util.config.token_rate_limit == 250000
-    Logger.info.assert_called_with(
-        "some_guid: Token rate limit for model gpt-4.1-nano exceeds maximum. "
+    LoggingUtil.log_info.assert_called_with(
+        "Token rate limit for model gpt-4.1-nano exceeds maximum. "
         "Setting to maximum of 250000 tokens per minute."
     )
 
 
-@patch.object(Logger, "info", return_value=None)
+@patch.object(LoggingUtil, "log_info", return_value=None)
 def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_logger_info):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -79,8 +73,8 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_logger_i
     llm_util = LLMUtil(llm_util_config)
 
     assert llm_util.config.request_rate_limit == 250
-    Logger.info.assert_called_with(
-        "some_guid: Request rate limit for model gpt-4.1-nano exceeds maximum. "
+    LoggingUtil.log_info.assert_called_with(
+        "Request rate limit for model gpt-4.1-nano exceeds maximum. "
         "Setting to maximum of 250 requests per minute."
     )
 
@@ -254,7 +248,7 @@ def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
     llm_util.token_semaphore.release.assert_called_once_with(10)
 
 
-@patch.object(Logger, "exception", return_value=None)
+@patch.object(LoggingUtil, "log_exception", return_value=None)
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
 def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     mock_logger_exception,
@@ -283,12 +277,12 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     llm_util.token_semaphore.acquire.assert_not_called()
     llm_util.token_semaphore.release.assert_not_called()
 
-    Logger.exception.assert_called_with(
-        "some_guid: Timeout while waiting for request semaphore to be available."
+    LoggingUtil.log_exception.assert_called_with(
+        "Timeout while waiting for request semaphore to be available."
     )
 
 
-@patch.object(Logger, "exception", return_value=None)
+@patch.object(LoggingUtil, "log_exception", return_value=None)
 @patch.object(
     LLMUtil, "invoke_chain", side_effect=Exception("Some LLM invocation error")
 )
@@ -305,8 +299,8 @@ def test__llm_util___analyse_text_chunk__exception(
     result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
 
     assert result is None  # Exception occurred, so None is returned
-    Logger.exception.assert_called_with(
-        "some_guid: An error occurred while processing the chunk: "
+    LoggingUtil.log_exception.assert_called_with(
+        "An error occurred while processing the chunk: "
         "Some LLM invocation error"
     )
 
@@ -406,7 +400,7 @@ def test__llm_util__analyse_text__check_pool_size():
     mock_executor_exit.assert_called_once()
 
 
-@patch.object(Logger, "info", return_value=None)
+@patch.object(LoggingUtil, "log_info", return_value=None)
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util__analyse_text__override_pool_size(mock_logger_info, mock_cpu_count):
@@ -434,8 +428,8 @@ def test__llm_util__analyse_text__override_pool_size(mock_logger_info, mock_cpu_
         )
 
     assert llm_util.config.max_concurrent_requests == 12
-    Logger.info.assert_called_with(
-        "some_guid: Max concurrent requests exceeds maximum. Setting to 12."
+    LoggingUtil.log_info.assert_called_with(
+        "Max concurrent requests exceeds maximum. Setting to 12."
     )
 
     mock_executor_init.assert_called_once_with(max_workers=12)
