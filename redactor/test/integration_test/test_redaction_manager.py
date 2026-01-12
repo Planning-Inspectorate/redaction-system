@@ -35,14 +35,7 @@ def teardown():
     callback_container_client = blob_service_client.get_container_client("test")
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-    )
-    try_delete_blob(
-        callback_container_client,
         "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-    )
-    try_delete_blob(
-        callback_container_client, "test__redaction__manager__try_redact__raw.pdf"
     )
     try_delete_blob(
         callback_container_client,
@@ -51,14 +44,7 @@ def teardown():
     yield
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-    )
-    try_delete_blob(
-        callback_container_client,
         "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-    )
-    try_delete_blob(
-        callback_container_client, "test__redaction__manager__try_redact__raw.pdf"
     )
     try_delete_blob(
         callback_container_client,
