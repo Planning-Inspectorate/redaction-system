@@ -9,9 +9,12 @@ data "azuread_group" "redaction_engineers" {
   display_name = "pins-redaction-system-developers"
   #security_enabled = true
 }
-
 data "azuread_service_principal" "deployment" {
   display_name = "Azure DevOps Pipelines - Redaction System - Deployment ${upper(var.environment)}"
+}
+
+data "azuread_service_principal" "ci" {
+  display_name = "Azure DevOps Pipelines - Redaction System CI/CD"
 }
 
 ############################################################################
@@ -76,11 +79,11 @@ resource "azurerm_storage_container" "redaction_storage" {
 ############################################################################
 
 resource "azurerm_service_plan" "redaction_system" {
-  name                   = "pins-redaction-system-${var.environment}-${local.location_short}"
-  resource_group_name    = azurerm_resource_group.redaction_rg.name
-  location               = local.location
-  os_type                = "Linux"
-  sku_name               = "EP1"
+  name                = "pins-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  os_type             = "Linux"
+  sku_name            = "EP1"
   #worker_count           = 2
   #zone_balancing_enabled = true
 }
@@ -206,4 +209,12 @@ resource "azurerm_role_assignment" "ado_deployment_storage_contributor" {
   scope                = azurerm_storage_account.redaction_storage.id
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = data.azuread_service_principal.deployment.object_id
+}
+
+
+resource "azurerm_role_assignment" "ado_ci_storage_contributor" {
+  count                = var.environment != "prod" ? 1 : 0
+  scope                = azurerm_storage_account.redaction_storage.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = data.azuread_service_principal.ci.object_id
 }
