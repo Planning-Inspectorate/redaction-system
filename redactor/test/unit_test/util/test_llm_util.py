@@ -125,7 +125,9 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details__zero_token_request_rate_limit(mock_llm_util_init):
+def test__llm_util___set_model_details__zero_token_request_rate_limit(
+    mock_llm_util_init,
+):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
