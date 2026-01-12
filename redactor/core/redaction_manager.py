@@ -4,7 +4,7 @@ from core.redaction.file_processor import (
     FileProcessorFactory,
 )
 from core.redaction.config_processor import ConfigProcessor
-from core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import LoggingUtil
 from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from pydantic import BaseModel
@@ -32,7 +32,7 @@ class JsonPayloadStructure(BaseModel):
 
     tryApplyProvisionalRedactions: Optional[bool] = True
     skipRedaction: Optional[bool] = False
-    ruleName: Optional[str] = "default"
+    configName: Optional[str] = "default"
     fileKind: str
     readDetails: ReadDetails = None
     writeDetails: WriteDetails = None
@@ -57,7 +57,6 @@ class RedactionManager:
         model_inst = JsonPayloadStructure(**payload)
         JsonPayloadStructure.model_validate(model_inst)
 
-    @log_to_appins
     def redact(self, params: Dict[str, Any]):
         """
         Perform a redaction using the supplied parameters
@@ -137,18 +136,18 @@ class RedactionManager:
         """
         Store an exception log in the redaction storage account
         """
+        LoggingUtil().log_exception(exception)
         error_trace = "".join(
             traceback.TracebackException.from_exception(exception).format()
         )
         AzureBlobIO(
             storage_name="pinsstredactiondevuks",
         ).write(
-            error_trace.encode("utf-8"),
+            data_bytes=error_trace.encode("utf-8"),
             container_name="redactiondata",
             blob_path=f"{self.job_id}/exception.txt",
         )
 
-    @log_to_appins
     def try_redact(self, params: Dict[str, Any]):
         """
         Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
@@ -158,7 +157,7 @@ class RedactionManager:
         {
             "tryApplyProvisionalRedactions": True,
             "skipRedaction": True,
-            "ruleName": "default",
+            "configName": "default",
             "fileKind": "pdf",
             "readDetails": {
                 "storageKind": "AzureBlob",
@@ -192,7 +191,6 @@ class RedactionManager:
             self.redact(params)
         except Exception as e:
             self.log_exception(e)
-            LoggingUtil().log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
         return base_response | {"status": status, "message": message}
