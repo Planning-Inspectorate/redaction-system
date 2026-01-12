@@ -81,8 +81,8 @@ resource "azurerm_service_plan" "redaction_system" {
   location               = local.location
   os_type                = "Linux"
   sku_name               = "EP1"
-  worker_count           = 2
-  zone_balancing_enabled = true
+  #worker_count           = 2
+  #zone_balancing_enabled = true
 }
 
 resource "azurerm_linux_function_app" "redaction_system" {
