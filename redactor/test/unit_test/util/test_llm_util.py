@@ -201,7 +201,7 @@ def test__llm_util___compute_costs():
 
 
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util__analyse_text_chunk(mock_num_tokens_consumed):
+def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
     expected_result = (mock_chat_completion, redaction_strings)
@@ -216,7 +216,7 @@ def test__llm_util__analyse_text_chunk(mock_num_tokens_consumed):
     llm_util.output_token_cost = 2
 
     with patch.object(LLMUtil, "invoke_chain", return_value=mock_chat_completion):
-        actual_result = llm_util.analyse_text_chunk(
+        actual_result = llm_util._analyse_text_chunk(
             system_prompt="system prompt", user_prompt=""
         )
 
@@ -233,8 +233,7 @@ def test__llm_util__analyse_text_chunk(mock_num_tokens_consumed):
     llm_util.token_semaphore.release.assert_called_once_with(10)
 
 
-@patch.object()
-def test__llm_util__analyse_text_chunk__timeout_on_request_semaphore():
+def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         request_timeout=1,
@@ -246,19 +245,19 @@ def test__llm_util__analyse_text_chunk__timeout_on_request_semaphore():
     llm_util.request_semaphore.acquire.return_value = False
 
     with pytest.raises(TimeoutError) as exc:
-        llm_util.analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
 
     assert "Timeout acquiring request semaphore" in str(exc.value)
 
     llm_util.request_semaphore.acquire.assert_called_once()
     llm_util.request_semaphore.release.assert_not_called()
-    
+
     llm_util.token_semaphore.acquire.assert_not_called()
     llm_util.token_semaphore.release.assert_not_called()
 
 
 @patch.object(LLMUtil, "invoke_chain")
-def test__llm_util__analyse_text_chunk__retry_on_exception(mock_invoke_chain):
+def test__llm_util___analyse_text_chunk__retry_on_exception(mock_invoke_chain):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
@@ -271,7 +270,7 @@ def test__llm_util__analyse_text_chunk__retry_on_exception(mock_invoke_chain):
         Exception("Some LLM invocation error"),
         create_mock_chat_completion(["string A", "string B"]),
     ]
-    actual_response, actual_redaction_strings = llm_util.analyse_text_chunk(
+    actual_response, actual_redaction_strings = llm_util._analyse_text_chunk(
         system_prompt="system prompt", user_prompt=""
     )
 
@@ -280,7 +279,7 @@ def test__llm_util__analyse_text_chunk__retry_on_exception(mock_invoke_chain):
     assert actual_redaction_strings == redaction_strings
 
 
-def create_mock_analyse_text_chunk(
+def create_mock__analyse_text_chunk(
     redaction_strings=["string A", "string B"], prompt_tokens=5, completion_tokens=4
 ):
     mock_chat_completion = create_mock_chat_completion(

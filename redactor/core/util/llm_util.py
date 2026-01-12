@@ -24,6 +24,7 @@ from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
 )
 from redactor.core.util.logging_util import log_to_appins, LoggingUtil
+from redactor.core.util.token_util import TokenSemaphore
 
 
 load_dotenv(verbose=True)
@@ -36,42 +37,6 @@ def handle_last_retry_error(retry_state):
         "Returning None for this chunk."
     )
     return None
-
-
-class TokenSemaphore:
-    """Semaphore for limiting the number of tokens used in parallel requests.
-
-    Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
-    """
-
-    _LOCK = threading.Lock()
-
-    def __init__(self, max_tokens: int, timeout: float = 60.0):
-        self.tokens = max_tokens
-        self.timeout = timeout
-        self.condition = threading.Condition(self._LOCK)
-
-    @log_to_appins
-    def acquire(self, tokens: int):
-        """Acquire the specified number of tokens from the semaphore."""
-        with self._LOCK:
-            # Wait until enough tokens are available
-            while tokens > self.tokens:
-                LoggingUtil().log_info("Waiting for tokens to be released...")
-                # returns True if notified (tokens available), False on timeout
-                available = self.condition.wait(timeout=self.timeout)
-                if not available:
-                    raise TimeoutError(
-                        "Timeout while waiting for tokens to be released."
-                    )
-            self.tokens -= tokens
-
-    @log_to_appins
-    def release(self, tokens: int):
-        """Release the specified number of tokens back to the semaphore."""
-        with self._LOCK:
-            self.tokens += tokens
-            self.condition.notify_all()
 
 
 class LLMUtil:
@@ -234,7 +199,7 @@ class LLMUtil:
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
-    def analyse_text_chunk(
+    def _analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -249,10 +214,11 @@ class LLMUtil:
             timeout=self.config.request_timeout
         )  # returns True if acquired, False on timeout
         if not thread_available:
-            LoggingUtil().log_exception(
+            with TimeoutError(
                 "Timeout while waiting for request semaphore to be available."
-            )
-            raise
+            ) as te:
+                LoggingUtil().log_exception(str(te))
+                raise te
 
         try:
             # Acquire token semaphore
@@ -262,7 +228,7 @@ class LLMUtil:
                 LoggingUtil().log_exception(
                     f"Timeout while waiting for tokens to be released: {te}"
                 )
-                raise
+                raise te
             try:
                 response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
 
@@ -275,14 +241,14 @@ class LLMUtil:
                 self._compute_costs(response)
 
                 return response, redaction_strings
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as je:
                 LoggingUtil().log_exception("Received invalid JSON response from LLM.")
-                raise
+                raise je
             except Exception as e:
                 LoggingUtil().log_exception(
                     f"An error occurred while processing the chunk: {e}"
                 )
-                raise
+                raise e
             finally:
                 # Release token semaphore
                 self.token_semaphore.release(estimated_tokens)
@@ -325,7 +291,7 @@ class LLMUtil:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
-                    self.analyse_text_chunk,
+                    self._analyse_text_chunk,
                     system_prompt,
                     self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
                 ): chunk
