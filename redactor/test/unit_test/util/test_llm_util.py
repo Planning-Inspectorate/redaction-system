@@ -50,7 +50,7 @@ def test__llm_util____init__():
 
 
 @patch.object(LoggingUtil, "log_info", return_value=None)
-def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_logger_info):
+def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_log_info):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         token_rate_limit=300000,  # Exceeds max for gpt-4.1-nano
@@ -65,7 +65,7 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_logger_inf
 
 
 @patch.object(LoggingUtil, "log_info", return_value=None)
-def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_logger_info):
+def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_log_info):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         request_rate_limit=300,  # Exceeds max for gpt-4.1-nano
@@ -77,6 +77,18 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_logger_i
         "Request rate limit for model gpt-4.1-nano exceeds maximum. "
         "Setting to maximum of 250 requests per minute."
     )
+
+
+def test__llm_util___set_model_details__zero_token_request_rate_limit():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        token_rate_limit=0,  # Zero request rate limit
+        request_rate_limit=0,  # Zero request rate limit
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    assert llm_util.config.token_rate_limit == 250000 * 0.2
+    assert llm_util.config.request_rate_limit == 250 * 0.2
 
 
 def test__llm_util___set_model_details__invalid_model():
@@ -251,7 +263,7 @@ def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
 @patch.object(LoggingUtil, "log_exception", return_value=None)
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
 def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
-    mock_logger_exception,
+    mock_log_exception,
     mock_num_tokens_consumed,
 ):
     llm_util_config = LLMUtilConfig(
@@ -287,7 +299,7 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     LLMUtil, "invoke_chain", side_effect=Exception("Some LLM invocation error")
 )
 def test__llm_util___analyse_text_chunk__exception(
-    mock_logger_exception, mock_invoke_chain
+    mock_log_exception, mock_invoke_chain
 ):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -402,7 +414,7 @@ def test__llm_util__analyse_text__check_pool_size():
 @patch.object(LoggingUtil, "log_info", return_value=None)
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util__analyse_text__override_pool_size(mock_logger_info, mock_cpu_count):
+def test__llm_util__analyse_text__override_pool_size(mock_log_info, mock_cpu_count):
     llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
 
@@ -440,7 +452,6 @@ def test__llm_util__analyse_text__override_pool_size(mock_logger_info, mock_cpu_
 def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        request_rate_limit=1,
         budget=12.0,
     )
     llm_util = LLMUtil(llm_util_config)

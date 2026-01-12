@@ -123,30 +123,36 @@ class LLMUtil:
             self.output_token_cost = model_details["output_cost"] * 0.000001
 
             # Validate and set token rate limit per minute
-            if self.config.token_rate_limit:
-                if self.config.token_rate_limit > model_details["token_rate_limit"]:
+            default_token_rate_limit = int(model_details["token_rate_limit"] * 0.2)
+
+            token_limit = self.config.token_rate_limit
+            if token_limit is not None:
+                if token_limit < 1:
+                    self.config.token_rate_limit = default_token_rate_limit
+                if token_limit > model_details["token_rate_limit"]:
                     self.config.token_rate_limit = model_details["token_rate_limit"]
                     LoggingUtil().log_info(
                         f"Token rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.token_rate_limit} tokens per minute."
                     )
             else:  # default to 20% of max token rate limit
-                self.config.token_rate_limit = int(
-                    model_details["token_rate_limit"] * 0.2
-                )
+                self.config.token_rate_limit = default_token_rate_limit
+
+            default_request_rate_limit = int(model_details["request_rate_limit"] * 0.2)
 
             # Validate and set request rate limit per minute
-            if self.config.request_rate_limit:
-                if self.config.request_rate_limit > model_details["request_rate_limit"]:
+            req_limit = self.config.request_rate_limit
+            if req_limit is not None:
+                if req_limit < 1:
+                    self.config.request_rate_limit = default_request_rate_limit
+                if req_limit > model_details["request_rate_limit"]:
                     self.config.request_rate_limit = model_details["request_rate_limit"]
                     LoggingUtil().log_info(
                         f"Request rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.request_rate_limit} requests per minute."
                     )
             else:  # default to 20% of max request rate limit
-                self.config.request_rate_limit = int(
-                    model_details["request_rate_limit"] * 0.2
-                )
+                self.config.request_rate_limit = default_request_rate_limit
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
 
