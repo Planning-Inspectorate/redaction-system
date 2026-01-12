@@ -289,8 +289,12 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
 
 
 @patch.object(Logger, "exception", return_value=None)
-@patch.object(LLMUtil, "invoke_chain", side_effect = Exception("Some LLM invocation error"))
-def test__llm_util___analyse_text_chunk__exception(mock_logger_exception, mock_invoke_chain):
+@patch.object(
+    LLMUtil, "invoke_chain", side_effect=Exception("Some LLM invocation error")
+)
+def test__llm_util___analyse_text_chunk__exception(
+    mock_logger_exception, mock_invoke_chain
+):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -298,9 +302,7 @@ def test__llm_util___analyse_text_chunk__exception(mock_logger_exception, mock_i
 
     llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
 
-    result = llm_util._analyse_text_chunk(
-        system_prompt="system prompt", user_prompt=""
-    )
+    result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
 
     assert result is None  # Exception occurred, so None is returned
     Logger.exception.assert_called_with(
@@ -439,7 +441,6 @@ def test__llm_util__analyse_text__override_pool_size(mock_logger_info, mock_cpu_
     mock_executor_init.assert_called_once_with(max_workers=12)
     assert mock_executor_submit.call_count == 4
     mock_executor_exit.assert_called_once()
-
 
 
 @patch("time.sleep", return_value=None)

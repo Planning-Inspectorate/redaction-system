@@ -69,7 +69,7 @@ def test__llm_util__analyse_text():
     text_chunks = [
         "This is some sample text that contains a redaction string: SECRET123.",
         "Here is another redaction string: CONFIDENTIAL456.",
-    ] * 10 # Repeat to increase number of chunks
+    ] * 10  # Repeat to increase number of chunks
 
     result = llm_util_inst.analyse_text(
         system_prompt,
