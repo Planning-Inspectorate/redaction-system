@@ -23,6 +23,10 @@ class LLMUtilConfig(BaseModel):
     """Number of completions to generate per prompt"""
     budget: Optional[float] = None
     """The budget in GBP for LLM usage"""
+    token_timeout: Optional[float] = 60.0
+    """The timeout in seconds for acquiring tokens from the token semaphore"""
+    request_timeout: Optional[float] = 60.0
+    """The timeout in seconds for acquiring request semaphore"""
 
 
 class RedactionConfig(BaseModel):

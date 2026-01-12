@@ -130,7 +130,7 @@ class LLMTextRedactor(TextRedactor):
         llm_util = LLMUtil(self.config)
 
         # Identify redaction strings
-        return llm_util.redact_text(
+        return llm_util.analyse_text(
             system_prompt,
             text_chunks,
         )

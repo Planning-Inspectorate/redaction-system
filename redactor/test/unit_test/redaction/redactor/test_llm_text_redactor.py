@@ -46,10 +46,10 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
 
     with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
         with patch.object(
-            LLMUtil, "redact_text", return_value=None
-        ) as mock_redact_text:
+            LLMUtil, "analyse_text", return_value=None
+        ) as mock_analyse_text:
             LLMTextRedactor.config = config
             LLMTextRedactor()._analyse_text("some text to analyse")
 
     mock_llm_util_init.assert_called_once_with(config)
-    mock_redact_text.assert_called_once()
+    mock_analyse_text.assert_called_once()

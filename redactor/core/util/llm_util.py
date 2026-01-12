@@ -46,8 +46,9 @@ class TokenSemaphore:
 
     _LOCK = threading.Lock()
 
-    def __init__(self, max_tokens: int):
+    def __init__(self, max_tokens: int, timeout: float = 60.0):
         self.tokens = max_tokens
+        self.timeout = timeout
         self.condition = threading.Condition(self._LOCK)
 
     @log_to_appins
@@ -57,7 +58,12 @@ class TokenSemaphore:
             # Wait until enough tokens are available
             while tokens > self.tokens:
                 LoggingUtil().log_info("Waiting for tokens to be released...")
-                self.condition.wait()
+                # returns True if notified (tokens available), False on timeout
+                available = self.condition.wait(timeout=self.timeout)
+                if not available:
+                    raise TimeoutError(
+                        "Timeout while waiting for tokens to be released."
+                    )
             self.tokens -= tokens
 
     @log_to_appins
@@ -133,7 +139,9 @@ class LLMUtil:
         if not self.config.max_concurrent_requests:
             self.config.max_concurrent_requests = min(32, (os.cpu_count() or 1) + 4)
 
-        self.token_semaphore = TokenSemaphore(self.config.token_rate_limit)
+        self.token_semaphore = TokenSemaphore(
+            self.config.token_rate_limit, self.config.token_timeout
+        )
         self.request_semaphore = threading.Semaphore(
             self.config.max_concurrent_requests
         )
@@ -226,22 +234,35 @@ class LLMUtil:
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
-    def redact_text_chunk(
+    def analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
-    ) -> None:
+    ) -> tuple:
         """Redact a single chunk of text using the LLM."""
         # Estimate tokens for the request
         api_messages = create_api_message(system_prompt, user_prompt)
         estimated_tokens = self._num_tokens_consumed(api_messages)
 
         # Acquire request semaphore
-        self.request_semaphore.acquire()
+        thread_available = self.request_semaphore.acquire(
+            timeout=self.config.request_timeout
+        )  # returns True if acquired, False on timeout
+        if not thread_available:
+            LoggingUtil().log_exception(
+                "Timeout while waiting for request semaphore to be available."
+            )
+            raise
 
         try:
             # Acquire token semaphore
-            self.token_semaphore.acquire(estimated_tokens)
+            try:
+                self.token_semaphore.acquire(estimated_tokens)
+            except TimeoutError as te:
+                LoggingUtil().log_exception(
+                    f"Timeout while waiting for tokens to be released: {te}"
+                )
+                raise
             try:
                 response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
 
@@ -283,12 +304,12 @@ class LLMUtil:
         )
 
     @log_to_appins
-    def redact_text(
+    def analyse_text(
         self,
         system_prompt: str,
         text_chunks: List[str],
     ) -> tuple[tuple[str, ...], dict]:
-        """Parallelised version of redact_text to speed up processing of multiple chunks.
+        """Analyse multiple text chunks for redaction in parallel using the LLM.
 
         Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
         """
@@ -304,7 +325,7 @@ class LLMUtil:
             # Submit tasks to the executor
             future_to_chunk = {
                 executor.submit(
-                    self.redact_text_chunk,
+                    self.analyse_text_chunk,
                     system_prompt,
                     self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
                 ): chunk
