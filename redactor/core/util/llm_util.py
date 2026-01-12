@@ -139,10 +139,10 @@ class LLMUtil:
             # Validate and set request rate limit per minute
             if self.config.request_rate_limit:
                 if self.config.request_rate_limit > model_details["request_rate_limit"]:
-                    self.request_rate_limit = model_details["request_rate_limit"]
+                    self.config.request_rate_limit = model_details["request_rate_limit"]
                     LoggingUtil().log_info(
-                        f"Request rate limit for model {self.llm_model} exceeds maximum. "
-                        f"Setting to maximum of {self.request_rate_limit} requests per minute."
+                        f"Request rate limit for model {self.config.model} exceeds maximum. "
+                        f"Setting to maximum of {self.config.request_rate_limit} requests per minute."
                     )
             else:  # default to 20% of max request rate limit
                 self.config.request_rate_limit = int(
@@ -152,11 +152,13 @@ class LLMUtil:
             raise ValueError(f"Model {self.config.model} is not supported.")
 
     def _set_workers(self, n: int = None) -> int:
-        """Determine the number of worker threads to use, capped at 32 or 
+        """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
         max_workers = min(32, (os.cpu_count() or 1) + 4)
-        if n:
-            if n < 1 or n > max_workers:
+        if n is not None:
+            if n < 1:
+                self.config.max_concurrent_requests = 1
+            elif n > max_workers:
                 self.config.max_concurrent_requests = max_workers
         else:
             self.config.max_concurrent_requests = max_workers
@@ -258,9 +260,6 @@ class LLMUtil:
                 self._compute_costs(response)
 
                 return response, redaction_strings
-            except json.JSONDecodeError as je:
-                LoggingUtil().log_exception("Received invalid JSON response from LLM.")
-                raise je
             except Exception as e:
                 LoggingUtil().log_exception(
                     f"An error occurred while processing the chunk: {e}"
@@ -309,7 +308,7 @@ class LLMUtil:
                 "Max concurrent requests exceeds maximum. "
                 f"Setting to {self.config.max_concurrent_requests}."
             )
-        
+
         with ThreadPoolExecutor(
             max_workers=self.config.max_concurrent_requests
         ) as executor:
