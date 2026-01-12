@@ -219,6 +219,29 @@ def test__llm_util__redact_text_chunk(mock_num_tokens_consumed):
     llm_util.token_semaphore.release.assert_called_once_with(10)
 
 
+@patch.object(LLMUtil, "invoke_chain")
+def test__llm_util__redact_text_chunk__retry_on_exception(mock_invoke_chain):
+    mock_chat_completion = create_mock_chat_completion()
+    redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
+
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    mock_invoke_chain.side_effect = [
+        Exception("Some LLM invocation error"),
+        create_mock_chat_completion(["string A", "string B"]),
+    ]
+    actual_response, actual_redaction_strings = llm_util.redact_text_chunk(
+        system_prompt="system prompt", user_prompt=""
+    )
+
+    assert mock_invoke_chain.call_count == 2    
+    assert isinstance(actual_response, MockLLMChatCompletion)
+    assert actual_redaction_strings == redaction_strings
+
+
 def create_mock_redact_text_chunk(
     redaction_strings=["string A", "string B"], prompt_tokens=5, completion_tokens=4
 ):

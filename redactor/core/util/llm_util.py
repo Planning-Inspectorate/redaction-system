@@ -219,6 +219,13 @@ class LLMUtil:
         return response
 
     @log_to_appins
+    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
+    @retry(
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(10),
+        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
+        retry_error_callback=handle_last_retry_error,
+    )
     def redact_text_chunk(
         self,
         system_prompt: str,
@@ -276,13 +283,6 @@ class LLMUtil:
         )
 
     @log_to_appins
-    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
-    @retry(
-        wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(10),
-        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
-        retry_error_callback=handle_last_retry_error,
-    )
     def redact_text(
         self,
         system_prompt: str,
