@@ -31,6 +31,8 @@ resource "azurerm_storage_account" "redaction_storage" {
   #checkov:skip=CKV_AZURE_33: Logging not implemented yet
   #checkov:skip=CKV2_AZURE_1: Customer Managed Keys not implemented
   #checkov:skip=CKV2_AZURE_33: Private endpoint TBA
+  #checkov:skip=CKV_AZURE_59: Networking TBA
+  #checkov:skip=CKV_AZURE_206: Replication not needed
   name                             = "pinsst${local.service_name}${var.environment}${local.location_short}"
   resource_group_name              = azurerm_resource_group.redaction_rg.name
   location                         = local.location
@@ -40,7 +42,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   min_tls_version                  = "TLS1_2"
   allow_nested_items_to_be_public  = "false"
   cross_tenant_replication_enabled = "false"
-  shared_access_key_enabled        = true
+  shared_access_key_enabled        = false
   default_to_oauth_authentication  = true
   public_network_access_enabled    = true
   tags                             = local.tags
@@ -53,6 +55,10 @@ resource "azurerm_storage_account" "redaction_storage" {
 
   lifecycle {
     prevent_destroy = false
+  }
+
+  sas_policy {
+    expiration_period = "01.12:00:00"
   }
 }
 
@@ -70,14 +76,18 @@ resource "azurerm_storage_container" "redaction_storage" {
 ############################################################################
 
 resource "azurerm_service_plan" "redaction_system" {
-  name                = "pins-redaction-system-${var.environment}-${local.location_short}"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-  location            = local.location
-  os_type             = "Linux"
-  sku_name            = "EP1"
+  name                   = "pins-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name    = azurerm_resource_group.redaction_rg.name
+  location               = local.location
+  os_type                = "Linux"
+  sku_name               = "EP1"
+  worker_count           = 2
+  zone_balancing_enabled = true
 }
 
 resource "azurerm_linux_function_app" "redaction_system" {
+  #checkov:skip=CKV_AZURE_70: Networking TBA
+  #checkov:skip=CKV_AZURE_221: Networking TBA
   name                = "pins-func-redaction-system-${var.environment}-${local.location_short}"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
@@ -138,22 +148,36 @@ resource "azurerm_application_insights" "redaction_system" {
 # Create Azure Open AI
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
+  #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
+  #checkov:skip=CKV_AZURE_134: Networking TBA
+  #checkov:skip=CKV_AZURE_247: Networking TBA
+  #checkov:skip=CKV_AZURE_236: Networking TBA
   name                = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
   location            = local.location
   resource_group_name = azurerm_resource_group.redaction_rg.name
   kind                = "OpenAI"
   sku_name            = "S0"
+  identity {
+    type = "SystemAssigned"
+  }
 }
 
 ############################################################################
 # Create Azure Computer Vision
 ############################################################################
 resource "azurerm_cognitive_account" "computer_vision" {
+  #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
+  #checkov:skip=CKV_AZURE_134: Networking TBA
+  #checkov:skip=CKV_AZURE_247: Networking TBA
+  #checkov:skip=CKV_AZURE_236: Networking TBA
   name                = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
   location            = local.location
   resource_group_name = azurerm_resource_group.redaction_rg.name
   kind                = "ComputerVision"
   sku_name            = "F0"
+  identity {
+    type = "SystemAssigned"
+  }
 }
 
 ############################################################################
