@@ -10,7 +10,7 @@ from redactor.core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from redactor.core.util.llm_util import LLMUtil
+from redactor.core.util.llm_util import LLMUtil, handle_last_retry_error
 from redactor.core.util.logging_util import LoggingUtil
 
 
@@ -36,6 +36,20 @@ class MockLLMChatCompletionUsage:
         self.completion_tokens = completion_tokens
 
 
+@patch.object(LoggingUtil, "log_info", return_value=None)
+def test__handle_last_retry_error(mock_log_info):
+    retry_state = Mock()
+    retry_state.outcome = Mock()
+    retry_state.outcome.exception.return_value = Exception(
+        "Test exception for last retry"
+    )
+    handle_last_retry_error(retry_state)
+    mock_log_info.assert_called_with(
+        "All retry attempts failed: Test exception for last retry\n"
+        "Returning None for this chunk."
+    )
+
+
 def test__llm_util____init__():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -49,13 +63,38 @@ def test__llm_util____init__():
     assert llm_util.output_token_cost == 30 * 0.000001
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
-def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_log_info):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_model_details(mock_llm_util_init, mock_log_info):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        token_rate_limit=300000,  # Exceeds max for gpt-4.1-nano
+        token_rate_limit=2000,
+        request_rate_limit=100,
     )
-    llm_util = LLMUtil(llm_util_config)
+
+    llm_util._set_model_details()
+
+    assert llm_util.config.token_rate_limit == 2000
+    assert llm_util.config.request_rate_limit == 100
+
+    assert llm_util.input_token_cost == 8 * 0.000001
+    assert llm_util.output_token_cost == 30 * 0.000001
+
+
+@patch.object(LLMUtil, "__init__", return_value=None)
+@patch.object(LoggingUtil, "log_info", return_value=None)
+def test__llm_util___set_model_details__exceeds_token_rate_limit(
+    mock_llm_util_init, mock_log_info
+):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
+        model="gpt-4.1-nano",
+        token_rate_limit=300000,
+        request_rate_limit=100,
+    )
+
+    llm_util._set_model_details()
 
     assert llm_util.config.token_rate_limit == 250000
     LoggingUtil.log_info.assert_called_with(
@@ -64,13 +103,19 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_log_info):
     )
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
-def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_log_info):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_model_details__exceeds_request_rate_limit(
+    mock_llm_util_init, mock_log_info
+):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        request_rate_limit=300,  # Exceeds max for gpt-4.1-nano
+        token_rate_limit=100000,
+        request_rate_limit=300,
     )
-    llm_util = LLMUtil(llm_util_config)
+
+    llm_util._set_model_details()
 
     assert llm_util.config.request_rate_limit == 250
     LoggingUtil.log_info.assert_called_with(
@@ -79,65 +124,78 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_log_info
     )
 
 
-def test__llm_util___set_model_details__zero_token_request_rate_limit():
-    llm_util_config = LLMUtilConfig(
+@patch.object(LLMUtil, "__init__", return_value=None)
+def test__llm_util___set_model_details__zero_token_request_rate_limit(mock_llm_util_init):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        token_rate_limit=0,  # Zero request rate limit
-        request_rate_limit=0,  # Zero request rate limit
+        token_rate_limit=0,
+        request_rate_limit=0,
     )
-    llm_util = LLMUtil(llm_util_config)
+
+    llm_util._set_model_details()
 
     assert llm_util.config.token_rate_limit == 250000 * 0.2
     assert llm_util.config.request_rate_limit == 250 * 0.2
 
 
-def test__llm_util___set_model_details__invalid_model():
-    llm_util_config = LLMUtilConfig(
+@patch.object(LLMUtil, "__init__", return_value=None)
+def test__llm_util___set_model_details__invalid_model(mock_llm_util_init):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nan0",
     )
+
     with pytest.raises(ValueError) as exc:
-        LLMUtil(llm_util_config)
+        llm_util._set_model_details()
+
     assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__none_given(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_util._set_workers()
 
     assert llm_util.config.max_concurrent_requests == 12
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__exceeds_cpu_count(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu_count):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        max_concurrent_requests=40,
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_util._set_workers(40)
 
     assert llm_util.config.max_concurrent_requests == 12
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__zero_cpu_count(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_count):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
-        max_concurrent_requests=0,
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_util._set_workers(0)
 
     assert llm_util.config.max_concurrent_requests == 1
 
 
+@patch.object(LLMUtil, "__init__", return_value=None)
 @patch("redactor.core.util.llm_util.os.cpu_count", return_value=40)
-def test__llm_util___set_workers__high_cpu_count(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(
+def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_count):
+    llm_util = LLMUtil()
+    llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_util._set_workers()
 
     assert llm_util.config.max_concurrent_requests == 32
 
