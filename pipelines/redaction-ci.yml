@@ -115,7 +115,7 @@ extends:
               set -e
               cd redaction-system
               ls
-              python3 -m coverage combine
+              python3 -m coverage combine .coverage.integration .coverage.unit
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
