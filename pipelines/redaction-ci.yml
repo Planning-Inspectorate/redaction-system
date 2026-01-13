@@ -68,7 +68,8 @@ extends:
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
               echo "unit test file"
               ls
-              mv .coverage .coverage.unit
+              mkdir reports
+              mv .coverage reports/.coverage.unit
               echo "after moving"
               ls
             displayName: 'Run unit tests'
@@ -87,7 +88,7 @@ extends:
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
               echo "int test file"
               ls
-              mv .coverage .coverage.integration
+              mv .coverage reports/.coverage.integration
               echo "after moving"
               ls
             displayName: 'Run integration tests'
@@ -114,8 +115,7 @@ extends:
           - script: |
               set -e
               cd redaction-system
-              ls
-              python3 -m coverage combine .coverage.integration .coverage.unit
+              # python3 -m coverage combine reports/.coverage.integration reports/.coverage.unit
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
