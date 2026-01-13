@@ -155,7 +155,7 @@ def test__llm_util___set_model_details__invalid_model(mock_llm_util_init):
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+@patch("core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
@@ -167,7 +167,7 @@ def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count)
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+@patch("core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
@@ -179,7 +179,7 @@ def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+@patch("core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
@@ -191,7 +191,7 @@ def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_co
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch("redactor.core.util.llm_util.os.cpu_count", return_value=40)
+@patch("core.util.llm_util.os.cpu_count", return_value=40)
 def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
@@ -453,7 +453,7 @@ def test__llm_util__analyse_text__check_pool_size():
         patch.object(
             ThreadPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
-        patch("redactor.core.util.llm_util.as_completed", return_value=[]),
+        patch("core.util.llm_util.as_completed", return_value=[]),
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
@@ -473,7 +473,7 @@ def test__llm_util__analyse_text__check_pool_size():
 
 @patch.object(LoggingUtil, "log_info", return_value=None)
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
-@patch("redactor.core.util.llm_util.os.cpu_count", return_value=8)
+@patch("core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util__analyse_text__override_pool_size(mock_log_info, mock_cpu_count):
     llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
@@ -485,7 +485,7 @@ def test__llm_util__analyse_text__override_pool_size(mock_log_info, mock_cpu_cou
         patch.object(
             ThreadPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
-        patch("redactor.core.util.llm_util.as_completed", return_value=[]),
+        patch("core.util.llm_util.as_completed", return_value=[]),
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
