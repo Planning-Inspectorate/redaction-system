@@ -50,7 +50,9 @@ class AzureVisionUtil:
         try:
             # Check cache
             faces_detected = next(
-                item["faces"] for item in self._IMAGE_FACE_CACHE if item["image"] == image
+                item["faces"]
+                for item in self._IMAGE_FACE_CACHE
+                if item["image"] == image
             )
             LoggingUtil().log_info("Using cached face detection result.")
         except StopIteration:
@@ -68,7 +70,7 @@ class AzureVisionUtil:
                 LoggingUtil().log_exception(f"Error analysing image for faces: {e}")
                 return None
 
-            faces_detected = [
+            faces_detected = tuple(
                 {
                     "box": (
                         person.bounding_box.x,
@@ -79,7 +81,7 @@ class AzureVisionUtil:
                     "confidence": person.confidence,
                 }
                 for person in result.people.list
-            ]
+            )
 
             # Cache result
             self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
@@ -101,25 +103,44 @@ class AzureVisionUtil:
         :param Image.Image image: The image to analyse
         :returns: The text content of the image, with each individual "block" separated by " "
         """
-        byte_stream = BytesIO()
-        image.save(byte_stream, format="PNG")
-        image_bytes = byte_stream.getvalue()
-        result = self.vision_client.analyze(
-            image_bytes,
-            [VisualFeatures.READ],
-        )
-
-        return tuple(
-            (
-                word.text,
-                (
-                    word.bounding_polygon[0].x,
-                    word.bounding_polygon[0].y,
-                    word.bounding_polygon[2].x,
-                    word.bounding_polygon[2].y,
-                ),
+        try:
+            # Check cache
+            text_detected = next(
+                item["text"]
+                for item in self._IMAGE_TEXT_CACHE
+                if item["image"] == image
             )
-            for block in result.read.blocks
-            for line in block.lines
-            for word in line.words
-        )
+            LoggingUtil().log_info("Using cached text detection result.")
+        except StopIteration:
+            byte_stream = BytesIO()
+            image.save(byte_stream, format="PNG")
+            image_bytes = byte_stream.getvalue()
+
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.READ],
+                )
+            except Exception as e:
+                LoggingUtil().log_exception(f"Error analysing image for text: {e}")
+                return None
+
+            text_detected = tuple(
+                (
+                    word.text,
+                    (
+                        word.bounding_polygon[0].x,
+                        word.bounding_polygon[0].y,
+                        word.bounding_polygon[2].x,
+                        word.bounding_polygon[2].y,
+                    ),
+                )
+                for block in result.read.blocks
+                for line in block.lines
+                for word in line.words
+            )
+
+            # Cache result
+            self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
+
+        return text_detected
