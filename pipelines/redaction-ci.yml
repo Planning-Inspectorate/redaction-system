@@ -66,7 +66,11 @@ extends:
               export PYTHONPATH=$(pwd)
               python3 -m pytest redactor/test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="redactor/core" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
+              echo "unit test file"
+              ls
               mv .coverage .coverage.unit
+              echo "after moving"
+              ls
             displayName: 'Run unit tests'
           - task: PublishTestResults@2
             displayName: 'Publish unit test results'
@@ -81,7 +85,11 @@ extends:
               export PYTHONPATH=$(pwd)
               python3 -m pytest redactor/test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="redactor/core" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
+              echo "int test file"
+              ls
               mv .coverage .coverage.integration
+              ech o "after moving"
+              ls
             displayName: 'Run integration tests'
           - task: PublishTestResults@2
             displayName: 'Publish integration test results'
