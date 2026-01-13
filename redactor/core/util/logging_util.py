@@ -68,10 +68,13 @@ class LoggingUtil(metaclass=Singleton):
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
         )
+        print("APP_INSIGHTS_CONNECTION_STRING exists: ", "APP_INSIGHTS_CONNECTION_STRING" in os.environ)
 
         if not app_insights_connection_string:
+            print("not app_insights_connection_string path")
             # If no connection string is provided, log to file if specified
             if self.log_file:
+                print("log_file path")
                 logging.basicConfig(
                     filename=self.log_file,
                     level=self.log_level,
@@ -82,10 +85,12 @@ class LoggingUtil(metaclass=Singleton):
                 )
                 return
             else:
+                print("runtime error path")
                 raise RuntimeError(
                     "APP_INSIGHTS_CONNECTION_STRING environment variable not set, "
                     "cannot initialise LoggingUtil"
                 )
+        print("exit if statement")
 
         # Configure OpenTelemetry to use Azure Monitor with the connection string
         configure_azure_monitor(
@@ -93,6 +98,7 @@ class LoggingUtil(metaclass=Singleton):
         )
 
         # Create a logger
+        print("logger created")
         self.logger = logging.getLogger(self.namespace)
         self.logger.setLevel(self.log_level)
         self.log_info(f"Logging initialised for {self.namespace}.")
@@ -101,12 +107,14 @@ class LoggingUtil(metaclass=Singleton):
         """
         Log an information message
         """
+        print("log_info called")
         self.logger.info(f"{self.job_id}: {msg}")
 
     def log_exception(self, ex: Exception):
         """
         Log an exception
         """
+        print("log_exception called")
         self.logger.exception(f"{self.job_id}: {ex}")
 
 
