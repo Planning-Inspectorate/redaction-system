@@ -36,7 +36,6 @@ def test__token_semaphore__insufficient_tokens():
     # Define a task that tries to acquire more tokens than available
     with mock.patch.object(LoggingUtil, "__init__", return_value=None):
         with mock.patch.object(LoggingUtil, "log_info", return_value=None):
-
             token_semaphore = TokenSemaphore(max_tokens=100)
             token_semaphore.task = token_semaphore_task
 
