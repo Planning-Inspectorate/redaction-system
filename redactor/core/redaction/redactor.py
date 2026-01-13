@@ -2,12 +2,8 @@ import json
 
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
-from pydantic import BaseModel
-from langchain_core.prompts import PromptTemplate
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 
 from redactor.core.redaction.config import (
     RedactionConfig,
@@ -100,10 +96,6 @@ class TextRedactor(Redactor):
         return TextRedactionConfig
 
 
-class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
-
-
 class LLMTextRedactor(TextRedactor):
     """
     Class that performs text redaction using an LLM
@@ -123,58 +115,25 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
-    def _analyse_text(
-        self,
-        text_to_analyse: str,
-    ) -> LLMTextRedactionResult:
+    def _analyse_text(self, text_to_analyse: str, **kwargs) -> LLMTextRedactionResult:
         # Initialisation
+        # TODO Add LLM parameters to the config class
         self.config: LLMTextRedactionConfig
 
         # Create system prompt from loaded config
         system_prompt = self.config.create_system_prompt()
 
         # The user's prompt will just be the raw text
-        user_prompt_template = PromptTemplate(
-            input_variables=["chunk"], template="{chunk}"
-        )
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
 
+        # Initialise LLM interface
+        llm_util = LLMUtil(self.config)
+
         # Identify redaction strings
-        llm_util = LLMUtil(self.config.model)
-        text_to_redact = []
-
-        # Todo - add multithreading here
-        responses: List[ParsedChatCompletion] = []
-
-        for chunk in text_chunks:
-            user_prompt = user_prompt_template.format(chunk=chunk)
-            response = llm_util.invoke_chain(
-                system_prompt, user_prompt, LLMRedactionResultFormat
-            )
-            response_cleaned: LLMRedactionResultFormat = response.choices[
-                0
-            ].message.parsed
-            redaction_strings = response_cleaned.redaction_strings
-            responses.append(response)
-            text_to_redact.extend(redaction_strings)
-
-        # Remove duplicates
-        text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
-
-        # Collect metrics
-        input_token_count = sum(x.usage.prompt_tokens for x in responses)
-        output_token_count = sum(x.usage.completion_tokens for x in responses)
-        total_token_count = input_token_count + output_token_count
-
-        text_redaction_result = LLMTextRedactionResult(
-            redaction_strings=text_to_redact_cleaned,
-            metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=input_token_count,
-                output_token_count=output_token_count,
-                total_token_count=total_token_count,
-            ),
+        return llm_util.analyse_text(
+            system_prompt,
+            text_chunks,
         )
-        return text_redaction_result
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig

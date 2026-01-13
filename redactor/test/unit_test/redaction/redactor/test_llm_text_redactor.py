@@ -1,35 +1,12 @@
-from redactor.core.redaction.redactor import (
-    LLMTextRedactor,
-    LLMRedactionResultFormat,
+from mock import patch
+
+from redactor.core.redaction.redactor import LLMTextRedactor
+
+from redactor.core.redaction.config import (
+    RedactionConfig,
+    LLMTextRedactionConfig,
 )
-from redactor.core.redaction.config import RedactionConfig, LLMTextRedactionConfig
 from redactor.core.util.llm_util import LLMUtil
-from redactor.core.redaction.result import (
-    LLMTextRedactionResult,
-)
-import mock
-
-
-class MockLLMChatCompletion:
-    def __init__(self, choices, usage):
-        self.choices = choices
-        self.usage = usage
-
-
-class MockLLMChatCompletionChoice:
-    def __init__(self, message):
-        self.message = message
-
-
-class MockLLMChatCompletionChoiceMessage:
-    def __init__(self, parsed):
-        self.parsed = parsed
-
-
-class MockLLMChatCompletionUsage:
-    def __init__(self, prompt_tokens, completion_tokens):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
 
 
 def test__llm_text_redactor__get_name():
@@ -48,7 +25,8 @@ def test__llm_text_redactor__get_redaction_config_class():
     assert issubclass(LLMTextRedactor.get_redaction_config_class(), RedactionConfig)
 
 
-def test__llm_text_redactor__redact():
+@patch.object(LLMTextRedactor, "__init__", return_value=None)
+def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     """
     - Given I have some llm redaction config
     - When I call LLMTextRedactor.redact
@@ -58,7 +36,6 @@ def test__llm_text_redactor__redact():
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-4.1-nano",
-        text="some text",
         system_prompt="some system prompt",
         redaction_terms=[
             "rule A",
@@ -66,29 +43,13 @@ def test__llm_text_redactor__redact():
             "rule C",
         ],
     )
-    mock_chat_completion = MockLLMChatCompletion(
-        choices=[
-            MockLLMChatCompletionChoice(
-                message=MockLLMChatCompletionChoiceMessage(
-                    parsed=LLMRedactionResultFormat(
-                        redaction_strings=["string A", "string B"]
-                    )
-                )
-            )
-        ],
-        usage=MockLLMChatCompletionUsage(prompt_tokens=5, completion_tokens=4),
-    )
-    expected_result = LLMTextRedactionResult(
-        redaction_strings=("string A", "string B"),
-        metadata=LLMTextRedactionResult.LLMResultMetadata(
-            input_token_count=5, output_token_count=4, total_token_count=9
-        ),
-    )
-    with mock.patch.object(LLMUtil, "__init__", return_value=None):
-        with mock.patch.object(
-            LLMUtil, "invoke_chain", return_value=mock_chat_completion
-        ):
-            with mock.patch.object(LLMTextRedactor, "__init__", return_value=None):
-                LLMTextRedactor.config = config
-                actual_result = LLMTextRedactor().redact()
-                assert expected_result == actual_result
+
+    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
+        with patch.object(
+            LLMUtil, "analyse_text", return_value=None
+        ) as mock_analyse_text:
+            LLMTextRedactor.config = config
+            LLMTextRedactor()._analyse_text("some text to analyse")
+
+    mock_llm_util_init.assert_called_once_with(config)
+    mock_analyse_text.assert_called_once()

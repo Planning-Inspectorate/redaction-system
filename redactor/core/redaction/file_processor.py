@@ -365,14 +365,11 @@ class PDFProcessor(FileProcessor):
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
         if not is_english_text(pdf_text):
-            LoggingUtil().log_info(
+            LoggingUtil().log_exception(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
-            raise NonEnglishContentException(
-                "Detected non-English or insufficient English content in "
-                "document; skipping provisional redactions."
-            )
+            raise NonEnglishContentException
         pdf_images = self._extract_pdf_images(file_bytes)
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []

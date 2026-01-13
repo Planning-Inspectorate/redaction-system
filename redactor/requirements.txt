@@ -22,3 +22,4 @@ unidecode==1.4.0
 pypdf>=4.0.0
 langdetect==1.0.9
 azure-monitor-opentelemetry==1.8.3
+tiktoken==0.12.0
