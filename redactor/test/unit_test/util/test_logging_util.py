@@ -1,17 +1,35 @@
 import pytest
+import time
+
 from unittest.mock import patch, call
 from logging import Logger, getLogger
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
 
 
 @patch.object(LoggingUtil, "__init__", return_value=None)
-def test_logging_util_is_a_singleton(mock_init):
+def test_logging_util__is_a_singleton(mock_init):
     Singleton._INSTANCES = {}
     instance_a = LoggingUtil()
     instance_b = LoggingUtil()
     assert id(instance_a) == id(instance_b)
     LoggingUtil.__init__.assert_called_once()
+
+
+@patch.object(LoggingUtil, "__init__", return_value=None)
+def test_logging_util__is_thread_safe(mock_init):
+    Singleton._INSTANCES = {}
+
+    def create_instance():
+        time.sleep(2)
+        return LoggingUtil()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(create_instance) for _ in range(2)]
+        instances = [future.result() for future in as_completed(futures)]
+
+    assert id(instances[0]) == id(instances[1])
 
 
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
