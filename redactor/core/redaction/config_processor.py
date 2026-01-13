@@ -145,7 +145,7 @@ class ConfigProcessor:
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = os.path.join("redactor", "config", f"{config_name}.yaml")
+        config_path = os.path.join("config", f"{config_name}.yaml")
         with open(config_path, "r") as f:
             config = safe_load(f)
         return config

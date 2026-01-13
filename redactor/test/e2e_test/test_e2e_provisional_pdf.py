@@ -18,9 +18,9 @@ def extract_pdf_text(pdf_path: Path) -> str:
 
 
 def ensure_redactor_symlink(tmp_path: Path, repo_root: Path) -> None:
-    redactor_link = tmp_path / "redactor"
+    redactor_link = tmp_path
     if not redactor_link.exists():
-        redactor_link.symlink_to(repo_root / "redactor", target_is_directory=True)
+        redactor_link.symlink_to(repo_root, target_is_directory=True)
 
 
 def run_module_redactor(
@@ -75,7 +75,7 @@ def samples_dir(tmp_path: Path, repo_root: Path) -> Path:
 @pytest.fixture
 def pdf_fixture(repo_root: Path):
     def _get(filename: str) -> Path:
-        path = repo_root / "redactor/test/e2e_test/data" / filename
+        path = repo_root / "test/e2e_test/data" / filename
         if not path.exists():
             raise FileNotFoundError(f"Missing E2E fixture: {path}")
         return path

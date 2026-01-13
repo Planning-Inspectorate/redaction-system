@@ -9,7 +9,7 @@ from core.redaction.config_processor import ConfigProcessor
 
 def test__config_processor__process_config():
     """
-    - Given I have the config defined at redactor/config/default.yaml
+    - Given I have the config defined at config/default.yaml
     - When I load the config and process it using validate_and_filter_config
     - Then the redaction rules should be filtered and processed into RedactionConfig classes
     """
