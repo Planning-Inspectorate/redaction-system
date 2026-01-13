@@ -101,6 +101,8 @@ def xml_format(input: str | list, format_string: str, as_list: bool = False) -> 
 class ImageRedactionConfig(RedactionConfig):
     images: Optional[List[PydanticImage]] = None
     """The images to redact"""
+    confidence_threshold: Optional[float] = 0.5
+    """Confidence threshold between 0 and 1 for detections"""
 
 
 class ImageLLMTextRedactionConfig(ImageRedactionConfig, LLMTextRedactionConfig):

@@ -1,7 +1,12 @@
-from core.util.azure_vision_util import AzureVisionUtil
+import os
+
+from mock import patch
 from PIL import Image
 from io import BytesIO
-import os
+
+from core.util.azure_vision_util import AzureVisionUtil
+from core.util.logging_util import LoggingUtil
+from core.redaction.result import ImageRedactionResult
 
 
 def test__azure_vision_util__detect_faces():
@@ -17,8 +22,45 @@ def test__azure_vision_util__detect_faces():
         image = Image.open(BytesIO(f.read()))
         response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
-        expected_response = ((0, 4, 409, 427), (360, 7, 407, 424))
-        assert expected_response == response
+
+    expected_response = ImageRedactionResult.Result(
+        redaction_boxes=((0, 4, 409, 427), (360, 7, 407, 424)),
+        image_dimensions=(image.width, image.height),
+        source_image=image,
+    )
+    assert expected_response == response
+
+
+def test__azure_vision_util__detect_faces__use_cached_result():
+    """
+    - Given I have an image with two people in it (Darth Plagueis the wise scene from Revenge of the Sith)
+    - When I call AzureVisionUtil.detect_faces
+    - The two faces should be identified
+    """
+    with open(
+        os.path.join("test", "resources", "image", "image_with_faces.jpeg"),
+        "rb",
+    ) as f:
+        image = Image.open(BytesIO(f.read()))
+        response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        # Azure Vision seems to be deterministic from testing
+
+        with patch.object(LoggingUtil, "log_info", return_value=None):
+            new_response = AzureVisionUtil().detect_faces(
+                image, confidence_threshold=0.5
+            )
+            LoggingUtil.log_info.assert_called_with(
+                "Using cached face detection result."
+            )
+
+    expected_response = ImageRedactionResult.Result(
+        redaction_boxes=((0, 4, 409, 427), (360, 7, 407, 424)),
+        image_dimensions=(image.width, image.height),
+        source_image=image,
+    )
+
+    assert expected_response == new_response
+    assert response == new_response
 
 
 def test__azure_vision_util__detect_text():
