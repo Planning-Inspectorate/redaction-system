@@ -1,6 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
-from redactor.core.util.types import PydanticImage
+from core.util.types import PydanticImage
 from langchain_core.prompts import PromptTemplate
 
 

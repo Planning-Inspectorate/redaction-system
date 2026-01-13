@@ -6,7 +6,7 @@ import time
 from azure.identity import AzureCliCredential
 from mock import patch
 
-from redactor.core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import log_to_appins, LoggingUtil
 
 
 APP_INSIGHTS_TOKEN = (

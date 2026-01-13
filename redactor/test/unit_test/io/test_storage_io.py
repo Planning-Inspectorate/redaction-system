@@ -1,7 +1,7 @@
 from io import BytesIO
 import pytest
 
-from redactor.core.io.storage_io import StorageIO
+from core.io.storage_io import StorageIO
 
 
 class DummyStorage(StorageIO):

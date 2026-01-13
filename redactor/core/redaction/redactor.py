@@ -5,28 +5,28 @@ from typing import Type, List, Dict
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from redactor.core.redaction.config import (
+from core.redaction.config import (
     RedactionConfig,
     TextRedactionConfig,
     LLMTextRedactionConfig,
     ImageRedactionConfig,
     ImageLLMTextRedactionConfig,
 )
-from redactor.core.redaction.result import (
+from core.redaction.result import (
     LLMTextRedactionResult,
     ImageRedactionResult,
     RedactionResult,
 )
-from redactor.core.redaction.exceptions import (
+from core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
 )
-from redactor.core.util.llm_util import LLMUtil
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.redaction.exceptions import (
+from core.util.llm_util import LLMUtil
+from core.util.azure_vision_util import AzureVisionUtil
+from core.redaction.exceptions import (
     DuplicateRedactorNameException,
     RedactorNameNotFoundException,
 )
-from redactor.core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.logging_util import LoggingUtil, log_to_appins
 
 
 class Redactor(ABC):

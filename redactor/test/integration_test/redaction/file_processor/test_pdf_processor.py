@@ -1,5 +1,5 @@
-from redactor.core.redaction.file_processor import PDFProcessor
-from redactor.core.redaction.config import (
+from core.redaction.file_processor import PDFProcessor
+from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from io import BytesIO

@@ -17,13 +17,13 @@ from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 from threading import Semaphore
 
-from redactor.core.redaction.config import LLMUtilConfig
-from redactor.core.redaction.result import (
+from core.redaction.config import LLMUtilConfig
+from core.redaction.result import (
     LLMTextRedactionResult,
     LLMRedactionResultFormat,
 )
-from redactor.core.util.logging_util import log_to_appins, LoggingUtil
-from redactor.core.util.token_util import TokenSemaphore
+from core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.token_util import TokenSemaphore
 
 
 load_dotenv(verbose=True)

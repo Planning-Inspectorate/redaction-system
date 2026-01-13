@@ -1,8 +1,8 @@
-from redactor.core.redaction.file_processor import (
+from core.redaction.file_processor import (
     PDFProcessor,
     PDFImageMetadata,
 )
-from redactor.core.redaction.result import (
+from core.redaction.result import (
     ImageRedactionResult,
 )
 from PIL import Image
@@ -10,8 +10,8 @@ from io import BytesIO
 import pymupdf
 import mock
 import pytest
-from redactor.core.util.text_util import is_english_text
-from redactor.core.redaction.exceptions import NonEnglishContentException
+from core.util.text_util import is_english_text
+from core.redaction.exceptions import NonEnglishContentException
 
 
 def test__pdf_processor__get_name():

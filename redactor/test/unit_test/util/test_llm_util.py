@@ -5,13 +5,13 @@ from tiktoken import Encoding
 from tenacity import wait_none, stop_after_attempt
 from concurrent.futures import ThreadPoolExecutor
 
-from redactor.core.redaction.config import LLMUtilConfig
-from redactor.core.redaction.result import (
+from core.redaction.config import LLMUtilConfig
+from core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from redactor.core.util.llm_util import LLMUtil, handle_last_retry_error
-from redactor.core.util.logging_util import LoggingUtil
+from core.util.llm_util import LLMUtil, handle_last_retry_error
+from core.util.logging_util import LoggingUtil
 
 
 class MockLLMChatCompletion:
