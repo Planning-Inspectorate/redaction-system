@@ -88,7 +88,7 @@ extends:
               echo "int test file"
               ls
               mv .coverage .coverage.integration
-              ech o "after moving"
+              echo "after moving"
               ls
             displayName: 'Run integration tests'
           - task: PublishTestResults@2
