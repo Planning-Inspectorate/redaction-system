@@ -5,9 +5,7 @@ from unittest.mock import patch
 from logging import Logger, getLogger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from unittest.mock import patch, call
-from logging import Logger, getLogger
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from unittest.mock import call
 
 from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
 

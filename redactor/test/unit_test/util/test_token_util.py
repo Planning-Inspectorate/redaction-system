@@ -1,7 +1,7 @@
 import pytest
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from redactor.core.util.llm_util import TokenSemaphore
+from core.util.llm_util import TokenSemaphore
 
 
 def test__token_semaphore__acquire():

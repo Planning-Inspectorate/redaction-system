@@ -391,12 +391,16 @@ class PDFProcessor(FileProcessor):
         for rule_to_apply in redaction_rules_to_apply:
             redaction_results.append(rule_to_apply.redact())
         text_redaction_results: List[TextRedactionResult] = [
-            x for x in redaction_results if TextRedactionResult.__name__ in [c.__name__ for c in inspect.getmro(x.__class__)]
+            x
+            for x in redaction_results
+            if TextRedactionResult.__name__
+            in [c.__name__ for c in inspect.getmro(x.__class__)]
         ]
         image_redaction_results: List[ImageRedactionResult] = [
             x
             for x in redaction_results
-            if ImageRedactionResult.__name__ in [c.__name__ for c in inspect.getmro(x.__class__)]
+            if ImageRedactionResult.__name__
+            in [c.__name__ for c in inspect.getmro(x.__class__)]
         ]
         unapplied_redaction_results = [
             x
