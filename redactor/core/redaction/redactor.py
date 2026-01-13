@@ -157,16 +157,16 @@ class ImageRedactor(Redactor):  # pragma: no cover
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
         results: List[ImageRedactionResult.Result] = []
+
         for image_to_redact in self.config.images:
             vision_util = AzureVisionUtil()
-            image_rects = vision_util.detect_faces(image_to_redact)
-            results.append(
-                ImageRedactionResult.Result(
-                    redaction_boxes=image_rects,
-                    image_dimensions=(image_to_redact.width, image_to_redact.height),
-                    source_image=image_to_redact,
-                )
+            faces_detected = vision_util.detect_faces(
+                image_to_redact, confidence_threshold=self.config.confidence_threshold
             )
+            if not faces_detected:  # Error detecting faces in image, skip to next image
+                continue
+            results.append(faces_detected)
+
         return ImageRedactionResult(redaction_results=tuple(results))
 
 

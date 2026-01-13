@@ -1,3 +1,9 @@
+import os
+
+from PIL import Image
+from io import BytesIO
+from dotenv import load_dotenv
+
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 
@@ -7,16 +13,18 @@ from azure.ai.vision.imageanalysis.models import VisualFeatures
 #    AzureCliCredential,
 # )
 from azure.core.credentials import AzureKeyCredential
-import os
-from PIL import Image
-from io import BytesIO
-from dotenv import load_dotenv
+
+from redactor.core.redaction.result import ImageRedactionResult
+from redactor.core.util.logging_util import LoggingUtil, log_to_appins
 
 
 load_dotenv(verbose=True)
 
 
 class AzureVisionUtil:
+    _IMAGE_TEXT_CACHE = []
+    _IMAGE_FACE_CACHE = []
+
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
         self.api_key = os.environ.get("AZURE_VISION_KEY", None)
@@ -27,7 +35,10 @@ class AzureVisionUtil:
             endpoint=self.azure_endpoint, credential=AzureKeyCredential(self.api_key)
         )
 
-    def detect_faces(self, image: Image.Image, confidence_threshold: float = 0.5):
+    @log_to_appins
+    def detect_faces(
+        self, image: Image.Image, confidence_threshold: float = 0.5
+    ) -> ImageRedactionResult.Result:
         """
         Detect faces in the given image
 
@@ -36,22 +47,51 @@ class AzureVisionUtil:
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, box width, box height), for boxes
                   with confidence above the threshold
         """
-        byte_stream = BytesIO()
-        image.save(byte_stream, format="PNG")
-        image_bytes = byte_stream.getvalue()
-        result = self.vision_client.analyze(
-            image_bytes,
-            [VisualFeatures.PEOPLE],
-        )
-        return tuple(
-            (
-                person.bounding_box.x,
-                person.bounding_box.y,
-                person.bounding_box.width,
-                person.bounding_box.height,
+        try:
+            # Check cache
+            faces_detected = next(
+                item["faces"] for item in self._IMAGE_FACE_CACHE if item["image"] == image
             )
-            for person in result.people.list
-            if person.confidence >= confidence_threshold
+            LoggingUtil().log_info("Using cached face detection result.")
+        except StopIteration:
+            # Not in cache, analyse image
+            byte_stream = BytesIO()
+            image.save(byte_stream, format="PNG")
+            image_bytes = byte_stream.getvalue()
+
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.PEOPLE],
+                )
+            except Exception as e:
+                LoggingUtil().log_exception(f"Error analysing image for faces: {e}")
+                return None
+
+            faces_detected = [
+                {
+                    "box": (
+                        person.bounding_box.x,
+                        person.bounding_box.y,
+                        person.bounding_box.width,
+                        person.bounding_box.height,
+                    ),
+                    "confidence": person.confidence,
+                }
+                for person in result.people.list
+            ]
+
+            # Cache result
+            self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
+
+        return ImageRedactionResult.Result(
+            redaction_boxes=tuple(
+                person["box"]
+                for person in faces_detected
+                if person["confidence"] >= confidence_threshold
+            ),
+            image_dimensions=(image.width, image.height),
+            source_image=image,
         )
 
     def detect_text(self, image: Image.Image):
