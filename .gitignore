@@ -83,6 +83,7 @@ nosetests.xml
 .hypothesis/
 .pytest_cache/
 cover/
+pytest_failures.txt
 
 # Translations
 *.mo
