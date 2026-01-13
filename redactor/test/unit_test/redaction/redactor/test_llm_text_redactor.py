@@ -1,10 +1,10 @@
-from redactor.core.redaction.redactor import (
+from core.redaction.redactor import (
     LLMTextRedactor,
     LLMRedactionResultFormat,
 )
-from redactor.core.redaction.config import RedactionConfig, LLMTextRedactionConfig
-from redactor.core.util.llm_util import LLMUtil
-from redactor.core.redaction.result import (
+from core.redaction.config import RedactionConfig, LLMTextRedactionConfig
+from core.util.llm_util import LLMUtil
+from core.redaction.result import (
     LLMTextRedactionResult,
 )
 import mock

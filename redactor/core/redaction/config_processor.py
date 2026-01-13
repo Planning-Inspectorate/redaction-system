@@ -6,10 +6,10 @@ from yaml import safe_load
 
 from typing import Type, List, Any, Dict
 
-from redactor.core.redaction.redactor import RedactorFactory
-from redactor.core.redaction.exceptions import InvalidRedactionConfigException
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
+from core.redaction.redactor import RedactorFactory
+from core.redaction.exceptions import InvalidRedactionConfigException
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
 
 
 class ConfigProcessor:
@@ -145,7 +145,7 @@ class ConfigProcessor:
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = os.path.join("redactor", "config", f"{config_name}.yaml")
+        config_path = os.path.join("config", f"{config_name}.yaml")
         with open(config_path, "r") as f:
             config = safe_load(f)
         return config
