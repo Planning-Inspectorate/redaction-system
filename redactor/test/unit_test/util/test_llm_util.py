@@ -44,7 +44,7 @@ def test__handle_last_retry_error(mock_log_info):
         "Test exception for last retry"
     )
     handle_last_retry_error(retry_state)
-    mock_log_info.assert_called_with(
+    LoggingUtil.log_info.assert_called_with(
         "All retry attempts failed: Test exception for last retry\n"
         "Returning None for this chunk."
     )
