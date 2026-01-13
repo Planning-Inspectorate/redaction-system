@@ -114,8 +114,9 @@ extends:
               mergeTestResults: true
           - script: |
               set -e
-              cd redaction-system
-              # python3 -m coverage combine reports/.coverage.integration reports/.coverage.unit
+              cd redaction-system/reports/
+              ls -a
+              # python3 -m coverage combine .coverage.integration .coverage.unit
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
