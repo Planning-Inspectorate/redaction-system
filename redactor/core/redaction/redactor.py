@@ -198,6 +198,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
+
             redaction_strings = self._analyse_text(text_content).redaction_strings
 
             # Identify text rectangles to redact based on redaction strings
