@@ -62,9 +62,9 @@ extends:
             displayName: 'Install requirements'
           - script: |
               set -e
-              cd redaction-system
+              cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest redactor/test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="redactor/core" --cov-report=xml:unit_test_coverage.xml
+              python3 -m pytest test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
               mv .coverage .coverage.unit
             displayName: 'Run unit tests'
@@ -77,9 +77,9 @@ extends:
               mergeTestResults: true
           - script: |
               set -e
-              cd redaction-system
+              cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest redactor/test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="redactor/core" --cov-report=xml:integration_test_coverage.xml
+              python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
               mv .coverage .coverage.integration
             displayName: 'Run integration tests'
@@ -92,9 +92,9 @@ extends:
               mergeTestResults: true
           - script: |
               set -e
-              cd redaction-system
+              cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
+              python3 -m pytest -m test/e2e_test -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
           - task: PublishTestResults@2
             displayName: 'Publish e2e test results'
@@ -105,7 +105,7 @@ extends:
               mergeTestResults: true
           - script: |
               set -e
-              cd redaction-system
+              cd redaction-system/redactor
               python3 -m coverage combine
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
@@ -121,6 +121,6 @@ extends:
               summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
           - script: |
               set -e
-              cd redaction-system
+              cd redaction-system/redactor
               python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
             displayName: 'Fail if test coverage is below the threshold'

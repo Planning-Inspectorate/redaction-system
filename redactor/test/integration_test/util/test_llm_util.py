@@ -1,3 +1,4 @@
+from core.util.llm_util import LLMUtil
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
 
