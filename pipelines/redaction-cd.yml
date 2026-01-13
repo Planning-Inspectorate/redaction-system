@@ -30,12 +30,12 @@ extends:
             steps:
               - checkout: self
                 displayName: 'Checkout repo'
-              
+
               # Create a zip file of all the files in the filelist.
               - script: |
+                  set -e
                   cd $(Build.SourcesDirectory)/redactor
-                  find . -maxdepth 1 -type f | sed 's|^\./||' > $(Build.SourcesDirectory)/redactor/filelist.txt
-                  cat $(Build.SourcesDirectory)/redactor/filelist.txt | xargs zip -r $(Build.ArtifactStagingDirectory)/redactor.zip
+                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip .
                 displayName: 'Archive top level files'
               
               # Publish the zip file as an artifact to be used further in the pipeline.
@@ -44,7 +44,7 @@ extends:
                 inputs:
                   PathtoPublish: '$(Build.ArtifactStagingDirectory)'
                   ArtifactName: 'FunctionCode'
-              
+
               # Download the artifact first - the zip file.
               - task: DownloadBuildArtifacts@1
                 displayName: 'Download function code artifact'

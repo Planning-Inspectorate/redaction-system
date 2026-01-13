@@ -89,10 +89,10 @@ def test_end_to_end_write_then_read_with_direct_endpoint():
 
     # Write
     stream = BytesIO(payload)
-    io.write(stream, container, blob_path)
+    io.write(stream, container_name=container, blob_path=blob_path)
 
     # Read
-    out_stream = io.read(container, blob_path)
+    out_stream = io.read(container_name=container, blob_path=blob_path)
     assert out_stream.getvalue() == payload
 
 
@@ -104,6 +104,6 @@ def test_storage_name_constructs_blob_endpoint_and_allows_ops():
     blob_path = "p/q.bin"
     data = b"xyz"
 
-    io.write(BytesIO(data), container, blob_path)
-    out = io.read(container, blob_path)
+    io.write(BytesIO(data), container_name=container, blob_path=blob_path)
+    out = io.read(container_name=container, blob_path=blob_path)
     assert out.getvalue() == data

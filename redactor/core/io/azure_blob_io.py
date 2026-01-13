@@ -30,7 +30,13 @@ class AzureBlobIO(StorageIO):
         else:
             self.storage_endpoint = f"https://{storage_name}.blob.core.windows.net"
 
-    def read(self, container_name: str, blob_path: str) -> BytesIO:
+    @classmethod
+    def get_kind(cls):
+        return "AzureBlob"
+
+    def read(self, **kwargs: Any) -> BytesIO:
+        container_name = kwargs.get("container_name")
+        blob_path = kwargs.get("blob_path")
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
@@ -40,7 +46,9 @@ class AzureBlobIO(StorageIO):
         blob_data.readinto(byte_stream)
         return byte_stream
 
-    def write(self, data_bytes: BytesIO, container_name: str, blob_path: str):
+    def write(self, data_bytes: BytesIO, **kwargs: Any):
+        container_name = kwargs.get("container_name")
+        blob_path = kwargs.get("blob_path")
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )

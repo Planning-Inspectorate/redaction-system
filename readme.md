@@ -50,6 +50,11 @@ This repository defines the automated redaction that is available to PINS servic
 - run `func start`
 - You can then connect to the function via http requests, or via the Azure portal
 
+## Running the function app
+- Install the core functions tools https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=macos%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
+- run `func start`
+- You can then connect to the function via http requests, or via the Azure portal
+
 # Environmment variables
 
 Below are the environment variables used by the project

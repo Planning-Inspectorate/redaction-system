@@ -9,6 +9,9 @@ class DummyStorage(StorageIO):
         super().__init__(**kwargs)
         self.ops = []
 
+    def get_kind(self):
+        return "dummy"
+
     def read(self, container_name: str, blob_path: str) -> BytesIO:
         self.ops.append(("read", container_name, blob_path))
         payload = f"data:{container_name}/{blob_path}".encode()
