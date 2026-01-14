@@ -42,7 +42,7 @@ class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = job_id
         # Ensure the job id is set to the job id
-        LoggingUtil(job_id=self.job_id) = self.job_id
+        LoggingUtil(job_id=self.job_id)
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
         """
