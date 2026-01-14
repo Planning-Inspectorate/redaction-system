@@ -10,10 +10,10 @@ from .storage_io import StorageIO
 
 
 class AzureBlobIO(StorageIO):
-    def __init__(self, **kwargs: Any):
+    def __init__(
+        self, storage_name: str = None, storage_endpoint: str = None, **kwargs: Any
+    ):
         super().__init__(**kwargs)
-        storage_name: str | None = kwargs.get("storage_name")
-        storage_endpoint: str | None = kwargs.get("storage_endpoint")
         if not (storage_name or storage_endpoint):
             raise ValueError(
                 "Expected one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobIO()"
