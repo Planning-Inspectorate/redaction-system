@@ -83,7 +83,8 @@ nosetests.xml
 .hypothesis/
 .pytest_cache/
 cover/
-pytest_failures.txt
+flaky_unit_test.sh
+flaky_unit_test_results.txt
 
 # Translations
 *.mo
