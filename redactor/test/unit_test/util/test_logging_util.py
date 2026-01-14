@@ -5,7 +5,9 @@ from unittest.mock import patch, call
 from logging import Logger, getLogger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from redactor.core.util.logging_util import LoggingUtil, Singleton, log_to_appins
+from unittest.mock import call
+
+from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
 
 
 @patch.object(LoggingUtil, "__init__", return_value=None)
@@ -33,16 +35,16 @@ def test_logging_util__is_thread_safe(mock_init):
 
 
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("redactor.core.util.logging_util.uuid4", return_value="some_guid")
-@patch("redactor.core.util.logging_util.configure_azure_monitor")
+@patch("core.util.logging_util.uuid4", return_value="some_guid")
+@patch("core.util.logging_util.configure_azure_monitor")
 def get_new_logging_instance(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
     Singleton._INSTANCES = {}
     return LoggingUtil()
 
 
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("redactor.core.util.logging_util.uuid4", return_value="some_guid")
-@patch("redactor.core.util.logging_util.configure_azure_monitor")
+@patch("core.util.logging_util.uuid4", return_value="some_guid")
+@patch("core.util.logging_util.configure_azure_monitor")
 def test_logging_util__init(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
     Singleton._INSTANCES = {}
     logging_util_inst = LoggingUtil()

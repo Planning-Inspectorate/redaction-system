@@ -1,11 +1,11 @@
-from redactor.core.redaction.redactor import (
+from core.redaction.redactor import (
     ImageLLMTextRedactor,
 )
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.redaction.config import (
+from core.util.azure_vision_util import AzureVisionUtil
+from core.redaction.config import (
     ImageLLMTextRedactionConfig,
 )
-from redactor.core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
+from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
 from PIL import Image
 import mock
 

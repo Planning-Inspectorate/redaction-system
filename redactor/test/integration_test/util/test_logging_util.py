@@ -6,7 +6,7 @@ import time
 from azure.identity import AzureCliCredential
 from mock import patch
 
-from redactor.core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import log_to_appins, LoggingUtil
 
 
 APP_INSIGHTS_TOKEN = (
@@ -33,7 +33,7 @@ def app_ins_traces_contains_message(expected_message: str):
 
 
 @pytest.fixture(autouse=True, scope="module")
-@patch("redactor.core.util.logging_util.uuid4", return_value=JOB_ID)
+@patch("core.util.logging_util.uuid4", return_value=JOB_ID)
 def run_logging_util(mock_job_id):
     @log_to_appins
     def some_test_function(mock_arg_a: str, mock_arg_b: str):
