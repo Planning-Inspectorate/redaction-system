@@ -67,5 +67,5 @@ def test__logging_util__logging_function_call():
     function_call_traces = app_ins_traces_contains_message(expected_logging_function_message)
 
     assert function_call_traces, (
-        f"Logging funcion call message not found for job with id {JOB_ID}."
+        f"Logging function call message not found for job with id {JOB_ID}."
     )
