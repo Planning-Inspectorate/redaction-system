@@ -17,6 +17,7 @@ PyMuPDF==1.26.6
 pytest==9.0.1
 pytest-xdist==3.8.0
 pytest-cov==7.0.0
+pytest-rerunfailures==16.1
 PyYAML==6.0.3
 ruff==0.14.7
 unidecode==1.4.0
