@@ -1,6 +1,15 @@
 name: Redaction CD
 
 # This is the main CI/CD pipeline of the the redaction system
+parameters:
+# User-specified environment to deploy to
+- name: env
+  default: 'dev'
+  values:
+  - 'dev'
+  - 'test'
+  - 'prod'
+
 resources:
   repositories:
     - repository: templates
@@ -15,13 +24,7 @@ extends:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
     environments:
-      - name: Dev
-      - name: Test
-        dependsOn:
-          - Dev
-      - name: Prod
-        dependsOn:
-          - Test
+      
     deploymentStages:
       - name: Deploy Function App
         deploymentJobs:
@@ -56,13 +59,13 @@ extends:
               - task: AzureCLI@2
                 displayName: 'Deploy to function app'
                 inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper($(ENVIRONMENT)) }}'
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-$(ENVIRONMENT)-uks' \
-                    --name 'pins-func-redaction-system-$(ENVIRONMENT)-uks' \
+                    --resource-group 'pins-rg-redaction-${{ parameters.env }}-uks' \
+                    --name 'pins-func-redaction-system-${{ parameters.env }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
                     --build-remote true \
                     --verbose
