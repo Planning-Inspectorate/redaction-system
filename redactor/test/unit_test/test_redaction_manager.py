@@ -30,9 +30,8 @@ class MockIO:
 
 def test__redaction_manager__init():
     job_id = "some_job_id"
-    with mock.patch.object(LoggingUtil, "__init__", return_value=None):
-        inst = RedactionManager("some_job_id")
-        assert inst.job_id == job_id
+    inst = RedactionManager("some_job_id")
+    assert inst.job_id == job_id
 
 
 def test__redaction_manager__convert_kwargs_for_io():
@@ -278,18 +277,14 @@ def test__redaction_manager__log_exception(test_case):
     with mock.patch.object(RedactionManager, "__init__", return_value=None):
         with mock.patch.object(AzureBlobIO, "__init__", return_value=None):
             with mock.patch.object(AzureBlobIO, "write", return_value=None):
-                with mock.patch.object(LoggingUtil, "__init__", return_value=None):
-                    with mock.patch.object(
-                        LoggingUtil, "log_exception", return_value=None
-                    ):
-                        expected_exception_message = "An exception with a message"
-                        inst = RedactionManager("job_id")
-                        inst.job_id = "inst"
-                        some_exception = Exception(expected_exception_message)
-                        inst.log_exception(some_exception)
-                        test_case(
-                            inst.job_id, expected_exception_message, some_exception
-                        )
+                expected_exception_message = "An exception with a message"
+                inst = RedactionManager("job_id")
+                inst.job_id = "inst"
+                some_exception = Exception(expected_exception_message)
+                inst.log_exception(some_exception)
+                test_case(
+                    inst.job_id, expected_exception_message, some_exception
+                )
 
 
 def check__try_redact__successful_output(response, params, exception):
