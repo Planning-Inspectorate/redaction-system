@@ -14,6 +14,7 @@ import pymupdf
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
+RUN_ID = os.environ.get("RUN_ID")
 
 
 def try_delete_blob(container_client: ContainerClient, blob_path: str):
@@ -35,20 +36,32 @@ def teardown():
     callback_container_client = blob_service_client.get_container_client("test")
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+        f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
     )
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+        f"{RUN_ID}__test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
     )
     yield
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+        f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
     )
     try_delete_blob(
         callback_container_client,
-        "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+        f"{RUN_ID}__test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+    )
+    try_delete_blob(
+        callback_container_client,
+        f"{RUN_ID}__test__redaction__manager__try_redact__raw.pdf",
+    )
+    try_delete_blob(
+        callback_container_client,
+        f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+    )
+    try_delete_blob(
+        callback_container_client,
+        f"{RUN_ID}__test__redaction_manager__try_redact__failure.pdf",
     )
 
 
@@ -77,7 +90,7 @@ def test__redaction__manager__try_redact__skip_redaction():
     ) as f:
         pdf_bytes = f.read()
     container_client.upload_blob(
-        "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+        f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__raw.pdf",
         pdf_bytes,
         overwrite=True,
     )
@@ -93,7 +106,7 @@ def test__redaction__manager__try_redact__skip_redaction():
             "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
-                "blobPath": "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+                "blobPath": f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__raw.pdf",
                 "storageName": f"pinsstredaction{ENV}uks",
                 "containerName": "test",
             },
@@ -102,7 +115,7 @@ def test__redaction__manager__try_redact__skip_redaction():
             "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
-                "blobPath": "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+                "blobPath": f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
                 "storageName": f"pinsstredaction{ENV}uks",
                 "containerName": "test",
             },
@@ -113,7 +126,7 @@ def test__redaction__manager__try_redact__skip_redaction():
         f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
     )
     blob_client = container_client.get_blob_client(
-        "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
+        f"{RUN_ID}__test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
     )
     assert blob_client.exists()
     blob_bytes = blob_client.download_blob().read()
@@ -140,7 +153,9 @@ def test__redaction__manager__try_redact():
     ) as f:
         pdf_bytes = f.read()
     container_client.upload_blob(
-        "test__redaction__manager__try_redact__raw.pdf", pdf_bytes, overwrite=True
+        f"{RUN_ID}__test__redaction__manager__try_redact__raw.pdf",
+        pdf_bytes,
+        overwrite=True,
     )
     # Run test
     guid = f"test-{uuid4()}"
@@ -154,7 +169,7 @@ def test__redaction__manager__try_redact():
             "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
-                "blobPath": "test__redaction__manager__try_redact__raw.pdf",
+                "blobPath": f"{RUN_ID}__test__redaction__manager__try_redact__raw.pdf",
                 "storageName": f"pinsstredaction{ENV}uks",
                 "containerName": "test",
             },
@@ -163,7 +178,7 @@ def test__redaction__manager__try_redact():
             "storageKind": "AzureBlob",
             "teamEmail": "someAccount@planninginspectorate.gov.uk",
             "properties": {
-                "blobPath": "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+                "blobPath": f"{RUN_ID}__test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
                 "storageName": f"pinsstredaction{ENV}uks",
                 "containerName": "test",
             },
@@ -174,7 +189,7 @@ def test__redaction__manager__try_redact():
         f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
     )
     blob_client = container_client.get_blob_client(
-        "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
+        f"{RUN_ID}__test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
     )
     assert blob_client.exists()
     blob_bytes = blob_client.download_blob().read()
@@ -204,7 +219,9 @@ def test__redaction_manager__try_redact__failure():
     ) as f:
         pdf_bytes = f.read()
     container_client.upload_blob(
-        "test__redaction_manager__try_redact__failure.pdf", pdf_bytes, overwrite=True
+        f"{RUN_ID}__test__redaction_manager__try_redact__failure.pdf",
+        pdf_bytes,
+        overwrite=True,
     )
     # Run test
     guid = f"test-{uuid4()}"
