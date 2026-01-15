@@ -1,9 +1,9 @@
 from test.util.test_case import TestCase
-from dotenv import load_dotenv
 from filelock import FileLock
+from dotenv import load_dotenv
+from uuid import uuid4
 from typing import List, Type
 import os
-from uuid import uuid4
 import logging
 import pytest
 import sys
@@ -11,7 +11,7 @@ import inspect
 import importlib
 
 
-def pytest_configure():
+def configure_session():
     load_dotenv(verbose=True, override=True)
     if "RUN_ID" not in os.environ:
         run_id = str(uuid4())[:8]
@@ -96,7 +96,11 @@ def process_arguments(session) -> List[Type[TestCase]]:
     return [test_case_module_map[directory] for directory in set(matched_modules)]
 
 
-def session_setup_task(session):
+def _session_setup_task(session):
+    uuid = str(uuid4())
+    print(f"session_setup called: '{uuid}'")
+    with open(f"testfile_{uuid}.txt", "w") as f:
+        f.write("some content")
     logging.info("Setting up pytest session for unit tests")
     # Test-specific resources
     for test_case in process_arguments(session):
@@ -109,7 +113,7 @@ def session_setup(tmp_path_factory, worker_id, request):
     # Code based on example from docs at
     # https://pytest-xdist.readthedocs.io/en/latest/how-to.html#making-session-scoped-fixtures-execute-only-once
     if worker_id == "master":
-        return session_setup_task(request.session)
+        return _session_setup_task(request.session)
     root_tmp_dir = tmp_path_factory.getbasetemp().parent
     fn = root_tmp_dir / "setupsession.json"
     with FileLock(str(fn) + ".lock"):
@@ -120,7 +124,7 @@ def session_setup(tmp_path_factory, worker_id, request):
         else:
             fn.write_text("Starting session setup")
             try:
-                session_setup_task(request.session)
+                _session_setup_task(request.session)
                 fn.write_text("Complete")
             except KeyboardInterrupt:
                 sys.exit()
@@ -129,7 +133,7 @@ def session_setup(tmp_path_factory, worker_id, request):
                 raise e
 
 
-def session_teardown_task(session):
+def _session_teardown_task(session):
     logging.info("Tearing down pytest session for unit tests")
     for test_case in process_arguments(session):
         logging.info("    Running teardown for " + test_case.__module__)
@@ -142,7 +146,7 @@ def session_teardown(tmp_path_factory, worker_id, request):
     # https://pytest-xdist.readthedocs.io/en/latest/how-to.html#making-session-scoped-fixtures-execute-only-once
     yield
     if worker_id == "master":
-        return session_teardown_task(request.session)
+        return _session_teardown_task(request.session)
     root_tmp_dir = tmp_path_factory.getbasetemp().parent
     fn = root_tmp_dir / "teardownsession.json"
     with FileLock(str(fn) + ".lock"):
@@ -164,4 +168,4 @@ def session_teardown(tmp_path_factory, worker_id, request):
     logging.info("completed workers count: " + str(number_of_completed_workers))
     logging.info("Last worker: " + str(last_worker))
     if last_worker:
-        session_teardown_task(request.session)
+        _session_teardown_task(request.session)
