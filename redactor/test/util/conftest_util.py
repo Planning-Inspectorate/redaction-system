@@ -47,7 +47,7 @@ def import_all_testing_modules():
                 ]
             )
     python_modules_to_load_cleaned = sorted(
-        [x.replace(".py", "").replace("/", ".") for x in python_modules_to_load]
+        [x.replace(".py", "").replace(os.sep, ".") for x in python_modules_to_load]
     )
     python_modules_to_load_cleaned = [
         f"test.{x}" if not x.startswith("test") else x
