@@ -1,3 +1,6 @@
+############################################################################
+# Virtual networks
+############################################################################
 resource "azurerm_virtual_network" "redaction_system" {
   name                = "vnet-redaction-system-${var.environment}-${local.location_short}"
   location            = local.location
@@ -21,4 +24,144 @@ resource "azurerm_subnet" "redaction_system" {
       actions = "Microsoft.Network/virtualNetworks/subnets/action"
     }
   }
+  tags = local.tags
+}
+
+data "azurerm_virtual_network" "tooling" {
+  name                = local.tooling_config.network_name
+  resource_group_name = local.tooling_config.network_rg
+
+  provider = azurerm.tooling
+}
+
+############################################################################
+# DNS zone
+############################################################################
+data "azurerm_private_dns_zone" "blob" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = local.tooling_config.network_rg
+
+  tags = local.tags
+}
+
+data "azurerm_private_dns_zone" "function" {
+  name                = "privatelink.azurewebsites.net"
+  resource_group_name = local.tooling_config.network_rg
+
+  tags = local.tags
+}
+
+
+data "azurerm_private_dns_zone" "ai" {
+  name                = "privatelink.cognitiveservices.azure.com"
+  resource_group_name = local.tooling_config.network_rg
+
+  tags = local.tags
+}
+
+############################################################################
+# Private endpoints
+############################################################################
+resource "azurerm_private_endpoint" "redaction_storage" {
+  name                = "pins-pe-${azurerm_storage_account.redaction_storage.name}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "blobDnsZone"
+    private_dns_zone_ids = [azurerm_private_dns_zone.blob]
+  }
+
+  private_service_connection {
+    name                           = "blob"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_storage_account.redaction_storage.id
+    subresource_names              = ["blob"]
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_private_endpoint" "function_app" {
+  name                = "pins-pe-${azurerm_linux_function_app.redaction_system.name}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "functionDnsZone"
+    private_dns_zone_ids = [azurerm_private_dns_zone.function]
+  }
+
+  private_service_connection {
+    name                           = "function"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_linux_function_app.redaction_system.id
+    subresource_names              = ["azurewebsites"]
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_private_endpoint" "open_ia" {
+  name                = "pins-pe-${azurerm_cognitive_account.open_ia.name}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "openAIDnsZone"
+    private_dns_zone_ids = [azurerm_private_dns_zone.ai]
+  }
+
+  private_service_connection {
+    name                           = "openAI"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_cognitive_account.open_ia.id
+    subresource_names              = ["cognitiveservices"]
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_private_endpoint" "computer_vision" {
+  name                = "pins-pe-${azurerm_cognitive_account.computer_vision.name}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "computerVisionDnsZone"
+    private_dns_zone_ids = [azurerm_private_dns_zone.ai]
+  }
+
+  private_service_connection {
+    name                           = "computerVision"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
+    subresource_names              = ["cognitiveservices"]
+  }
+
+  tags = local.tags
+}
+
+
+############################################################################
+# Network peering
+############################################################################
+resource "azurerm_virtual_network_peering" "odw_to_tooling" {
+  name                      = "pins-peer-redaction-system-to-tooling-${var.environment}"
+  resource_group_name       = azurerm_resource_group.redaction_rg.name
+  virtual_network_name      = azurerm_virtual_network.redaction_system.id
+  remote_virtual_network_id = data.azurerm_virtual_network.tooling.id
+}
+
+resource "azurerm_virtual_network_peering" "tooling_to_odw" {
+  name                      = "pins-peer-tooling-to-redaction-system-${var.environment}"
+  resource_group_name       = var.tooling_config.network_rg
+  virtual_network_name      = var.tooling_config.network_name
+  remote_virtual_network_id = azurerm_virtual_network.redaction_system.id
+
+  provider = azurerm.tooling
 }
