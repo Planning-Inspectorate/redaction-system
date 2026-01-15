@@ -35,3 +35,13 @@ variable "tooling_config" {
     subscription_id = string
   })
 }
+
+variable "vnet_cidr_block" {
+  description = "The CIDR range for the vnet"
+  type        = string
+}
+
+variable "subnet_cidr_block" {
+  description = "The CIDR range for the subnet"
+  type        = string
+}
