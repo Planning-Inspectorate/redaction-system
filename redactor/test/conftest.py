@@ -25,6 +25,7 @@ def import_all_testing_modules():
     Import all test modules
     """
     # Extract all testing modules under the `test/` directory
+    module_content_to_exclude = {"__init__.py", "__pycache__", "conftest.py"}
     python_modules_to_load = []
     files_to_explore = [
         x
@@ -34,11 +35,8 @@ def import_all_testing_modules():
     while files_to_explore:
         next_file = files_to_explore.pop(0)
         if os.path.isfile(os.path.join("test", next_file)):
-            if (
-                next_file.endswith(".py")
-                and "__init__.py" not in next_file
-                and "__pycache__" not in next_file
-                and "conftest.py" not in next_file
+            if next_file.endswith(".py") and all(
+                x not in next_file for x in module_content_to_exclude
             ):
                 python_modules_to_load.append(next_file)
         else:
