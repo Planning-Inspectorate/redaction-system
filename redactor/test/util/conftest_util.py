@@ -97,10 +97,6 @@ def process_arguments(session) -> List[Type[TestCase]]:
 
 
 def _session_setup_task(session):
-    uuid = str(uuid4())
-    print(f"session_setup called: '{uuid}'")
-    with open(f"testfile_{uuid}.txt", "w") as f:
-        f.write("some content")
     logging.info("Setting up pytest session for unit tests")
     # Test-specific resources
     for test_case in process_arguments(session):
