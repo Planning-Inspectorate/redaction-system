@@ -1,5 +1,5 @@
-from redactor.core.redaction.file_processor import PDFProcessor
-from redactor.core.redaction.config import (
+from core.redaction.file_processor import PDFProcessor
+from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from io import BytesIO
@@ -16,7 +16,7 @@ def test__pdf_processor__redact():
     - When I call redact() with some config and the pdf content as bytes
     - Then I should receive a new bytes object which contains the PDF with redactions as specified by the input config
     """
-    with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         file_bytes = BytesIO(f.read())
     expected_redacted_text = {
         "commander",
@@ -88,7 +88,7 @@ def test__pdf_processor__apply():
     """
     # Run the redaction process against the provisional redaction file
     with open(
-        "redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
         "rb",
     ) as f:
         provisional_redaction_file_bytes = BytesIO(f.read())
@@ -121,9 +121,7 @@ def test__pdf_processor__apply():
         },
     )
     # Extract text from source and final documents
-    with open(
-        "redactor/test/resources/pdf/test_pdf_processor__redacted.pdf", "rb"
-    ) as f:
+    with open("test/resources/pdf/test_pdf_processor__redacted.pdf", "rb") as f:
         expected_redacted_document_bytes = BytesIO(f.read())
     expected_redacted_document_text = "\n".join(
         page.get_text()

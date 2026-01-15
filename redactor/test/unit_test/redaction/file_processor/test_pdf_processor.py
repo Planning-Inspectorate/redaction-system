@@ -1,8 +1,8 @@
-from redactor.core.redaction.file_processor import (
+from core.redaction.file_processor import (
     PDFProcessor,
     PDFImageMetadata,
 )
-from redactor.core.redaction.result import (
+from core.redaction.result import (
     ImageRedactionResult,
 )
 from PIL import Image
@@ -10,8 +10,8 @@ from io import BytesIO
 import pymupdf
 import mock
 import pytest
-from redactor.core.util.text_util import is_english_text
-from redactor.core.redaction.exceptions import NonEnglishContentException
+from core.util.text_util import is_english_text
+from core.redaction.exceptions import NonEnglishContentException
 
 
 def test__pdf_processor__get_name():
@@ -43,7 +43,7 @@ def test__pdf_processor__extract_pdf_text():
         "Well, here it is. Make a good one."
     )
     expected_text_split = " ".split(expected_text)
-    with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     actual_text = PDFProcessor()._extract_pdf_text(document_bytes)
     actual_text_split = " ".split(actual_text)
@@ -57,10 +57,10 @@ def test__pdf_processor__extract_pdf_images():
     - Then the image and its metadata should be returned as a list of PDFImageMetadata objects
     """
     with open(
-        "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
+        "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
     ) as f:
         document_bytes = BytesIO(f.read())
-    with open("redactor/test/resources/image/test_image_horizontal.jpg", "rb") as f:
+    with open("test/resources/image/test_image_horizontal.jpg", "rb") as f:
         image_bytes = BytesIO(f.read())
     image = Image.open(image_bytes)
     expected_image_metadata = [
@@ -238,7 +238,7 @@ def test__pdf_processor__apply_provisional_text_redactions():
     - Then the provisional redactions should be removed, and the text content of the PDF
       should not contain the text identified by the provisional redactions
     """
-    with open("redactor/test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = [
         "he's",
@@ -257,7 +257,7 @@ def test__pdf_processor__apply_provisional_text_redactions():
 
     # Generate expected redaction text from the raw document
     with open(
-        "redactor/test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
         "rb",
     ) as f:
         expected_provisional_redaction_bytes = BytesIO(f.read())
@@ -451,11 +451,11 @@ def test__pdf_processor__apply_provisional_image_redactions():
     - Then the redactions should be correctly applied to the document, and match a pre-baked example
     """
     with open(
-        "redactor/test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
+        "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
     ) as f:
         document_bytes = BytesIO(f.read())
     with open(
-        "redactor/test/resources/pdf/test__pdf_processor__translated_image_PROVISIONAL.pdf",
+        "test/resources/pdf/test__pdf_processor__translated_image_PROVISIONAL.pdf",
         "rb",
     ) as f:
         expected_provisional_redaction_bytes = BytesIO(f.read())

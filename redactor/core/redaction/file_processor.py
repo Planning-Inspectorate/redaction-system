@@ -12,27 +12,27 @@ from unicodedata import category
 from PIL import Image
 from pydantic import BaseModel
 
-from redactor.core.redaction.redactor import (
+from core.redaction.redactor import (
     Redactor,
     TextRedactor,
     ImageRedactor,
     RedactorFactory,
 )
-from redactor.core.redaction.exceptions import (
+from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
     FileProcessorNameNotFoundException,
     UnprocessedRedactionResultException,
     NonEnglishContentException,
 )
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.result import (
+from core.redaction.config import RedactionConfig
+from core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
     ImageRedactionResult,
 )
-from redactor.core.util.text_util import is_english_text
-from redactor.core.util.logging_util import LoggingUtil, log_to_appins
-from redactor.core.util.types import PydanticImage
+from core.util.text_util import is_english_text
+from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.types import PydanticImage
 
 
 class FileProcessor(ABC):

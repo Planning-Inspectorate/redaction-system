@@ -1,5 +1,5 @@
 from threading import Condition, Lock
-from redactor.core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import log_to_appins, LoggingUtil
 
 
 class TokenSemaphore:
