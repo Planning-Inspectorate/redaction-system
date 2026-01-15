@@ -22,12 +22,12 @@ extends:
   parameters:
     environments:
       - name: Dev
-      - name: Test
-        dependsOn:
-          - Dev
-      - name: Prod
-        dependsOn:
-          - Test
+      #- name: Test
+      #  dependsOn:
+      #    - Dev
+      #- name: Prod
+      #  dependsOn:
+      #    - Test
     serviceConnectionPrefix: Azure DevOps Pipelines - Redaction System - Infrastructure
     storageAccountName: pinssttfstateredaction
     resourceGroupName: pins-rg-shared-terraform-uks
