@@ -10,10 +10,10 @@ from .storage_io import StorageIO
 
 
 class AzureBlobIO(StorageIO):
-    def __init__(self, **kwargs: Any):
+    def __init__(
+        self, storage_name: str = None, storage_endpoint: str = None, **kwargs: Any
+    ):
         super().__init__(**kwargs)
-        storage_name: str | None = kwargs.get("storage_name")
-        storage_endpoint: str | None = kwargs.get("storage_endpoint")
         if not (storage_name or storage_endpoint):
             raise ValueError(
                 "Expected one of 'storage_name' or 'storage_endpoint' to be provided to AzureBlobIO()"
@@ -34,9 +34,7 @@ class AzureBlobIO(StorageIO):
     def get_kind(cls):
         return "AzureBlob"
 
-    def read(self, **kwargs: Any) -> BytesIO:
-        container_name = kwargs.get("container_name")
-        blob_path = kwargs.get("blob_path")
+    def read(self, container_name: str, blob_path: str, **kwargs) -> BytesIO:
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
@@ -46,9 +44,7 @@ class AzureBlobIO(StorageIO):
         blob_data.readinto(byte_stream)
         return byte_stream
 
-    def write(self, data_bytes: BytesIO, **kwargs: Any):
-        container_name = kwargs.get("container_name")
-        blob_path = kwargs.get("blob_path")
+    def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )

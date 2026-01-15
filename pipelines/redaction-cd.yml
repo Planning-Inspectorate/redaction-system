@@ -23,6 +23,8 @@ extends:
   parameters:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
+    environments:
+      
     deploymentStages:
       - name: Deploy Function App
         deploymentJobs:
