@@ -7,7 +7,6 @@ from uuid import uuid4
 import logging
 import pytest
 import sys
-import os
 import inspect
 import importlib
 
@@ -81,9 +80,7 @@ def process_arguments(session) -> List[Type[TestCase]]:
     """
     test_cases = extract_all_test_cases()
     pytest_args = session.config.invocation_params.args
-    directory_args = [
-        x.replace(".py", "") for x in pytest_args if x.startswith("test")
-    ]
+    directory_args = [x.replace(".py", "") for x in pytest_args if x.startswith("test")]
     # If no arguments were given or if no specific python files were given then
     # all unit tests are being executed
     if not directory_args:

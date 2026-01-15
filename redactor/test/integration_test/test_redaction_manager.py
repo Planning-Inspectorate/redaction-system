@@ -9,7 +9,6 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 import os
 import pymupdf
-import logging
 
 
 load_dotenv(verbose=True)
