@@ -38,6 +38,7 @@ def import_all_testing_modules():
                 next_file.endswith(".py")
                 and "__init__.py" not in next_file
                 and "__pycache__" not in next_file
+                and "conftest.py" not in next_file
             ):
                 python_modules_to_load.append(next_file)
         else:
