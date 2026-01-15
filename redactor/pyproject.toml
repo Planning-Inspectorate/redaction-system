@@ -10,6 +10,7 @@ readme = "readme.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-ai-vision-imageanalysis",
+    "azure-functions",
     "azure-identity",
     "azure-monitor-opentelemetry",
     "azure-storage-blob",
