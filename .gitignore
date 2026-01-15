@@ -83,8 +83,6 @@ nosetests.xml
 .hypothesis/
 .pytest_cache/
 cover/
-flaky_unit_test.sh
-flaky_unit_test_results.txt
 
 # Translations
 *.mo
@@ -243,3 +241,4 @@ host.json
 .vscode
 **.env
 samples
+scratch
