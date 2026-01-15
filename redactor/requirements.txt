@@ -1,14 +1,18 @@
 azure-ai-vision-imageanalysis==1.0.0
 azure-functions==1.24.0
 azure-identity==1.25.1
+azure-monitor-opentelemetry==1.8.3
 azure-storage-blob==12.23.1
 coverage==7.12.0
+langdetect==1.0.9
 langchain==1.1.0
 langchain-text-splitters==1.0.0
 mock==5.2.0
 openai==2.8.1
 pillow==12.0.0
+pre-commit==4.5.1
 pydantic==2.12.5
+pypdf>=4.0.0
 python-dotenv==1.2.1
 # Prefer python-magic-bin on Windows (bundles libmagic); use python-magic elsewhere
 python-magic-bin==0.4.14; sys_platform == "win32"
@@ -19,8 +23,5 @@ pytest-xdist==3.8.0
 pytest-cov==7.0.0
 PyYAML==6.0.3
 ruff==0.14.7
-unidecode==1.4.0
-pypdf>=4.0.0
-langdetect==1.0.9
-azure-monitor-opentelemetry==1.8.3
 tiktoken==0.12.0
+unidecode==1.4.0
