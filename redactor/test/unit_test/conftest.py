@@ -3,6 +3,7 @@ import pytest
 from mock import patch
 from core.util.logging_util import LoggingUtil
 
+
 @pytest.fixture(autouse=True)
 def mock_logging_util(request):
     if "nologgerfixt" in request.keywords:
