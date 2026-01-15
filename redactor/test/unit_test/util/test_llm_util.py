@@ -36,26 +36,20 @@ class MockLLMChatCompletionUsage:
         self.completion_tokens = completion_tokens
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__handle_last_retry_error(mock_log_init, mock_log_info, mock_log_exception):
+def test__handle_last_retry_error():
     retry_state = Mock()
     retry_state.outcome = Mock()
     retry_state.outcome.exception.return_value = Exception(
         "Test exception for last retry"
     )
     handle_last_retry_error(retry_state)
-    mock_log_info.assert_called_with(
+    LoggingUtil.log_info.assert_called_with(
         "All retry attempts failed: Test exception for last retry\n"
         "Returning None for this chunk."
     )
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util____init__(mock_log_init, mock_log_info, mock_log_exception):
+def test__llm_util____init__():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         token_rate_limit=2000,
@@ -69,12 +63,7 @@ def test__llm_util____init__(mock_log_init, mock_log_info, mock_log_exception):
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_model_details(
-    mock_llm_util_init, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_model_details(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -92,12 +81,7 @@ def test__llm_util___set_model_details(
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-def test__llm_util___set_model_details__exceeds_token_rate_limit(
-    mock_llm_util_init, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -115,12 +99,7 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_model_details__exceeds_request_rate_limit(
-    mock_llm_util_init, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -138,11 +117,8 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
 def test__llm_util___set_model_details__zero_token_request_rate_limit(
-    mock_llm_util_init, mock_log_init, mock_log_info, mock_log_exception
+    mock_llm_util_init,
 ):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
@@ -158,12 +134,7 @@ def test__llm_util___set_model_details__zero_token_request_rate_limit(
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_model_details__invalid_model(
-    mock_llm_util_init, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_model_details__invalid_model(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nan0",
@@ -177,12 +148,7 @@ def test__llm_util___set_model_details__invalid_model(
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 @patch("core.util.llm_util.os.cpu_count", return_value=8)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_workers__none_given(
-    mock_llm_util_init, mock_cpu_count, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -194,12 +160,7 @@ def test__llm_util___set_workers__none_given(
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 @patch("core.util.llm_util.os.cpu_count", return_value=8)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_workers__exceeds_cpu_count(
-    mock_llm_util_init, mock_cpu_count, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -211,12 +172,7 @@ def test__llm_util___set_workers__exceeds_cpu_count(
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 @patch("core.util.llm_util.os.cpu_count", return_value=8)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_workers__zero_cpu_count(
-    mock_llm_util_init, mock_cpu_count, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -228,12 +184,7 @@ def test__llm_util___set_workers__zero_cpu_count(
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 @patch("core.util.llm_util.os.cpu_count", return_value=40)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___set_workers__high_cpu_count(
-    mock_llm_util_init, mock_cpu_count, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -243,12 +194,7 @@ def test__llm_util___set_workers__high_cpu_count(
     assert llm_util.config.max_concurrent_requests == 32
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___num_tokens_consumed(
-    mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___num_tokens_consumed():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -265,12 +211,7 @@ def test__llm_util___num_tokens_consumed(
 
 
 @patch.object(Encoding, "encode", side_effect=Exception("Encoding error"))
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___num_tokens_consumed__exception(
-    mock_encode, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___num_tokens_consumed__exception(mock_encode):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -286,10 +227,7 @@ def test__llm_util___num_tokens_consumed__exception(
     )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__create_api_message(mock_log_init, mock_log_info, mock_log_exception):
+def test__create_api_message():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -322,10 +260,7 @@ def create_mock_chat_completion(
     )
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___compute_costs(mock_log_init, mock_log_info, mock_log_exception):
+def test__llm_util___compute_costs():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -345,12 +280,7 @@ def test__llm_util___compute_costs(mock_log_init, mock_log_info, mock_log_except
 
 
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___analyse_text_chunk(
-    mock_num_tokens_consumed, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
     expected_result = (mock_chat_completion, redaction_strings)
@@ -383,11 +313,8 @@ def test__llm_util___analyse_text_chunk(
 
 
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
 def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
-    mock_num_tokens_consumed, mock_log_init, mock_log_info, mock_log_exception
+    mock_num_tokens_consumed,
 ):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
@@ -420,12 +347,7 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
 @patch.object(
     LLMUtil, "invoke_chain", side_effect=Exception("Some LLM invocation error")
 )
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___analyse_text_chunk__exception(
-    mock_invoke_chain, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___analyse_text_chunk__exception(mock_invoke_chain):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -441,12 +363,7 @@ def test__llm_util___analyse_text_chunk__exception(
     )
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util___analyse_text_chunk__retry_on_exception(
-    mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util___analyse_text_chunk__retry_on_exception():
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
@@ -475,10 +392,7 @@ def test__llm_util___analyse_text_chunk__retry_on_exception(
         assert actual_result[1] == redaction_strings
 
 
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util__analyse_text(mock_log_init, mock_log_info, mock_log_exception):
+def test__llm_util__analyse_text():
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
     )
@@ -521,12 +435,7 @@ def test__llm_util__analyse_text(mock_log_init, mock_log_info, mock_log_exceptio
 
 
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util__analyse_text__check_pool_size(
-    mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util__analyse_text__check_pool_size():
     llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
 
@@ -554,12 +463,7 @@ def test__llm_util__analyse_text__check_pool_size(
 
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
 @patch("core.util.llm_util.os.cpu_count", return_value=8)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util__analyse_text__override_pool_size(
-    mock_cpu_count, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
     llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
 
@@ -594,12 +498,7 @@ def test__llm_util__analyse_text__override_pool_size(
 
 
 @patch("time.sleep", return_value=None)
-@patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
-def test__llm_util__analyse_text__budget_exceeded(
-    mock_time_sleep, mock_log_init, mock_log_info, mock_log_exception
-):
+def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1-nano",
         budget=12.0,

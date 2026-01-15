@@ -30,9 +30,8 @@ class MockIO:
 
 def test__redaction_manager__init():
     job_id = "some_job_id"
-    with mock.patch.object(LoggingUtil, "__init__", return_value=None):
-        inst = RedactionManager("some_job_id")
-        assert inst.job_id == job_id
+    inst = RedactionManager("some_job_id")
+    assert inst.job_id == job_id
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -256,11 +255,7 @@ def check__log_exception__azure_blob_write__logging_util_called(
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
-@mock.patch.object(LoggingUtil, "__init__", return_value=None)
-@mock.patch.object(LoggingUtil, "log_exception", return_value=None)
 def test__redaction_manager__log_exception(
-    mock_log_exception,
-    mock_log_init,
     mock_blob_write,
     mock_blob_init,
     mock_init,
