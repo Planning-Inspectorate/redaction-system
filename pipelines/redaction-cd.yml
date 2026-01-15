@@ -4,7 +4,7 @@ name: Redaction CD
 parameters:
 # User-specified environment to deploy to
 - name: env
-  default: 'dev'
+  default: 'Dev'
   values:
   - 'Dev'
   - 'Test'
