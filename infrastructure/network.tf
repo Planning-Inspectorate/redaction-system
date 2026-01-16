@@ -72,6 +72,24 @@ resource "azurerm_private_dns_zone" "redaction_function" {
   resource_group_name = azurerm_resource_group.redaction_rg.name
 }
 
+resource "azurerm_private_dns_zone_virtual_network_link" "redaction_blob" {
+  name                  = "blob-${azurerm_virtual_network.redaction_system.name}"
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  private_dns_zone_name = azurerm_private_dns_zone.redaction_blob.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+
+  tags = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "redaction_function" {
+  name                  = "blob-${azurerm_virtual_network.redaction_system.name}"
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  private_dns_zone_name = azurerm_private_dns_zone.redaction_function.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+
+  tags = local.tags
+}
+
 ############################################################################
 # Private endpoints
 ############################################################################
