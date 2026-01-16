@@ -16,14 +16,6 @@ resource "azurerm_subnet" "redaction_system" {
   address_prefixes     = [var.subnet_cidr_block]
   virtual_network_name = azurerm_virtual_network.redaction_system.name
   service_endpoints    = ["Microsoft.Storage"]
-
-  delegation {
-    name = "RedactionSubnetDelegation"
-    service_delegation {
-      name    = "Microsoft.Web/serverFarms"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
-    }
-  }
 }
 
 data "azurerm_virtual_network" "tooling" {
