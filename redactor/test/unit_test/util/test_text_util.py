@@ -1,4 +1,4 @@
-from redactor.core.util.text_util import is_english_text
+from core.util.text_util import is_english_text
 
 
 def test__is_english_text__detects_english():

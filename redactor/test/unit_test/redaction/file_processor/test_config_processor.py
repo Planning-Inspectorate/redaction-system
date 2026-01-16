@@ -1,7 +1,7 @@
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
-from redactor.core.redaction.config_processor import ConfigProcessor
-from redactor.core.redaction.redactor import Redactor, RedactorFactory
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
+from core.redaction.config_processor import ConfigProcessor
+from core.redaction.redactor import Redactor, RedactorFactory
 import mock
 import pytest
 
@@ -65,6 +65,50 @@ def test__config_processor__load_config():
         assert ConfigProcessor.load_config("some_file") == expected_output
 
 
+def test__config_processor__validate_and_parse_redaction_config():
+    """
+    - Given I have some config as a dictionary
+    - When I call validate_and_parse_redaction_config
+    - Then the config dictionary should be converted to a concrete RedactionConfig class, based on the redactor_type property
+    """
+    # config = [{"name": "redaction rule A", "redactor_type": "A"}]
+    config = {
+        "redactors": [
+            {"redactor_type": "A", "redaction_rules": [{"name": "redaction rule A"}]}
+        ],
+        "other_property": [],
+    }
+    expected_output = [RedactionConfigInstA(name="redaction rule A", redactor_type="A")]
+    with mock.patch.object(
+        RedactorFactory,
+        "REDACTOR_TYPES",
+        [RedactorInstA, RedactorInstB, RedactorInstC],
+    ):
+        actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
+        assert expected_output == actual_output
+
+
+def test_config_processor__validate_and_parse_redaction_config__with_list_of_configs():
+    config = {
+        "redactors": [
+            {"redactor_type": "A", "redaction_rules": [{"name": "redaction rule A"}]},
+            {"redactor_type": "B", "redaction_rules": [{"name": "redaction rule B"}]},
+        ],
+        "other_property": [],
+    }
+    expected_output = [
+        RedactionConfigInstA(name="redaction rule A", redactor_type="A"),
+        RedactionConfigInstB(name="redaction rule B", redactor_type="B"),
+    ]
+    with mock.patch.object(
+        RedactorFactory,
+        "REDACTOR_TYPES",
+        [RedactorInstA, RedactorInstB, RedactorInstC],
+    ):
+        actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
+        assert expected_output == actual_output
+
+
 def test__config_processor__validate_and_filter_config():
     """
     - Given I have some config and a file processor class
@@ -73,9 +117,12 @@ def test__config_processor__validate_and_filter_config():
     """
     file_processor_class = FileProcessorInst
     config = {
-        "redaction_rules": [{"name": "redaction rule A", "redactor_type": "A"}],
+        "redactors": [
+            {"redactor_type": "A", "redaction_rules": {"name": "redaction rule A"}}
+        ],
         "other_property": [],
     }
+
     expected_output = {
         "redaction_rules": [
             RedactionConfigInstA(name="redaction rule A", redactor_type="A")
@@ -98,23 +145,6 @@ def test__config_processor__validate_and_filter_config():
                 config, file_processor_class
             )
             assert expected_output == actual_output
-
-
-def test__config_processor__validate_and_parse_redaction_config():
-    """
-    - Given I have some config as a dictionary
-    - When I call validate_and_parse_redaction_config
-    - Then the config dictionary should be converted to a concrete RedactionConfig class, based on the redactor_type property
-    """
-    config = [{"name": "redaction rule A", "redactor_type": "A"}]
-    expected_output = [RedactionConfigInstA(name="redaction rule A", redactor_type="A")]
-    with mock.patch.object(
-        RedactorFactory,
-        "REDACTOR_TYPES",
-        [RedactorInstA, RedactorInstB, RedactorInstC],
-    ):
-        actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
-        assert expected_output == actual_output
 
 
 def test__config_processor__convert_to_redaction_config():

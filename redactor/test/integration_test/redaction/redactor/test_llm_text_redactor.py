@@ -1,5 +1,5 @@
-from redactor.core.redaction.redactor import LLMTextRedactor
-from redactor.core.redaction.config import (
+from core.redaction.redactor import LLMTextRedactor
+from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 
@@ -21,7 +21,7 @@ def test__llm_text_redactor__redact():
             "You will be sent text to analyse. The text is a quote from Star Wars. "
             "Please find all strings in the text that adhere to the following rules: "
         ),
-        "redaction_rules": [
+        "redaction_terms": [
             "The names of characters",
             "Religions",
             "Genders, such as she, her, he, him, they, their",

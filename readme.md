@@ -39,8 +39,16 @@ This repository defines the automated redaction that is available to PINS servic
 4. Install the requirements using `python3 -m pip install -r redactor/requirements.txt`
 5. You may need to run the below command to set up your Python environment
    1. `export PYTHONPATH="${PYTHONPATH}:/./"`
-6. Run specific Python files using `python3 path/to/file/to/run.py`
-   1. NOTE: Currently the redaction process can be run using `redactor/core/main.py` , more info cam be found within this file
+
+
+## Running python files locally
+- Run specific Python files using `python3 path/to/file/to/run.py`
+    - NOTE: Currently the redaction process can be run using `redactor/core/main.py` , more info cam be found within this file
+
+## Running the function app
+- Install the core functions tools https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local?tabs=macos%2Cisolated-process%2Cnode-v4%2Cpython-v2%2Chttp-trigger%2Ccontainer-apps&pivots=programming-language-python
+- run `func start`
+- You can then connect to the function via http requests, or via the Azure portal
 
 # Environmment variables
 

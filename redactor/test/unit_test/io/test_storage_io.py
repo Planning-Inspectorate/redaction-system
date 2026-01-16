@@ -1,13 +1,16 @@
 from io import BytesIO
 import pytest
 
-from redactor.core.io.storage_io import StorageIO
+from core.io.storage_io import StorageIO
 
 
 class DummyStorage(StorageIO):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.ops = []
+
+    def get_kind(self):
+        return "dummy"
 
     def read(self, container_name: str, blob_path: str) -> BytesIO:
         self.ops.append(("read", container_name, blob_path))

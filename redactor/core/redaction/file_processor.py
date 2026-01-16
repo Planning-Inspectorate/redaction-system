@@ -9,28 +9,30 @@ from io import BytesIO
 from unidecode import unidecode
 from unicodedata import category
 
-from redactor.core.redaction.redactor import (
+from PIL import Image
+from pydantic import BaseModel
+
+from core.redaction.redactor import (
     Redactor,
     TextRedactor,
     ImageRedactor,
     RedactorFactory,
 )
-from redactor.core.redaction.exceptions import (
+from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
     FileProcessorNameNotFoundException,
     UnprocessedRedactionResultException,
     NonEnglishContentException,
 )
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.result import (
+from core.redaction.config import RedactionConfig
+from core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
     ImageRedactionResult,
 )
-from redactor.core.util.text_util import is_english_text
-from redactor.core.util.types import PydanticImage
-from PIL import Image
-from pydantic import BaseModel
+from core.util.text_util import is_english_text
+from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.types import PydanticImage
 
 
 class FileProcessor(ABC):
@@ -220,6 +222,7 @@ class PDFProcessor(FileProcessor):
             }
         )
 
+    @log_to_appins
     def _apply_provisional_text_redactions(
         self, file_bytes: BytesIO, text_to_redact: List[str]
     ):
@@ -237,15 +240,20 @@ class PDFProcessor(FileProcessor):
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
         for word_to_redact in text_to_redact:
             for page in pdf:
-                print("searchin for word: ", word_to_redact)
+                LoggingUtil().log_info("Searching for word: " + word_to_redact)
                 text_instances = page.search_for(word_to_redact)
                 for inst in text_instances:
                     instances_to_redact.append((page, inst, word_to_redact))
-        print(f"    Applying {len(instances_to_redact)} redaction highlights")
+        LoggingUtil().log_info(
+            f"    Applying {len(instances_to_redact)} redaction highlights"
+        )
         # Apply provisional redaction highlights for the human-in-the-loop to review
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
-            print(f"        Applying highlight {i} for word {redaction_inst}")
+            LoggingUtil().log_info(
+                f"        Applying highlight {i} for word {word} at location '{rect}'"
+                f"on page {page.number}"
+            )
             try:
                 # Only redact text that is fully matched - do not apply partial redactions
                 actual_text_at_rect = page.get_textbox(rect)
@@ -253,13 +261,13 @@ class PDFProcessor(FileProcessor):
                 if self._is_full_text_being_redacted(word, actual_text_at_rect):
                     self._add_provisional_redaction(page, rect)
                 else:
-                    print(
+                    LoggingUtil().log_info(
                         "Partial redaction found when attempting to redact "
                         f"'{word}'. The surroundig box contains "
                         f"'{actual_text_at_rect}'. Skipping"
                     )
             except Exception:
-                print(
+                LoggingUtil().log_info(
                     f"        Failed to add highlight for word {word}, at "
                     f"location '{rect}'"
                 )
@@ -353,17 +361,15 @@ class PDFProcessor(FileProcessor):
         transformed = normalised_bbox.transform(image_transform)
         return transformed
 
+    @log_to_appins
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
         if not is_english_text(pdf_text):
-            print(
+            LoggingUtil().log_exception(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
-            raise NonEnglishContentException(
-                "Detected non-English or insufficient English content in "
-                "document; skipping provisional redactions."
-            )
+            raise NonEnglishContentException
         pdf_images = self._extract_pdf_images(file_bytes)
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
@@ -418,7 +424,10 @@ class PDFProcessor(FileProcessor):
         )
         return new_file_bytes
 
+    @log_to_appins
     def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+        LoggingUtil().log_info("Redacting PDF")
+
         def is_float(string: str):
             try:
                 float(string)
@@ -426,7 +435,6 @@ class PDFProcessor(FileProcessor):
             except ValueError:
                 return False
 
-        print("Redacting PDF")
         pdf = pymupdf.open(stream=file_bytes)
         for page in pdf:
             page_annotations = page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)

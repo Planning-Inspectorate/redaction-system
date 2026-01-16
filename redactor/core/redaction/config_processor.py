@@ -6,10 +6,10 @@ from yaml import safe_load
 
 from typing import Type, List, Any, Dict
 
-from redactor.core.redaction.redactor import RedactorFactory
-from redactor.core.redaction.exceptions import InvalidRedactionConfigException
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
+from core.redaction.redactor import RedactorFactory
+from core.redaction.exceptions import InvalidRedactionConfigException
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
 
 
 class ConfigProcessor:
@@ -35,14 +35,17 @@ class ConfigProcessor:
             redactor_class.get_name(): redactor_class.get_redaction_config_class()
             for redactor_class in all_redactors
         }
-        # Validate the redaction config, and convert the config into
-        # RedactionConfig objects
-        flattened_redaction_config = [
-            {"redactor_type": rule_config.get("redactor_type", None)}
-            | rule_config.get("properties", dict())
-            | {"name": rule_config.get("name", dict())}
-            for rule_config in redaction_config
-        ]
+
+        # Validate the redaction config, and convert the config into RedactionConfig objects
+        flattened_redaction_config = []
+        for redactor in redaction_config.get("redactors", []):
+            redactor_type = redactor.get("redactor_type", None)
+            for rule in redactor.get("redaction_rules", []):
+                flattened_redaction_config.append(
+                    {"redactor_type": redactor_type, **rule}
+                )
+
+        # Check all redactor types are valid
         invalid_redaction_config = [
             x
             for x in flattened_redaction_config
@@ -53,6 +56,7 @@ class ConfigProcessor:
                 "The following redaction config items have no associated "
                 f"redactor_type: {json.dumps(invalid_redaction_config, indent=4)}"
             )
+
         return [
             cls.convert_to_redaction_config(
                 rule_config, redaction_config_name_map.get(rule_config["redactor_type"])
@@ -121,13 +125,14 @@ class ConfigProcessor:
         # Validate the redaction config, and convert the config into
         # RedactionConfig objects
         formatted_redaction_config = cls.validate_and_parse_redaction_config(
-            config_copy["redaction_rules"]
+            config_copy
         )
         # Drop the config elements that are not applicable for the given file
         # processor
         filtered_redaction_config = cls.filter_redaction_config(
             formatted_redaction_config, file_processor_class
         )
+        config_copy.pop("redactors")
         config_copy["redaction_rules"] = filtered_redaction_config
         return config_copy
 
@@ -140,7 +145,7 @@ class ConfigProcessor:
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = os.path.join("redactor", "config", f"{config_name}.yaml")
+        config_path = os.path.join("config", f"{config_name}.yaml")
         with open(config_path, "r") as f:
             config = safe_load(f)
         return config

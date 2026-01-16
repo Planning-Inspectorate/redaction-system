@@ -1,7 +1,10 @@
 azure-ai-vision-imageanalysis==1.0.0
+azure-functions==1.24.0
+azure-functions-durable==1.4.0
 azure-identity==1.25.1
 azure-storage-blob==12.23.1
 coverage==7.12.0
+filelock==3.20.3
 langchain==1.1.0
 langchain-text-splitters==1.0.0
 mock==5.2.0
@@ -16,8 +19,11 @@ PyMuPDF==1.26.6
 pytest==9.0.1
 pytest-xdist==3.8.0
 pytest-cov==7.0.0
+pytest-rerunfailures==16.1
 PyYAML==6.0.3
 ruff==0.14.7
 unidecode==1.4.0
 pypdf>=4.0.0
 langdetect==1.0.9
+azure-monitor-opentelemetry==1.8.3
+tiktoken==0.12.0
