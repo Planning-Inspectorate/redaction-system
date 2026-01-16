@@ -153,6 +153,7 @@ resource "azurerm_cognitive_account" "open_ai" {
   resource_group_name = azurerm_resource_group.redaction_rg.name
   kind                = "OpenAI"
   sku_name            = "S0"
+  custom_subdomain_name = "pins-redaction-openai-${var.environment}-${local.location_short}"
   identity {
     type = "SystemAssigned"
   }
@@ -168,6 +169,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
   resource_group_name = azurerm_resource_group.redaction_rg.name
   kind                = "ComputerVision"
   sku_name            = "F0"
+  custom_subdomain_name = "pins-redaction-computervision-${var.environment}-${local.location_short}"
   identity {
     type = "SystemAssigned"
   }
