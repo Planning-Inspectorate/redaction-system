@@ -72,7 +72,7 @@ resource "azurerm_private_endpoint" "redaction_storage" {
 
   private_dns_zone_group {
     name                 = "blobDnsZone"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.blob]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.blob.id]
   }
 
   private_service_connection {
@@ -93,7 +93,7 @@ resource "azurerm_private_endpoint" "function_app" {
 
   private_dns_zone_group {
     name                 = "functionDnsZone"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.function]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.function.id]
   }
 
   private_service_connection {
@@ -114,7 +114,7 @@ resource "azurerm_private_endpoint" "open_ai" {
 
   private_dns_zone_group {
     name                 = "openAIDnsZone"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
   }
 
   private_service_connection {
@@ -135,7 +135,7 @@ resource "azurerm_private_endpoint" "computer_vision" {
 
   private_dns_zone_group {
     name                 = "computerVisionDnsZone"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
   }
 
   private_service_connection {
