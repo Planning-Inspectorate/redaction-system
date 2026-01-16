@@ -36,7 +36,7 @@ data "azurerm_virtual_network" "tooling" {
 ############################################################################
 # DNS zone
 ############################################################################
-/*
+
 data "azurerm_private_dns_zone" "blob" {
   name                = "privatelink.blob.core.windows.net"
   resource_group_name = local.tooling_config.network_rg
@@ -52,40 +52,12 @@ data "azurerm_private_dns_zone" "function" {
 
   tags = local.tags
 }
-*/
+
 
 data "azurerm_private_dns_zone" "ai" {
   name                = "privatelink.cognitiveservices.azure.com"
   resource_group_name = local.tooling_config.network_rg
   provider            = azurerm.tooling
-
-  tags = local.tags
-}
-
-resource "azurerm_private_dns_zone" "redaction_blob" {
-  name                = "privatelink.blob.core.windows.net"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-}
-
-resource "azurerm_private_dns_zone" "redaction_function" {
-  name                = "privatelink.azurewebsites.net"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "redaction_blob" {
-  name                  = "blob-${azurerm_virtual_network.redaction_system.name}"
-  resource_group_name   = azurerm_resource_group.redaction_rg.name
-  private_dns_zone_name = azurerm_private_dns_zone.redaction_blob.name
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-
-  tags = local.tags
-}
-
-resource "azurerm_private_dns_zone_virtual_network_link" "redaction_function" {
-  name                  = "blob-${azurerm_virtual_network.redaction_system.name}"
-  resource_group_name   = azurerm_resource_group.redaction_rg.name
-  private_dns_zone_name = azurerm_private_dns_zone.redaction_function.name
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
 
   tags = local.tags
 }
@@ -101,7 +73,7 @@ resource "azurerm_private_endpoint" "redaction_storage" {
 
   private_dns_zone_group {
     name                 = "blobDnsZone"
-    private_dns_zone_ids = [azurerm_private_dns_zone.redaction_blob.id]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.blob.id]
   }
 
   private_service_connection {
@@ -122,7 +94,7 @@ resource "azurerm_private_endpoint" "function_app" {
 
   private_dns_zone_group {
     name                 = "functionDnsZone"
-    private_dns_zone_ids = [azurerm_private_dns_zone.redaction_function.id]
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.function.id]
   }
 
   private_service_connection {
