@@ -72,12 +72,12 @@ resource "azurerm_private_endpoint" "redaction_storage" {
   subnet_id           = azurerm_subnet.redaction_system.id
 
   private_dns_zone_group {
-    name                 = "blobDnsZone"
+    name                 = "pins-pdns-${local.service_name}-storage-${var.environment}"
     private_dns_zone_ids = [data.azurerm_private_dns_zone.blob.id]
   }
 
   private_service_connection {
-    name                           = "blob"
+    name                           = "pins-psc-${local.service_name}-storage-${var.environment}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_storage_account.redaction_storage.id
     subresource_names              = ["blob"]
@@ -93,12 +93,12 @@ resource "azurerm_private_endpoint" "function_app" {
   subnet_id           = azurerm_subnet.redaction_system.id
 
   private_dns_zone_group {
-    name                 = "functionDnsZone"
+    name                 = "pins-pdns-${local.service_name}-functionapp-${var.environment}"
     private_dns_zone_ids = [data.azurerm_private_dns_zone.function.id]
   }
 
   private_service_connection {
-    name                           = "function"
+    name                           = "pins-psc-${local.service_name}-functionapp-${var.environment}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_linux_function_app.redaction_system.id
     subresource_names              = ["sites"]
@@ -114,12 +114,12 @@ resource "azurerm_private_endpoint" "open_ai" {
   subnet_id           = azurerm_subnet.redaction_system.id
 
   private_dns_zone_group {
-    name                 = "openAIDnsZone"
+    name                 = "pins-pdns-${local.service_name}-openai-cognitive-${var.environment}"
     private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
   }
 
   private_service_connection {
-    name                           = "openAI"
+    name                           = "pins-psc-${local.service_name}-openai-cognitive-${var.environment}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_cognitive_account.open_ai.id
     subresource_names              = ["account"]
@@ -135,12 +135,12 @@ resource "azurerm_private_endpoint" "computer_vision" {
   subnet_id           = azurerm_subnet.redaction_system.id
 
   private_dns_zone_group {
-    name                 = "computerVisionDnsZone"
+    name                 = "pins-pdns-${local.service_name}-computervision-${var.environment}"
     private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
   }
 
   private_service_connection {
-    name                           = "computerVision"
+    name                           = "pins-psc-${local.service_name}-computervision-${var.environment}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
     subresource_names              = ["account"]
