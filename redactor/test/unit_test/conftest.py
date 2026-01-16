@@ -1,3 +1,4 @@
+from test.util.conftest_util import configure_session, session_setup, session_teardown  # noqa: F401
 import pytest
 
 from mock import patch
@@ -13,3 +14,7 @@ def mock_logging_util(request):
             with patch.object(LoggingUtil, "log_info", return_value=None):
                 with patch.object(LoggingUtil, "log_exception", return_value=None):
                     yield
+
+
+def pytest_configure():
+    configure_session()
