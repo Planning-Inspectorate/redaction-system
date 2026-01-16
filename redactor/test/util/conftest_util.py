@@ -81,7 +81,7 @@ def process_arguments(session) -> List[Type[TestCase]]:
     pytest_args = session.config.invocation_params.args
     directory_args = [x.replace(".py", "") for x in pytest_args if x.startswith("test")]
     # If no arguments were given or if no specific python files were given then
-    # all unit tests are being executed
+    # all tests are being executed
     if not directory_args:
         return test_cases
     test_case_module_map = {
@@ -97,7 +97,7 @@ def process_arguments(session) -> List[Type[TestCase]]:
 
 
 def _session_setup_task(session):
-    logging.info("Setting up pytest session for unit tests")
+    logging.info("Setting up pytest session for tests")
     # Test-specific resources
     for test_case in process_arguments(session):
         logging.info("    Running setup for " + test_case.__module__)
