@@ -39,6 +39,7 @@ data "azurerm_virtual_network" "tooling" {
 data "azurerm_private_dns_zone" "blob" {
   name                = "privatelink.blob.core.windows.net"
   resource_group_name = local.tooling_config.network_rg
+  provider            = azurerm.tooling
 
   tags = local.tags
 }
@@ -46,6 +47,7 @@ data "azurerm_private_dns_zone" "blob" {
 data "azurerm_private_dns_zone" "function" {
   name                = "privatelink.azurewebsites.net"
   resource_group_name = local.tooling_config.network_rg
+  provider            = azurerm.tooling
 
   tags = local.tags
 }
@@ -54,6 +56,7 @@ data "azurerm_private_dns_zone" "function" {
 data "azurerm_private_dns_zone" "ai" {
   name                = "privatelink.cognitiveservices.azure.com"
   resource_group_name = local.tooling_config.network_rg
+  provider            = azurerm.tooling
 
   tags = local.tags
 }
@@ -97,7 +100,7 @@ resource "azurerm_private_endpoint" "function_app" {
     name                           = "function"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_linux_function_app.redaction_system.id
-    subresource_names              = ["azurewebsites"]
+    subresource_names              = ["sites"]
   }
 
   tags = local.tags
@@ -118,7 +121,7 @@ resource "azurerm_private_endpoint" "open_ai" {
     name                           = "openAI"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_cognitive_account.open_ai.id
-    subresource_names              = ["cognitiveservices"]
+    subresource_names              = ["account"]
   }
 
   tags = local.tags
@@ -139,7 +142,7 @@ resource "azurerm_private_endpoint" "computer_vision" {
     name                           = "computerVision"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
-    subresource_names              = ["cognitiveservices"]
+    subresource_names              = ["account"]
   }
 
   tags = local.tags
