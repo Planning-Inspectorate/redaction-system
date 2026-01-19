@@ -80,7 +80,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   for_each = {for idx, val in local.storage_subresources: idx => val}
   name                  = "pins-vnetlink-${each.value}-redaction-system-${var.environment}"
   resource_group_name   = azurerm_resource_group.redaction_rg.name
-  private_dns_zone_name = data.azurerm_private_dns_zone.storage.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.storage[each.key].name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
 
   tags = local.tags
