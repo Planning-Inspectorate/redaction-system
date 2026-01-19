@@ -1,4 +1,3 @@
-/*
 ############################################################################
 # Virtual networks
 ############################################################################
@@ -179,5 +178,3 @@ resource "azurerm_virtual_network_peering" "tooling_to_redaction" {
 
   provider = azurerm.tooling
 }
-
-*/
