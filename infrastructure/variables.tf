@@ -45,3 +45,8 @@ variable "subnet_cidr_block" {
   description = "The CIDR range for the subnet"
   type        = string
 }
+
+variable "functionapp_cidr_block" {
+  description = "The CIDR range for the function app's subnet"
+  type        = string
+}

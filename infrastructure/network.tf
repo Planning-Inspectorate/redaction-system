@@ -19,6 +19,23 @@ resource "azurerm_subnet" "redaction_system" {
   private_endpoint_network_policies = "Enabled"
 }
 
+resource "azurerm_subnet" "function_app" {
+  name                 = "FunctionAppSubnet"
+  resource_group_name  = azurerm_resource_group.redaction_rg.name
+  address_prefixes     = [var.functionapp_cidr_block]
+  virtual_network_name = azurerm_virtual_network.redaction_system.name
+  service_endpoints    = ["Microsoft.Storage"]
+  private_endpoint_network_policies = "Enabled"
+
+  delegation {
+    name = "functionAppDelegation"
+    service_delegation {
+      name    = "Microsoft.Web/serverFarms"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+    }
+  }
+}
+
 data "azurerm_virtual_network" "tooling" {
   name                = local.tooling_config.network_name
   resource_group_name = local.tooling_config.network_rg
