@@ -16,12 +16,19 @@ def quiet_azure_noise_early():
     """
     Must run BEFORE importing app/test modules that might initialise Azure Monitor / OTel.
     """
-    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in ("1", "true", "yes", "y")
+    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+    )
 
     if not want_http:
         # Common noisy Azure loggers
         logging.getLogger("azure").setLevel(logging.WARNING)
-        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+            logging.WARNING
+        )
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
         logging.getLogger("azure.monitor").setLevel(logging.WARNING)
         logging.getLogger("opentelemetry").setLevel(logging.WARNING)
@@ -35,12 +42,13 @@ def quiet_azure_noise_early():
 
 _CONFIGURED = False
 
+
 def configure_session():
     global _CONFIGURED
     if _CONFIGURED:
         return
     _CONFIGURED = True
-    quiet_azure_noise_early()   # <-- IMPORTANT: before any imports
+    quiet_azure_noise_early()  # <-- IMPORTANT: before any imports
     load_dotenv(verbose=True, override=True)
     if "RUN_ID" not in os.environ:
         run_id = str(uuid4())[:8]
@@ -165,14 +173,18 @@ def session_setup(tmp_path_factory, worker_id, request):
                 fn.write_text("Failed")
                 raise e
 
+
 def _session_teardown_task(session):
     logging.info("Tearing down pytest session for unit tests")
     for test_case in process_arguments(session):
         logging.info("    Running teardown for " + test_case.__module__)
         t0 = time.perf_counter()
         test_case().session_teardown()
-        logging.info("    Teardown complete for %s (%.2fs)", test_case.__module__, time.perf_counter() - t0)
-
+        logging.info(
+            "    Teardown complete for %s (%.2fs)",
+            test_case.__module__,
+            time.perf_counter() - t0,
+        )
 
     # Best-effort: stop OTel providers if they exist
     try:
@@ -190,7 +202,6 @@ def _session_teardown_task(session):
             shutdown()
     except Exception:
         pass
-
 
 
 @pytest.fixture(scope="session", autouse=True)
