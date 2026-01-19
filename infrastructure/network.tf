@@ -16,6 +16,7 @@ resource "azurerm_subnet" "redaction_system" {
   address_prefixes     = [var.subnet_cidr_block]
   virtual_network_name = azurerm_virtual_network.redaction_system.name
   service_endpoints    = ["Microsoft.Storage"]
+  private_endpoint_network_policies = "Enabled"
 }
 
 data "azurerm_virtual_network" "tooling" {

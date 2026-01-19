@@ -46,6 +46,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   shared_access_key_enabled        = true
   default_to_oauth_authentication  = true
   public_network_access_enabled    = false
+  https_traffic_only_enabled = true
   tags                             = local.tags
 
   blob_properties {
@@ -60,6 +61,11 @@ resource "azurerm_storage_account" "redaction_storage" {
 
   sas_policy {
     expiration_period = "01.12:00:00"
+  }
+
+  network_rules {
+    default_action = "Deny"
+    bypass         = ["AzureServices"]   # Keep Azure platform services in scope
   }
 }
 
@@ -94,6 +100,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
   storage_account_name       = azurerm_storage_account.redaction_storage.name
   storage_account_access_key = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id            = azurerm_service_plan.redaction_system.id
+  virtual_network_subnet_id = azurerm_subnet.redaction_system.id
 
   site_config {
     application_stack {
