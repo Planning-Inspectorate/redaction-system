@@ -118,23 +118,26 @@ extends:
 
               echo "Starting Azurite..."
               mkdir -p .azurite
-              nohup azurite --silent --location .azurite --debug .azurite/azurite-debug.log > azurite.log 2>&1 &
+              nohup azurite \
+                --silent \
+                --location .azurite \
+                --debug .azurite/azurite-debug.log \
+                > azurite.log 2>&1 &
               echo $! > azurite.pid
 
-              echo "Waiting for Azurite (blob 10000, queue 10001)..."
+              echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
               for i in {1..60}; do
-                (curl -sSf http://127.0.0.1:10000/devstoreaccount1?comp=list >/dev/null 2>&1) && break || true
+                if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
+                  echo "Azurite ports are open"
+                  exit 0
+                fi
                 sleep 2
               done
 
-              curl -sSf http://127.0.0.1:10000/devstoreaccount1?comp=list >/dev/null 2>&1 || {
-                echo "Azurite did not become ready. Last 200 lines:"
-                tail -n 200 azurite.log || true
-                tail -n 200 .azurite/azurite-debug.log || true
-                exit 1
-              }
-
-              echo "Azurite is up"
+              echo "Azurite did not become ready. Last 200 lines:"
+              tail -n 200 azurite.log || true
+              tail -n 200 .azurite/azurite-debug.log || true
+              exit 1
             displayName: 'Start Azurite (background) + wait'
 
           - script: |
@@ -169,20 +172,18 @@ extends:
               nohup func start --python --port 7071 --verbose > ../func-host.log 2>&1 &
               echo $! > ../func-host.pid
 
-              echo "Waiting for Functions host to become ready..."
+              echo "Waiting for Functions host (/admin/host/status)..."
               for i in {1..60}; do
                 if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
                   echo "Functions host is up"
-                  break
+                  exit 0
                 fi
                 sleep 2
               done
 
-              curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1 || {
-                echo "Functions host did not become ready. Last 200 lines of host log:"
-                tail -n 200 ../func-host.log || true
-                exit 1
-              }
+              echo "Functions host did not become ready. Last 200 lines:"
+              tail -n 200 ../func-host.log || true
+              exit 1
             displayName: 'Start local Azure Functions host (background) + wait'
 
           - script: |
@@ -190,8 +191,6 @@ extends:
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
-              # E2E tests call the local Functions host (7071),
-              # but upload/download blobs using az CLI auth against real storage.
               export E2E_FUNCTION_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
               export E2E_CONTAINER_NAME="pinsfuncredactionsystemtestuks-applease"
@@ -223,12 +222,11 @@ extends:
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish func host + azurite logs'
+            displayName: 'Publish e2e logs'
             condition: always()
             inputs:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
               ArtifactName: 'e2e-local-logs'
-
 
 
 
