@@ -12,6 +12,12 @@ locals {
 
     ]
   )
+  storage_subresources = [
+    "blob",
+    "queue",  # Needed for Azure Durable functions
+    "table",
+    "file"
+  ]
   tooling_config = {
     network_name    = "pins-vnet-shared-tooling-uks"
     network_rg      = "pins-rg-shared-tooling-uks"

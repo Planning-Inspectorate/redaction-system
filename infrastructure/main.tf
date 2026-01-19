@@ -100,8 +100,8 @@ resource "azurerm_linux_function_app" "redaction_system" {
   storage_account_name       = azurerm_storage_account.redaction_storage.name
   storage_account_access_key = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id            = azurerm_service_plan.redaction_system.id
-  virtual_network_subnet_id = null
-  #virtual_network_subnet_id = azurerm_subnet.function_app.id
+  public_network_access_enabled = false
+  virtual_network_subnet_id = azurerm_subnet.function_app.id
 
   site_config {
     application_stack {
@@ -123,6 +123,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     "AZURE_VISION_ENDPOINT"                    = azurerm_cognitive_account.computer_vision.endpoint
     "AZURE_VISION_KEY"                         = azurerm_cognitive_account.computer_vision.primary_access_key
     "APP_INSIGHTS_CONNECTION_STRING"           = azurerm_application_insights.redaction_system.connection_string
+    "WEBSITE_CONTENTOVERVNET" = 1
   }
 }
 

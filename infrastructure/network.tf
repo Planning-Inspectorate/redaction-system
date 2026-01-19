@@ -1,4 +1,3 @@
-/*
 ############################################################################
 # Virtual networks
 ############################################################################
@@ -48,8 +47,9 @@ data "azurerm_virtual_network" "tooling" {
 # DNS zone
 ############################################################################
 
-data "azurerm_private_dns_zone" "blob" {
-  name                = "privatelink.blob.core.windows.net"
+data "azurerm_private_dns_zone" "storage" {
+  for_each = {for idx, val in local.storage_subresources: idx => val}
+  name                = "privatelink.${each.value}.core.windows.net"
   resource_group_name = local.tooling_config.network_rg
   provider            = azurerm.tooling
 
@@ -77,28 +77,29 @@ data "azurerm_private_dns_zone" "ai" {
 # Private endpoints
 ############################################################################
 resource "azurerm_private_endpoint" "redaction_storage" {
-  name                = "pins-pe-${azurerm_storage_account.redaction_storage.name}"
+  for_each = {for idx, val in local.storage_subresources: idx => val}
+  name                = "pins-pe-${azurerm_storage_account.redaction_storage.name}-${each.value}-${var.environment}"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
   private_dns_zone_group {
-    name                 = "pins-pdns-${local.service_name}-storage-${var.environment}"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.blob.id]
+    name                 = "pins-pdns-${local.service_name}-storage-${each.value}-${var.environment}"
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.storage[each.key].id]
   }
 
   private_service_connection {
-    name                           = "pins-psc-${local.service_name}-storage-${var.environment}"
+    name                           = "pins-psc-${local.service_name}-storage-${each.value}-${var.environment}"
     is_manual_connection           = false
     private_connection_resource_id = azurerm_storage_account.redaction_storage.id
-    subresource_names              = ["blob"]
+    subresource_names              = [each.value]
   }
 
   tags = local.tags
 }
 
 resource "azurerm_private_endpoint" "function_app" {
-  name                = "pins-pe-${azurerm_linux_function_app.redaction_system.name}"
+  name                = "pins-pe-${azurerm_linux_function_app.redaction_system.name}-${var.environment}"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
@@ -179,4 +180,3 @@ resource "azurerm_virtual_network_peering" "tooling_to_redaction" {
 
   provider = azurerm.tooling
 }
-*/
