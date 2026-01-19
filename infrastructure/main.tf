@@ -100,7 +100,8 @@ resource "azurerm_linux_function_app" "redaction_system" {
   storage_account_name       = azurerm_storage_account.redaction_storage.name
   storage_account_access_key = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id            = azurerm_service_plan.redaction_system.id
-  virtual_network_subnet_id = azurerm_subnet.function_app.id
+  virtual_network_subnet_id = null
+  #virtual_network_subnet_id = azurerm_subnet.function_app.id
 
   site_config {
     application_stack {
