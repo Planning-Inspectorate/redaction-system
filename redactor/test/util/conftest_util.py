@@ -3,6 +3,7 @@ from filelock import FileLock
 from dotenv import load_dotenv
 from uuid import uuid4
 from typing import List, Type
+import time
 import os
 import logging
 import pytest
@@ -11,7 +12,35 @@ import inspect
 import importlib
 
 
+def quiet_azure_noise_early():
+    """
+    Must run BEFORE importing app/test modules that might initialise Azure Monitor / OTel.
+    """
+    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in ("1", "true", "yes", "y")
+
+    if not want_http:
+        # Common noisy Azure loggers
+        logging.getLogger("azure").setLevel(logging.WARNING)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.identity").setLevel(logging.WARNING)
+        logging.getLogger("azure.monitor").setLevel(logging.WARNING)
+        logging.getLogger("opentelemetry").setLevel(logging.WARNING)
+
+    # Prevent Azure Monitor / OTel from starting exporters in the first place
+    os.environ.setdefault("AZURE_MONITOR_OPENTELEMETRY_ENABLED", "false")
+    os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
+    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
+    os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
+
+
+_CONFIGURED = False
+
 def configure_session():
+    global _CONFIGURED
+    if _CONFIGURED:
+        return
+    _CONFIGURED = True
+    quiet_azure_noise_early()   # <-- IMPORTANT: before any imports
     load_dotenv(verbose=True, override=True)
     if "RUN_ID" not in os.environ:
         run_id = str(uuid4())[:8]
@@ -77,8 +106,16 @@ def process_arguments(session) -> List[Type[TestCase]]:
     Process the pytest invocation parameters to return a list of test cases whos
     module setup/teardown functions need to be called
     """
-    test_cases = extract_all_test_cases()
     pytest_args = session.config.invocation_params.args
+
+    # If we're doing a marker-only run (e.g. -m e2e), do NOT run the unit/integration
+    # TestCase session_setup/teardown for the whole suite.
+    if "-m" in pytest_args:
+        m_idx = pytest_args.index("-m")
+        if m_idx + 1 < len(pytest_args) and "e2e" in pytest_args[m_idx + 1]:
+            return []
+
+    test_cases = extract_all_test_cases()
     directory_args = [x.replace(".py", "") for x in pytest_args if x.startswith("test")]
     # If no arguments were given or if no specific python files were given then
     # all tests are being executed
@@ -128,12 +165,32 @@ def session_setup(tmp_path_factory, worker_id, request):
                 fn.write_text("Failed")
                 raise e
 
-
 def _session_teardown_task(session):
     logging.info("Tearing down pytest session for unit tests")
     for test_case in process_arguments(session):
         logging.info("    Running teardown for " + test_case.__module__)
+        t0 = time.perf_counter()
         test_case().session_teardown()
+        logging.info("    Teardown complete for %s (%.2fs)", test_case.__module__, time.perf_counter() - t0)
+
+
+    # Best-effort: stop OTel providers if they exist
+    try:
+        from opentelemetry import trace, metrics
+
+        tp = trace.get_tracer_provider()
+        mp = metrics.get_meter_provider()
+
+        shutdown = getattr(tp, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+
+        shutdown = getattr(mp, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+    except Exception:
+        pass
+
 
 
 @pytest.fixture(scope="session", autouse=True)

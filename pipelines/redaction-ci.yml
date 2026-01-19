@@ -91,12 +91,6 @@ extends:
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-
-          # ---------- E2E: start Azurite + Functions host + run tests ----------
-          # ----------------------------
-          # E2E (local Functions host + Azurite)
-          # ----------------------------
-
           - task: NodeTool@0
             displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
             inputs:
