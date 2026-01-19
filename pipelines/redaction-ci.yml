@@ -90,19 +90,68 @@ extends:
               testResultsFiles: '**/integration_test_results.xml'
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
+
+
+          - script: |
+              set -e
+              sudo npm i -g azure-functions-core-tools@4 --unsafe-perm true
+              func --version
+            displayName: 'Install Azure Functions Core Tools'
+
+          - script: |
+              set -e
+              cd redaction-system/redactor
+
+              # Start Functions host in background
+              nohup func start --port 7071 > ../func-host.log 2>&1 &
+              echo $! > ../func-host.pid
+
+              # Wait for host to come up
+              for i in {1..60}; do
+                curl -sSf http://localhost:7071/api/redact >/dev/null 2>&1 && break || true
+                sleep 2
+              done
+
+              echo "Functions host started"
+            displayName: 'Start local Azure Functions host'
+
           - script: |
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
+
+              export E2E_FUNCTION_BASE_URL="http://localhost:7071"
+              export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
+              export E2E_CONTAINER_NAME="pinsfuncredactionsystemtestuks-applease"
+              export E2E_RUN_ID="ado-$(Build.BuildId)"
+              export E2E_SKIP_REDACTION="false"
+              export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
+
               python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
-          - task: PublishTestResults@2
-            displayName: 'Publish e2e test results'
-            condition: succeededOrFailed()
+
+          - script: |
+              set +e
+              echo "Stopping Functions host..."
+              if [ -f redaction-system/func-host.pid ]; then
+                kill $(cat redaction-system/func-host.pid) || true
+              fi
+              pkill -f "func start" || true
+              pkill -f "azure-functions-core-tools" || true
+              pkill -f "workers/python" || true
+              echo "Done"
+            displayName: 'Stop local Azure Functions host'
+            condition: always()
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish func host log'
+            condition: always()
             inputs:
-              testResultsFiles: '**/e2e_test_results.xml'
-              testRunTitle: 'Redaction System e2e test report - $(Build.BuildId) - $(Build.SourceBranch)'
-              mergeTestResults: true
+              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/func-host.log'
+              ArtifactName: 'func-host-log'
+
+
+            
           - script: |
               set -e
               cd redaction-system/redactor

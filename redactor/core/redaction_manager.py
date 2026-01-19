@@ -78,7 +78,7 @@ class RedactionManager:
 
         # Set up connection to redaction storage
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name="pinsstredactiondevuks",
+            storage_name="pinsstredactiontestuks",
         )
 
         # Load the data
@@ -141,7 +141,7 @@ class RedactionManager:
             traceback.TracebackException.from_exception(exception).format()
         )
         AzureBlobIO(
-            storage_name="pinsstredactiondevuks",
+            storage_name="pinsstredactiontestuks",
         ).write(
             data_bytes=error_trace.encode("utf-8"),
             container_name="redactiondata",
@@ -164,7 +164,7 @@ class RedactionManager:
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
                     "blobPath": "hbtCv.pdf",
-                    "storageName": "pinsstredactiondevuks",
+                    "storageName": "pinsstredactiontestuks",
                     "containerName": "hbttest"
                 }
             },
@@ -173,7 +173,7 @@ class RedactionManager:
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
                     "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
-                    "storageName": "pinsstredactiondevuks",
+                    "storageName": "pinsstredactiontestuks",
                     "containerName": "hbttest"
                 }
             }
