@@ -30,6 +30,7 @@ def _dt(t0: float) -> str:
 # Pytest session-wide logging hygiene
 # ----------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def _quiet_azure_noise():
     """
@@ -39,11 +40,18 @@ def _quiet_azure_noise():
     If you *want* Azure HTTP request/response logging, set:
       E2E_AZURE_HTTP_LOGGING=true
     """
-    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in ("1", "true", "yes", "y")
+    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+    )
     if not want_http:
         # Azure SDK loggers that are super noisy
         logging.getLogger("azure").setLevel(logging.WARNING)
-        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+            logging.WARNING
+        )
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
         logging.getLogger("azure.monitor").setLevel(logging.WARNING)
         logging.getLogger("opentelemetry").setLevel(logging.WARNING)
@@ -58,6 +66,7 @@ def _quiet_azure_noise():
 # ----------------------------
 # Utilities
 # ----------------------------
+
 
 def extract_pdf_text(pdf_path: Path) -> str:
     reader = pdf_lib.PdfReader(str(pdf_path))
@@ -289,6 +298,7 @@ def build_payload(
 # Pytest fixtures
 # ----------------------------
 
+
 @pytest.fixture
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -344,6 +354,7 @@ def e2e_skip_redaction() -> bool:
 # ----------------------------
 # Tests
 # ----------------------------
+
 
 @pytest.mark.e2e
 def test_e2e_writes_output_blob_via_function(
