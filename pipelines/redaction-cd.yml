@@ -26,44 +26,49 @@ extends:
     environments:
       - name: ${{ parameters.env }}
     deploymentStages:
-      - name: Deploy Function App
-        deploymentJobs:
-          - name: Deploy Function App
-            steps:
-              - checkout: self
-                displayName: 'Checkout repo'
-              
-              # Create a zip file of all the files in the filelist.
-              - script: |
-                  set -e
-                  cd $(Build.SourcesDirectory)/redactor
-                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip .
-                displayName: 'Archive top level files'
-              
-              # Publish the zip file as an artifact to be used further in the pipeline.
-              - task: PublishBuildArtifacts@1
-                displayName: 'Publish build artifact'
-                inputs:
-                  PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-                  ArtifactName: 'FunctionCode'
-              
-              # Download the artifact first - the zip file.
-              - task: DownloadBuildArtifacts@1
-                displayName: 'Download function code artifact'
-                inputs:
-                  buildType: 'current'
-                  artifactName: 'FunctionCode'
-                  downloadPath: '$(System.ArtifactsDirectory)'
+    - name: Deploy Function App
+      deploymentJobs:
+        - name: Deploy Function App
+          pool:
+            name: redaction-private-agents   # <- your self-hosted agent pool in the VNet
+          steps:
+            - checkout: self
+              displayName: 'Checkout repo'
 
-              # Use the Azure CLI to deploy the zip file to the Function App in Azure.
-              - task: AzureCLI@2
-                displayName: 'Deploy to function app'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    az functionapp deployment source config-zip \
+            - script: |
+                set -e
+                cd $(Build.SourcesDirectory)/redactor
+                zip -r $(Build.ArtifactStagingDirectory)/redactor.zip .
+              displayName: 'Archive top level files'
+
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish build artifact'
+              inputs:
+                PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+                ArtifactName: 'FunctionCode'
+
+            - task: DownloadBuildArtifacts@1
+              displayName: 'Download function code artifact'
+              inputs:
+                buildType: 'current'
+                artifactName: 'FunctionCode'
+                downloadPath: '$(System.ArtifactsDirectory)'
+
+            # (Optional but highly recommended) sanity check before deploy:
+            - script: |
+                set -e
+                echo "Checking SCM endpoint reachability..."
+                curl -I -sS https://pins-func-redaction-system-${{ lower(parameters.env) }}-uks.scm.azurewebsites.net/
+              displayName: 'Check Kudu/SCM reachable'
+
+            - task: AzureCLI@2
+              displayName: 'Deploy to function app'
+              inputs:
+                azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
+                scriptType: 'bash'
+                scriptLocation: 'inlineScript'
+                inlineScript: |
+                  az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-${{ lower(parameters.env) }}-uks' \
                     --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
