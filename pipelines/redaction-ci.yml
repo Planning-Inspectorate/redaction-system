@@ -92,11 +92,19 @@ extends:
           #     mergeTestResults: true
 
 
+          - task: NodeTool@0
+            displayName: 'Install Node.js (for Azure Functions Core Tools)'
+            inputs:
+              versionSpec: '20.x'
+
           - script: |
               set -e
-              sudo npm i -g azure-functions-core-tools@4 --unsafe-perm true
+              npm --version
+              node --version
+              npm i -g azure-functions-core-tools@4 --unsafe-perm true
               func --version
             displayName: 'Install Azure Functions Core Tools'
+
 
           - script: |
               set -e
