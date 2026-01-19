@@ -93,6 +93,9 @@ extends:
 
 
           # ---------- E2E: start Azurite + Functions host + run tests ----------
+          # ----------------------------
+          # E2E (local Functions host + Azurite)
+          # ----------------------------
 
           - task: NodeTool@0
             displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
@@ -114,80 +117,86 @@ extends:
               cd redaction-system
 
               echo "Starting Azurite..."
-              mkdir -p azurite-data
-              nohup azurite --silent --location azurite-data --debug /agent/_work/1/s/redaction-system/azurite.log > /agent/_work/1/s/redaction-system/azurite.stdout.log 2>&1 &
-              echo $! > /agent/_work/1/s/redaction-system/azurite.pid
+              mkdir -p .azurite
+              nohup azurite --silent --location .azurite --debug .azurite/azurite-debug.log > azurite.log 2>&1 &
+              echo $! > azurite.pid
 
-              # quick wait for blob port
-              for i in $(seq 1 30); do
-                if curl -fsS http://127.0.0.1:10000 >/dev/null 2>&1; then
-                  echo "Azurite is up"
-                  exit 0
-                fi
-                sleep 1
+              echo "Waiting for Azurite (blob 10000, queue 10001)..."
+              for i in {1..60}; do
+                (curl -sSf http://127.0.0.1:10000/devstoreaccount1?comp=list >/dev/null 2>&1) && break || true
+                sleep 2
               done
 
-              echo "Azurite did not start. Last 200 lines:"
-              tail -n 200 /agent/_work/1/s/redaction-system/azurite.stdout.log || true
-              tail -n 200 /agent/_work/1/s/redaction-system/azurite.log || true
-              exit 1
+              curl -sSf http://127.0.0.1:10000/devstoreaccount1?comp=list >/dev/null 2>&1 || {
+                echo "Azurite did not become ready. Last 200 lines:"
+                tail -n 200 azurite.log || true
+                tail -n 200 .azurite/azurite-debug.log || true
+                exit 1
+              }
+
+              echo "Azurite is up"
             displayName: 'Start Azurite (background) + wait'
 
           - script: |
               set -e
               cd redaction-system/redactor
 
-              echo "Exporting Function App environment variables..."
+              echo "Creating local.settings.json for Functions host..."
+              cat > local.settings.json <<'JSON'
+              {
+                "IsEncrypted": false,
+                "Values": {
+                  "FUNCTIONS_WORKER_RUNTIME": "python",
+                  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+                  "AzureWebJobsSecretStorageType": "files",
+                  "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
 
-              # Core Functions runtime
-              export FUNCTIONS_WORKER_RUNTIME=python
-              export AzureWebJobsStorage=UseDevelopmentStorage=true
-              export AzureWebJobsSecretStorageType=files
+                  "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
+                  "OPENAI_KEY": "$(OPENAI_KEY)",
+                  "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
+                  "AZURE_VISION_KEY": "$(AZURE_VISION_KEY)",
+                  "APP_INSIGHTS_CONNECTION_STRING": "$(APP_INSIGHTS_CONNECTION_STRING)"
+                },
+                "Host": {
+                  "LocalHttpPort": 7071,
+                  "CORS": "*",
+                  "CORSCredentials": false
+                }
+              }
+              JSON
 
-              # Disable Managed Identity (critical in CI)
-              export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
-
-              # App configuration (from pipeline variables / variable group)
-              export OPENAI_ENDPOINT="$(OPENAI_ENDPOINT)"
-              export OPENAI_KEY="$(OPENAI_KEY)"
-              export AZURE_VISION_ENDPOINT="$(AZURE_VISION_ENDPOINT)"
-              export AZURE_VISION_KEY="$(AZURE_VISION_KEY)"
-
-              # App Insights (use the correct canonical name)
-              export APPLICATIONINSIGHTS_CONNECTION_STRING="$(APP_INSIGHTS_CONNECTION_STRING)"
-              export APP_INSIGHTS_CONNECTION_STRING="$(APP_INSIGHTS_CONNECTION_STRING)"
-
-              echo "Starting Azure Functions host..."
-              nohup func start --port 7071 > ../func-host.log 2>&1 &
+              echo "Starting Functions host..."
+              nohup func start --python --port 7071 --verbose > ../func-host.log 2>&1 &
               echo $! > ../func-host.pid
 
               echo "Waiting for Functions host to become ready..."
               for i in {1..60}; do
-                if curl -sSf http://localhost:7071/api/redact >/dev/null 2>&1; then
+                if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
                   echo "Functions host is up"
-                  exit 0
+                  break
                 fi
                 sleep 2
               done
 
-              echo "Functions host did not start in time"
-              tail -n 200 ../func-host.log
-              exit 1
-            displayName: 'Start local Azure Functions host'
-
+              curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1 || {
+                echo "Functions host did not become ready. Last 200 lines of host log:"
+                tail -n 200 ../func-host.log || true
+                exit 1
+              }
+            displayName: 'Start local Azure Functions host (background) + wait'
 
           - script: |
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
+              # E2E tests call the local Functions host (7071),
+              # but upload/download blobs using az CLI auth against real storage.
               export E2E_FUNCTION_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
               export E2E_CONTAINER_NAME="pinsfuncredactionsystemtestuks-applease"
               export E2E_RUN_ID="ado-$(Build.BuildId)"
               export E2E_SKIP_REDACTION="false"
-
-              # keep tests from trying IMDS
               export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
 
               python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
@@ -197,7 +206,7 @@ extends:
               set +e
               echo "Stopping Functions host..."
               if [ -f redaction-system/func-host.pid ]; then
-                kill $(cat redaction-system/func-host.pid) || true
+                kill "$(cat redaction-system/func-host.pid)" || true
               fi
               pkill -f "func start" || true
               pkill -f "azure-functions-core-tools" || true
@@ -205,19 +214,21 @@ extends:
 
               echo "Stopping Azurite..."
               if [ -f redaction-system/azurite.pid ]; then
-                kill $(cat redaction-system/azurite.pid) || true
+                kill "$(cat redaction-system/azurite.pid)" || true
               fi
               pkill -f "azurite" || true
+
               echo "Done"
-            displayName: 'Stop local hosts'
+            displayName: 'Stop local Functions host + Azurite'
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish local host logs'
+            displayName: 'Publish func host + azurite logs'
             condition: always()
             inputs:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: 'local-host-logs'
+              ArtifactName: 'e2e-local-logs'
+
 
 
 
