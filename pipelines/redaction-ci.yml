@@ -92,12 +92,10 @@ extends:
           #     mergeTestResults: true
 
 
-          # ----------------------------
-          # E2E: start local host + run tests + always clean up + publish logs
-          # ----------------------------
+          # ---------- E2E: start Azurite + Functions host + run tests ----------
 
           - task: NodeTool@0
-            displayName: 'Install Node.js (for Functions Core Tools + Azurite)'
+            displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
             inputs:
               versionSpec: '20.x'
 
@@ -105,68 +103,78 @@ extends:
               set -e
               node --version
               npm --version
-            displayName: 'Verify Node/npm'
-
-          - script: |
-              set -e
               npm i -g azure-functions-core-tools@4 --unsafe-perm true
+              npm i -g azurite --unsafe-perm true
               func --version
-            displayName: 'Install Azure Functions Core Tools'
-
-          - script: |
-              set -e
-              # Azurite is required for Durable Functions locally (task hub + storage)
-              npm i -g azurite
               azurite --version
-            displayName: 'Install Azurite'
+            displayName: 'Install Azure Functions Core Tools + Azurite'
 
           - script: |
               set -e
               cd redaction-system
 
-              mkdir -p .azurite
-              rm -f azurite.log func-host.log func-host.pid azurite.pid
-
               echo "Starting Azurite..."
-              nohup azurite --silent --location .azurite --debug azurite.log > /dev/null 2>&1 &
-              echo $! > azurite.pid
+              mkdir -p azurite-data
+              nohup azurite --silent --location azurite-data --debug /agent/_work/1/s/redaction-system/azurite.log > /agent/_work/1/s/redaction-system/azurite.stdout.log 2>&1 &
+              echo $! > /agent/_work/1/s/redaction-system/azurite.pid
 
-              # Basic readiness check (Azurite listens on 10000/10001/10002)
-              echo "Waiting for Azurite..."
-              for i in $(seq 1 60); do
-                nc -z 127.0.0.1 10000 >/dev/null 2>&1 && break || true
+              # quick wait for blob port
+              for i in $(seq 1 30); do
+                if curl -fsS http://127.0.0.1:10000 >/dev/null 2>&1; then
+                  echo "Azurite is up"
+                  exit 0
+                fi
                 sleep 1
               done
-              if ! nc -z 127.0.0.1 10000 >/dev/null 2>&1; then
-                echo "Azurite failed to start"
-                tail -n 200 azurite.log || true
-                exit 1
-              fi
-              echo "Azurite started OK"
-            displayName: 'Start Azurite'
+
+              echo "Azurite did not start. Last 200 lines:"
+              tail -n 200 /agent/_work/1/s/redaction-system/azurite.stdout.log || true
+              tail -n 200 /agent/_work/1/s/redaction-system/azurite.log || true
+              exit 1
+            displayName: 'Start Azurite (background) + wait'
 
           - script: |
               set -e
               cd redaction-system/redactor
 
-              echo "Starting Functions host..."
+              echo "Exporting Function App environment variables..."
+
+              # Core Functions runtime
+              export FUNCTIONS_WORKER_RUNTIME=python
+              export AzureWebJobsStorage=UseDevelopmentStorage=true
+              export AzureWebJobsSecretStorageType=files
+
+              # Disable Managed Identity (critical in CI)
+              export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
+
+              # App configuration (from pipeline variables / variable group)
+              export OPENAI_ENDPOINT="$(OPENAI_ENDPOINT)"
+              export OPENAI_KEY="$(OPENAI_KEY)"
+              export AZURE_VISION_ENDPOINT="$(AZURE_VISION_ENDPOINT)"
+              export AZURE_VISION_KEY="$(AZURE_VISION_KEY)"
+
+              # App Insights (use the correct canonical name)
+              export APPLICATIONINSIGHTS_CONNECTION_STRING="$(APP_INSIGHTS_CONNECTION_STRING)"
+              export APP_INSIGHTS_CONNECTION_STRING="$(APP_INSIGHTS_CONNECTION_STRING)"
+
+              echo "Starting Azure Functions host..."
               nohup func start --port 7071 > ../func-host.log 2>&1 &
               echo $! > ../func-host.pid
 
-              echo "Waiting for Functions host to be reachable..."
-              for i in $(seq 1 60); do
-                # /api/redact should exist once host is up
-                if curl -fsS http://localhost:7071/api/redact >/dev/null 2>&1; then
+              echo "Waiting for Functions host to become ready..."
+              for i in {1..60}; do
+                if curl -sSf http://localhost:7071/api/redact >/dev/null 2>&1; then
                   echo "Functions host is up"
                   exit 0
                 fi
                 sleep 2
               done
 
-              echo "Functions host did not become ready. Last 200 lines of host log:"
-              tail -n 200 ../func-host.log || true
+              echo "Functions host did not start in time"
+              tail -n 200 ../func-host.log
               exit 1
-            displayName: 'Start local Azure Functions host (background) + wait'
+            displayName: 'Start local Azure Functions host'
+
 
           - script: |
               set -e
@@ -179,43 +187,37 @@ extends:
               export E2E_RUN_ID="ado-$(Build.BuildId)"
               export E2E_SKIP_REDACTION="false"
 
-              # Avoid Managed Identity attempts on hosted agents (prevents noisy IMDS calls/time)
+              # keep tests from trying IMDS
               export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
-
-              # Keep Azure SDK HTTP logs quiet (your e2e logger is the useful one)
-              export AZURE_LOG_LEVEL=WARNING
 
               python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
 
           - script: |
               set +e
-              cd redaction-system
-
               echo "Stopping Functions host..."
-              if [ -f func-host.pid ]; then
-                kill $(cat func-host.pid) >/dev/null 2>&1 || true
+              if [ -f redaction-system/func-host.pid ]; then
+                kill $(cat redaction-system/func-host.pid) || true
               fi
-              pkill -f "func start" >/dev/null 2>&1 || true
-              pkill -f "azure-functions-core-tools" >/dev/null 2>&1 || true
-              pkill -f "workers/python" >/dev/null 2>&1 || true
+              pkill -f "func start" || true
+              pkill -f "azure-functions-core-tools" || true
+              pkill -f "workers/python" || true
 
               echo "Stopping Azurite..."
-              if [ -f azurite.pid ]; then
-                kill $(cat azurite.pid) >/dev/null 2>&1 || true
+              if [ -f redaction-system/azurite.pid ]; then
+                kill $(cat redaction-system/azurite.pid) || true
               fi
-              pkill -f "azurite" >/dev/null 2>&1 || true
-
+              pkill -f "azurite" || true
               echo "Done"
             displayName: 'Stop local hosts'
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish Functions host + Azurite logs'
+            displayName: 'Publish local host logs'
             condition: always()
             inputs:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: 'e2e-local-host-logs'
+              ArtifactName: 'local-host-logs'
 
 
 
