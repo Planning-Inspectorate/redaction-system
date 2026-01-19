@@ -74,6 +74,37 @@ data "azurerm_private_dns_zone" "ai" {
 }
 
 ############################################################################
+# DNS Zone Vnet links
+############################################################################
+resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
+  for_each = {for idx, val in local.storage_subresources: idx => val}
+  name                  = "pins-vnetlink-${each.value}-redaction-system-${var.environment}"
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.storage.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+
+  tags = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "function" {
+  name                  = "pins-vnetlink-functions-redaction-system-${var.environment}"
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.function.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+
+  tags = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
+  name                  = "pins-vnetlink-ai-redaction-system-${var.environment}"
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+
+  tags = local.tags
+}
+
+############################################################################
 # Private endpoints
 ############################################################################
 resource "azurerm_private_endpoint" "redaction_storage" {
