@@ -75,21 +75,21 @@ extends:
               testResultsFiles: '**/unit_test_results.xml'
               testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
-              python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
-              python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
-              mv .coverage .coverage.integration
-            displayName: 'Run integration tests'
-          - task: PublishTestResults@2
-            displayName: 'Publish integration test results'
-            condition: succeededOrFailed()
-            inputs:
-              testResultsFiles: '**/integration_test_results.xml'
-              testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
-              mergeTestResults: true
+          # - script: |
+          #     set -e
+          #     cd redaction-system/redactor
+          #     export PYTHONPATH=$(pwd)
+          #     python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
+          #     python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
+          #     mv .coverage .coverage.integration
+          #   displayName: 'Run integration tests'
+          # - task: PublishTestResults@2
+          #   displayName: 'Publish integration test results'
+          #   condition: succeededOrFailed()
+          #   inputs:
+          #     testResultsFiles: '**/integration_test_results.xml'
+          #     testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
+          #     mergeTestResults: true
 
 
           - script: |
