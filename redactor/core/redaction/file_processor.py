@@ -224,7 +224,8 @@ class PDFProcessor(FileProcessor):
 
         return False, actual_text_at_rect
 
-    def _add_provisional_redaction(self, page: pymupdf.Page, rect: pymupdf.Rect):
+    @classmethod
+    def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
         highlight_annotation = page.add_highlight_annot(rect)
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
@@ -234,6 +235,52 @@ class PDFProcessor(FileProcessor):
                 "subject": str([rect.x0, rect.y0, rect.x1, rect.y1]),
             }
         )
+
+    @classmethod
+    def _partial_redaction_across_line_breaks(
+        cls,
+        term: str,
+        actual_text_at_rect: str,
+        next_page: pymupdf.Page,
+        next_rect: pymupdf.Rect,
+        next_term: str,
+    ):
+        """
+        Check if
+
+        :param str term: The redaction text candidate
+        :param str actual_text_at_rect: The actual text found at the current rect
+        :param pymupdf.Page next_page: The next page containing the next redaction instance
+        :param pymupdf.Rect next_rect: The next redaction candidate's bounding box (on the page)
+        :param str next_term: The next redaction text candidate
+        :return bool: True if text_to_redact is a full redaction of
+        text_found_at_rect (i.e. should the text be redacted)
+        """
+        partial_term_in_rect = ""
+        words_to_redact = term.split(" ")
+        # Try to find the largest partial match in the current rect
+        while True:
+            if not words_to_redact:
+                break
+            partial_term_in_rect = " ".join(words_to_redact)
+            if partial_term_in_rect in actual_text_at_rect:
+                break
+            words_to_redact = words_to_redact[:-1]
+
+        # Check next redaction instance for the remaining words
+        if partial_term_in_rect and partial_term_in_rect != term:
+            # Should exactly match the full term to redact
+            if next_term != term:
+                return False, None
+
+            # Remove the part already found in the current rect
+            remaining_words_to_redact = term.replace(partial_term_in_rect, "").strip()
+            # Check if the next rect contains the remaining words to redact
+            return cls._is_full_text_being_redacted(
+                next_page, remaining_words_to_redact, next_rect
+            )
+
+        return False, None
 
     @log_to_appins
     def _apply_provisional_text_redactions(
@@ -251,42 +298,97 @@ class PDFProcessor(FileProcessor):
         """
         pdf = pymupdf.open(stream=file_bytes)
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
-        for word_to_redact in text_to_redact:
+        for term_to_redact in text_to_redact:
             for page in pdf:
                 LoggingUtil().log_info(
-                    f"Page {page.number}: Searching for word: {word_to_redact}"
+                    f"Page {page.number}: Searching for word: {term_to_redact}"
                 )
-                text_instances = page.search_for(word_to_redact)
+                text_instances = page.search_for(term_to_redact)
                 for inst in text_instances:
-                    instances_to_redact.append((page, inst, word_to_redact))
+                    instances_to_redact.append((page, inst, term_to_redact))
+
         LoggingUtil().log_info(
-            f"    Applying {len(instances_to_redact)} redaction highlights"
+            f"Attempting to apply {len(instances_to_redact)} redaction highlights:"
         )
         # TODO Apply multithreading or otherwise try to optimise
         # Apply provisional redaction highlights for the human-in-the-loop to review
+        redaction_already_applied = (
+            False  # To skip whenever a redaction has been applied across line breaks
+        )
+        n_highlights = 0
         for i, redaction_inst in enumerate(instances_to_redact):
-            page, rect, word = redaction_inst
+            if redaction_already_applied:  # Reset flag and skip
+                redaction_already_applied = False
+                continue
+
+            page, rect, term = redaction_inst
             LoggingUtil().log_info(
-                f"        Applying highlight {i} for word {word} at location '{rect}'"
-                f"on page {page.number}"
+                f"    Attempting to apply highlight for redaction instance {i}"
+                f"for term {term} at location '{rect}' on page {page.number}."
             )
             try:
                 # Only redact text that is fully matched - do not apply partial redactions
-                # TODO If rect is a list, iterate through each rect
                 match_result, actual_text_at_rect = self._is_full_text_being_redacted(
-                    page, word, rect
+                    page, term, rect
                 )
                 if match_result:
                     self._add_provisional_redaction(page, rect)
-                else:
+                    n_highlights += 1
                     LoggingUtil().log_info(
-                        "Partial redaction found when attempting to redact "
-                        f"'{word}'. The surrounding box contains "
-                        f"'{actual_text_at_rect}'. Skipping"
+                        f"        Applying highlight {n_highlights} for term {term}"
+                        f"at location '{rect}' on page {page.number}."
                     )
+                    continue
+                elif (
+                    len(term.split(" ")) > 1
+                ):  # Check for line breaks causing partial redactions
+                    # Check the next instance for redaction across line breaks
+                    next_redaction_inst = (
+                        instances_to_redact[i + 1]
+                        if i + 1 < len(instances_to_redact)
+                        else None
+                    )
+                    next_page, next_rect, next_term = next_redaction_inst
+
+                    # Check this is for the same term
+                    if next_redaction_inst and next_term == term:
+                        # Check whether the remaining part of the term is in the next instance
+                        next_match_result, _ = (
+                            self._partial_redaction_across_line_breaks(
+                                term,
+                                actual_text_at_rect,
+                                next_page,
+                                next_rect,
+                                next_term,
+                            )
+                        )
+                        if next_match_result:
+                            LoggingUtil().log_info(
+                                f"        Partial redaction across line break"
+                                f"for term '{term}'."
+                            )
+
+                            # Apply redactions for both parts
+                            n_highlights += 2
+                            self._add_provisional_redaction(page, rect)
+                            self._add_provisional_redaction(next_page, next_rect)
+                            LoggingUtil().log_info(
+                                f"        Applying highlights {n_highlights - 1}"
+                                f" and {n_highlights} for term {term} at location"
+                                f" '{rect}' on page {page.number}."
+                            )
+                            redaction_already_applied = True
+                            continue
+
+                # No full match found, skip redaction
+                LoggingUtil().log_info(
+                    "        Partial redaction found when attempting to redact "
+                    f"'{term}'. The surrounding box contains "
+                    f"'{actual_text_at_rect}'. Skipping this instance."
+                )
             except Exception:
                 LoggingUtil().log_info(
-                    f"        Failed to add highlight for word {word}, at "
+                    f"        Failed to add highlight for term {term}, at "
                     f"location '{rect}'"
                 )
         new_file_bytes = BytesIO()
