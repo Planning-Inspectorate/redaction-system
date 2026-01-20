@@ -14,6 +14,7 @@ from core.redaction.result import (
 )
 from core.util.text_util import is_english_text
 from core.redaction.exceptions import NonEnglishContentException
+from core.util.logging_util import LoggingUtil
 
 
 def test__pdf_processor__get_name():
@@ -320,10 +321,16 @@ def test__pdf_processor__apply_provisional_text_redactions__partial_match():
         t for text in annotated_text_expanded for t in text.split(" ") if "it" in t
     ]
 
+    for word in ["criteria", "with", "servitude", "sits", "waiting"]:
+        assert word not in actual_annotated_text
+
+    partial_info_message = "Partial redaction found when attempting to redact 'it'."
+    assert 5 == sum(
+        partial_info_message in call.args[0]
+        for call in LoggingUtil.log_info.call_args_list
+    )
+
     assert set(actual_annotated_text) == set(["it"])
-    assert "criteria" not in actual_annotated_text
-    assert "with" not in actual_annotated_text
-    assert "servitude" not in actual_annotated_text
 
 
 @pytest.mark.parametrize(
