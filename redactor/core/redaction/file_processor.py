@@ -246,7 +246,8 @@ class PDFProcessor(FileProcessor):
         next_term: str,
     ):
         """
-        Check if
+        Check if the given term is partially redacted in the current rect, and
+        the remaining part is in the next rect (i.e. redaction across line breaks)
 
         :param str term: The redaction text candidate
         :param str actual_text_at_rect: The actual text found at the current rect
