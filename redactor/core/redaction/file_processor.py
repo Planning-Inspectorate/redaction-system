@@ -1,14 +1,10 @@
 import json
 import pymupdf
-import string
 
 from typing import Set, Type, List, Any, Dict, Tuple
 from abc import ABC, abstractmethod
 from io import BytesIO
-
-from unidecode import unidecode
-from unicodedata import category
-
+from string import punctuation
 from PIL import Image
 from pydantic import BaseModel
 
@@ -30,7 +26,7 @@ from core.redaction.result import (
     TextRedactionResult,
     ImageRedactionResult,
 )
-from core.util.text_util import is_english_text
+from core.util.text_util import is_english_text, normalise_punctuation_unidecode
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
 
@@ -172,44 +168,53 @@ class PDFProcessor(FileProcessor):
         return [x[0] for x in seen_images]
 
     @classmethod
-    def _is_full_text_being_redacted(cls, text_to_redact: str, text_found_at_rect: str):
+    def _is_full_text_being_redacted(
+        cls, page: pymupdf.Page, term: str, rect: pymupdf.Rect
+    ) -> bool:
         """
         Check if the text_to_redact is a full redaction of text_found_at_rect
 
-        :param str text_to_redact: The redaction text candidate
-        :param str text_found_at_rect: The full word found at the redaction
-        candidate's bounding box (on the page)
+        :param pymupdf.Page page: The page containing the text to redact
+        :param str term: The redaction text candidate
+        :param pymupdf.Rect rect: The redaction candidate's bounding box (on the page)
         :return bool: True if text_to_redact is a full redaction of
         text_found_at_rect (i.e. should the text be redacted)
         """
 
-        def normalise_punctuation_unidecode(text: str) -> str:
-            return "".join(
-                c if not category(c).startswith("P") else unidecode(c) or c
-                for c in text
-            )
+        text_to_redact_normalised = normalise_punctuation_unidecode(term).lower()
 
-        text_to_redact_normalised = normalise_punctuation_unidecode(
-            text_to_redact
-        ).lower()
+        # Expand rect slightly by approximately half a character on each side
+        f = rect.width / len(term) / 2
+        actual_text_at_rect = page.get_textbox(
+            rect + (-f, 0, f, 0)
+        ).strip()  # Remove trailing/leading whitespace
         text_found_at_rect_normalised = normalise_punctuation_unidecode(
-            text_found_at_rect
+            actual_text_at_rect
         ).lower()
-        punctuation = string.punctuation
-        # Remove preceding/trailing punctuation and whitespace
-        found_text_cleaned = (
-            text_found_at_rect_normalised.lstrip(punctuation)
-            .rstrip(punctuation)
-            .strip()
-        )
-        match_result = text_to_redact_normalised == found_text_cleaned
-        if found_text_cleaned.endswith("'s"):
-            # Try to match by ignoring possessive markers
-            found_text_cleaned = found_text_cleaned[:-2]
-            match_result = (
-                match_result or text_to_redact_normalised == found_text_cleaned
-            )
-        return match_result
+
+        # If the text found contains multiple words, split and check each word individually
+        words_at_rect = text_found_at_rect_normalised.split(" ")
+
+        # Remove preceding/trailing punctuation
+        for word in words_at_rect:
+            found_text_cleaned = word.lstrip(punctuation).rstrip(punctuation)
+            match_result = text_to_redact_normalised == found_text_cleaned
+
+            if found_text_cleaned.endswith("s"):
+                # Try to match by ignoring possessive markers or plurals
+                found_text_cleaned = found_text_cleaned[:-2]
+                match_result = (
+                    match_result or text_to_redact_normalised == found_text_cleaned
+                )
+
+            if match_result:
+                PDFProcessor()._add_provisional_redaction(page, rect)
+                return (
+                    True,
+                    actual_text_at_rect,
+                )  # Once a match is found, no need to check further
+
+        return False, actual_text_at_rect
 
     def _add_provisional_redaction(self, page: pymupdf.Page, rect: pymupdf.Rect):
         highlight_annotation = page.add_highlight_annot(rect)
@@ -238,15 +243,17 @@ class PDFProcessor(FileProcessor):
         """
         pdf = pymupdf.open(stream=file_bytes)
         instances_to_redact: List[Tuple[pymupdf.Page, pymupdf.Rect, str]] = []
-        for word_to_redact in text_to_redact:
-            for page in pdf:
-                LoggingUtil().log_info("Searching for word: " + word_to_redact)
+        for i, page in enumerate(pdf):
+            LoggingUtil().log_info(f"Searching for redactions on page {i}")
+            for word_to_redact in text_to_redact:
+                # LoggingUtil().log_info("Searching for word: " + word_to_redact)
                 text_instances = page.search_for(word_to_redact)
                 for inst in text_instances:
                     instances_to_redact.append((page, inst, word_to_redact))
         LoggingUtil().log_info(
             f"    Applying {len(instances_to_redact)} redaction highlights"
         )
+        # TODO Apply multithreading or otherwise try to optimise
         # Apply provisional redaction highlights for the human-in-the-loop to review
         for i, redaction_inst in enumerate(instances_to_redact):
             page, rect, word = redaction_inst
@@ -256,14 +263,16 @@ class PDFProcessor(FileProcessor):
             )
             try:
                 # Only redact text that is fully matched - do not apply partial redactions
-                actual_text_at_rect = page.get_textbox(rect)
-                actual_text_at_rect = " ".join(actual_text_at_rect.split())
-                if self._is_full_text_being_redacted(word, actual_text_at_rect):
+                # TODO If rect is a list, iterate through each rect
+                match_result, actual_text_at_rect = self._is_full_text_being_redacted(
+                    page, word, rect
+                )
+                if match_result:
                     self._add_provisional_redaction(page, rect)
                 else:
                     LoggingUtil().log_info(
                         "Partial redaction found when attempting to redact "
-                        f"'{word}'. The surroundig box contains "
+                        f"'{word}'. The surrounding box contains "
                         f"'{actual_text_at_rect}'. Skipping"
                     )
             except Exception:
