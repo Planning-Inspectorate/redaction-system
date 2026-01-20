@@ -46,7 +46,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   shared_access_key_enabled        = true
   default_to_oauth_authentication  = true
   public_network_access_enabled    = false
-  https_traffic_only_enabled = true
+  https_traffic_only_enabled       = true
   tags                             = local.tags
 
   blob_properties {
@@ -65,7 +65,7 @@ resource "azurerm_storage_account" "redaction_storage" {
 
   network_rules {
     default_action = "Deny"
-    bypass         = ["AzureServices"]   # Keep Azure platform services in scope
+    bypass         = ["AzureServices"] # Keep Azure platform services in scope
   }
 }
 
@@ -97,11 +97,11 @@ resource "azurerm_linux_function_app" "redaction_system" {
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
 
-  storage_account_name       = azurerm_storage_account.redaction_storage.name
-  storage_account_access_key = azurerm_storage_account.redaction_storage.primary_access_key
-  service_plan_id            = azurerm_service_plan.redaction_system.id
+  storage_account_name          = azurerm_storage_account.redaction_storage.name
+  storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
+  service_plan_id               = azurerm_service_plan.redaction_system.id
   public_network_access_enabled = false
-  virtual_network_subnet_id = azurerm_subnet.function_app.id
+  virtual_network_subnet_id     = azurerm_subnet.function_app.id
 
   site_config {
     application_stack {
@@ -123,7 +123,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     "AZURE_VISION_ENDPOINT"                    = azurerm_cognitive_account.computer_vision.endpoint
     "AZURE_VISION_KEY"                         = azurerm_cognitive_account.computer_vision.primary_access_key
     "APP_INSIGHTS_CONNECTION_STRING"           = azurerm_application_insights.redaction_system.connection_string
-    "WEBSITE_CONTENTOVERVNET" = 1
+    "WEBSITE_CONTENTOVERVNET"                  = 1
   }
 }
 
@@ -157,11 +157,11 @@ resource "azurerm_application_insights" "redaction_system" {
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
-  location            = local.location
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-  kind                = "OpenAI"
-  sku_name            = "S0"
+  name                  = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
+  location              = local.location
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  kind                  = "OpenAI"
+  sku_name              = "S0"
   custom_subdomain_name = "pins-redaction-openai-${var.environment}-${local.location_short}"
   identity {
     type = "SystemAssigned"
@@ -173,11 +173,11 @@ resource "azurerm_cognitive_account" "open_ai" {
 ############################################################################
 resource "azurerm_cognitive_account" "computer_vision" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
-  location            = local.location
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-  kind                = "ComputerVision"
-  sku_name            = "F0"
+  name                  = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
+  location              = local.location
+  resource_group_name   = azurerm_resource_group.redaction_rg.name
+  kind                  = "ComputerVision"
+  sku_name              = "F0"
   custom_subdomain_name = "pins-redaction-computervision-${var.environment}-${local.location_short}"
   identity {
     type = "SystemAssigned"

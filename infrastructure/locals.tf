@@ -14,7 +14,7 @@ locals {
   )
   storage_subresources = [
     "blob",
-    "queue",  # Needed for Azure Durable functions
+    "queue", # Needed for Azure Durable functions
     "table",
     "file"
   ]

@@ -11,20 +11,20 @@ resource "azurerm_virtual_network" "redaction_system" {
 }
 
 resource "azurerm_subnet" "redaction_system" {
-  name                 = "RedactionSubnet"
-  resource_group_name  = azurerm_resource_group.redaction_rg.name
-  address_prefixes     = [var.subnet_cidr_block]
-  virtual_network_name = azurerm_virtual_network.redaction_system.name
-  service_endpoints    = ["Microsoft.Storage"]
+  name                              = "RedactionSubnet"
+  resource_group_name               = azurerm_resource_group.redaction_rg.name
+  address_prefixes                  = [var.subnet_cidr_block]
+  virtual_network_name              = azurerm_virtual_network.redaction_system.name
+  service_endpoints                 = ["Microsoft.Storage"]
   private_endpoint_network_policies = "Enabled"
 }
 
 resource "azurerm_subnet" "function_app" {
-  name                 = "FunctionAppSubnet"
-  resource_group_name  = azurerm_resource_group.redaction_rg.name
-  address_prefixes     = [var.functionapp_cidr_block]
-  virtual_network_name = azurerm_virtual_network.redaction_system.name
-  service_endpoints    = ["Microsoft.Storage"]
+  name                              = "FunctionAppSubnet"
+  resource_group_name               = azurerm_resource_group.redaction_rg.name
+  address_prefixes                  = [var.functionapp_cidr_block]
+  virtual_network_name              = azurerm_virtual_network.redaction_system.name
+  service_endpoints                 = ["Microsoft.Storage"]
   private_endpoint_network_policies = "Enabled"
 
   delegation {
@@ -48,7 +48,7 @@ data "azurerm_virtual_network" "tooling" {
 ############################################################################
 
 data "azurerm_private_dns_zone" "storage" {
-  for_each = {for idx, val in local.storage_subresources: idx => val}
+  for_each            = { for idx, val in local.storage_subresources : idx => val }
   name                = "privatelink.${each.value}.core.windows.net"
   resource_group_name = local.tooling_config.network_rg
   provider            = azurerm.tooling
@@ -77,11 +77,12 @@ data "azurerm_private_dns_zone" "ai" {
 # DNS Zone Vnet links
 ############################################################################
 resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
-  for_each = {for idx, val in local.storage_subresources: idx => val}
+  for_each              = { for idx, val in local.storage_subresources : idx => val }
   name                  = "pins-vnetlink-${each.value}-redaction-system-${var.environment}"
   resource_group_name   = local.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.storage[each.key].name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
 
   tags = local.tags
 }
@@ -91,6 +92,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "function" {
   resource_group_name   = local.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.function.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
 
   tags = local.tags
 }
@@ -100,6 +102,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
   resource_group_name   = local.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
 
   tags = local.tags
 }
@@ -108,7 +111,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
 # Private endpoints
 ############################################################################
 resource "azurerm_private_endpoint" "redaction_storage" {
-  for_each = {for idx, val in local.storage_subresources: idx => val}
+  for_each            = { for idx, val in local.storage_subresources : idx => val }
   name                = "pins-pe-${azurerm_storage_account.redaction_storage.name}-${each.value}-${var.environment}"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location

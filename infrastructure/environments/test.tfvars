@@ -1,4 +1,4 @@
-environment       = "test"
-vnet_cidr_block   = "10.36.4.0/16"
-subnet_cidr_block = "10.36.4.0/17"
+environment            = "test"
+vnet_cidr_block        = "10.36.4.0/16"
+subnet_cidr_block      = "10.36.4.0/17"
 functionapp_cidr_block = "10.36.4.0/18"
