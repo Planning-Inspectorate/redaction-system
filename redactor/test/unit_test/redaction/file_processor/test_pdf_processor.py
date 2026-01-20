@@ -289,6 +289,43 @@ def test__pdf_processor__apply_provisional_text_redactions():
     assert valid_match_count == len(matches)
 
 
+def test__pdf_processor__apply_provisional_text_redactions__partial_match():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = ["it"]
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+            document_bytes, redaction_strings
+        )
+
+    # Get the actual redacted text
+    annotated_text_expanded = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            annotation_rect = annotation.rect
+            w = annotation_rect.width / 4
+            annotated_text_expanded.append(
+                page.get_textbox(annotation_rect + (-w, 0, w, 0)).strip().lower()
+            )
+
+    # Find all instances of "it" in the annotated text
+    actual_annotated_text = [
+        t for text in annotated_text_expanded for t in text.split(" ") if "it" in t
+    ]
+
+    assert set(actual_annotated_text) == set(["it"])
+    assert "criteria" not in actual_annotated_text
+    assert "with" not in actual_annotated_text
+    assert "servitude" not in actual_annotated_text
+
+
 @pytest.mark.parametrize(
     "test_case",
     [
