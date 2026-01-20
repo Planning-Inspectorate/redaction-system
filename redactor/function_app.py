@@ -75,3 +75,22 @@ def redact_task(params: Dict[str, Any]):
 
     job_id = params.pop("job_id")
     return RedactionManager(job_id).try_redact(params)
+
+
+# Functions just for smoke testing connections
+@app.route(route="testllm", methods=["GET"])
+@app.durable_client_input(client_name="client")
+async def test_llm_connection(
+    req: func.HttpRequest, client: df.DurableOrchestrationClient
+):
+    """
+    This function is called via HTTP get and confirms that the function app can
+    connect to the LLM
+    """
+    from core.connectivity import send_llm_message
+
+    # Return a response with a simplified body
+    return func.HttpResponse(
+        send_llm_message(),
+        status_code=200,
+    )
