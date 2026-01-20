@@ -333,6 +333,35 @@ def test__pdf_processor__apply_provisional_text_redactions__partial_match():
     assert set(actual_annotated_text) == set(["it"])
 
 
+def test__pdf_processor__apply_provisional_text_redactions__line_break():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = ["all who come after him"]
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+            document_bytes, redaction_strings
+        )
+
+    # Get the actual redacted text
+    actual_annotated_text = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            actual_annotated_text.append(
+                page.get_textbox(annotation.rect).strip().lower()
+            )
+
+    # assert len(actual_annotated_text) == 2
+    assert "all who" in actual_annotated_text
+    assert "come after him" in actual_annotated_text
+
+
 @pytest.mark.parametrize(
     "test_case",
     [
@@ -398,6 +427,23 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     with patch.object(pymupdf.Page, "get_textbox", return_value=actual_text_at_rect):
         result = PDFProcessor._is_full_text_being_redacted(page, text_to_redact, rect)
     assert result[0] == expected_result, error_message
+
+
+def test__pdf_processor__partial_redaction_across_line_breaks():
+    term = "Hello World"
+    next_redaction_inst = (pymupdf.open().new_page, pymupdf.Rect(0, 0, 10, 20), term)
+    next_page, next_rect, next_term = next_redaction_inst
+
+    with patch.object(
+        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, "World")
+    ):
+        match_result, next_text_at_rect = (
+            PDFProcessor()._partial_redaction_across_line_breaks(
+                term, "Hello", next_page, next_rect, next_term
+            )
+        )
+    assert match_result
+    assert next_text_at_rect == "World"
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
