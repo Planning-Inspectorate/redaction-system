@@ -192,27 +192,35 @@ class PDFProcessor(FileProcessor):
             actual_text_at_rect
         ).lower()
 
-        # If the text found contains multiple words, split and check each word individually
+        # If the text found contains multiple words, split to the same number of words
+        # as the term to redact
         words_at_rect = text_found_at_rect_normalised.split(" ")
+        n_words_to_redact = len(term.split(" "))
+
+        redaction_candidates = []
+        if len(words_at_rect) >= n_words_to_redact and n_words_to_redact > 1:
+            for i in range(len(words_at_rect) - n_words_to_redact + 1):
+                redaction_candidates.append(
+                    " ".join(words_at_rect[i : i + n_words_to_redact])
+                )
+        else:
+            redaction_candidates = words_at_rect
 
         # Remove preceding/trailing punctuation
-        for word in words_at_rect:
+        for word in redaction_candidates:
             found_text_cleaned = word.lstrip(punctuation).rstrip(punctuation)
             match_result = text_to_redact_normalised == found_text_cleaned
 
-            if found_text_cleaned.endswith("s"):
-                # Try to match by ignoring possessive markers or plurals
+            # Try to match by ignoring possessive markers
+            if found_text_cleaned.endswith("'s"):
                 found_text_cleaned = found_text_cleaned[:-2]
                 match_result = (
                     match_result or text_to_redact_normalised == found_text_cleaned
                 )
 
             if match_result:
-                PDFProcessor()._add_provisional_redaction(page, rect)
-                return (
-                    True,
-                    actual_text_at_rect,
-                )  # Once a match is found, no need to check further
+                # Once a match is found, no need to check further
+                return True, actual_text_at_rect
 
         return False, actual_text_at_rect
 
