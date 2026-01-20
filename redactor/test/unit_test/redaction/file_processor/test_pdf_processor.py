@@ -1,3 +1,10 @@
+import pymupdf
+import pytest
+
+from PIL import Image
+from io import BytesIO
+from mock import patch, Mock
+
 from core.redaction.file_processor import (
     PDFProcessor,
     PDFImageMetadata,
@@ -5,11 +12,6 @@ from core.redaction.file_processor import (
 from core.redaction.result import (
     ImageRedactionResult,
 )
-from PIL import Image
-from io import BytesIO
-import pymupdf
-import mock
-import pytest
 from core.util.text_util import is_english_text
 from core.redaction.exceptions import NonEnglishContentException
 
@@ -250,7 +252,7 @@ def test__pdf_processor__apply_provisional_text_redactions():
         "him",
         "him",
     ]
-    with mock.patch.object(PDFProcessor, "__init__", return_value=None):
+    with patch.object(PDFProcessor, "__init__", return_value=None):
         redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
             document_bytes, redaction_strings
         )
@@ -334,6 +336,7 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     - Then the text should only be marked for redaction is it is not a partial redaction of another word.
       e.g, "he" is a partial redaction of "their" so should return False
     """
+
     actual_text_at_rect = test_case[0]
     text_to_redact = test_case[1]
     expected_result = test_case[2]
@@ -341,10 +344,16 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
         f"Expected _is_full_text_being_redacted to return {expected_result} when trying "
         f"to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
     )
-    assert (
-        PDFProcessor._is_full_text_being_redacted(text_to_redact, actual_text_at_rect)
-        is expected_result
-    ), error_message
+
+    page = pymupdf.open().new_page()
+
+    rect = Mock()
+    rect.width = 100  # Dummy value
+    rect.__add__ = Mock(return_value=rect)
+
+    with patch.object(pymupdf.Page, "get_textbox", return_value=actual_text_at_rect):
+        result = PDFProcessor._is_full_text_being_redacted(page, text_to_redact, rect)
+    assert result[0] == expected_result, error_message
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
@@ -439,7 +448,7 @@ def test__pdf_processor__extract_unique_pdf_images():
         image_metadata[2].image,
         image_metadata[3].image,
     ]
-    with mock.patch.object(PDFProcessor, "__init__", return_value=None):
+    with patch.object(PDFProcessor, "__init__", return_value=None):
         actual_output = PDFProcessor()._extract_unique_pdf_images(image_metadata)
         assert expected_output == actual_output
 
@@ -485,7 +494,7 @@ def test__pdf_processor__apply_provisional_image_redactions():
             image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
         )
     ]
-    with mock.patch.object(
+    with patch.object(
         PDFProcessor, "_extract_pdf_images", return_value=pdf_image_metadata
     ):
         redacted_document_bytes = PDFProcessor()._apply_provisional_image_redactions(
