@@ -157,12 +157,13 @@ resource "azurerm_application_insights" "redaction_system" {
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                  = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
-  location              = local.location
-  resource_group_name   = azurerm_resource_group.redaction_rg.name
-  kind                  = "OpenAI"
-  sku_name              = "S0"
-  custom_subdomain_name = "pins-redaction-openai-${var.environment}-${local.location_short}"
+  name                          = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
+  location                      = local.location
+  resource_group_name           = azurerm_resource_group.redaction_rg.name
+  kind                          = "OpenAI"
+  sku_name                      = "S0"
+  custom_subdomain_name         = "pins-redaction-openai-${var.environment}-${local.location_short}"
+  public_network_access_enabled = false
   identity {
     type = "SystemAssigned"
   }
@@ -173,12 +174,13 @@ resource "azurerm_cognitive_account" "open_ai" {
 ############################################################################
 resource "azurerm_cognitive_account" "computer_vision" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                  = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
-  location              = local.location
-  resource_group_name   = azurerm_resource_group.redaction_rg.name
-  kind                  = "ComputerVision"
-  sku_name              = "F0"
-  custom_subdomain_name = "pins-redaction-computervision-${var.environment}-${local.location_short}"
+  name                          = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
+  location                      = local.location
+  resource_group_name           = azurerm_resource_group.redaction_rg.name
+  kind                          = "ComputerVision"
+  sku_name                      = "F0"
+  custom_subdomain_name         = "pins-redaction-computervision-${var.environment}-${local.location_short}"
+  public_network_access_enabled = false
   identity {
     type = "SystemAssigned"
   }
