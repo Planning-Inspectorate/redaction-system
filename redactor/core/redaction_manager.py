@@ -9,11 +9,14 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from pydantic import BaseModel
 import re
+import os
 import traceback
 from dotenv import load_dotenv
 
-
-load_dotenv(verbose=True, override=True)
+def get_redaction_storage_account() -> str:
+    return (
+        os.getenv("E2E_STORAGE_ACCOUNT")
+    )
 
 
 class JsonPayloadStructure(BaseModel):
@@ -78,7 +81,7 @@ class RedactionManager:
 
         # Set up connection to redaction storage
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name="pinsstredactiontestuks",
+            storage_name=get_redaction_storage_account(),
         )
 
         # Load the data
@@ -141,7 +144,7 @@ class RedactionManager:
             traceback.TracebackException.from_exception(exception).format()
         )
         AzureBlobIO(
-            storage_name="pinsstredactiontestuks",
+            storage_name=get_redaction_storage_account(),
         ).write(
             data_bytes=error_trace.encode("utf-8"),
             container_name="redactiondata",
