@@ -10,59 +10,65 @@ from dotenv import load_dotenv
 import os
 import pymupdf
 
+# Ensure local .env wins when running locally
+load_dotenv(verbose=True, override=True)
 
-load_dotenv(verbose=True)
-ENV = os.environ.get("ENV")
 RUN_ID = os.environ.get("RUN_ID")
+
+# Standardise on the E2E storage env var (works for both local + pipeline)
+STORAGE_ACCOUNT = os.environ.get("E2E_STORAGE_ACCOUNT") or os.environ.get("STORAGE_ACCOUNT")
+if not STORAGE_ACCOUNT:
+    raise RuntimeError("Missing E2E_STORAGE_ACCOUNT (or STORAGE_ACCOUNT) env var")
+
+# Make blob paths safe under xdist (avoid workers clobbering each other)
+_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+BLOB_PREFIX = f"{RUN_ID}/{_WORKER}" if RUN_ID else _WORKER
 
 
 class TestIntegrationRedactionManager(TestCase):
-    def session_setup(self):
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
+    def _blob_service_client(self) -> BlobServiceClient:
+        storage_endpoint = f"https://{STORAGE_ACCOUNT}.blob.core.windows.net"
+        return BlobServiceClient(
             storage_endpoint,
             credential=ChainedTokenCredential(
                 ManagedIdentityCredential(), AzureCliCredential()
             ),
         )
+
+    def session_setup(self):
+        blob_service_client = self._blob_service_client()
         callback_container_client = blob_service_client.get_container_client("test")
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
         )
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
         )
 
     def session_teardown(self):
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
+        blob_service_client = self._blob_service_client()
         callback_container_client = blob_service_client.get_container_client("test")
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
         )
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
         )
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__raw.pdf",
         )
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
         )
         self.try_delete_blob(
             callback_container_client,
-            f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
+            f"{BLOB_PREFIX}/test__redaction_manager__try_redact__failure.pdf",
         )
 
     def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
@@ -81,27 +87,22 @@ class TestIntegrationRedactionManager(TestCase):
         - When I call RedactionManager.redact with skipRedaction=True
         - Then the original file should be downloaded from the source, and then immediately uploaded to the destination
         """
-        # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
+        blob_service_client = self._blob_service_client()
         container_client = blob_service_client.get_container_client("test")
+
         with open(
             os.path.join("test", "resources", "pdf", "test_pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
+
         container_client.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
             pdf_bytes,
             overwrite=True,
         )
-        # Run test
-        guid = f"{RUN_ID}-trmtrsr"
+
+        guid = f"{BLOB_PREFIX}-trmtrsr"
         manager = RedactionManager(guid)
         params = {
             "tryApplyProvisionalRedactions": True,
@@ -112,8 +113,8 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
+                    "blobPath": f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
+                    "storageName": STORAGE_ACCOUNT,
                     "containerName": "test",
                 },
             },
@@ -121,8 +122,8 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
+                    "blobPath": f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+                    "storageName": STORAGE_ACCOUNT,
                     "containerName": "test",
                 },
             },
@@ -131,8 +132,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
+
         blob_client = container_client.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
@@ -144,27 +146,22 @@ class TestIntegrationRedactionManager(TestCase):
         - When I call RedactionManager.redact
         - Then the file should be downloaded from the source, and the redacted file should be uploaded to the destination
         """
-        # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
+        blob_service_client = self._blob_service_client()
         container_client = blob_service_client.get_container_client("test")
+
         with open(
             os.path.join("test", "resources", "pdf", "test_pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
+
         container_client.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__raw.pdf",
             pdf_bytes,
             overwrite=True,
         )
-        # Run test
-        guid = f"{RUN_ID}-trmtr"
+
+        guid = f"{BLOB_PREFIX}-trmtr"
         manager = RedactionManager(guid)
         params = {
             "tryApplyProvisionalRedactions": True,
@@ -175,8 +172,8 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
+                    "blobPath": f"{BLOB_PREFIX}/test__redaction__manager__try_redact__raw.pdf",
+                    "storageName": STORAGE_ACCOUNT,
                     "containerName": "test",
                 },
             },
@@ -184,8 +181,8 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
+                    "blobPath": f"{BLOB_PREFIX}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+                    "storageName": STORAGE_ACCOUNT,
                     "containerName": "test",
                 },
             },
@@ -194,8 +191,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
+
         blob_client = container_client.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
+            f"{BLOB_PREFIX}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
@@ -210,31 +208,29 @@ class TestIntegrationRedactionManager(TestCase):
         - When I call try_redact using an invalid payload (i.e. there is a failure during processing)
         - Then error information should be written to the redactiondata container
         """
-        # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
+        blob_service_client = self._blob_service_client()
         container_client = blob_service_client.get_container_client("test")
+
         with open(
             os.path.join("test", "resources", "pdf", "test_pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
+
         container_client.upload_blob(
-            f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
+            f"{BLOB_PREFIX}/test__redaction_manager__try_redact__failure.pdf",
             pdf_bytes,
             overwrite=True,
         )
-        # Run test
-        guid = f"{RUN_ID}-trmtrf"
+
+        guid = f"{BLOB_PREFIX}-trmtrf"
         manager = RedactionManager(guid)
         params = {"an example bad payload": None}
         response = manager.try_redact(params)
         assert response["status"] == "FAIL"
+
+        # NOTE: This assumes RedactionManager writes exceptions to the same storage account.
+        # If RedactionManager still hardcodes pinsstredactiontestuks, this will keep failing in non-test envs.
         container_client = blob_service_client.get_container_client("redactiondata")
         blob_client = container_client.get_blob_client(f"{guid}/exception.txt")
         assert blob_client.exists()
