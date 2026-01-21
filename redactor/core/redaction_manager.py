@@ -11,7 +11,6 @@ from pydantic import BaseModel
 import re
 import os
 import traceback
-from dotenv import load_dotenv
 
 
 def get_redaction_storage_account() -> str:

@@ -1,6 +1,5 @@
 from test.util.test_case import TestCase
 from filelock import FileLock
-from dotenv import load_dotenv
 from uuid import uuid4
 from typing import List, Type
 import time
@@ -49,7 +48,6 @@ def configure_session():
         return
     _CONFIGURED = True
     quiet_azure_noise_early()  # <-- IMPORTANT: before any imports
-    load_dotenv(verbose=True, override=True)
     if "RUN_ID" not in os.environ:
         run_id = str(uuid4())[:8]
         os.environ["RUN_ID"] = str(run_id)
