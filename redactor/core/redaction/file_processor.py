@@ -181,16 +181,24 @@ class PDFProcessor(FileProcessor):
         text_found_at_rect (i.e. should the text be redacted)
         """
 
-        text_to_redact_normalised = normalise_punctuation_unidecode(term).lower()
+        text_to_redact_normalised = (
+            normalise_punctuation_unidecode(term)
+            .lower()
+            .lstrip(punctuation)
+            .rstrip(punctuation)
+        )
 
         # Expand rect slightly by approximately half a character on each side
         f = rect.width / len(term) / 2
         actual_text_at_rect = page.get_textbox(
             rect + (-f, 0, f, 0)
         ).strip()  # Remove trailing/leading whitespace
-        text_found_at_rect_normalised = normalise_punctuation_unidecode(
-            actual_text_at_rect
-        ).lower()
+        text_found_at_rect_normalised = (
+            normalise_punctuation_unidecode(actual_text_at_rect)
+            .lower()
+            .lstrip(punctuation)
+            .rstrip(punctuation)
+        )
 
         # If the text found contains multiple words, split to the same number of words
         # as the term to redact
@@ -208,15 +216,12 @@ class PDFProcessor(FileProcessor):
 
         # Remove preceding/trailing punctuation
         for word in redaction_candidates:
-            found_text_cleaned = word.lstrip(punctuation).rstrip(punctuation)
-            match_result = text_to_redact_normalised == found_text_cleaned
+            match_result = text_to_redact_normalised == word
 
             # Try to match by ignoring possessive markers
-            if found_text_cleaned.endswith("'s"):
-                found_text_cleaned = found_text_cleaned[:-2]
-                match_result = (
-                    match_result or text_to_redact_normalised == found_text_cleaned
-                )
+            if word.endswith("'s"):
+                word = word[:-2]
+                match_result = match_result or text_to_redact_normalised == word
 
             if match_result:
                 # Once a match is found, no need to check further
