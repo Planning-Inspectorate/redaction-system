@@ -73,6 +73,16 @@ data "azurerm_private_dns_zone" "ai" {
   tags = local.tags
 }
 
+/*
+data "azurerm_private_dns_zone" "open_ai" {
+  name = "privatelink.openai.azure.com"
+  resource_group_name = local.tooling_config.network_rg
+  provider            = azurerm.tooling
+
+  tags = local.tags
+}
+*/
+
 ############################################################################
 # DNS Zone Vnet links
 ############################################################################

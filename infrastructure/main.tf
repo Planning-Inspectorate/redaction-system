@@ -163,7 +163,7 @@ resource "azurerm_cognitive_account" "open_ai" {
   kind                          = "OpenAI"
   sku_name                      = "S0"
   custom_subdomain_name         = "pins-redaction-openai-${var.environment}-${local.location_short}"
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   identity {
     type = "SystemAssigned"
   }
@@ -180,7 +180,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
   kind                          = "ComputerVision"
   sku_name                      = "F0"
   custom_subdomain_name         = "pins-redaction-computervision-${var.environment}-${local.location_short}"
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   identity {
     type = "SystemAssigned"
   }
