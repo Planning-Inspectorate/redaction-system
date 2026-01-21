@@ -188,8 +188,6 @@ class PDFProcessor(FileProcessor):
         text_to_redact_normalised = (
             normalise_punctuation_unidecode(term)
             .lower()
-            .strip()  # Remove leading/trailing whitespace
-            .strip(punctuation)  # Remove leading/trailing punctuation
         )
 
         # Expand rect slightly by approximately half a character on each side
