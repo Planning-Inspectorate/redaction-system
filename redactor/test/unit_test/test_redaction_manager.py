@@ -74,6 +74,7 @@ def test__redaction_manager__validate_json_payload__valid(mock_init):
         },
     }
     inst = RedactionManager("")
+    inst.env = "dev"
     raised_exception = None
     try:
         inst.validate_json_payload(payload)
@@ -88,6 +89,7 @@ def test__redaction_manager__validate_json_payload__valid(mock_init):
 def test__redaction_manager__validate_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
+    inst.env = "dev"
     with pytest.raises(Exception):
         inst.validate_json_payload(payload)
 
@@ -140,6 +142,7 @@ def test__redaction_manager__redact(
     mock_cleaned_config = {"cleaned_rules": dict()}
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.env = "dev"
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
@@ -264,6 +267,7 @@ def test__redaction_manager__log_exception(
     expected_exception_message = "An exception with a message"
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.env = "dev"
     some_exception = Exception(expected_exception_message)
     inst.log_exception(some_exception)
     test_case(inst.job_id, expected_exception_message, some_exception)
@@ -395,6 +399,7 @@ def test__try_redact__successful(
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.env = "dev"
     params = {"some_payload", ""}
     response = inst.try_redact(params)
     test_case(
@@ -427,6 +432,7 @@ def test__try_redact__param_validation_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.env = "dev"
     params = {"some_payload", ""}
     mock_validate_json.side_effect = exception
     response = inst.try_redact(params)
@@ -460,6 +466,7 @@ def test__try_redact__redaction_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.env = "dev"
     params = {"some_payload", ""}
     mock_redact.side_effect = exception
     response = inst.try_redact(params)
