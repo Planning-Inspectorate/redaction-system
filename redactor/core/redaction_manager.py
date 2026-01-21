@@ -11,6 +11,8 @@ from pydantic import BaseModel
 import re
 import os
 import traceback
+from dotenv import load_dotenv
+import os
 
 
 def get_redaction_storage_account() -> str:
@@ -42,6 +44,11 @@ class JsonPayloadStructure(BaseModel):
 class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = job_id
+        self.env = os.environ.get("ENV", None)
+        if not self.env:
+            raise RuntimeError(
+                "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
+            )
         # Ensure the job id is set to the job id
         LoggingUtil(job_id=self.job_id)
 
@@ -79,7 +86,7 @@ class RedactionManager:
 
         # Set up connection to redaction storage
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=get_redaction_storage_account(),
+            storage_name=f"pinsstredaction{self.env}uks",
         )
 
         # Load the data
@@ -142,7 +149,7 @@ class RedactionManager:
             traceback.TracebackException.from_exception(exception).format()
         )
         AzureBlobIO(
-            storage_name=get_redaction_storage_account(),
+            storage_name=f"pinsstredaction{self.env}uks",
         ).write(
             data_bytes=error_trace.encode("utf-8"),
             container_name="redactiondata",
