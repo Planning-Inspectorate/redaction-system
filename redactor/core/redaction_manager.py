@@ -9,14 +9,12 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from pydantic import BaseModel
 import re
-import os
 import traceback
 from dotenv import load_dotenv
 import os
 
 
-def get_redaction_storage_account() -> str:
-    return os.getenv("E2E_STORAGE_ACCOUNT")
+load_dotenv(verbose=True, override=True)
 
 
 class JsonPayloadStructure(BaseModel):
@@ -172,7 +170,7 @@ class RedactionManager:
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
                     "blobPath": "hbtCv.pdf",
-                    "storageName": "pinsstredactiontestuks",
+                    "storageName": "pinsstredactiondevuks",
                     "containerName": "hbttest"
                 }
             },
@@ -181,7 +179,7 @@ class RedactionManager:
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
                     "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
-                    "storageName": "pinsstredactiontestuks",
+                    "storageName": "pinsstredactiondevuks",
                     "containerName": "hbttest"
                 }
             }
