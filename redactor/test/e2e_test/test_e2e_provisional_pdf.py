@@ -25,6 +25,7 @@ logger = logging.getLogger("e2e")
 # Pytest session-wide logging hygiene
 # ----------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def _quiet_azure_noise():
     """
@@ -33,10 +34,17 @@ def _quiet_azure_noise():
     If you *want* Azure HTTP request/response logging, set:
       E2E_AZURE_HTTP_LOGGING=true
     """
-    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in ("1", "true", "yes", "y")
+    want_http = os.getenv("E2E_AZURE_HTTP_LOGGING", "").lower() in (
+        "1",
+        "true",
+        "yes",
+        "y",
+    )
     if not want_http:
         logging.getLogger("azure").setLevel(logging.WARNING)
-        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+            logging.WARNING
+        )
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
         logging.getLogger("azure.monitor").setLevel(logging.WARNING)
         logging.getLogger("opentelemetry").setLevel(logging.WARNING)
@@ -55,6 +63,7 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 # ----------------------------
 # Fixtures
 # ----------------------------
+
 
 @pytest.fixture
 def repo_root() -> Path:
@@ -104,6 +113,7 @@ def redact_start_url() -> str:
 # ----------------------------
 # Test cases
 # ----------------------------
+
 
 @dataclass(frozen=True)
 class RedactionCase:

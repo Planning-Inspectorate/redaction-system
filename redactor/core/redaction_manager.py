@@ -13,10 +13,9 @@ import os
 import traceback
 from dotenv import load_dotenv
 
+
 def get_redaction_storage_account() -> str:
-    return (
-        os.getenv("E2E_STORAGE_ACCOUNT")
-    )
+    return os.getenv("E2E_STORAGE_ACCOUNT")
 
 
 class JsonPayloadStructure(BaseModel):
