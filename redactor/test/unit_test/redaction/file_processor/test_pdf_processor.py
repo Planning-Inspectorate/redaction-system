@@ -400,6 +400,9 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
             "Bob",
             True,
         ),  # Bob's (with a non ascii apostrophe) should equivalent to "Bob's"
+        ("(https://example.com)", "https://example.com", True),  # URL with punctuation
+        ("https://example.com/", "https://example.com", True),  # URL with punctuation
+        ("(https://example.com/)", "https://example.com", True),  # URL with punctuation
     ],
 )
 def test__pdf_processor__is_full_text_being_redacted(test_case):
