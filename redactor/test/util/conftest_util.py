@@ -32,11 +32,13 @@ def quiet_azure_noise_early():
         logging.getLogger("azure.monitor").setLevel(logging.WARNING)
         logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 
-    # Prevent Azure Monitor / OTel from starting exporters in the first place
-    os.environ.setdefault("AZURE_MONITOR_OPENTELEMETRY_ENABLED", "false")
-    os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
-    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
-    os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
+def quiet_azure_noise_early():
+    if os.getenv("DISABLE_TELEMETRY", "").lower() in ("1","true","yes"):
+        os.environ.setdefault("AZURE_MONITOR_OPENTELEMETRY_ENABLED", "false")
+        os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
+        os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
+        os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
+
 
 
 _CONFIGURED = False
