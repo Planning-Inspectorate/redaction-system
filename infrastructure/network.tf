@@ -73,7 +73,7 @@ data "azurerm_private_dns_zone" "ai" {
   tags = local.tags
 }
 
-/*
+
 data "azurerm_private_dns_zone" "open_ai" {
   name = "privatelink.openai.azure.com"
   resource_group_name = local.tooling_config.network_rg
@@ -81,7 +81,7 @@ data "azurerm_private_dns_zone" "open_ai" {
 
   tags = local.tags
 }
-*/
+
 
 ############################################################################
 # DNS Zone Vnet links
@@ -111,6 +111,16 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
   name                  = "pins-vnetlink-ai-redaction-system-${var.environment}"
   resource_group_name   = local.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
+
+  tags = local.tags
+}
+
+resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
+  name                  = "pins-vnetlink-openai-redaction-system-${var.environment}"
+  resource_group_name   = local.tooling_config.network_rg
+  private_dns_zone_name = data.azurerm_private_dns_zone.open_ai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
 
