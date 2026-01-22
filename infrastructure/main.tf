@@ -34,6 +34,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   #checkov:skip=CKV_AZURE_33: Logging not implemented yet
   #checkov:skip=CKV2_AZURE_1: Customer Managed Keys not implemented
   #checkov:skip=CKV_AZURE_206: Replication not needed
+  #checkov:skip=CKV2_AZURE_40: Enable key-based authentication to allow ADO to access the storage account
   name                             = "pinsst${local.service_name}${var.environment}${local.location_short}"
   resource_group_name              = azurerm_resource_group.redaction_rg.name
   location                         = local.location
@@ -43,7 +44,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   min_tls_version                  = "TLS1_2"
   allow_nested_items_to_be_public  = "false"
   cross_tenant_replication_enabled = "false"
-  shared_access_key_enabled        = false
+  shared_access_key_enabled        = true
   default_to_oauth_authentication  = true
   public_network_access_enabled    = false
   https_traffic_only_enabled       = true
