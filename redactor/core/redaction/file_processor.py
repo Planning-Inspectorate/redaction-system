@@ -172,32 +172,37 @@ class PDFProcessor(FileProcessor):
         cls, page: pymupdf.Page, term: str, rect: pymupdf.Rect
     ) -> bool:
         """
-        Check if the text_to_redact is a full redaction of text_found_at_rect
+        Check whether the text found at the given bounding box on the provided
+        page is an exact match for the given redaction text candidate, i.e.,
+        not a partial match. Examines the text found at the bounding box, expanded
+        by approximately half a character on each side, to identify partial matches.
 
         :param pymupdf.Page page: The page containing the text to redact
         :param str term: The redaction text candidate
         :param pymupdf.Rect rect: The redaction candidate's bounding box (on the page)
-        :return bool: True if text_to_redact is a full redaction of
-        text_found_at_rect (i.e. should the text be redacted)
+        :return tuple(bool, str): Whether the text found at rect on the page is
+        an exact match for the given redaction text candidate (i.e., the text
+        should be redacted), and the actual text found at the expanded bounding box.
         """
 
         text_to_redact_normalised = (
             normalise_punctuation_unidecode(term)
             .lower()
-            .lstrip(punctuation)
-            .rstrip(punctuation)
+            .strip()  # Remove leading/trailing whitespace
+            .strip(punctuation)  # Remove leading/trailing punctuation
         )
 
         # Expand rect slightly by approximately half a character on each side
-        f = rect.width / len(term) / 2
+        char_width = rect.width / len(term)
+        half_char_width = char_width / 2
         actual_text_at_rect = page.get_textbox(
-            rect + (-f, 0, f, 0)
+            rect + (-half_char_width, 0, half_char_width, 0)
         ).strip()  # Remove trailing/leading whitespace
         text_found_at_rect_normalised = (
             normalise_punctuation_unidecode(actual_text_at_rect)
             .lower()
-            .lstrip(punctuation)
-            .rstrip(punctuation)
+            .strip()
+            .strip(punctuation)
         )
 
         # If the text found contains multiple words, split to the same number of words
