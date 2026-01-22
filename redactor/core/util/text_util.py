@@ -38,6 +38,12 @@ def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) ->
 
 
 def normalise_punctuation_unidecode(text: str) -> str:
+    """
+    Replace punctuation characters with their closest ASCII equivalent.
+
+    :param str text: Input text
+    :return str: Text with punctuation replaced by closest ASCII equivalent
+    """
     return "".join(
         c if not category(c).startswith("P") else unidecode(c) or c for c in text
     )

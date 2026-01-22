@@ -392,6 +392,8 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
             True,
         ),  # A string with punctuation in the middle should be redacted
         ("Bob", "bob", True),  # Case should be ignored
+        ("Bob", "Bob ", True),  # Trailing whitespace should be ignored
+        ("Bob", " Bob", True),  # Leading whitespace should be ignored
         ("bob's", "bob", True),  # Possessive markers should be ignored, and be redacted
         ("François", "François", True),  # Non-english characters should be matched
         ("François", "Francois", False),  # Non-english characters should not be altered
