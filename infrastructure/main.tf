@@ -83,13 +83,15 @@ resource "azurerm_storage_container" "redaction_storage" {
 ############################################################################
 
 resource "azurerm_service_plan" "redaction_system" {
-  name                   = "pins-redaction-system-${var.environment}-${local.location_short}"
-  resource_group_name    = azurerm_resource_group.redaction_rg.name
-  location               = local.location
-  os_type                = "Linux"
-  sku_name               = "EP1"
-  worker_count           = 2
-  zone_balancing_enabled = true
+  #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
+  #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
+  name                = "pins-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+  location            = local.location
+  os_type             = "Linux"
+  sku_name            = "EP1"
+  #worker_count           = 2
+  #zone_balancing_enabled = true
 }
 
 resource "azurerm_linux_function_app" "redaction_system" {
