@@ -43,7 +43,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   min_tls_version                  = "TLS1_2"
   allow_nested_items_to_be_public  = "false"
   cross_tenant_replication_enabled = "false"
-  shared_access_key_enabled        = true
+  shared_access_key_enabled        = false
   default_to_oauth_authentication  = true
   public_network_access_enabled    = false
   https_traffic_only_enabled       = true
