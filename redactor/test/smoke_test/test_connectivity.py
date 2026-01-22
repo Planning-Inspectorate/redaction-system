@@ -12,6 +12,7 @@ def trigger_azure_function(endpoint: str) -> requests.Response:
     url = f"{function_base_url}/api/{endpoint}?code={function_app_key}"
     return requests.get(url)
 
+
 def test_llm_connection_from_azure_function():
     """
     Test that the function app is able to communicate with the llm
@@ -28,4 +29,6 @@ def test_azure_vision_connection_from_azure_function():
     """
     resp = trigger_azure_function("testazurecomputervision")
     assert resp.status_code == 200
-    assert "metadata" in resp.text, f"Expected a 'metadata' property to be in the response, but the response was '{resp.text}'"
+    assert "metadata" in resp.text, (
+        f"Expected a 'metadata' property to be in the response, but the response was '{resp.text}'"
+    )
