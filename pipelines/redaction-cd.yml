@@ -77,5 +77,6 @@ extends:
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
-                    python3 -m pip inatall pytest
+                    python3 -m pip install pytest
+                    python3 -m pip install dotenv
                     python3 -m pytest redactor/test/smoke_test/test_connectivity.py
