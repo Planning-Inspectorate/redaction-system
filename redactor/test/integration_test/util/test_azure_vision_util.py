@@ -38,7 +38,7 @@ def test__azure_vision_util__detect_faces__use_cached_result():
     - The two faces should be identified
     """
     with open(
-        os.path.join("redactor", "test", "resources", "image", "image_with_faces.jpeg"),
+        os.path.join("test", "resources", "image", "image_with_faces.jpeg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))

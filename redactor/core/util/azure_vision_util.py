@@ -14,8 +14,8 @@ from azure.ai.vision.imageanalysis.models import VisualFeatures
 # )
 from azure.core.credentials import AzureKeyCredential
 
-from redactor.core.redaction.result import ImageRedactionResult
-from redactor.core.util.logging_util import LoggingUtil, log_to_appins
+from core.redaction.result import ImageRedactionResult
+from core.util.logging_util import LoggingUtil, log_to_appins
 
 
 load_dotenv(verbose=True)
