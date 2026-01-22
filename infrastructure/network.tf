@@ -75,7 +75,7 @@ data "azurerm_private_dns_zone" "ai" {
 
 
 data "azurerm_private_dns_zone" "openai" {
-  name = "privatelink.openai.azure.com"
+  name                = "privatelink.openai.azure.com"
   resource_group_name = local.tooling_config.network_rg
   provider            = azurerm.tooling
 
@@ -173,7 +173,7 @@ resource "azurerm_private_endpoint" "function_app" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "open_ai__cognitiveservices" {
+resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
   name                = "pins-pe-${azurerm_cognitive_account.open_ai.name}-cognitiveservices"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
@@ -194,7 +194,7 @@ resource "azurerm_private_endpoint" "open_ai__cognitiveservices" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "open_ai__openai" {
+resource "azurerm_private_endpoint" "open_ai_openai" {
   name                = "pins-pe-${azurerm_cognitive_account.open_ai.name}-openai"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
@@ -215,7 +215,7 @@ resource "azurerm_private_endpoint" "open_ai__openai" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "computer_vision__cognitiveservices" {
+resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
   name                = "pins-pe-${azurerm_cognitive_account.computer_vision.name}-cognitiveservices"
   resource_group_name = azurerm_resource_group.redaction_rg.name
   location            = local.location
