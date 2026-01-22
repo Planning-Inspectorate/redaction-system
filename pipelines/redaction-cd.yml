@@ -69,3 +69,12 @@ extends:
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
                     --build-remote true \
                     --verbose
+              # Run a quick smoke test to check connectivity
+              - task: AzureCLI@2
+                displayName: 'Run function app smoke test'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    python3 -m pytest redactor/test/smoke_test/test_connectivity.py
