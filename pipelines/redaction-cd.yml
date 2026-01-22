@@ -57,15 +57,17 @@ extends:
 
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
               - task: AzureCLI@2
-                displayName: 'Deploy to function app'
+                displayName: 'Ensure ZipDeploy-compatible settings'
                 inputs:
                   azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
-                    az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-${{ lower(parameters.env) }}-uks' \
-                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
-                    --build-remote true \
-                    --verbose
+                    set -euo pipefail
+                    RG="pins-rg-redaction-${{ lower(parameters.env) }}-uks"
+                    APP="pins-func-redaction-system-${{ lower(parameters.env) }}-uks"
+
+                    az functionapp config appsettings delete -g "$RG" -n "$APP" \
+                      --setting-names WEBSITE_RUN_FROM_PACKAGE WEBSITE_RUN_FROM_ZIP || true
+
+                    az functionapp restart -g "$RG" -n "$APP"
