@@ -271,7 +271,7 @@ resource "azurerm_network_security_group" "nsg" {
 resource "azurerm_subnet_network_security_group_association" "nsg" {
   for_each = toset([azurerm_subnet.redaction_system.id, azurerm_subnet.function_app.id])
 
-  network_security_group_id = azurerm_network_security_group.nsg.id
+  network_security_group_id = azurerm_network_security_group.nsg[each.key].id
   subnet_id                 = each.value
 
   depends_on = [
