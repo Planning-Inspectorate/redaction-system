@@ -255,3 +255,26 @@ resource "azurerm_virtual_network_peering" "tooling_to_redaction" {
 
   provider = azurerm.tooling
 }
+
+############################################################################
+# Network security
+############################################################################
+resource "azurerm_network_security_group" "nsg" {
+  for_each            = toset([azurerm_subnet.redaction_system.id, azurerm_subnet.function_app.id])
+  name                = "pins-nsg-redaction-system"
+  location            = local.location
+  resource_group_name = azurerm_resource_group.redaction_rg.name
+
+  tags = local.tags
+}
+
+resource "azurerm_subnet_network_security_group_association" "nsg" {
+  for_each = toset([azurerm_subnet.redaction_system.id, azurerm_subnet.function_app.id])
+
+  network_security_group_id = azurerm_network_security_group.nsg.id
+  subnet_id                 = each.value
+
+  depends_on = [
+    azurerm_network_security_group.nsg
+  ]
+}
