@@ -380,6 +380,8 @@ class PDFProcessor(FileProcessor):
 
         # Extract images from PDF
         pdf_images = self._extract_pdf_images(file_bytes)
+
+        # Generate list of redaction rules from config
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
         )

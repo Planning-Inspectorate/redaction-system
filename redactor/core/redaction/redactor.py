@@ -177,6 +177,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
+    """
+    Class that performs text redaction within images
+
+    """
+
     @classmethod
     def get_name(cls) -> str:
         return "ImageLLMTextRedaction"
