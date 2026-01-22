@@ -1,7 +1,7 @@
 import pytest
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from redactor.core.util.llm_util import TokenSemaphore
+from core.util.llm_util import TokenSemaphore
 
 
 def test__token_semaphore__acquire():
@@ -26,7 +26,6 @@ def token_semaphore_task(self, tokens: int):
 def test__token_semaphore__insufficient_tokens():
     # Test that in a parallel scenario, only one thread waits when tokens are insufficient
     # Define a task that tries to acquire more tokens than available
-
     token_semaphore = TokenSemaphore(max_tokens=100)
     token_semaphore.task = token_semaphore_task
 

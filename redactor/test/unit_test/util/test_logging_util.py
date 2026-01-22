@@ -1,13 +1,14 @@
 import pytest
 import time
 
-from unittest.mock import patch
+from unittest.mock import patch, call
 from logging import Logger, getLogger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from redactor.core.util.logging_util import LoggingUtil, Singleton, log_to_appins
+from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 def test_logging_util__is_a_singleton(mock_init):
     Singleton._INSTANCES = {}
@@ -17,6 +18,7 @@ def test_logging_util__is_a_singleton(mock_init):
     LoggingUtil.__init__.assert_called_once()
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 def test_logging_util__is_thread_safe(mock_init):
     Singleton._INSTANCES = {}
@@ -32,17 +34,31 @@ def test_logging_util__is_thread_safe(mock_init):
     assert id(instances[0]) == id(instances[1])
 
 
+@pytest.mark.nologgerfixt
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("redactor.core.util.logging_util.uuid4", return_value="some_guid")
-@patch("redactor.core.util.logging_util.configure_azure_monitor")
+@patch("core.util.logging_util.uuid4", return_value="some_guid")
+@patch("core.util.logging_util.configure_azure_monitor")
+def get_new_logging_instance(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
+    Singleton._INSTANCES = {}
+    return LoggingUtil()
+
+
+@pytest.mark.nologgerfixt
+@patch("os.environ.get", return_value="some_connection_string;blah;blah")
+@patch("core.util.logging_util.uuid4", return_value="some_guid")
+@patch("core.util.logging_util.configure_azure_monitor")
 def test_logging_util__init(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
     Singleton._INSTANCES = {}
     logging_util_inst = LoggingUtil()
+
     assert logging_util_inst.job_id == "some_guid"
     assert isinstance(logging_util_inst.logger, Logger)
+
+    mock_uuid4.assert_called_once()
     mock_configure_azure_monitor.assert_called_once()
 
 
+@pytest.mark.nologgerfixt
 @patch("os.environ.get", return_value=None)
 def test_logging_util__init_no_appins_no_logfile(mock_env_get):
     Singleton._INSTANCES = {}
@@ -53,6 +69,7 @@ def test_logging_util__init_no_appins_no_logfile(mock_env_get):
     )
 
 
+@pytest.mark.nologgerfixt
 @patch("os.environ.get", return_value=None)
 def test_logging_util__init_no_appins_with_logfile(mock_env_get, tmp_path):
     Singleton._INSTANCES = {}
@@ -62,40 +79,36 @@ def test_logging_util__init_no_appins_with_logfile(mock_env_get, tmp_path):
     assert logging_util_inst.log_file == log_file
 
 
-@patch("redactor.core.util.logging_util.configure_azure_monitor")
-def get_new_logging_instance(mock_configure_azure_monitor):
-    with patch.object(LoggingUtil, "__new__", return_value=object.__new__(LoggingUtil)):
-        return LoggingUtil()
-
-
+@pytest.mark.nologgerfixt
 @patch.object(Logger, "info", return_value=None)
 def test_logging_util__log_info(mock_logger_info):
     logging_util_inst = get_new_logging_instance()
-    guid = "some_guid"
-
     logging_util_inst.logger = getLogger()
-    logging_util_inst.job_id = guid
 
     info_message = "some_info_message"
     logging_util_inst.log_info(info_message)
 
-    Logger.info.assert_called_once_with(f"{guid}: {info_message}")
+    Logger.info.assert_has_calls(
+        [
+            call("some_guid: Logging initialised for redactor_logs."),
+            call(f"some_guid: {info_message}"),
+        ]
+    )
 
 
+@pytest.mark.nologgerfixt
 @patch.object(Logger, "exception", return_value=None)
 def test_logging_util__log_exception(mock_logger_exception):
     logging_util_inst = get_new_logging_instance()
-    guid = "some_guid"
-
     logging_util_inst.logger = getLogger()
-    logging_util_inst.job_id = guid
 
     error_message = "some_exception_message"
     logging_util_inst.log_exception(error_message)
 
-    Logger.exception.assert_called_once_with(f"{guid}: {error_message}")
+    Logger.exception.assert_called_once_with(f"some_guid: {error_message}")
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins(mock_init, mock_log_info):
@@ -113,6 +126,7 @@ def test_log_to_appins(mock_init, mock_log_info):
     assert resp == "Hello world"
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_args(mock_init, mock_log_info):
@@ -131,6 +145,7 @@ def test_log_to_appins__with_args(mock_init, mock_log_info):
     assert resp == "Hello world (1, 2, bob)"
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 @patch.object(LoggingUtil, "log_exception", return_value=None)
@@ -156,6 +171,7 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
     )
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
@@ -176,6 +192,7 @@ def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
     assert resp == "Hello world"
 
 
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_class_method(mock_init, mock_log_info):

@@ -4,9 +4,9 @@ from mock import patch
 from PIL import Image
 from io import BytesIO
 
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.util.logging_util import LoggingUtil
-from redactor.core.redaction.result import ImageRedactionResult
+from core.util.azure_vision_util import AzureVisionUtil
+from core.util.logging_util import LoggingUtil
+from core.redaction.result import ImageRedactionResult
 
 
 def test__azure_vision_util__detect_faces():
@@ -16,7 +16,7 @@ def test__azure_vision_util__detect_faces():
     - The two faces should be identified
     """
     with open(
-        os.path.join("redactor", "test", "resources", "image", "image_with_faces.jpeg"),
+        os.path.join("test", "resources", "image", "image_with_faces.jpeg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))
@@ -70,7 +70,7 @@ def test__azure_vision_util__detect_text():
     - The text content of the image should be extracted, with each line represented by a bounding box
     """
     with open(
-        os.path.join("redactor", "test", "resources", "image", "image_with_text.jpg"),
+        os.path.join("test", "resources", "image", "image_with_text.jpg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))

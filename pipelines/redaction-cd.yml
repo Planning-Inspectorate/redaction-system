@@ -4,11 +4,11 @@ name: Redaction CD
 parameters:
 # User-specified environment to deploy to
 - name: env
-  default: 'dev'
+  default: 'Dev'
   values:
-  - 'dev'
-  - 'test'
-  - 'prod'
+  - 'Dev'
+  - 'Test'
+  - 'Prod'
 
 resources:
   repositories:
@@ -23,6 +23,8 @@ extends:
   parameters:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
+    environments:
+      - name: ${{ parameters.env }}
     deploymentStages:
       - name: Deploy Function App
         deploymentJobs:
@@ -33,9 +35,9 @@ extends:
               
               # Create a zip file of all the files in the filelist.
               - script: |
+                  set -e
                   cd $(Build.SourcesDirectory)/redactor
-                  find . -maxdepth 1 -type f | sed 's|^\./||' > $(Build.SourcesDirectory)/redactor/filelist.txt
-                  cat $(Build.SourcesDirectory)/redactor/filelist.txt | xargs zip -r $(Build.ArtifactStagingDirectory)/redactor.zip
+                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip .
                 displayName: 'Archive top level files'
               
               # Publish the zip file as an artifact to be used further in the pipeline.
@@ -62,8 +64,8 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-${{ parameters.env }}-uks' \
-                    --name 'pins-func-redaction-system-${{ parameters.env }}-uks' \
+                    --resource-group 'pins-rg-redaction-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
                     --build-remote true \
                     --verbose

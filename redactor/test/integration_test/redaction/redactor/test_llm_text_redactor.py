@@ -1,5 +1,5 @@
-from redactor.core.redaction.redactor import LLMTextRedactor
-from redactor.core.redaction.config import (
+from core.redaction.redactor import LLMTextRedactor
+from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 

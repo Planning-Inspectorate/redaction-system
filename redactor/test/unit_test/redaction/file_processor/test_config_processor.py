@@ -1,7 +1,7 @@
-from redactor.core.redaction.config import RedactionConfig
-from redactor.core.redaction.file_processor import FileProcessor
-from redactor.core.redaction.config_processor import ConfigProcessor
-from redactor.core.redaction.redactor import Redactor, RedactorFactory
+from core.redaction.config import RedactionConfig
+from core.redaction.file_processor import FileProcessor
+from core.redaction.config_processor import ConfigProcessor
+from core.redaction.redactor import Redactor, RedactorFactory
 import mock
 import pytest
 
