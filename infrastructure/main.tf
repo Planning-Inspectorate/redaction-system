@@ -169,6 +169,7 @@ resource "azurerm_cognitive_account" "open_ai" {
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
   fqdns                              = ["azureprivatedns.net"]
+  local_auth_enabled                 = false
   identity {
     type = "SystemAssigned"
   }
@@ -188,6 +189,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
   fqdns                              = ["azureprivatedns.net"]
+  local_auth_enabled                 = false
   identity {
     type = "SystemAssigned"
   }
