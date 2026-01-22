@@ -83,13 +83,13 @@ resource "azurerm_storage_container" "redaction_storage" {
 ############################################################################
 
 resource "azurerm_service_plan" "redaction_system" {
-  name                = "pins-redaction-system-${var.environment}-${local.location_short}"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
-  location            = local.location
-  os_type             = "Linux"
-  sku_name            = "EP1"
-  #worker_count           = 2
-  #zone_balancing_enabled = true
+  name                   = "pins-redaction-system-${var.environment}-${local.location_short}"
+  resource_group_name    = azurerm_resource_group.redaction_rg.name
+  location               = local.location
+  os_type                = "Linux"
+  sku_name               = "EP1"
+  worker_count           = 2
+  zone_balancing_enabled = true
 }
 
 resource "azurerm_linux_function_app" "redaction_system" {
@@ -102,6 +102,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
   service_plan_id               = azurerm_service_plan.redaction_system.id
   public_network_access_enabled = false
   virtual_network_subnet_id     = azurerm_subnet.function_app.id
+  https_only                    = true
 
   site_config {
     application_stack {
@@ -157,13 +158,15 @@ resource "azurerm_application_insights" "redaction_system" {
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                          = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
-  location                      = local.location
-  resource_group_name           = azurerm_resource_group.redaction_rg.name
-  kind                          = "OpenAI"
-  sku_name                      = "S0"
-  custom_subdomain_name         = "pins-redaction-openai-${var.environment}-${local.location_short}"
-  public_network_access_enabled = false
+  name                               = "pins-openai-redaction-system-${var.environment}-${local.location_short}"
+  location                           = local.location
+  resource_group_name                = azurerm_resource_group.redaction_rg.name
+  kind                               = "OpenAI"
+  sku_name                           = "S0"
+  custom_subdomain_name              = "pins-redaction-openai-${var.environment}-${local.location_short}"
+  public_network_access_enabled      = false
+  outbound_network_access_restricted = true
+  fqdns                              = ["azureprivatedns.net"]
   identity {
     type = "SystemAssigned"
   }
@@ -174,13 +177,15 @@ resource "azurerm_cognitive_account" "open_ai" {
 ############################################################################
 resource "azurerm_cognitive_account" "computer_vision" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                          = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
-  location                      = local.location
-  resource_group_name           = azurerm_resource_group.redaction_rg.name
-  kind                          = "ComputerVision"
-  sku_name                      = "F0"
-  custom_subdomain_name         = "pins-redaction-computervision-${var.environment}-${local.location_short}"
-  public_network_access_enabled = false
+  name                               = "pins-cv-redaction-system-${var.environment}-${local.location_short}"
+  location                           = local.location
+  resource_group_name                = azurerm_resource_group.redaction_rg.name
+  kind                               = "ComputerVision"
+  sku_name                           = "F0"
+  custom_subdomain_name              = "pins-redaction-computervision-${var.environment}-${local.location_short}"
+  public_network_access_enabled      = false
+  outbound_network_access_restricted = true
+  fqdns                              = ["azureprivatedns.net"]
   identity {
     type = "SystemAssigned"
   }
