@@ -56,19 +56,19 @@ extends:
                   downloadPath: '$(System.ArtifactsDirectory)'
 
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
-              - task: AzureCLI@2
-                displayName: 'Deploy to function app'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-${{ lower(parameters.env) }}-uks' \
-                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
-                    --build-remote true \
-                    --verbose
+              #- task: AzureCLI@2
+              #  displayName: 'Deploy to function app'
+              #  inputs:
+              #    azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
+              #    scriptType: 'bash'
+              #    scriptLocation: 'inlineScript'
+              #    inlineScript: |
+              #      az functionapp deployment source config-zip \
+              #      --resource-group 'pins-rg-redaction-${{ lower(parameters.env) }}-uks' \
+              #      --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+              #      --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
+              #      --build-remote true \
+              #      --verbose
               # Run a quick smoke test to check connectivity
               - task: AzureCLI@2
                 displayName: 'Run function app smoke test'
@@ -77,4 +77,5 @@ extends:
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
+                    python3 -m pip inatall pytest
                     python3 -m pytest redactor/test/smoke_test/test_connectivity.py
