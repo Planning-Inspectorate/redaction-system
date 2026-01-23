@@ -166,9 +166,7 @@ extends:
                   "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
 
                   "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
-                  "OPENAI_KEY": "$(OPENAI_KEY)",
                   "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
-                  "AZURE_VISION_KEY": "$(AZURE_VISION_KEY)",
                   "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
                 },
                 "Host": {

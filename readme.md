@@ -56,4 +56,3 @@ Below are the environment variables used by the project
 | Variable    | Description |
 | -------- | ------- |
 | OPENAI_ENDPOINT | The Open AI host. For example: "https://myazurefoundryresource.openai.azure.com/" |
-| OPENAI_KEY | The API key of the associated OPENAI_ENDPOINT |

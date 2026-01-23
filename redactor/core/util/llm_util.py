@@ -12,7 +12,7 @@ from azure.identity import (
 )
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import OpenAI
+from openai import AzureOpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 from threading import Semaphore
@@ -85,16 +85,16 @@ class LLMUtil:
 
         # Initialize OpenAI client for Azure
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-        self.api_key = os.environ.get("OPENAI_KEY", None)
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
         )
         self.token = credential.get_token(
             "https://cognitiveservices.azure.com/.default"
         ).token
-        self.llm = OpenAI(
-            base_url=f"{self.azure_endpoint}openai/v1/",
-            api_key=self.api_key,
+        self.llm = AzureOpenAI(
+            azure_endpoint=self.azure_endpoint,
+            api_version="2024-12-01-preview",
+            azure_ad_token=self.token,
         )
 
         # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
