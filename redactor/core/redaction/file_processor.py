@@ -346,8 +346,8 @@ class PDFProcessor(FileProcessor):
                     self._add_provisional_redaction(page, rect)
                     n_highlights += 1
                     LoggingUtil().log_info(
-                        f"        Applying highlight {n_highlights} for term {term}"
-                        f"at location '{rect}' on page {page.number}."
+                        f"        Applying highlight {n_highlights} for term '{term}'"
+                        f" at location '{rect}' on page {page.number}."
                     )
                     continue
                 elif (
