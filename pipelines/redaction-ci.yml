@@ -29,7 +29,6 @@ resources:
 extends:
   template: stages/wrapper_cd.yml@templates
   parameters:
-    validateName: Redaction CI
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
     environments:
