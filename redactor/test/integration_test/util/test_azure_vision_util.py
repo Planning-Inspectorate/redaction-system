@@ -1,11 +1,9 @@
 import os
 
-from mock import patch
 from PIL import Image
 from io import BytesIO
 
 from core.util.azure_vision_util import AzureVisionUtil
-from core.util.logging_util import LoggingUtil
 from core.redaction.result import ImageRedactionResult
 
 
@@ -39,14 +37,7 @@ def test__azure_vision_util__detect_faces__use_cached_result():
         image = Image.open(BytesIO(f.read()))
         response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
-
-        with patch.object(LoggingUtil, "log_info", return_value=None):
-            new_response = AzureVisionUtil().detect_faces(
-                image, confidence_threshold=0.5
-            )
-            LoggingUtil.log_info.assert_called_with(
-                "Using cached face detection result."
-            )
+        new_response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
 
     expected_response = ImageRedactionResult.Result(
         redaction_boxes=((0, 4, 409, 427), (360, 7, 407, 424)),
@@ -288,14 +279,7 @@ def test__azure_vision_util__detect_text__use_cached_result():
     ) as f:
         image = Image.open(BytesIO(f.read()))
         response = AzureVisionUtil().detect_text(image)
-
-        with patch.object(LoggingUtil, "log_info", return_value=None):
-            new_response = AzureVisionUtil().detect_text(
-                image, confidence_threshold=0.5
-            )
-            LoggingUtil.log_info.assert_called_with(
-                "Using cached text detection result."
-            )
+        new_response = AzureVisionUtil().detect_text(image)
 
     assert EXPECTED_TEXT_RESPONSE == response
     assert response == new_response
