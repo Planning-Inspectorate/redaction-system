@@ -2,7 +2,7 @@
 # Create resource groups
 ############################################################################
 resource "azurerm_resource_group" "primary" {
-  name     = "${local.org}-rg-${resource_suffix}"
+  name     = "${local.org}-rg-${local.resource_suffix}"
   location = local.location
   tags     = local.tags
 }
@@ -67,7 +67,7 @@ resource "azurerm_storage_container" "redaction_storage" {
 resource "azurerm_service_plan" "redaction_system" {
   #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
   #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
-  name                = "${local.org}-asp-${resource_suffix}"
+  name                = "${local.org}-asp-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   os_type             = "Linux"
@@ -77,7 +77,7 @@ resource "azurerm_service_plan" "redaction_system" {
 }
 
 resource "azurerm_linux_function_app" "redaction_system" {
-  name                = "${local.org}-func-${resource_suffix}"
+  name                = "${local.org}-func-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
 
@@ -115,7 +115,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
 # Create App Insights
 ############################################################################
 resource "azurerm_log_analytics_workspace" "redaction_system" {
-  name                = "${local.org}-log-${resource_suffix}"
+  name                = "${local.org}-log-${local.resource_suffix}"
   location            = local.location
   resource_group_name = azurerm_resource_group.primary.name
   sku                 = "PerGB2018"
@@ -126,7 +126,7 @@ resource "azurerm_log_analytics_workspace" "redaction_system" {
 }
 
 resource "azurerm_application_insights" "redaction_system" {
-  name                = "${local.org}-ai-${resource_suffix}"
+  name                = "${local.org}-ai-${local.resource_suffix}"
   location            = local.location
   resource_group_name = azurerm_resource_group.primary.name
   application_type    = "other"
@@ -141,12 +141,12 @@ resource "azurerm_application_insights" "redaction_system" {
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                               = "${local.org}-openai-${resource_suffix}"
+  name                               = "${local.org}-openai-${local.resource_suffix}"
   location                           = local.location
   resource_group_name                = azurerm_resource_group.primary.name
   kind                               = "OpenAI"
   sku_name                           = "S0"
-  custom_subdomain_name              = "${local.org}-openai-${resource_suffix}"
+  custom_subdomain_name              = "${local.org}-openai-${local.resource_suffix}"
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
   fqdns                              = ["azureprivatedns.net"]
@@ -161,12 +161,12 @@ resource "azurerm_cognitive_account" "open_ai" {
 ############################################################################
 resource "azurerm_cognitive_account" "computer_vision" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                               = "${local.org}-cv-${resource_suffix}"
+  name                               = "${local.org}-cv-${local.resource_suffix}"
   location                           = local.location
   resource_group_name                = azurerm_resource_group.primary.name
   kind                               = "ComputerVision"
   sku_name                           = "F0"
-  custom_subdomain_name              = "${local.org}-computervision-${resource_suffix}"
+  custom_subdomain_name              = "${local.org}-computervision-${local.resource_suffix}"
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
   fqdns                              = ["azureprivatedns.net"]
