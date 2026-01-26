@@ -27,239 +27,243 @@ resources:
       ref: refs/tags/release/3.24.2
 
 extends:
-  template: stages/wrapper_ci.yml@templates
+  template: stages/wrapper_cd.yml@templates
   parameters:
     validateName: Redaction CI
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
-    validationJobs:
-      - name: ValidateCode
-        steps:
-          - checkout: self
-            clean: true
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install ruff
-              export PYTHONPATH=$(pwd)
-              python3 -m ruff check redactor
-              python3 -m ruff format --check redactor
-            displayName: 'Python code style check'
+    environments:
+      - name: ${{ parameters.env }}
+    deploymentStages:
+      - name: Run CI Checks
+        deploymentJobs:
+          - name: ValidateCode
+            steps:
+              - checkout: self
+                clean: true
+              - script: |
+                  set -e
+                  cd redaction-system
+                  python3 -m pip install ruff
+                  export PYTHONPATH=$(pwd)
+                  python3 -m ruff check redactor
+                  python3 -m ruff format --check redactor
+                displayName: 'Python code style check'
 
-      - name: RunTestsJob
-        steps:
-          - checkout: self
-            clean: true
-          - checkout: templates
-          - template: ../steps/azure_auth.yml@templates
-            parameters:
-              subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+          - name: RunTestsJob
+            steps:
+              - checkout: self
+                clean: true
+              - checkout: templates
+              - template: ../steps/azure_auth.yml@templates
+                parameters:
+                  subscriptionId: $(SUBSCRIPTION_ID)
 
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install -r redactor/requirements.txt
-            displayName: 'Install requirements'
+              - script: |
+                  set -e
+                  cd redaction-system
+                  python3 -m pip install -r redactor/requirements.txt
+                displayName: 'Install requirements'
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
-              python3 -m pytest test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
-              python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
-              mv .coverage .coverage.unit
-            displayName: 'Run unit tests'
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH=$(pwd)
+                  python3 -m pytest test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
+                  python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
+                  mv .coverage .coverage.unit
+                displayName: 'Run unit tests'
 
-          - task: PublishTestResults@2
-            displayName: 'Publish unit test results'
-            condition: succeededOrFailed()
-            inputs:
-              testResultsFiles: '**/unit_test_results.xml'
-              testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
-              mergeTestResults: true
+              - task: PublishTestResults@2
+                displayName: 'Publish unit test results'
+                condition: succeededOrFailed()
+                inputs:
+                  testResultsFiles: '**/unit_test_results.xml'
+                  testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
+                  mergeTestResults: true
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
-              python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
-              python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
-              mv .coverage .coverage.integration
-            displayName: 'Run integration tests'
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH=$(pwd)
+                  python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
+                  python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
+                  mv .coverage .coverage.integration
+                displayName: 'Run integration tests'
 
-          - task: PublishTestResults@2
-            displayName: 'Publish integration test results'
-            condition: succeededOrFailed()
-            inputs:
-              testResultsFiles: '**/integration_test_results.xml'
-              testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
-              mergeTestResults: true
+              - task: PublishTestResults@2
+                displayName: 'Publish integration test results'
+                condition: succeededOrFailed()
+                inputs:
+                  testResultsFiles: '**/integration_test_results.xml'
+                  testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
+                  mergeTestResults: true
 
-          - task: NodeTool@0
-            displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
-            inputs:
-              versionSpec: '20.x'
+              - task: NodeTool@0
+                displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
+                inputs:
+                  versionSpec: '20.x'
 
-          - script: |
-              set -e
-              node --version
-              npm --version
-              npm i -g azure-functions-core-tools@4 --unsafe-perm true
-              npm i -g azurite --unsafe-perm true
-              func --version
-              azurite --version
-            displayName: 'Install Azure Functions Core Tools + Azurite'
+              - script: |
+                  set -e
+                  node --version
+                  npm --version
+                  npm i -g azure-functions-core-tools@4 --unsafe-perm true
+                  npm i -g azurite --unsafe-perm true
+                  func --version
+                  azurite --version
+                displayName: 'Install Azure Functions Core Tools + Azurite'
 
-          - script: |
-              set -e
-              cd redaction-system
+              - script: |
+                  set -e
+                  cd redaction-system
 
-              echo "Starting Azurite..."
-              mkdir -p .azurite
-              nohup azurite \
-                --silent \
-                --location .azurite \
-                --debug .azurite/azurite-debug.log \
-                > azurite.log 2>&1 &
-              echo $! > azurite.pid
+                  echo "Starting Azurite..."
+                  mkdir -p .azurite
+                  nohup azurite \
+                    --silent \
+                    --location .azurite \
+                    --debug .azurite/azurite-debug.log \
+                    > azurite.log 2>&1 &
+                  echo $! > azurite.pid
 
-              echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
-              for i in {1..60}; do
-                if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
-                  echo "Azurite ports are open"
-                  exit 0
-                fi
-                sleep 2
-              done
+                  echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
+                  for i in {1..60}; do
+                    if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
+                      echo "Azurite ports are open"
+                      exit 0
+                    fi
+                    sleep 2
+                  done
 
-              echo "Azurite did not become ready. Last 200 lines:"
-              tail -n 200 azurite.log || true
-              tail -n 200 .azurite/azurite-debug.log || true
-              exit 1
-            displayName: 'Start Azurite (background) + wait'
+                  echo "Azurite did not become ready. Last 200 lines:"
+                  tail -n 200 azurite.log || true
+                  tail -n 200 .azurite/azurite-debug.log || true
+                  exit 1
+                displayName: 'Start Azurite (background) + wait'
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
 
-              echo "Creating local.settings.json for Functions host..."
+                  echo "Creating local.settings.json for Functions host..."
 
-              APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
-              # In PR builds, Azure DevOps may leave this as the literal placeholder.
-              if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
-                echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
-                APPINS=""
-                # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
-                export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
-                export OTEL_TRACES_EXPORTER=none
-                export OTEL_METRICS_EXPORTER=none
-                export OTEL_LOGS_EXPORTER=none
-              fi
+                  APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
+                  # In PR builds, Azure DevOps may leave this as the literal placeholder.
+                  if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
+                    echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
+                    APPINS=""
+                    # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
+                    export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
+                    export OTEL_TRACES_EXPORTER=none
+                    export OTEL_METRICS_EXPORTER=none
+                    export OTEL_LOGS_EXPORTER=none
+                  fi
 
-              cat > local.settings.json <<JSON
-              {
-                "IsEncrypted": false,
-                "Values": {
-                  "FUNCTIONS_WORKER_RUNTIME": "python",
-                  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-                  "AzureWebJobsSecretStorageType": "files",
-                  "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
+                  cat > local.settings.json <<JSON
+                  {
+                    "IsEncrypted": false,
+                    "Values": {
+                      "FUNCTIONS_WORKER_RUNTIME": "python",
+                      "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+                      "AzureWebJobsSecretStorageType": "files",
+                      "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
 
-                  "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
-                  "OPENAI_KEY": "$(OPENAI_KEY)",
-                  "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
-                  "AZURE_VISION_KEY": "$(AZURE_VISION_KEY)",
-                  "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
-                },
-                "Host": {
-                  "LocalHttpPort": 7071,
-                  "CORS": "*",
-                  "CORSCredentials": false
-                }
-              }
-              JSON
+                      "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
+                      "OPENAI_KEY": "$(OPENAI_KEY)",
+                      "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
+                      "AZURE_VISION_KEY": "$(AZURE_VISION_KEY)",
+                      "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
+                    },
+                    "Host": {
+                      "LocalHttpPort": 7071,
+                      "CORS": "*",
+                      "CORSCredentials": false
+                    }
+                  }
+                  JSON
 
-              echo "Starting Functions host..."
-              nohup func start --python --port 7071 --verbose > ../func-host.log 2>&1 &
-              echo $! > ../func-host.pid
+                  echo "Starting Functions host..."
+                  nohup func start --python --port 7071 --verbose > ../func-host.log 2>&1 &
+                  echo $! > ../func-host.pid
 
-              echo "Waiting for Functions host (/admin/host/status)..."
-              for i in {1..60}; do
-                if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
-                  echo "Functions host is up"
-                  exit 0
-                fi
-                sleep 2
-              done
+                  echo "Waiting for Functions host (/admin/host/status)..."
+                  for i in {1..60}; do
+                    if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
+                      echo "Functions host is up"
+                      exit 0
+                    fi
+                    sleep 2
+                  done
 
-              echo "Functions host did not become ready. Last 200 lines:"
-              tail -n 200 ../func-host.log || true
-              exit 1
-            displayName: 'Start local Azure Functions host (background) + wait'
+                  echo "Functions host did not become ready. Last 200 lines:"
+                  tail -n 200 ../func-host.log || true
+                  exit 1
+                displayName: 'Start local Azure Functions host (background) + wait'
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH=$(pwd)
 
-              export E2E_FUNCTION_BASE_URL="http://localhost:7071"
-              export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
-              export E2E_CONTAINER_NAME="pinsfuncredactionsystemtestuks-applease"
-              export E2E_RUN_ID="ado-$(Build.BuildId)"
-              export E2E_SKIP_REDACTION="false"
-              export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
+                  export E2E_FUNCTION_BASE_URL="http://localhost:7071"
+                  export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
+                  export E2E_CONTAINER_NAME="pinsfuncredactionsystem${{ parameters.env }}uks-applease"
+                  export E2E_RUN_ID="ado-$(Build.BuildId)"
+                  export E2E_SKIP_REDACTION="false"
+                  export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
 
-              python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
-            displayName: 'Run e2e tests'
+                  python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
+                displayName: 'Run e2e tests'
 
-          - script: |
-              set +e
-              echo "Stopping Functions host..."
-              if [ -f redaction-system/func-host.pid ]; then
-                kill "$(cat redaction-system/func-host.pid)" || true
-              fi
-              pkill -f "func start" || true
-              pkill -f "azure-functions-core-tools" || true
-              pkill -f "workers/python" || true
+              - script: |
+                  set +e
+                  echo "Stopping Functions host..."
+                  if [ -f redaction-system/func-host.pid ]; then
+                    kill "$(cat redaction-system/func-host.pid)" || true
+                  fi
+                  pkill -f "func start" || true
+                  pkill -f "azure-functions-core-tools" || true
+                  pkill -f "workers/python" || true
 
-              echo "Stopping Azurite..."
-              if [ -f redaction-system/azurite.pid ]; then
-                kill "$(cat redaction-system/azurite.pid)" || true
-              fi
-              pkill -f "azurite" || true
+                  echo "Stopping Azurite..."
+                  if [ -f redaction-system/azurite.pid ]; then
+                    kill "$(cat redaction-system/azurite.pid)" || true
+                  fi
+                  pkill -f "azurite" || true
 
-              echo "Done"
-            displayName: 'Stop local Functions host + Azurite'
-            condition: always()
+                  echo "Done"
+                displayName: 'Stop local Functions host + Azurite'
+                condition: always()
 
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish e2e logs'
-            condition: always()
-            inputs:
-              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: 'e2e-local-logs'
+              - task: PublishBuildArtifacts@1
+                displayName: 'Publish e2e logs'
+                condition: always()
+                inputs:
+                  PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
+                  ArtifactName: 'e2e-local-logs'
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              python3 -m coverage combine
-              python3 -m coverage report
-              python3 -m coverage xml -o coverage.xml
-            displayName: 'Combine coverage reports'
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  python3 -m coverage combine
+                  python3 -m coverage report
+                  python3 -m coverage xml -o coverage.xml
+                displayName: 'Combine coverage reports'
 
-          - task: UseDotNet@2
-            displayName: 'Install latest .net'
-            inputs:
-              packageType: 'sdk'
-              version: '8.x'
+              - task: UseDotNet@2
+                displayName: 'Install latest .net'
+                inputs:
+                  packageType: 'sdk'
+                  version: '8.x'
 
-          - task: PublishCodeCoverageResults@2
-            displayName: 'Publish coverage reports'
-            inputs:
-              summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
+              - task: PublishCodeCoverageResults@2
+                displayName: 'Publish coverage reports'
+                inputs:
+                  summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
-            displayName: 'Fail if test coverage is below the threshold'
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
+                displayName: 'Fail if test coverage is below the threshold'
