@@ -4,7 +4,7 @@
 resource "azurerm_virtual_network" "redaction_system" {
   name                = "vnet-redaction-system-${var.environment}-${local.location_short}"
   location            = local.location
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   address_space       = [var.vnet_cidr_block]
 
   tags = local.tags
@@ -12,7 +12,7 @@ resource "azurerm_virtual_network" "redaction_system" {
 
 resource "azurerm_subnet" "redaction_system" {
   name                              = "RedactionSubnet"
-  resource_group_name               = azurerm_resource_group.redaction_rg.name
+  resource_group_name               = azurerm_resource_group.primary.name
   address_prefixes                  = [var.subnet_cidr_block]
   virtual_network_name              = azurerm_virtual_network.redaction_system.name
   service_endpoints                 = ["Microsoft.Storage"]
@@ -21,7 +21,7 @@ resource "azurerm_subnet" "redaction_system" {
 
 resource "azurerm_subnet" "function_app" {
   name                              = "FunctionAppSubnet"
-  resource_group_name               = azurerm_resource_group.redaction_rg.name
+  resource_group_name               = azurerm_resource_group.primary.name
   address_prefixes                  = [var.functionapp_cidr_block]
   virtual_network_name              = azurerm_virtual_network.redaction_system.name
   service_endpoints                 = ["Microsoft.Storage"]
@@ -36,52 +36,6 @@ resource "azurerm_subnet" "function_app" {
   }
 }
 
-data "azurerm_virtual_network" "tooling" {
-  name                = local.tooling_config.network_name
-  resource_group_name = local.tooling_config.network_rg
-
-  provider = azurerm.tooling
-}
-
-############################################################################
-# DNS zone
-############################################################################
-
-data "azurerm_private_dns_zone" "storage" {
-  for_each            = { for idx, val in local.storage_subresources : idx => val }
-  name                = "privatelink.${each.value}.core.windows.net"
-  resource_group_name = local.tooling_config.network_rg
-  provider            = azurerm.tooling
-
-  tags = local.tags
-}
-
-data "azurerm_private_dns_zone" "function" {
-  name                = "privatelink.azurewebsites.net"
-  resource_group_name = local.tooling_config.network_rg
-  provider            = azurerm.tooling
-
-  tags = local.tags
-}
-
-
-data "azurerm_private_dns_zone" "ai" {
-  name                = "privatelink.cognitiveservices.azure.com"
-  resource_group_name = local.tooling_config.network_rg
-  provider            = azurerm.tooling
-
-  tags = local.tags
-}
-
-
-data "azurerm_private_dns_zone" "openai" {
-  name                = "privatelink.openai.azure.com"
-  resource_group_name = local.tooling_config.network_rg
-  provider            = azurerm.tooling
-
-  tags = local.tags
-}
-
 
 ############################################################################
 # DNS Zone Vnet links
@@ -89,7 +43,7 @@ data "azurerm_private_dns_zone" "openai" {
 resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   for_each              = { for idx, val in local.storage_subresources : idx => val }
   name                  = "pins-vnetlink-${each.value}-redaction-system-${var.environment}"
-  resource_group_name   = local.tooling_config.network_rg
+  resource_group_name   = var.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.storage[each.key].name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
@@ -99,7 +53,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "function" {
   name                  = "pins-vnetlink-functions-redaction-system-${var.environment}"
-  resource_group_name   = local.tooling_config.network_rg
+  resource_group_name   = var.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.function.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
@@ -109,7 +63,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "function" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
   name                  = "pins-vnetlink-ai-redaction-system-${var.environment}"
-  resource_group_name   = local.tooling_config.network_rg
+  resource_group_name   = var.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
@@ -119,7 +73,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
   name                  = "pins-vnetlink-openai-redaction-system-${var.environment}"
-  resource_group_name   = local.tooling_config.network_rg
+  resource_group_name   = var.tooling_config.network_rg
   private_dns_zone_name = data.azurerm_private_dns_zone.openai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
@@ -133,7 +87,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
 resource "azurerm_private_endpoint" "redaction_storage" {
   for_each            = { for idx, val in local.storage_subresources : idx => val }
   name                = "pins-pe-${azurerm_storage_account.redaction_storage.name}-${each.value}-${var.environment}"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
@@ -154,7 +108,7 @@ resource "azurerm_private_endpoint" "redaction_storage" {
 
 resource "azurerm_private_endpoint" "function_app" {
   name                = "pins-pe-${azurerm_linux_function_app.redaction_system.name}-${var.environment}"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
@@ -175,7 +129,7 @@ resource "azurerm_private_endpoint" "function_app" {
 
 resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
   name                = "pins-pe-${azurerm_cognitive_account.open_ai.name}-cognitiveservices"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
@@ -196,7 +150,7 @@ resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
 
 resource "azurerm_private_endpoint" "open_ai_openai" {
   name                = "pins-pe-${azurerm_cognitive_account.open_ai.name}-openai"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
@@ -217,7 +171,7 @@ resource "azurerm_private_endpoint" "open_ai_openai" {
 
 resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
   name                = "pins-pe-${azurerm_cognitive_account.computer_vision.name}-cognitiveservices"
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   subnet_id           = azurerm_subnet.redaction_system.id
 
@@ -242,7 +196,7 @@ resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
 ############################################################################
 resource "azurerm_virtual_network_peering" "redaction_to_tooling" {
   name                      = "pins-peer-redaction-system-to-tooling-${var.environment}"
-  resource_group_name       = azurerm_resource_group.redaction_rg.name
+  resource_group_name       = azurerm_resource_group.primary.name
   virtual_network_name      = azurerm_virtual_network.redaction_system.name
   remote_virtual_network_id = data.azurerm_virtual_network.tooling.id
 }
@@ -263,7 +217,7 @@ resource "azurerm_network_security_group" "nsg" {
   for_each            = toset([azurerm_subnet.redaction_system.id, azurerm_subnet.function_app.id])
   name                = "pins-nsg-redaction-system"
   location            = local.location
-  resource_group_name = azurerm_resource_group.redaction_rg.name
+  resource_group_name = azurerm_resource_group.primary.name
 
   tags = local.tags
 }

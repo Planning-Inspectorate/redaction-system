@@ -1,11 +1,14 @@
 locals {
-  location_short = "uks"
-  location       = "uksouth"
-  service_name   = "redaction"
+  location_short  = "uks"
+  location        = "uksouth"
+  service_name    = "redaction-system"
+  resource_suffix = "${local.service_name}-${var.environment}-${local.location_short}"
+  org             = "pins"
   tags = {
-    "CreatedBy" : "",
+    "CreatedBy" : "terraform",
     "Environment" : var.environment,
     "ServiceName" : local.service_name
+    "Location" : local.location
   }
   storage_containers = toset(
     [
@@ -18,9 +21,4 @@ locals {
     "table",
     "file"
   ]
-  tooling_config = {
-    network_name    = "pins-vnet-shared-tooling-uks"
-    network_rg      = "pins-rg-shared-tooling-uks"
-    subscription_id = "edb1ff78-90da-4901-a497-7e79f966f8e2"
-  }
 }
