@@ -173,7 +173,7 @@ def session_setup(tmp_path_factory, worker_id, request):
 
 
 def _session_teardown_task(session):
-    logging.info("Tearing down pytest session for unit tests")
+    logging.info("Tearing down pytest session for tests")
     for test_case in process_arguments(session):
         logging.info("    Running teardown for " + test_case.__module__)
         t0 = time.perf_counter()
