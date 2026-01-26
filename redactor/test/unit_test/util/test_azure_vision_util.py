@@ -12,7 +12,7 @@ def MockImageAnalysisClientResult(people):
     return mock_result
 
 
-@patch("redactor.core.util.azure_vision_util.BytesIO", autospec=True)
+@patch("core.util.azure_vision_util.BytesIO", autospec=True)
 def test__azure_vision_util__detect_faces(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()
     image = Mock()
@@ -57,7 +57,7 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
     ]
 
 
-@patch("redactor.core.util.azure_vision_util.BytesIO", autospec=True)
+@patch("core.util.azure_vision_util.BytesIO", autospec=True)
 def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()
     image = Mock()
@@ -130,7 +130,7 @@ def MockTextAnalysisClientResult():
     return mock_result
 
 
-@patch("redactor.core.util.azure_vision_util.BytesIO", autospec=True)
+@patch("core.util.azure_vision_util.BytesIO", autospec=True)
 def test__azure_vision_util__detect_text(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()
     image = Mock()
@@ -157,7 +157,7 @@ def test__azure_vision_util__detect_text(mock_bytes_io):
     ]
 
 
-@patch("redactor.core.util.azure_vision_util.BytesIO", autospec=True)
+@patch("core.util.azure_vision_util.BytesIO", autospec=True)
 def test__azure_vision_util__detect_text__use_cached_result(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()
     image = Mock()
