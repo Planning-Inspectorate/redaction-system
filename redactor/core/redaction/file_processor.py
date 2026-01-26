@@ -364,12 +364,16 @@ class PDFProcessor(FileProcessor):
     @log_to_appins
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         pdf_text = self._extract_pdf_text(file_bytes)
+        LoggingUtil().log_info(
+            f"The following text was extracted from the PDF: '{pdf_text}'"
+        )
         if not is_english_text(pdf_text):
-            LoggingUtil().log_exception(
+            exception = NonEnglishContentException(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
-            raise NonEnglishContentException
+            LoggingUtil().log_exception(exception)
+            raise exception
         pdf_images = self._extract_pdf_images(file_bytes)
         redaction_rules: List[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
@@ -387,8 +391,11 @@ class PDFProcessor(FileProcessor):
         # Generate redactions
         # TODO convert back to a set
         redaction_results: List[RedactionResult] = []
+        LoggingUtil().log_info("Analysing PDF to identify redactions")
         for rule_to_apply in redaction_rules_to_apply:
+            LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
             redaction_results.append(rule_to_apply.redact())
+        LoggingUtil().log_info("PDF analysis complete")
         text_redaction_results: List[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         ]
@@ -408,6 +415,7 @@ class PDFProcessor(FileProcessor):
                 "PDFProcessor, but there is no mechanism to process them: "
                 f"{json.dumps(list(unapplied_redaction_results), indent=4)}"
             )
+        LoggingUtil().log_info("Applying proposed redactions")
         # Apply redactions
         # Apply text redactions
         text_redactions = [

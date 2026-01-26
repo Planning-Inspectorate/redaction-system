@@ -41,6 +41,9 @@ class Redactor(ABC):
         self._validate_redaction_config(config)
         self.config = config
 
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.config.name})"
+
     @classmethod
     @abstractmethod
     def get_name(cls) -> str:
@@ -125,15 +128,22 @@ class LLMTextRedactor(TextRedactor):
 
         # The user's prompt will just be the raw text
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
+        LoggingUtil().log_info(
+            f"The text has been broken down into {len(text_chunks)} chunks"
+        )
 
         # Initialise LLM interface
         llm_util = LLMUtil(self.config)
 
         # Identify redaction strings
-        return llm_util.analyse_text(
+        result = llm_util.analyse_text(
             system_prompt,
             text_chunks,
         )
+        LoggingUtil().log_info(
+            f"The following redaction strings were generated: {result}"
+        )
+        return result
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
@@ -197,7 +207,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
+            LoggingUtil().log_info(
+                f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
+            )
             text_content = " ".join([x[0] for x in text_rect_map])
+            LoggingUtil().log_info(
+                f"The following text was extracted from an image in the PDF: '{text_content}'"
+            )
             redaction_strings = self._analyse_text(text_content).redaction_strings
 
             # Identify text rectangles to redact based on redaction strings

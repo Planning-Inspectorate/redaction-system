@@ -7,6 +7,7 @@ from uuid import uuid4
 from dotenv import load_dotenv
 
 from azure.monitor.opentelemetry import configure_azure_monitor
+import traceback
 
 load_dotenv(verbose=True)
 
@@ -63,7 +64,8 @@ class LoggingUtil(metaclass=Singleton):
         self.job_id = kwargs.pop("job_id", uuid4())
         self.namespace = kwargs.pop("namespace", "redactor_logs")
         self.log_file = kwargs.pop("log_file", None)
-        self.log_level = kwargs.pop("log_level", logging.INFO)
+        self.log_level = kwargs.pop("log_level", logging.DEBUG)
+        self.raw_logs = ""
 
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
@@ -101,13 +103,38 @@ class LoggingUtil(metaclass=Singleton):
         """
         Log an information message
         """
-        self.logger.info(f"{self.job_id}: {msg}")
+        message = f"{self.job_id}: {msg}"
+        self.raw_logs += f"INFO: {message}\n"
+        self.logger.info(message)
 
     def log_exception(self, ex: Exception):
         """
         Log an exception
         """
-        self.logger.exception(f"{self.job_id}: {ex}")
+        stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
+        message = f"{self.job_id}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+        self.raw_logs += f"ERROR: {message}\n"
+        self.logger.exception(message)
+
+    def log_exception_with_message(self, message: str, ex: Exception):
+        """
+        Log an exception
+        """
+        stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
+        message = f"{self.job_id}: {message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+        self.raw_logs += f"ERROR: {message}\n"
+        self.logger.exception(message)
+
+    def log_warning(self, msg: str):
+        """
+        Log a warning message
+        """
+        message = f"{self.job_id}: {msg}"
+        self.raw_logs += f"WARNING: {message}\n"
+        self.logger.warning(message)
+
+    def get_log_bytes(self) -> bytes:
+        return self.raw_logs.encode("utf-8")
 
 
 def log_to_appins(_func=None, *args, **kwargs):
@@ -145,8 +172,8 @@ def log_to_appins(_func=None, *args, **kwargs):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
-                logger.log_exception(
-                    f"Exception raised in function {func.__name__}: {e}"
+                logger.log_exception_with_message(
+                    f"Exception raised in function {func.__name__}:", e
                 )
                 raise e
 

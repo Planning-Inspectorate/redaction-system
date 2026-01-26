@@ -1,5 +1,6 @@
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
+from core.util.logging_util import LoggingUtil
 
 from azure.identity import (
     ChainedTokenCredential,
@@ -20,6 +21,9 @@ class AzureVisionUtil:
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
+        )
+        LoggingUtil().log_info(
+            f"Establishing connection to Azure Computer Vision at {self.azure_endpoint}"
         )
         self.vision_client = ImageAnalysisClient(
             endpoint=self.azure_endpoint, credential=credential
