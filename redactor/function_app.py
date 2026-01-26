@@ -36,7 +36,8 @@ async def trigger_redaction(
                 }
             )
         )
-    logging.info("request params: ", request_params)
+    logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
+    logging.info("request params: %s", request_params)
     run_id = await client.start_new(
         "redaction_orchestrator", client_input=request_params
     )
