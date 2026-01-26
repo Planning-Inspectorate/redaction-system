@@ -1,9 +1,9 @@
 from mock import patch, Mock
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 
-from redactor.core.redaction.result import ImageRedactionResult
-from redactor.core.util.azure_vision_util import AzureVisionUtil
-from redactor.core.util.logging_util import LoggingUtil
+from core.redaction.result import ImageRedactionResult
+from core.util.azure_vision_util import AzureVisionUtil
+from core.util.logging_util import LoggingUtil
 
 
 def MockImageAnalysisClientResult(people):
@@ -75,9 +75,8 @@ def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
         }
     ]
 
-    with patch.object(LoggingUtil, "log_info", return_value=None):
-        result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-        LoggingUtil.log_info.assert_called_with("Using cached face detection result.")
+    result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
+    LoggingUtil.log_info.assert_called_with("Using cached face detection result.")
 
     assert result == ImageRedactionResult.Result(
         redaction_boxes=image_rects,
@@ -174,9 +173,8 @@ def test__azure_vision_util__detect_text__use_cached_result(mock_bytes_io):
         },
     ]
 
-    with patch.object(LoggingUtil, "log_info", return_value=None):
-        result = azure_vision_util.detect_text(image)
-        LoggingUtil.log_info.assert_called_with("Using cached text detection result.")
+    result = azure_vision_util.detect_text(image)
+    LoggingUtil.log_info.assert_called_with("Using cached text detection result.")
 
     assert result == text_to_redact
     mock_bytes_io.assert_not_called()  # Ensure no analysis was performed
