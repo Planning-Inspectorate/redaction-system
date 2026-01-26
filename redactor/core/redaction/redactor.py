@@ -140,9 +140,6 @@ class LLMTextRedactor(TextRedactor):
             system_prompt,
             text_chunks,
         )
-        LoggingUtil().log_info(
-            f"The following redaction strings were generated: {result}"
-        )
         return result
 
     def redact(self) -> LLMTextRedactionResult:
