@@ -16,7 +16,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   #checkov:skip=CKV2_AZURE_1: Customer Managed Keys not implemented
   #checkov:skip=CKV_AZURE_206: Replication not needed
   #checkov:skip=CKV2_AZURE_40: Enable key-based authentication to allow ADO to access the storage account
-  name                             = "${local.org}st${local.service_name}${var.environment}${local.location_short}"
+  name                             = "${local.org}stredaction${var.environment}${local.location_short}"
   resource_group_name              = azurerm_resource_group.primary.name
   location                         = local.location
   account_tier                     = "Standard"
