@@ -96,6 +96,7 @@ class AzureVisionUtil:
             source_image=image,
         )
 
+    @log_to_appins
     def detect_text(self, image: Image.Image):
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
