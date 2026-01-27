@@ -16,7 +16,7 @@ def test__llm_text_redactor__redact():
     config = {
         "name": "config name",
         "redactor_type": "LLMTextRedaction",
-        "model": "gpt-4.1-nano",
+        "model": "gpt-4.1",
         "system_prompt": (
             "You will be sent text to analyse. The text is a quote from Star Wars. "
             "Please find all strings in the text that adhere to the following rules: "

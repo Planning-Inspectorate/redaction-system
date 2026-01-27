@@ -57,17 +57,27 @@ extends:
 
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
               - task: AzureCLI@2
-                displayName: 'Ensure ZipDeploy-compatible settings'
+                displayName: 'Deploy to function app'
                 inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Infrastructure ${{ upper(parameters.env) }}'
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
-                    set -euo pipefail
-                    RG="pins-rg-redaction-${{ lower(parameters.env) }}-uks"
-                    APP="pins-func-redaction-system-${{ lower(parameters.env) }}-uks"
-
-                    az functionapp config appsettings delete -g "$RG" -n "$APP" \
-                      --setting-names WEBSITE_RUN_FROM_PACKAGE WEBSITE_RUN_FROM_ZIP || true
-
-                    az functionapp restart -g "$RG" -n "$APP"
+                    az functionapp deployment source config-zip \
+                    --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
+                    --build-remote true \
+                    --verbose
+                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}
+              # Run a quick smoke test to check connectivity
+              - task: AzureCLI@2
+                displayName: 'Run function app smoke test'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    python3 -m pip install pytest
+                    python3 -m pip install dotenv
+                    python3 -m pytest redactor/test/smoke_test/test_connectivity.py

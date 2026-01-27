@@ -40,7 +40,7 @@ def test__pdf_processor__redact():
                 LLMTextRedactionConfig(
                     name="config name",
                     redactor_type="LLMTextRedaction",
-                    model="gpt-4.1-nano",
+                    model="gpt-4.1",
                     system_prompt=(
                         "You will be sent text to analyse. The text is a quote from Star Trek. "
                         "Please find all strings in the text that adhere to the following rules: "
@@ -106,7 +106,7 @@ def test__pdf_processor__apply():
                 LLMTextRedactionConfig(
                     name="config name",
                     redactor_type="LLMTextRedaction",
-                    model="gpt-4.1-nano",
+                    model="gpt-4.1",
                     system_prompt=(
                         "You will be sent text to analyse. The text is a quote from Star Trek. "
                         "Please find all strings in the text that adhere to the following rules: "

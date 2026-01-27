@@ -35,7 +35,7 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         system_prompt="some system prompt",
         redaction_terms=[
             "rule A",

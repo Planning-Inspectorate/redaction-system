@@ -30,7 +30,7 @@ def test__image_llm_text_redactor__redact():
     config = ImageLLMTextRedactionConfig(
         name="config name",
         redactor_type="ImageLLMTextRedaction",
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         images=[
             Image.new("RGB", (1000, 1000)),
             Image.new("RGB", (200, 100)),

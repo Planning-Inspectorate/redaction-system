@@ -51,22 +51,22 @@ def test__handle_last_retry_error():
 
 def test__llm_util____init__():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         token_rate_limit=2000,
     )
     llm_util = LLMUtil(llm_util_config)
 
     assert llm_util.config.token_rate_limit == 2000
 
-    assert llm_util.input_token_cost == 8 * 0.000001
-    assert llm_util.output_token_cost == 30 * 0.000001
+    assert llm_util.input_token_cost == 149 * 0.000001
+    assert llm_util.output_token_cost == 593 * 0.000001
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 def test__llm_util___set_model_details(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         token_rate_limit=2000,
         request_rate_limit=100,
     )
@@ -76,15 +76,15 @@ def test__llm_util___set_model_details(mock_llm_util_init):
     assert llm_util.config.token_rate_limit == 2000
     assert llm_util.config.request_rate_limit == 100
 
-    assert llm_util.input_token_cost == 8 * 0.000001
-    assert llm_util.output_token_cost == 30 * 0.000001
+    assert llm_util.input_token_cost == 149 * 0.000001
+    assert llm_util.output_token_cost == 593 * 0.000001
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
 def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         token_rate_limit=300000,
         request_rate_limit=100,
     )
@@ -93,7 +93,7 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_i
 
     assert llm_util.config.token_rate_limit == 250000
     LoggingUtil.log_info.assert_called_with(
-        "Token rate limit for model gpt-4.1-nano exceeds maximum. "
+        "Token rate limit for model gpt-4.1 exceeds maximum. "
         "Setting to maximum of 250000 tokens per minute."
     )
 
@@ -102,7 +102,7 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_i
 def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         token_rate_limit=100000,
         request_rate_limit=300,
     )
@@ -111,7 +111,7 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_llm_util
 
     assert llm_util.config.request_rate_limit == 250
     LoggingUtil.log_info.assert_called_with(
-        "Request rate limit for model gpt-4.1-nano exceeds maximum. "
+        "Request rate limit for model gpt-4.1 exceeds maximum. "
         "Setting to maximum of 250 requests per minute."
     )
 
@@ -122,7 +122,7 @@ def test__llm_util___set_model_details__zero_token_request_rate_limit(
 ):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         token_rate_limit=0,
         request_rate_limit=0,
     )
@@ -151,7 +151,7 @@ def test__llm_util___set_model_details__invalid_model(mock_llm_util_init):
 def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util._set_workers()
 
@@ -163,7 +163,7 @@ def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count)
 def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util._set_workers(40)
 
@@ -175,7 +175,7 @@ def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu
 def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util._set_workers(0)
 
@@ -187,7 +187,7 @@ def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_co
 def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_count):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util._set_workers()
 
@@ -196,7 +196,7 @@ def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_co
 
 def test__llm_util___num_tokens_consumed():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
     system_prompt = "This is a system prompt."
@@ -213,7 +213,7 @@ def test__llm_util___num_tokens_consumed():
 @patch.object(Encoding, "encode", side_effect=Exception("Encoding error"))
 def test__llm_util___num_tokens_consumed__exception(mock_encode):
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
     system_prompt = "This is a system prompt."
@@ -229,7 +229,7 @@ def test__llm_util___num_tokens_consumed__exception(mock_encode):
 
 def test__create_api_message():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
 
@@ -262,7 +262,7 @@ def create_mock_chat_completion(
 
 def test__llm_util___compute_costs():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
     llm_util.input_token_cost = 1
@@ -286,7 +286,7 @@ def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
     expected_result = (mock_chat_completion, redaction_strings)
 
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
     llm_util.request_semaphore = Mock()
@@ -317,7 +317,7 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     mock_num_tokens_consumed,
 ):
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         request_timeout=1,
     )
     llm_util = LLMUtil(llm_util_config)
@@ -349,7 +349,7 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
 )
 def test__llm_util___analyse_text_chunk__exception(mock_invoke_chain):
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
 
@@ -368,7 +368,7 @@ def test__llm_util___analyse_text_chunk__retry_on_exception():
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     with patch.object(
         LLMUtil,
@@ -394,7 +394,7 @@ def test__llm_util___analyse_text_chunk__retry_on_exception():
 
 def test__llm_util__analyse_text():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util = LLMUtil(llm_util_config)
     llm_util.request_semaphore = Mock()
@@ -436,7 +436,7 @@ def test__llm_util__analyse_text():
 
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
 def test__llm_util__analyse_text__check_pool_size():
-    llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
+    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
 
     with (
@@ -464,7 +464,7 @@ def test__llm_util__analyse_text__check_pool_size():
 @patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
 @patch("core.util.llm_util.os.cpu_count", return_value=8)
 def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(model="gpt-4.1-nano", max_concurrent_requests=4)
+    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=4)
     llm_util = LLMUtil(llm_util_config)
 
     # Override to test that the value is respected
@@ -500,7 +500,7 @@ def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
 @patch("time.sleep", return_value=None)
 def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         budget=12.0,
     )
     llm_util = LLMUtil(llm_util_config)
