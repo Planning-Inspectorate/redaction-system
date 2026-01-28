@@ -19,7 +19,7 @@ def test__llm_util__invoke_chain__responds():
     - Then we should receive a ParsedChatCompletion response from the LLM
     """
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util_inst = LLMUtil(llm_util_config)
 
@@ -42,7 +42,7 @@ def test__llm_util__invoke_chain__has_correct_response_format():
     - Then the completion response should contain a value that is an instance of our supplied result format
     """
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util_inst = LLMUtil(llm_util_config)
 
@@ -61,7 +61,7 @@ def test__llm_util__invoke_chain__has_correct_response_format():
 
 def test__llm_util__analyse_text():
     llm_util_config = LLMUtilConfig(
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
     )
     llm_util_inst = LLMUtil(llm_util_config)
 

@@ -10,7 +10,7 @@ def test_llm_text_redactor__create_system_prompt():
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         text="some text",
         system_prompt="Some system prompt",
         redaction_terms=[
@@ -44,7 +44,7 @@ def test_llm_text_redactor__create_system_prompt_no_constraints():
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1-nano",
+        model="gpt-4.1",
         text="some text",
         system_prompt="Some system prompt",
         redaction_terms=[

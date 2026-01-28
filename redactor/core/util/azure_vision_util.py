@@ -1,12 +1,11 @@
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 
-# from azure.identity import (  # Should prefer this in the live system - todo
-#    ChainedTokenCredential,
-#    ManagedIdentityCredential,
-#    AzureCliCredential,
-# )
-from azure.core.credentials import AzureKeyCredential
+from azure.identity import (
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+    AzureCliCredential,
+)
 import os
 from PIL import Image
 from io import BytesIO
@@ -19,12 +18,11 @@ load_dotenv(verbose=True)
 class AzureVisionUtil:
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
-        self.api_key = os.environ.get("AZURE_VISION_KEY", None)
-        # credential = ChainedTokenCredential(
-        #    ManagedIdentityCredential(), AzureCliCredential()
-        # )
+        credential = ChainedTokenCredential(
+            ManagedIdentityCredential(), AzureCliCredential()
+        )
         self.vision_client = ImageAnalysisClient(
-            endpoint=self.azure_endpoint, credential=AzureKeyCredential(self.api_key)
+            endpoint=self.azure_endpoint, credential=credential
         )
 
     def detect_faces(self, image: Image.Image, confidence_threshold: float = 0.5):
