@@ -14,7 +14,6 @@ from azure.identity import (
     AzureCliCredential,
 )
 
-from core.redaction.result import ImageRedactionResult
 from core.util.logging_util import LoggingUtil, log_to_appins
 
 
@@ -37,7 +36,7 @@ class AzureVisionUtil:
     @log_to_appins
     def detect_faces(
         self, image: Image.Image, confidence_threshold: float = 0.5
-    ) -> ImageRedactionResult.Result:
+    ) -> Tuple[Tuple[int, int, int, int], ...]:
         """
         Detect faces in the given image
 
@@ -86,14 +85,10 @@ class AzureVisionUtil:
             # Cache result
             self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
 
-        return ImageRedactionResult.Result(
-            redaction_boxes=tuple(
-                person["box"]
-                for person in faces_detected
-                if person["confidence"] >= confidence_threshold
-            ),
-            image_dimensions=(image.width, image.height),
-            source_image=image,
+        return tuple(
+            person["box"]
+            for person in faces_detected
+            if person["confidence"] >= confidence_threshold
         )
 
     @log_to_appins

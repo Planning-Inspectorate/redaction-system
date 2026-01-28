@@ -1,8 +1,7 @@
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from core.util.types import PydanticImage
 from langchain_core.prompts import PromptTemplate
-from dataclasses import Field
 
 
 class LLMUtilConfig(BaseModel):

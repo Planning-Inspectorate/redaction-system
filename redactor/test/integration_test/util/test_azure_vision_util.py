@@ -4,7 +4,6 @@ from PIL import Image
 from io import BytesIO
 
 from core.util.azure_vision_util import AzureVisionUtil
-from core.redaction.result import ImageRedactionResult
 
 
 def test__azure_vision_util__detect_faces():
@@ -21,11 +20,7 @@ def test__azure_vision_util__detect_faces():
         response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
 
-    expected_response = ImageRedactionResult.Result(
-        redaction_boxes=((0, 4, 409, 427), (360, 7, 407, 424)),
-        image_dimensions=(image.width, image.height),
-        source_image=image,
-    )
+    expected_response = ((0, 4, 409, 427), (360, 7, 407, 424))
     assert expected_response == response
 
 
@@ -39,11 +34,7 @@ def test__azure_vision_util__detect_faces__use_cached_result():
         # Azure Vision seems to be deterministic from testing
         new_response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
 
-    expected_response = ImageRedactionResult.Result(
-        redaction_boxes=((0, 4, 409, 427), (360, 7, 407, 424)),
-        image_dimensions=(image.width, image.height),
-        source_image=image,
-    )
+    expected_response = ((0, 4, 409, 427), (360, 7, 407, 424))
 
     assert expected_response == new_response
     assert response == new_response

@@ -30,19 +30,18 @@ def test__image_redactor__redact():
         images=[Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))],
     )
     detect_faces_side_effects = [
-        ImageRedactionResult.Result(
-            image_dimensions=(1000, 1000),
-            source_image=config.images[0],
-            redaction_boxes=((10, 10, 50, 50), (100, 100, 50, 50)),
-        ),
-        ImageRedactionResult.Result(
-            image_dimensions=(200, 100),
-            source_image=config.images[1],
-            redaction_boxes=((30, 30, 50, 50),),
-        ),
+        ((10, 10, 50, 50), (100, 100, 50, 50)),
+        ((30, 30, 50, 50),),
     ]
     expected_results = ImageRedactionResult(
-        redaction_results=tuple(detect_faces_side_effects)
+        redaction_results=tuple(
+            ImageRedactionResult.Result(
+                source_image=config.images[i],
+                image_dimensions=(config.images[i].width, config.images[i].height),
+                redaction_boxes=faces_detected,
+            )
+            for i, faces_detected in enumerate(detect_faces_side_effects)
+        )
     )
     with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
         with mock.patch.object(

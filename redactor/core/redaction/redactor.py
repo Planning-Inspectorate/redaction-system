@@ -165,7 +165,13 @@ class ImageRedactor(Redactor):  # pragma: no cover
             )
             if not faces_detected:  # Error detecting faces in image, skip to next image
                 continue
-            results.append(faces_detected)
+            results.append(
+                ImageRedactionResult.Result(
+                    source_image=image_to_redact,
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    redaction_boxes=faces_detected,
+                )
+            )
 
         return ImageRedactionResult(redaction_results=tuple(results))
 

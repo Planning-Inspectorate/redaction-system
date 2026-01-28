@@ -1,7 +1,7 @@
 from mock import patch, Mock
+from typing import List
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 
-from core.redaction.result import ImageRedactionResult
 from core.util.azure_vision_util import AzureVisionUtil
 from core.util.logging_util import LoggingUtil
 
@@ -34,10 +34,7 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
         mock_analyze.return_value = MockImageAnalysisClientResult(people_list)
         result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
 
-    assert isinstance(result, ImageRedactionResult.Result)
-    assert result.redaction_boxes == ((10, 20, 30, 40),)
-    assert result.image_dimensions == (image.width, image.height)
-    assert result.source_image == image
+    assert result == ((10, 20, 30, 40),)
 
     # Verify caching
     assert azure_vision_util._IMAGE_FACE_CACHE == [
@@ -78,11 +75,7 @@ def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
     result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
     LoggingUtil.log_info.assert_called_with("Using cached face detection result.")
 
-    assert result == ImageRedactionResult.Result(
-        redaction_boxes=image_rects,
-        image_dimensions=(image.width, image.height),
-        source_image=image,
-    )
+    assert result == image_rects
 
     mock_bytes_io.assert_not_called()  # Ensure no analysis was performed
 
@@ -97,11 +90,11 @@ def MockTextAnalysisClientResult():
             self.bounding_polygon = bounding_box
 
     class MockLine:
-        def __init__(self, words: [MockWord]):
+        def __init__(self, words: List[MockWord]):
             self.words = words
 
     class MockBlock:
-        def __init__(self, lines: [MockLine]):
+        def __init__(self, lines: List[MockLine]):
             self.lines = lines
 
     mock_result.read.blocks = [
