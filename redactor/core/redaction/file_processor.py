@@ -433,7 +433,7 @@ class PDFProcessor(FileProcessor):
                 "PDFProcessor, but there is no mechanism to process them: "
                 f"{json.dumps(list(unapplied_redaction_results), indent=4)}"
             ) as e:
-                LoggingUtil().log_exception(str(e))
+                LoggingUtil().log_exception(e)
                 raise e
 
         # Apply text redactions by highlighting text to redact

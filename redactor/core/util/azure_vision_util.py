@@ -1,4 +1,5 @@
 import os
+from typing import List, Dict, Tuple
 
 from PIL import Image
 from io import BytesIO
@@ -21,8 +22,8 @@ load_dotenv(verbose=True)
 
 
 class AzureVisionUtil:
-    _IMAGE_TEXT_CACHE = []
-    _IMAGE_FACE_CACHE = []
+    _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
+    _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
 
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
@@ -65,7 +66,8 @@ class AzureVisionUtil:
                     [VisualFeatures.PEOPLE],
                 )
             except Exception as e:
-                LoggingUtil().log_exception(f"Error analysing image for faces: {e}")
+                LoggingUtil().log_info("Error analysing image for faces")
+                LoggingUtil().log_exception(e)
                 return None
 
             faces_detected = tuple(
@@ -121,7 +123,8 @@ class AzureVisionUtil:
                     [VisualFeatures.READ],
                 )
             except Exception as e:
-                LoggingUtil().log_exception(f"Error analysing image for text: {e}")
+                LoggingUtil().log_info("Error analysing image for text")
+                LoggingUtil().log_exception(e)
                 return None
 
             text_detected = tuple(
