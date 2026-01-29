@@ -243,7 +243,6 @@ class PDFProcessor(FileProcessor):
         actual_text_at_rect: str,
         next_page: pymupdf.Page,
         next_rect: pymupdf.Rect,
-        next_term: str,
     ) -> bool:
         """
         Check if the given term is partially redacted in the current rect, and
@@ -253,7 +252,6 @@ class PDFProcessor(FileProcessor):
         :param str actual_text_at_rect: The actual text found at the current rect
         :param pymupdf.Page next_page: The next page containing the next redaction instance
         :param pymupdf.Rect next_rect: The next redaction candidate's bounding box (on the page)
-        :param str next_term: The next redaction text candidate
         :return bool: True if the full term is found across the two rects, else False
         """
         partial_term_in_rect = ""
@@ -269,7 +267,6 @@ class PDFProcessor(FileProcessor):
 
         # Check next redaction instance for the remaining words
         if partial_term_in_rect and partial_term_in_rect != term:
-
             # Remove the part already found in the current rect
             remaining_words_to_redact = term.replace(partial_term_in_rect, "").strip()
             # Check if the next rect contains the remaining words to redact
@@ -396,9 +393,7 @@ class PDFProcessor(FileProcessor):
             )
             try:
                 instances_to_redact.extend(
-                    self._examine_provisional_text_redaction(
-                        page, term, rect, i, candidates_on_page
-                    )
+                    self._examine_provisional_text_redaction(page, term, rect, i)
                 )
 
             except Exception as e:
@@ -411,7 +406,11 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins
     def _examine_provisional_text_redaction(
-        self, page, term, rect, i, candidates_on_page
+        self,
+        page,
+        term,
+        rect,
+        i,
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidate is valid, i.e., a full
@@ -422,8 +421,6 @@ class PDFProcessor(FileProcessor):
         :param pymupdf.Rect rect: The bounding box of the redaction candidate
         :param int i: The index of the redaction candidate in the list of candidates
         on the page
-        :param List[Tuple[pymupdf.Rect, str]] candidates_on_page: The complete list
-        of provisional redaction candidates on the page
 
         :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid redaction
         candidates to apply. Each tuple contains the page number, the bounding box
@@ -440,20 +437,22 @@ class PDFProcessor(FileProcessor):
         elif (
             len(term.split(" ")) > 1
         ):  # Check for line breaks causing partial redactions
-            next_page, next_redaction_inst = self._find_next_redaction_instance(
+            candidates_on_page = self.redaction_candidates[page.number]
+            next_redaction_inst = self._find_next_redaction_instance(
                 candidates_on_page, i, page
             )
-            next_rect, next_term = next_redaction_inst
+            if next_redaction_inst is None:
+                return []
+            next_page, next_rect, next_term = next_redaction_inst
 
             # Check this is for the same term
-            if next_redaction_inst and next_term == term:
+            if next_term == term:
                 # Check whether the remaining part of the term is in the next rect
-                next_match_result, _ = self._partial_redaction_across_line_breaks(
+                next_match_result = self._is_partial_redaction_across_line_breaks(
                     term,
                     actual_text_at_rect,
                     next_page,
                     next_rect,
-                    next_term,
                 )
                 if next_match_result:
                     LoggingUtil().log_info(
@@ -478,7 +477,7 @@ class PDFProcessor(FileProcessor):
         candidates_on_page: List[Tuple[pymupdf.Rect, str]],
         i: int,
         page: pymupdf.Page,
-    ) -> Tuple[pymupdf.Page, Tuple[pymupdf.Rect, str]]:
+    ) -> Tuple[pymupdf.Page, pymupdf.Rect, str]:
         """
         Find the next redaction instance after the current one. This may be on the
         same page or the next page.
@@ -487,7 +486,7 @@ class PDFProcessor(FileProcessor):
         provisional redaction candidates on the current page
         :param int i: The index of the current redaction candidate in the list
         :param pymupdf.Page page: The current page
-        :return Tuple[pymupdf.Page, Tuple[pymupdf.Rect, str]]: The next page
+        :return Tuple[pymupdf.Page, pymupdf.Rect, str]: The next page
         and the next redaction candidate (bounding box and term). If there is no
         next redaction candidate, returns (None, (None, None)).
         """
@@ -497,7 +496,7 @@ class PDFProcessor(FileProcessor):
         )
         if next_redaction_inst:
             next_page = page
-
+            next_rect, next_term = next_redaction_inst
         else:
             # If next page is different, check first redaction on next page
             if page.number + 1 < len(self.redaction_candidates):
@@ -505,15 +504,15 @@ class PDFProcessor(FileProcessor):
                     page.number + 1
                 ]
                 next_page = pymupdf.open(stream=self.file_bytes)[page.number + 1]
-                next_redaction_inst = (
+                next_rect, next_term = (
                     next_page_redaction_candidates[0]
                     if next_page_redaction_candidates
                     else (None, None)
                 )
             else:
-                return None, (None, None)
+                return None
 
-        return next_page, next_redaction_inst
+        return next_page, next_rect, next_term
 
     def _apply_provisional_image_redactions(
         self, file_bytes: BytesIO, redactions: List[ImageRedactionResult]
