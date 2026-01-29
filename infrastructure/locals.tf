@@ -17,10 +17,9 @@ locals {
     "table",
     "file"
   ]
-  service_bus_topics = toset(
+  redaction_process_subscribers = toset(
     [
-      "redaction_process_start",
-      "redaction_process_complete"
+      "cbos"
     ]
   )
 }
