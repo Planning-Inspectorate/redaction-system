@@ -23,7 +23,7 @@ from core.redaction.result import (
     LLMRedactionResultFormat,
 )
 from core.util.logging_util import log_to_appins, LoggingUtil
-from core.util.token_util import TokenSemaphore
+from core.util.multiprocessing_util import TokenSemaphore, set_max_workers
 
 
 load_dotenv(verbose=True)
@@ -159,14 +159,7 @@ class LLMUtil:
     def _set_workers(self, n: int = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
-        max_workers = min(32, (os.cpu_count() or 1) + 4)
-        if n is not None:
-            if n < 1:
-                self.config.max_concurrent_requests = 1
-            elif n > max_workers:
-                self.config.max_concurrent_requests = max_workers
-        else:
-            self.config.max_concurrent_requests = max_workers
+        self.config.max_concurrent_requests = set_max_workers(n)
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -263,7 +256,6 @@ class LLMUtil:
 
                 # Update token counts and costs
                 self._compute_costs(response)
-
                 return response, redaction_strings
             except Exception as e:
                 LoggingUtil().log_exception(
@@ -308,12 +300,16 @@ class LLMUtil:
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
-            self._set_workers()
+            self._set_workers(self.config.max_concurrent_requests)
             LoggingUtil().log_info(
-                "Max concurrent requests exceeds maximum. "
-                f"Setting to {self.config.max_concurrent_requests}."
+                "Max concurrent requests exceeds maximum."
+                f" Setting to {self.config.max_concurrent_requests}."
             )
 
+        LoggingUtil().log_info(
+            f"Starting text analysis with {self.config.max_concurrent_requests} "
+            "workers."
+        )
         with ThreadPoolExecutor(
             max_workers=self.config.max_concurrent_requests
         ) as executor:

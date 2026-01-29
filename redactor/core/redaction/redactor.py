@@ -115,6 +115,7 @@ class LLMTextRedactor(TextRedactor):
     def get_redaction_config_class(cls):
         return LLMTextRedactionConfig
 
+    @log_to_appins
     def _analyse_text(self, text_to_analyse: str, **kwargs) -> LLMTextRedactionResult:
         # Initialisation
         # TODO Add LLM parameters to the config class
@@ -130,10 +131,11 @@ class LLMTextRedactor(TextRedactor):
         llm_util = LLMUtil(self.config)
 
         # Identify redaction strings
-        return llm_util.analyse_text(
+        llm_redaction_result = llm_util.analyse_text(
             system_prompt,
             text_chunks,
         )
+        return llm_redaction_result
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
@@ -206,29 +208,38 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
 
-            vision_util = AzureVisionUtil()
-            text_rect_map = vision_util.detect_text(image_to_redact)
-            text_content = " ".join([x[0] for x in text_rect_map])
+            try:
+                vision_util = AzureVisionUtil()
+                text_rect_map = vision_util.detect_text(image_to_redact)
+                text_content = " ".join([x[0] for x in text_rect_map])
 
-            redaction_strings = self._analyse_text(text_content).redaction_strings
+                redaction_strings = self._analyse_text(text_content).redaction_strings
 
-            # Identify text rectangles to redact based on redaction strings
-            text_rects_to_redact = tuple(
-                (text, bounding_box)
-                for text, bounding_box in text_rect_map
-                if text in redaction_strings
-                or any(
-                    redaction_string in text for redaction_string in redaction_strings
+                # Identify text rectangles to redact based on redaction strings
+                text_rects_to_redact = tuple(
+                    (text, bounding_box)
+                    for text, bounding_box in text_rect_map
+                    if text in redaction_strings
+                    or any(
+                        redaction_string in text
+                        for redaction_string in redaction_strings
+                    )
                 )
-            )
 
-            results.append(
-                ImageRedactionResult.Result(
-                    redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
-                    image_dimensions=(image_to_redact.width, image_to_redact.height),
-                    source_image=image_to_redact,
+                results.append(
+                    ImageRedactionResult.Result(
+                        redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
+                        image_dimensions=(
+                            image_to_redact.width,
+                            image_to_redact.height,
+                        ),
+                        source_image=image_to_redact,
+                    )
                 )
-            )
+            except Exception as e:
+                LoggingUtil().log_exception(
+                    f"Error analysing image for text redaction: {e}"
+                )
 
         return ImageRedactionResult(redaction_results=tuple(results))
 
