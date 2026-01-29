@@ -17,8 +17,10 @@ locals {
     "table",
     "file"
   ]
-  service_bus_topics = [
-    "redaction_process_start",
-    "redaction_process_complete"
-  ]
+  service_bus_topics = toset(
+    [
+      "redaction_process_start",
+      "redaction_process_complete"
+    ]
+  )
 }
