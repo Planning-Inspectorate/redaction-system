@@ -85,6 +85,16 @@ resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
   tags = local.tags
 }
 
+resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
+  name                  = "${local.org}-vnetlink-servicebus-${local.service_name}-${var.environment}"
+  resource_group_name   = var.tooling_config.network_rg
+  private_dns_zone_name = data.azurerm_private_dns_zone.servicebus.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
+
+  tags = local.tags
+}
+
 ############################################################################
 # Private endpoints
 ############################################################################
@@ -189,6 +199,27 @@ resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
     is_manual_connection           = false
     private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
     subresource_names              = ["account"]
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_private_endpoint" "service_bus" {
+  name                = "${local.org}-pe-${azurerm_servicebus_namespace.redaction.name}-servicebus-namespace"
+  resource_group_name = azurerm_resource_group.primary.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "${local.org}-pdns-${local.service_name}-servicebus-namespace-${var.environment}"
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.servicebus.id]
+  }
+
+  private_service_connection {
+    name                           = "${local.org}-psc-${local.service_name}-servicebus-namespace-${var.environment}"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_servicebus_namespace.redaction.id
+    subresource_names              = ["namespace"]
   }
 
   tags = local.tags

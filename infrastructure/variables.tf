@@ -60,3 +60,9 @@ variable "storage_containers" {
   description = "The containers to create in the main storage account"
   type        = list(string)
 }
+
+variable "service_bus_premium_enabled" {
+  description = "If the servcie bus should have the premium SKU"
+  type        = bool
+  default     = false
+}
