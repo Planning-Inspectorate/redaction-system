@@ -204,3 +204,10 @@ resource "azurerm_servicebus_topic" "redaction_topics" {
 
   partitioning_enabled = true
 }
+
+resource "azurerm_servicebus_subscription" "redaction_subscriptions" {
+  for_each           = local.service_bus_topics
+  name               = "${each.key}_subscription"
+  topic_id           = azurerm_servicebus_topic.redaction_topics[each.key].id
+  max_delivery_count = 1
+}
