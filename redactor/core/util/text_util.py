@@ -1,5 +1,7 @@
 from langdetect import detect_langs, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
+from unidecode import unidecode
+from unicodedata import category
 
 
 def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) -> bool:
@@ -33,3 +35,15 @@ def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) ->
     except LangDetectException:
         # Detection failed (e.g., too short/ambiguous); treat as non-English
         return False
+
+
+def normalise_punctuation_unidecode(text: str) -> str:
+    """
+    Replace punctuation characters with their closest ASCII equivalent.
+
+    :param str text: Input text
+    :return str: Text with punctuation replaced by closest ASCII equivalent
+    """
+    return "".join(
+        c if not category(c).startswith("P") else unidecode(c) or c for c in text
+    )
