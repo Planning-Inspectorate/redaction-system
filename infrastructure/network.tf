@@ -205,6 +205,7 @@ resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
 }
 
 resource "azurerm_private_endpoint" "service_bus" {
+  count               = var.service_bus_premium_enabled ? 1 : 0 # Only available in premium
   name                = "${local.org}-pe-${azurerm_servicebus_namespace.redaction.name}-servicebus-namespace"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
