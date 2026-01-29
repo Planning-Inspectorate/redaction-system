@@ -30,6 +30,7 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
+from core.util.multiprocessing_util import set_max_workers
 
 
 class FileProcessor(ABC):
@@ -279,7 +280,7 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins
     def _apply_provisional_text_redactions(
-        self, file_bytes: BytesIO, text_to_redact: List[str]
+        self, file_bytes: BytesIO, text_to_redact: List[str], n_workers: int = None
     ):
         """
         Redact the given list of redaction strings as provisional redactions in
@@ -323,7 +324,7 @@ class PDFProcessor(FileProcessor):
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
         n_highlights = 0
-        with ProcessPoolExecutor() as executor:
+        with ProcessPoolExecutor(max_workers=set_max_workers(n_workers)) as executor:
             # Submit task to the executor
             futures_to_page = {
                 executor.submit(
@@ -606,7 +607,22 @@ class PDFProcessor(FileProcessor):
         return transformed
 
     @log_to_appins
-    def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def redact(
+        self,
+        file_bytes: BytesIO,
+        redaction_config: Dict[str, Any],
+        n_workers: int = None,
+    ) -> BytesIO:
+        """
+        Redact the given PDF file bytes according to the redaction configuration.
+
+        :param file_bytes: File bytes of the PDF to redact.
+        :param redaction_config: Dictionary of RedactionConfig objects specifying
+        the redaction rules to apply.
+        :param n_workers: The number of worker processes to use for parallel processing
+        in applying text redactions.
+        :return: The redacted PDF file bytes.
+        """
         # Extract text from PDF
         pdf_text = self._extract_pdf_text(file_bytes)
         if not is_english_text(pdf_text):
@@ -676,7 +692,7 @@ class PDFProcessor(FileProcessor):
 
         # Apply text redactions by highlighting text to redact
         new_file_bytes = self._apply_provisional_text_redactions(
-            file_bytes, text_redactions
+            file_bytes, text_redactions, n_workers=n_workers
         )
 
         # Apply image redactions
