@@ -197,17 +197,26 @@ resource "azurerm_servicebus_namespace" "redaction" {
   tags = local.tags
 }
 
-resource "azurerm_servicebus_topic" "redaction_topics" {
-  for_each     = local.service_bus_topics
-  name         = each.key
+resource "azurerm_servicebus_topic" "redaction_process_complete" {
+  name         = "redaction_process_complete"
   namespace_id = azurerm_servicebus_namespace.redaction.id
 
   partitioning_enabled = true
 }
 
-resource "azurerm_servicebus_subscription" "redaction_subscriptions" {
-  for_each           = local.service_bus_topics
-  name               = "${each.key}_subscription"
-  topic_id           = azurerm_servicebus_topic.redaction_topics[each.key].id
+resource "azurerm_servicebus_subscription" "redaction_process_complete" {
+  for_each           = local.redaction_process_subscribers
+  name               = each.key
+  topic_id           = azurerm_servicebus_topic.redaction_process_complete.id
   max_delivery_count = 1
+}
+
+resource "azurerm_servicebus_subscription_rule" "redaction_process_complete" {
+  for_each        = local.redaction_process_subscribers
+  name            = "subscription_rule"
+  subscription_id = azurerm_servicebus_subscription.redaction_process_complete[each.key].id
+  filter_type     = "CorrelationFilter"
+  correlation_filter {
+    label = each.key
+  }
 }
