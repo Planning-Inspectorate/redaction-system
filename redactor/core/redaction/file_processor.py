@@ -171,7 +171,7 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _is_full_text_being_redacted(
         cls, page: pymupdf.Page, term: str, rect: pymupdf.Rect
-    ) -> bool:
+    ) -> Tuple[bool, str]:
         """
         Check whether the text found at the given bounding box on the provided
         page is an exact match for the given redaction text candidate, i.e.,
@@ -248,14 +248,14 @@ class PDFProcessor(FileProcessor):
         )
 
     @classmethod
-    def _partial_redaction_across_line_breaks(
+    def _is_partial_redaction_across_line_breaks(
         cls,
         term: str,
         actual_text_at_rect: str,
         next_page: pymupdf.Page,
         next_rect: pymupdf.Rect,
         next_term: str,
-    ):
+    ) -> bool:
         """
         Check if the given term is partially redacted in the current rect, and
         the remaining part is in the next rect (i.e. redaction across line breaks)
@@ -265,8 +265,7 @@ class PDFProcessor(FileProcessor):
         :param pymupdf.Page next_page: The next page containing the next redaction instance
         :param pymupdf.Rect next_rect: The next redaction candidate's bounding box (on the page)
         :param str next_term: The next redaction text candidate
-        :return bool: True if text_to_redact is a full redaction of
-        text_found_at_rect (i.e. should the text be redacted)
+        :return bool: True if the full term is found across the two rects, else False
         """
         partial_term_in_rect = ""
         words_to_redact = term.split(" ")
@@ -283,16 +282,17 @@ class PDFProcessor(FileProcessor):
         if partial_term_in_rect and partial_term_in_rect != term:
             # Should exactly match the full term to redact
             if next_term != term:
-                return False, None
+                return False
 
             # Remove the part already found in the current rect
             remaining_words_to_redact = term.replace(partial_term_in_rect, "").strip()
             # Check if the next rect contains the remaining words to redact
-            return cls._is_full_text_being_redacted(
+            match_result, _ = cls._is_full_text_being_redacted(
                 next_page, remaining_words_to_redact, next_rect
             )
+            return match_result
 
-        return False, None
+        return False
 
     @log_to_appins
     def _apply_provisional_text_redactions(
@@ -365,8 +365,8 @@ class PDFProcessor(FileProcessor):
                     # Check this is for the same term
                     if next_redaction_inst and next_term == term:
                         # Check whether the remaining part of the term is in the next instance
-                        next_match_result, _ = (
-                            self._partial_redaction_across_line_breaks(
+                        next_match_result = (
+                            self._is_partial_redaction_across_line_breaks(
                                 term,
                                 actual_text_at_rect,
                                 next_page,

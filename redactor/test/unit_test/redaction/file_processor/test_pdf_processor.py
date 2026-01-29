@@ -434,7 +434,7 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     assert result[0] == expected_result, error_message
 
 
-def test__pdf_processor__partial_redaction_across_line_breaks():
+def test__pdf_processor__is_partial_redaction_across_line_breaks():
     term = "Hello World"
     next_redaction_inst = (pymupdf.open().new_page, pymupdf.Rect(0, 0, 10, 20), term)
     next_page, next_rect, next_term = next_redaction_inst
@@ -442,13 +442,10 @@ def test__pdf_processor__partial_redaction_across_line_breaks():
     with patch.object(
         PDFProcessor, "_is_full_text_being_redacted", return_value=(True, "World")
     ):
-        match_result, next_text_at_rect = (
-            PDFProcessor()._partial_redaction_across_line_breaks(
-                term, "Hello", next_page, next_rect, next_term
-            )
+        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
+            term, "Hello", next_page, next_rect, next_term
         )
     assert match_result
-    assert next_text_at_rect == "World"
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
