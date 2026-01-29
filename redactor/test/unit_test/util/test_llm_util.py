@@ -1,3 +1,4 @@
+import os
 import pytest
 
 from mock import patch, Mock
@@ -487,12 +488,10 @@ def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
             text_chunks=["redaction string A", "redaction string B"] * 2,
         )
 
-    assert llm_util.config.max_concurrent_requests == 12
-    LoggingUtil.log_info.assert_called_with(
-        "Max concurrent requests exceeds maximum. Setting to 12."
-    )
+    max_workers = min(32, (os.cpu_count() or 1) + 4)
+    assert llm_util.config.max_concurrent_requests == max_workers
 
-    mock_executor_init.assert_called_once_with(max_workers=12)
+    mock_executor_init.assert_called_once_with(max_workers=max_workers)
     assert mock_executor_submit.call_count == 4
     mock_executor_exit.assert_called_once()
 

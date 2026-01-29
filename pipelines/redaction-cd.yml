@@ -57,7 +57,7 @@ extends:
 
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
               - task: AzureCLI@2
-                displayName: 'Deploy to function app'
+                displayName: 'Ensure ZipDeploy-compatible settings'
                 inputs:
                   azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
                   scriptType: 'bash'

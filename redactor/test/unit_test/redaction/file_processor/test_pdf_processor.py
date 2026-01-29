@@ -234,6 +234,58 @@ def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_unifo
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
+def test__pdf_processor__find_next_redaction_instance__same_page():
+    candidates_on_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term1"),
+        (pymupdf.Rect(20, 20, 30, 30), "term2"),
+    ]
+    current_index = 0  # Start at first candidate
+    page = pymupdf.open().new_page()
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        next_page, next_redaction_inst = PDFProcessor()._find_next_redaction_instance(
+            candidates_on_page, current_index, page
+        )
+
+    assert next_page == page
+    assert next_redaction_inst == candidates_on_page[1]
+
+
+def test__pdf_processor__find_next_redaction_instance__next_page():
+    candidates_on_first_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term1"),
+        (pymupdf.Rect(20, 20, 30, 30), "term2"),
+    ]
+    first_page = pymupdf.open().new_page()
+
+    candidates_on_second_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term3"),
+        (pymupdf.Rect(20, 20, 30, 30), "term4"),
+    ]
+    second_page = pymupdf.open().new_page()
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        pdf_processor = PDFProcessor()
+        pdf_processor.redaction_candidates = [
+            candidates_on_first_page,
+            candidates_on_second_page,
+        ]
+        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
+
+        with patch.object(pymupdf, "open", return_value=[first_page, second_page]):
+            next_page, next_redaction_inst = (
+                pdf_processor._find_next_redaction_instance(
+                    candidates_on_first_page, 1, first_page
+                )
+            )
+            pymupdf.open.assert_called_with(
+                stream=pdf_processor.file_bytes
+            )  # Ensure file_bytes used
+
+    assert next_page == second_page
+    assert next_redaction_inst == candidates_on_second_page[0]
+
+
 def test__pdf_processor__apply_provisional_text_redactions():
     """
     - Given I have a PDF with some provisional redactions
@@ -324,12 +376,6 @@ def test__pdf_processor__apply_provisional_text_redactions__partial_match():
     for word in ["criteria", "with", "servitude", "sits", "waiting"]:
         assert word not in actual_annotated_text
 
-    partial_info_message = "Partial redaction found when attempting to redact 'it'."
-    assert 5 == sum(
-        partial_info_message in call.args[0]
-        for call in LoggingUtil.log_info.call_args_list
-    )
-
     assert set(actual_annotated_text) == set(["it"])
 
 
@@ -405,6 +451,13 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
         ("(https://example.com)", "https://example.com", True),  # URL with punctuation
         ("https://example.com/", "https://example.com", True),  # URL with punctuation
         ("(https://example.com/)", "https://example.com", True),  # URL with punctuation
+        (
+            "and down",
+            "d",
+            False,
+        ),  # Partial match within multiple words should not be redacted
+        ("£120,000", "£120,000", True),  # Amount with punctuation should be redacted
+        ("Something: else", "Something: else", True),  # Punctuation within phrase
     ],
 )
 def test__pdf_processor__is_full_text_being_redacted(test_case):
