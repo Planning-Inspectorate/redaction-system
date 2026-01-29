@@ -176,3 +176,31 @@ resource "azurerm_cognitive_account" "computer_vision" {
     type = "SystemAssigned"
   }
 }
+
+##
+# Service bus
+##
+resource "azurerm_servicebus_namespace" "redaction" {
+  name                          = "${local.org}-servicebus-${local.resource_suffix}"
+  location                      = local.location
+  resource_group_name           = azurerm_resource_group.primary.name
+  sku                           = var.service_bus_premium_enabled ? "Premium" : "Standard"
+  capacity                      = var.service_bus_premium_enabled ? 1 : 0
+  premium_messaging_partitions  = var.service_bus_premium_enabled ? 1 : null
+  minimum_tls_version           = "1.2"
+  local_auth_enabled            = true
+  public_network_access_enabled = false
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_servicebus_topic" "redaction_topics" {
+  for_each     = local.service_bus_topics
+  name         = each.key
+  namespace_id = azurerm_servicebus_namespace.redaction.id
+
+  partitioning_enabled = true
+}

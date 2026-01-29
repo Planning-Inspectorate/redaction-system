@@ -17,4 +17,8 @@ locals {
     "table",
     "file"
   ]
+  service_bus_topics = [
+    "redaction_process_start",
+    "redaction_process_complete"
+  ]
 }
