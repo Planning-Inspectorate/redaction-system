@@ -1,3 +1,10 @@
+import os
+from typing import List, Dict, Tuple
+
+from PIL import Image
+from io import BytesIO
+from dotenv import load_dotenv
+
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 
@@ -6,16 +13,17 @@ from azure.identity import (
     ManagedIdentityCredential,
     AzureCliCredential,
 )
-import os
-from PIL import Image
-from io import BytesIO
-from dotenv import load_dotenv
+
+from core.util.logging_util import LoggingUtil, log_to_appins
 
 
 load_dotenv(verbose=True)
 
 
 class AzureVisionUtil:
+    _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
+    _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
+
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
         credential = ChainedTokenCredential(
@@ -25,7 +33,10 @@ class AzureVisionUtil:
             endpoint=self.azure_endpoint, credential=credential
         )
 
-    def detect_faces(self, image: Image.Image, confidence_threshold: float = 0.5):
+    @log_to_appins
+    def detect_faces(
+        self, image: Image.Image, confidence_threshold: float = 0.5
+    ) -> Tuple[Tuple[int, int, int, int], ...]:
         """
         Detect faces in the given image
 
@@ -34,24 +45,53 @@ class AzureVisionUtil:
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, box width, box height), for boxes
                   with confidence above the threshold
         """
-        byte_stream = BytesIO()
-        image.save(byte_stream, format="PNG")
-        image_bytes = byte_stream.getvalue()
-        result = self.vision_client.analyze(
-            image_bytes,
-            [VisualFeatures.PEOPLE],
-        )
-        return tuple(
-            (
-                person.bounding_box.x,
-                person.bounding_box.y,
-                person.bounding_box.width,
-                person.bounding_box.height,
+        try:
+            # Check cache
+            faces_detected = next(
+                item["faces"]
+                for item in self._IMAGE_FACE_CACHE
+                if item["image"] == image
             )
-            for person in result.people.list
-            if person.confidence >= confidence_threshold
+            LoggingUtil().log_info("Using cached face detection result.")
+        except StopIteration:
+            # Not in cache, analyse image
+            byte_stream = BytesIO()
+            image.save(byte_stream, format="PNG")
+            image_bytes = byte_stream.getvalue()
+
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.PEOPLE],
+                )
+            except Exception as e:
+                LoggingUtil().log_info("Error analysing image for faces")
+                LoggingUtil().log_exception(e)
+                return None
+
+            faces_detected = tuple(
+                {
+                    "box": (
+                        person.bounding_box.x,
+                        person.bounding_box.y,
+                        person.bounding_box.width,
+                        person.bounding_box.height,
+                    ),
+                    "confidence": person.confidence,
+                }
+                for person in result.people.list
+            )
+
+            # Cache result
+            self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
+
+        return tuple(
+            person["box"]
+            for person in faces_detected
+            if person["confidence"] >= confidence_threshold
         )
 
+    @log_to_appins
     def detect_text(self, image: Image.Image):
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
@@ -59,25 +99,45 @@ class AzureVisionUtil:
         :param Image.Image image: The image to analyse
         :returns: The text content of the image, with each individual "block" separated by " "
         """
-        byte_stream = BytesIO()
-        image.save(byte_stream, format="PNG")
-        image_bytes = byte_stream.getvalue()
-        result = self.vision_client.analyze(
-            image_bytes,
-            [VisualFeatures.READ],
-        )
-
-        return tuple(
-            (
-                word.text,
-                (
-                    word.bounding_polygon[0].x,
-                    word.bounding_polygon[0].y,
-                    word.bounding_polygon[2].x,
-                    word.bounding_polygon[2].y,
-                ),
+        try:
+            # Check cache
+            text_detected = next(
+                item["text"]
+                for item in self._IMAGE_TEXT_CACHE
+                if item["image"] == image
             )
-            for block in result.read.blocks
-            for line in block.lines
-            for word in line.words
-        )
+            LoggingUtil().log_info("Using cached text detection result.")
+        except StopIteration:
+            byte_stream = BytesIO()
+            image.save(byte_stream, format="PNG")
+            image_bytes = byte_stream.getvalue()
+
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.READ],
+                )
+            except Exception as e:
+                LoggingUtil().log_info("Error analysing image for text")
+                LoggingUtil().log_exception(e)
+                return None
+
+            text_detected = tuple(
+                (
+                    word.text,
+                    (
+                        word.bounding_polygon[0].x,
+                        word.bounding_polygon[0].y,
+                        word.bounding_polygon[2].x,
+                        word.bounding_polygon[2].y,
+                    ),
+                )
+                for block in result.read.blocks
+                for line in block.lines
+                for word in line.words
+            )
+
+            # Cache result
+            self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
+
+        return text_detected

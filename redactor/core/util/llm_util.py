@@ -193,7 +193,7 @@ class LLMUtil:
             total_tokens = n_tokens + completion_tokens
             return total_tokens
         except Exception as e:
-            LoggingUtil().log_exception(f"An error occurred while counting tokens: {e}")
+            LoggingUtil().log_exception(e)
             return 0
 
     def create_api_message(

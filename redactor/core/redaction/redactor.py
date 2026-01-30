@@ -157,16 +157,22 @@ class ImageRedactor(Redactor):  # pragma: no cover
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
         results: List[ImageRedactionResult.Result] = []
+
         for image_to_redact in self.config.images:
             vision_util = AzureVisionUtil()
-            image_rects = vision_util.detect_faces(image_to_redact)
+            faces_detected = vision_util.detect_faces(
+                image_to_redact, confidence_threshold=self.config.confidence_threshold
+            )
+            if not faces_detected:  # Error detecting faces in image, skip to next image
+                continue
             results.append(
                 ImageRedactionResult.Result(
-                    redaction_boxes=image_rects,
-                    image_dimensions=(image_to_redact.width, image_to_redact.height),
                     source_image=image_to_redact,
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    redaction_boxes=faces_detected,
                 )
             )
+
         return ImageRedactionResult(redaction_results=tuple(results))
 
 
@@ -177,6 +183,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
+    """
+    Class that performs text redaction within images
+
+    """
+
     @classmethod
     def get_name(cls) -> str:
         return "ImageLLMTextRedaction"
@@ -198,6 +209,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             vision_util = AzureVisionUtil()
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
+
             redaction_strings = self._analyse_text(text_content).redaction_strings
 
             # Identify text rectangles to redact based on redaction strings
