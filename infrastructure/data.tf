@@ -62,3 +62,11 @@ data "azurerm_private_dns_zone" "openai" {
 
   tags = local.tags
 }
+
+data "azurerm_private_dns_zone" "servicebus" {
+  name                = "privatelink.servicebus.windows.net"
+  resource_group_name = var.tooling_config.network_rg
+  provider            = azurerm.tooling
+
+  tags = local.tags
+}

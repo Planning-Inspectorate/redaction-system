@@ -17,4 +17,10 @@ locals {
     "table",
     "file"
   ]
+  redaction_process_subscribers = toset(
+    [
+      "cbos",
+      "redaction_system" # This is useful just for testing purposes (e.g for smoke testing in prod)
+    ]
+  )
 }

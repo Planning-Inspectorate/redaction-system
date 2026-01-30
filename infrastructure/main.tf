@@ -176,3 +176,47 @@ resource "azurerm_cognitive_account" "computer_vision" {
     type = "SystemAssigned"
   }
 }
+
+##
+# Service bus
+##
+resource "azurerm_servicebus_namespace" "redaction" {
+  name                          = "${local.org}-servicebus-${local.resource_suffix}"
+  location                      = local.location
+  resource_group_name           = azurerm_resource_group.primary.name
+  sku                           = var.service_bus_premium_enabled ? "Premium" : "Standard"
+  capacity                      = var.service_bus_premium_enabled ? 1 : 0
+  premium_messaging_partitions  = var.service_bus_premium_enabled ? 1 : null
+  minimum_tls_version           = "1.2"
+  local_auth_enabled            = true
+  public_network_access_enabled = !var.service_bus_premium_enabled
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.tags
+}
+
+resource "azurerm_servicebus_topic" "redaction_process_complete" {
+  name         = "redaction_process_complete"
+  namespace_id = azurerm_servicebus_namespace.redaction.id
+
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_subscription" "redaction_process_complete" {
+  for_each           = local.redaction_process_subscribers
+  name               = each.key
+  topic_id           = azurerm_servicebus_topic.redaction_process_complete.id
+  max_delivery_count = 1
+}
+
+resource "azurerm_servicebus_subscription_rule" "redaction_process_complete" {
+  for_each        = local.redaction_process_subscribers
+  name            = "subscription_rule"
+  subscription_id = azurerm_servicebus_subscription.redaction_process_complete[each.key].id
+  filter_type     = "CorrelationFilter"
+  correlation_filter {
+    label = each.key
+  }
+}
