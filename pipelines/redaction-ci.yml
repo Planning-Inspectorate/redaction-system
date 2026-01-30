@@ -58,6 +58,7 @@ extends:
           - script: |
               set -e
               cd redaction-system
+              python3.11 --version
               python3 -m pip install -r redactor/requirements.txt
             displayName: 'Install requirements'
 
