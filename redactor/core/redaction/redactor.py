@@ -12,6 +12,7 @@ from core.redaction.config import (
     ImageRedactionConfig,
     ImageLLMTextRedactionConfig,
 )
+from core.redaction.config_processor import ConfigProcessor
 from core.redaction.result import (
     LLMTextRedactionResult,
     ImageRedactionResult,
@@ -94,7 +95,15 @@ class TextRedactor(Redactor):
     @classmethod
     def get_redaction_config_class(cls):
         return TextRedactionConfig
-
+    
+    def _remove_stopwords_(self,text_to_redact: List[str]): 
+        """
+        Check the text_to_redact list against the list in the stopwords yaml
+        """
+        stopwords = ConfigProcessor.load_config(str = "stopwords")
+        stopwords_list = stopwords['stopwords']
+        text_to_redact = text_to_redact - stopwords_list
+        return text_to_redact
 
 class LLMTextRedactor(TextRedactor):
     """
@@ -137,7 +146,9 @@ class LLMTextRedactor(TextRedactor):
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
-        return self._analyse_text(self.config.text)
+        text_to_redact = self._analyse_text(self.config.text)
+        text_to_redact = self._remove_stopwords_(text_to_redact)
+        return text_to_redact
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -199,6 +210,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
             redaction_strings = self._analyse_text(text_content).redaction_strings
+            redaction_strings = self._remove_stopwords_(redaction_strings)
 
             # Identify text rectangles to redact based on redaction strings
             text_rects_to_redact = tuple(
