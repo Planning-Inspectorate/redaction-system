@@ -27,11 +27,11 @@ class ServiceBusUtil:
         # This is based on https://learn.microsoft.com/en-us/azure/service-bus-messaging/service-bus-python-how-to-use-topics-subscriptions?tabs=passwordless#send-messages-to-a-topic
         service_name = pins_service.value.lower() if pins_service else None
         if not service_name:
-            raise ValueError(f"No valid 'pins_service' provided")
+            raise ValueError("No valid 'pins_service' provided")
         service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
         if not service_bus_name:
             raise RuntimeError(
-                f"No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
+                "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
             )
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()

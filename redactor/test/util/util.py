@@ -17,7 +17,7 @@ class ServiceBusUtil:
         service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
         if not service_bus_name:
             raise RuntimeError(
-                f"No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
+                "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
             )
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
@@ -45,7 +45,7 @@ class ServiceBusUtil:
         service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
         if not service_bus_name:
             raise RuntimeError(
-                f"No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
+                "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
             )
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
