@@ -201,8 +201,8 @@ extends:
               export PYTHONPATH=$(pwd)
 
               export E2E_FUNCTION_BASE_URL="http://localhost:7071"
-              export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
-              export E2E_CONTAINER_NAME="pinsfuncredactionsystemtestuks-applease"
+              export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
+              export E2E_CONTAINER_NAME="pinsfuncredactionsystem${{ parameters.env }} uks-applease"
               export E2E_RUN_ID="ado-$(Build.BuildId)"
               export E2E_SKIP_REDACTION="false"
               export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
