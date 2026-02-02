@@ -10,6 +10,188 @@ def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
     return [annotation for page in pdf for annotation in page.annots(annotation_class)]
 
 
+def test__pdf_processor__examine_provisional_redactions_on_page():
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_candidates = [
+        (
+            pymupdf.Rect(72.0, 101.452392578125, 97.65274810791016, 113.741455078125),
+            "Riker",
+        ),
+        (
+            pymupdf.Rect(
+                164.2420654296875,
+                101.452392578125,
+                199.68487548828125,
+                113.741455078125,
+            ),
+            "Phillipa",
+        ),
+        (
+            pymupdf.Rect(
+                180.76254272460938,
+                145.0911865234375,
+                267.51654052734375,
+                157.3802490234375,
+            ),
+            "Commander Data",
+        ),
+    ]
+    pdf_processor = PDFProcessor()
+    pdf_processor.file_bytes = document_bytes
+    instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
+        0, redaction_candidates
+    )
+    assert instances_to_redact == [
+        (0, rect, term) for rect, term in redaction_candidates
+    ]
+
+
+def test__find_next_redaction_instance__on_page():
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_candidates = [
+        (
+            pymupdf.Rect(72.0, 101.452392578125, 97.65274810791016, 113.741455078125),
+            "Riker",
+        ),
+        (
+            pymupdf.Rect(
+                164.2420654296875,
+                101.452392578125,
+                199.68487548828125,
+                113.741455078125,
+            ),
+            "Phillipa",
+        ),
+    ]
+    pdf_processor = PDFProcessor()
+    page = pymupdf.open(stream=document_bytes)[0]
+    next_instance = pdf_processor._find_next_redaction_instance(
+        redaction_candidates, 0, page
+    )
+    assert next_instance == (page, *redaction_candidates[1])
+
+
+def test__pdf_processor__apply_provisional_text_redactions():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = [
+        "he's",
+        "he",
+        "Riker",
+        "Phillipa",
+        "him",
+        "Commander Data",
+        "him",
+        "him",
+    ]
+    redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+        document_bytes, redaction_strings
+    )
+
+    # Generate expected redaction text from the raw document
+    with open(
+        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "rb",
+    ) as f:
+        expected_provisional_redaction_bytes = BytesIO(f.read())
+    expected_annotated_text = []
+    for page in pymupdf.open(stream=expected_provisional_redaction_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            annotation_rect = annotation.rect
+            expected_annotated_text.append(
+                " ".join(page.get_textbox(annotation_rect).split()).lower()
+            )
+
+    # Get the actual redacted text
+    actual_annotated_text = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            annotation_rect = annotation.rect
+            actual_annotated_text.append(
+                " ".join(page.get_textbox(annotation_rect).split()).lower()
+            )
+
+    matches = {
+        expected_text: expected_text in actual_annotated_text
+        for expected_text in expected_annotated_text
+    }
+    valid_match_count = len([x for x in matches.values() if x])
+
+    assert valid_match_count == len(matches)
+
+
+def test__pdf_processor__apply_provisional_text_redactions__partial_match():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = ["it"]
+
+    redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+        document_bytes, redaction_strings
+    )
+
+    # Get the actual redacted text
+    annotated_text_expanded = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            annotation_rect = annotation.rect
+            w = annotation_rect.width / 4
+            annotated_text_expanded.append(
+                page.get_textbox(annotation_rect + (-w, 0, w, 0)).strip().lower()
+            )
+
+    # Find all instances of "it" in the annotated text
+    actual_annotated_text = [
+        t for text in annotated_text_expanded for t in text.split(" ") if "it" in t
+    ]
+
+    for word in ["criteria", "with", "servitude", "sits", "waiting"]:
+        assert word not in actual_annotated_text
+
+    assert set(actual_annotated_text) == set(["it"])
+
+
+def test__pdf_processor__apply_provisional_text_redactions__line_break():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = ["all who come after him"]
+
+    redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+        document_bytes, redaction_strings
+    )
+
+    # Get the actual redacted text
+    actual_annotated_text = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            actual_annotated_text.append(
+                page.get_textbox(annotation.rect).strip().lower()
+            )
+
+    # assert len(actual_annotated_text) == 2
+    assert "all who" in actual_annotated_text
+    assert "come after him" in actual_annotated_text
+
+
 def test__pdf_processor__redact():
     """
     - Given I have a PDF with some content
