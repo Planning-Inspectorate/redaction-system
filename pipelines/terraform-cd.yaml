@@ -21,7 +21,6 @@ extends:
   template: pipelines/terraform_plan_apply.yml@templates
   parameters:
     environments:
-      - name: Test
       - name: Prod
         dependsOn:
           - Test
