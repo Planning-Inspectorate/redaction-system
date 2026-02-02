@@ -181,7 +181,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
 # Service bus
 ##
 resource "azurerm_servicebus_namespace" "redaction" {
-  name                          = "${local.org}-servicebus-${local.resource_suffix}"
+  name                          = "${local.org}-sb-${local.resource_suffix}"
   location                      = local.location
   resource_group_name           = azurerm_resource_group.primary.name
   sku                           = var.service_bus_premium_enabled ? "Premium" : "Standard"
