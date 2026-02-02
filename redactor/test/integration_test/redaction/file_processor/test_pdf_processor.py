@@ -10,6 +10,103 @@ def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
     return [annotation for page in pdf for annotation in page.annots(annotation_class)]
 
 
+def test__pdf_processor__examine_provisional_text_redaction():
+    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_candidates = [
+        [
+            (  # Single word redaction
+                pymupdf.Rect(
+                    72.0, 101.452392578125, 97.65274810791016, 113.741455078125
+                ),
+                "Riker",
+            ),
+            (  # Multi-word redaction
+                pymupdf.Rect(
+                    180.76254272460938,
+                    145.0911865234375,
+                    267.51654052734375,
+                    157.3802490234375,
+                ),
+                "Commander Data",
+            ),
+            # Multi-word redaction across line break
+            (
+                pymupdf.Rect(
+                    470.42864990234375,
+                    101.452392578125,
+                    495.6957702636719,
+                    113.741455078125,
+                ),
+                "Your Honour",  # "Your" on first line
+            ),
+            (
+                pymupdf.Rect(
+                    72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625
+                ),
+                "Your Honour",  # "Honour" on second line
+            ),
+        ]
+    ]
+
+    page = pymupdf.open(stream=document_bytes)[0]
+    pdf_processor = PDFProcessor()
+    pdf_processor.file_bytes = document_bytes
+    pdf_processor.redaction_candidates = redaction_candidates
+
+    instances_to_redact = []
+    for i, (rect, term) in enumerate(redaction_candidates[0]):
+        instances_to_redact.append(
+            pdf_processor._examine_provisional_text_redaction(page, term, rect, i)
+        )
+
+    expected_result = [
+        [
+            (
+                0,
+                pymupdf.Rect(
+                    72.0, 101.452392578125, 97.65274810791016, 113.741455078125
+                ),
+                "Riker",
+            ),
+        ],
+        [
+            (
+                0,
+                pymupdf.Rect(
+                    180.76254272460938,
+                    145.0911865234375,
+                    267.51654052734375,
+                    157.3802490234375,
+                ),
+                "Commander Data",
+            ),
+        ],
+        [
+            (
+                0,
+                pymupdf.Rect(
+                    470.42864990234375,
+                    101.452392578125,
+                    495.6957702636719,
+                    113.741455078125,
+                ),
+                "Your Honour",
+            ),
+            (
+                0,
+                pymupdf.Rect(
+                    72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625
+                ),
+                "Your Honour",
+            ),
+        ],
+        [],  # No match for last candidate
+    ]
+
+    assert instances_to_redact == expected_result
+
+
 def test__pdf_processor__examine_provisional_redactions_on_page():
     with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
