@@ -181,6 +181,9 @@ resource "azurerm_cognitive_account" "computer_vision" {
 # Service bus
 ##
 resource "azurerm_servicebus_namespace" "redaction" {
+  #checkov:skip=CKV_AZURE_199: Microsoft managed keys are acceptable
+  #checkov:skip=CKV_AZURE_201: Microsoft managed keys are acceptable
+  #checkov:skip=CKV_AZURE_204: public network access only enabled in dev
   name                          = "${local.org}-sb-${local.resource_suffix}"
   location                      = local.location
   resource_group_name           = azurerm_resource_group.primary.name
@@ -188,7 +191,7 @@ resource "azurerm_servicebus_namespace" "redaction" {
   capacity                      = var.service_bus_premium_enabled ? 1 : 0
   premium_messaging_partitions  = var.service_bus_premium_enabled ? 1 : null
   minimum_tls_version           = "1.2"
-  local_auth_enabled            = true
+  local_auth_enabled            = false
   public_network_access_enabled = !var.service_bus_premium_enabled
   identity {
     type = "SystemAssigned"
