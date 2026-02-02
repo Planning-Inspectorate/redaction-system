@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 from dataclasses import dataclass, field
 from PIL.Image import Image
 from pydantic import BaseModel
@@ -28,7 +28,7 @@ class ImageRedactionResult(RedactionResult):
 
 @dataclass(frozen=True)
 class TextRedactionResult(RedactionResult):
-    redaction_strings: Tuple[str] = field(default_factory=lambda: [])
+    redaction_strings: List[str] = field(default_factory=lambda: [])
     """The list of strings to redact"""
 
 
@@ -47,4 +47,4 @@ class LLMTextRedactionResult(TextRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
+    redaction_strings: List[str]

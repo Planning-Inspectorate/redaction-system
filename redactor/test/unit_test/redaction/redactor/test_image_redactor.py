@@ -1,4 +1,4 @@
-from core.redaction.redactor import ImageRedactor
+from core.redaction.redactor import ImageRedactor, ImageTextRedactor
 from core.util.azure_vision_util import AzureVisionUtil
 from core.redaction.config import (
     ImageRedactionConfig,
@@ -16,6 +16,40 @@ def test__image_redactor__get_name():
 
 def test__image_redactor__get_redaction_config_class():
     assert ImageRedactor.get_redaction_config_class() == ImageRedactionConfig
+
+
+def test__image_text_redactor__detect_number_plates():
+    """
+    - Given I have some text containing UK number plates
+    - When I call ImageTextRedactor._detect_number_plates
+    - Then the correct number plates should be returned
+    """
+    valid_number_plates = (
+        "AB12 CDE\n"  # Current format
+        "AB12CDE\n"  # Current format without space
+        "A12 BCD\n"  # Prefix format
+        "ABC 1 D\n"  # Suffix format with 1 digit
+        "ABC 12 D\n"  # Suffix format with 2 digits
+        "ABC 123 D\n"  # Suffix format with 3 digits
+        "1234 A\n"  # Dateless format with long number prefix
+        "1234 AB\n"  # Dateless format with long number prefix
+        "1 ABC\n"  # Dateless format with short number prefix
+        "12 AB\n"  # Dateless format with short number prefix
+        "123 A\n"  # Dateless format with short number prefix
+        "AB 1234\n"  # Dateless format with long number suffix
+        "AB 123\n"  # Dateless format with long number suffix
+        "AB 12\n"  # Dateless format with short number suffix
+        "ABC 123\n"  # Dateless format with short number suffix
+        "101D234\n"  # Diplomatic format
+    )
+    actual_number_plates = ImageTextRedactor._detect_number_plates(
+        valid_number_plates
+    ).redaction_strings
+    for variant in valid_number_plates.split("\n"):
+        if variant:
+            assert variant.replace(" ", "") in [
+                plate.replace(" ", "") for plate in actual_number_plates
+            ]
 
 
 def test__image_redactor__redact():

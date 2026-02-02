@@ -1,7 +1,9 @@
 import json
+import re
 
 from abc import ABC, abstractmethod
 from typing import Type, List, Dict
+from itertools import chain
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -14,6 +16,7 @@ from core.redaction.config import (
 )
 from core.redaction.result import (
     LLMTextRedactionResult,
+    TextRedactionResult,
     ImageRedactionResult,
     RedactionResult,
 )
@@ -179,7 +182,37 @@ class ImageRedactor(Redactor):  # pragma: no cover
 class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
-    pass
+    @classmethod
+    def _detect_number_plates(cls, text_to_analyse: str) -> TextRedactionResult:
+        """
+        Detect number plates in the given text
+
+        :param str text_to_analyse: The text to analyse for number plates
+        :return TextRedactionResult: The redaction result containing the detected
+        number plates
+        """
+
+        # Regex pattern from https://gist.github.com/danielrbradley/7567269
+        uk_number_plate_pattern = (
+            r"(^[A-Z]{2}[0-9]{2}\s?[A-Z]{3}$)"  # Current format: AB12 CDE
+            r"|(^[A-Z][0-9]{1,3}\s?[A-Z]{3}$)"  # Prefix format: A12 BCD
+            r"|(^[A-Z]{3}\s?[0-9]{1,3}\s?[A-Z]$)"  # Suffix format: ABC 1 D
+            r"|(^[0-9]{1,4}\s?[A-Z]{1,2}$)"  # Dateless format with long number prefix: 1234 AB
+            r"|(^[0-9]{1,3}\s?[A-Z]{1,3}$)"  # Dateless format with short number prefix: 123 A
+            r"|(^[A-Z]{1,2}\s?[0-9]{1,4}$)"  # Dateless format with long number suffix: AB 1234
+            r"|(^[A-Z]{1,3}\s?[0-9]{1,3}$)"  # Dateless format with short number suffix: ABC 123
+            r"|(^[A-Z]{1,3}\s?[0-9]{1,4}$)"  # Northern Ireland format: AIZ 1234
+            r"|(^[0-9]{3}\s?[DX]{1}\s?[0-9]{3}$)"  # Diplomatic format: 101D234
+        )
+        matches = re.findall(uk_number_plate_pattern, text_to_analyse, re.MULTILINE)
+        number_plates_found = list(
+            set(
+                chain.from_iterable(
+                    [item for item in match if item] for match in matches
+                )
+            )
+        )
+        return TextRedactionResult(redaction_strings=number_plates_found)
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
