@@ -101,8 +101,8 @@ class TextRedactor(Redactor):
         Check the text_to_redact list against the list in the stopwords yaml
         """
         stopwords = ConfigProcessor.load_config(str = "stopwords")
-        stopwords_list = stopwords['stopwords']
-        text_to_redact = text_to_redact - stopwords_list
+        stopwords_list = stopwords["stopwords"]
+        text_to_redact = list(set(text_to_redact) - set(stopwords_list))
         return text_to_redact
 
 class LLMTextRedactor(TextRedactor):
