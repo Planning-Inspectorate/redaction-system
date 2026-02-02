@@ -47,6 +47,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   private_dns_zone_name = data.azurerm_private_dns_zone.storage[each.key].name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
+  resolution_policy     = "NxDomainRedirect"
 
   tags = local.tags
 }
@@ -57,6 +58,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "function" {
   private_dns_zone_name = data.azurerm_private_dns_zone.function.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
+  resolution_policy     = "NxDomainRedirect"
 
   tags = local.tags
 }
@@ -67,6 +69,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
   private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
+  resolution_policy     = "NxDomainRedirect"
 
   tags = local.tags
 }
@@ -77,6 +80,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
   private_dns_zone_name = data.azurerm_private_dns_zone.openai.name
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
+  resolution_policy     = "NxDomainRedirect"
 
   tags = local.tags
 }
