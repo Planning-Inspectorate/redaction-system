@@ -42,9 +42,7 @@ def test__image_text_redactor__detect_number_plates():
         "ABC 123\n"  # Dateless format with short number suffix
         "101D234\n"  # Diplomatic format
     )
-    actual_number_plates = ImageTextRedactor._detect_number_plates(
-        valid_number_plates
-    ).redaction_strings
+    actual_number_plates = ImageTextRedactor._detect_number_plates(valid_number_plates)
     for variant in valid_number_plates.split("\n"):
         if variant:
             assert variant.replace(" ", "") in [

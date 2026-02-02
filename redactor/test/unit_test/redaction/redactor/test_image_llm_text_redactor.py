@@ -35,6 +35,7 @@ def test__image_llm_text_redactor__redact():
             Image.new("RGB", (1000, 1000)),
             Image.new("RGB", (200, 100)),
             Image.new("RGB", (1000, 1000)),
+            Image.new("RGB", (500, 1000)),
         ],
         system_prompt="some system prompt",
         redaction_terms=[
@@ -57,6 +58,9 @@ def test__image_llm_text_redactor__redact():
             ("Klingon", (10, 10, 50, 50)),  # Two entries for the same word
             ("Klingon", (100, 100, 50, 50)),
         ),
+        (
+            ("AB12 CDE", (5, 5, 20, 10)),  # A number plate for some reason
+        ),
     )
     expected_results = ImageRedactionResult(
         redaction_results=(
@@ -78,6 +82,11 @@ def test__image_llm_text_redactor__redact():
                 source_image=config.images[2],
                 redaction_boxes=((10, 10, 50, 50), (100, 100, 50, 50)),
             ),
+            ImageRedactionResult.Result(
+                image_dimensions=(500, 1000),
+                source_image=config.images[3],
+                redaction_boxes=((5, 5, 20, 10),),
+            ),
         )
     )
     mock_text_redaction_result = LLMTextRedactionResult(
@@ -91,10 +100,17 @@ def test__image_llm_text_redactor__redact():
             AzureVisionUtil, "detect_text", side_effect=detect_text_side_effects
         ):
             with mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None):
-                with mock.patch.object(
-                    ImageLLMTextRedactor,
-                    "_analyse_text",
-                    return_value=mock_text_redaction_result,
+                with (
+                    mock.patch.object(
+                        ImageLLMTextRedactor,
+                        "_analyse_text",
+                        return_value=mock_text_redaction_result,
+                    ),
+                    mock.patch.object(
+                        ImageLLMTextRedactor,
+                        "_detect_number_plates",
+                        return_value=["AB12 CDE"],
+                    ),
                 ):
                     inst = ImageLLMTextRedactor()
                     inst.config = config

@@ -16,7 +16,6 @@ from core.redaction.config import (
 )
 from core.redaction.result import (
     LLMTextRedactionResult,
-    TextRedactionResult,
     ImageRedactionResult,
     RedactionResult,
 )
@@ -183,7 +182,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
     @classmethod
-    def _detect_number_plates(cls, text_to_analyse: str) -> TextRedactionResult:
+    def _detect_number_plates(cls, text_to_analyse: str) -> List[str]:
         """
         Detect number plates in the given text
 
@@ -205,14 +204,13 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             r"|(^[0-9]{3}\s?[DX]{1}\s?[0-9]{3}$)"  # Diplomatic format: 101D234
         )
         matches = re.findall(uk_number_plate_pattern, text_to_analyse, re.MULTILINE)
-        number_plates_found = list(
+        return tuple(
             set(
                 chain.from_iterable(
                     [item for item in match if item] for match in matches
                 )
             )
         )
-        return TextRedactionResult(redaction_strings=number_plates_found)
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
@@ -243,9 +241,16 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             text_rect_map = vision_util.detect_text(image_to_redact)
             text_content = " ".join([x[0] for x in text_rect_map])
 
-            redaction_strings = self._analyse_text(text_content).redaction_strings
+            # Analyse detected text with LLM
+            llm_redaction_strings = self._analyse_text(text_content).redaction_strings
+
+            # Detect number plates using regex
+            number_plate_redaction_strings = self._detect_number_plates(text_content)
 
             # Identify text rectangles to redact based on redaction strings
+            redaction_strings = tuple(
+                (*llm_redaction_strings, *number_plate_redaction_strings)
+            )
             text_rects_to_redact = tuple(
                 (text, bounding_box)
                 for text, bounding_box in text_rect_map
