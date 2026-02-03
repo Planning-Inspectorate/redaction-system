@@ -39,7 +39,6 @@ def test__config_processor__process_config():
             ImageLLMTextRedactionConfig(
                 name="Image_Text_Redactor_01",
                 redactor_type="ImageLLMTextRedaction",
-                max_concurrent_requests=1,
                 **llm_text_redaction_attributes,
             ),
         ],
