@@ -66,10 +66,10 @@ resource "azurerm_storage_share" "function_app" {
   quota              = 5000
 }
 
-import {
-  to = azurerm_storage_share.function_app
-  id = "/subscriptions/962e477c-0f3b-4372-97fc-a198a58e259e/resourceGroups/pins-rg-redaction-system-dev-uks/providers/Microsoft.Storage/storageAccounts/pinsstredactiondevuks/fileServices/default/shares/pins-func-redaction-system-dev-uks"
-}
+#import {
+#  to = azurerm_storage_share.function_app
+#  id = "/subscriptions/962e477c-0f3b-4372-97fc-a198a58e259e/resourceGroups/pins-rg-redaction-system-dev-uks/providers/Microsoft.Storage/storageAccounts/pinsstredactiondevuks/fileServices/default/shares/pins-func-redaction-system-dev-uks"
+#}
 
 ############################################################################
 # Create Azure Function App
