@@ -2,7 +2,7 @@ import json
 import re
 
 from abc import ABC, abstractmethod
-from typing import Type, List, Dict
+from typing import Type, List, Dict, Tuple
 from itertools import chain
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -182,7 +182,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
     @classmethod
-    def _detect_number_plates(cls, text_to_analyse: str) -> List[str]:
+    def _detect_number_plates(cls, text_to_analyse: str) -> Tuple[str]:
         """
         Detect number plates in the given text
 
