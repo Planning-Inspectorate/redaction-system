@@ -38,7 +38,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 
   sas_policy {
@@ -63,7 +63,7 @@ resource "azurerm_storage_container" "redaction_storage" {
 resource "azurerm_storage_share" "function_app" {
   name               = azurerm_linux_function_app.redaction_system.name
   storage_account_id = azurerm_storage_account.redaction_storage.id
-  quota              = 5000
+  quota              = 5120
 }
 
 #import {
