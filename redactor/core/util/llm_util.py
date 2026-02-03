@@ -27,6 +27,8 @@ from core.util.logging_util import log_to_appins, LoggingUtil
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 import json
 
+from core.ConfigProcessor import load_config
+
 
 load_dotenv(verbose=True)
 
@@ -359,6 +361,12 @@ class LLMUtil:
                         f"£{self.total_cost:.2f}. Stopping further requests."
                     )
                     break
+
+        
+        # Remove stopwords
+        stopwords = ConfigProcessor.load_config(str = "stopwords")
+        stopwords_list = stopwords["stopwords"]
+        text_to_redact = list(set(text_to_redact) - set(stopwords_list))
 
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
