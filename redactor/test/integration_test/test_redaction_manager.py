@@ -126,6 +126,7 @@ class TestIntegrationRedactionManager(TestCase):
                     "containerName": "test",
                 },
             },
+            "metadata": {"some": "metadata"},
         }
         response = manager.try_redact(params)
         assert response["status"] == "SUCCESS", (
