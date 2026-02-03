@@ -1,0 +1,23 @@
+{
+  "tryApplyProvisionalRedactions": true,
+  "skipRedaction": true,
+  "ruleName": "default",
+  "fileKind": "pdf",
+  "readDetails": {
+   "storageKind": "AzureBlob",
+   "teamEmail": "emil.placheta@planninginspectorate.gov.uk",
+   "properties": {
+    "blobPath": "application/WA0210183/8c4cb21c-a54c-4c97-824b-4ccf181ec9d0/1",
+    "storageName": "pinsstdocsbodevukw001",
+    "containerName": "document-service-uploads"
+   }
+  },
+  "writeDetails": {
+   "storageKind": "AzureBlob", "teamEmail": "emil.placheta@planninginspectorate.gov.uk",
+   "properties": {
+    "blobPath": "application/WA0210183/8c4cb21c-a54c-4c97-824b-4ccf181ec9d0/1hbttest",
+    "storageName": "pinsstdocsbodevukw001",
+    "containerName": "document-service-uploads"
+   }
+  }
+}

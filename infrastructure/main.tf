@@ -11,60 +11,6 @@ resource "azurerm_resource_group" "primary" {
 # Create storage account
 ############################################################################
 
-resource "azurerm_storage_account" "redaction_storage" {
-  #checkov:skip=CKV_AZURE_33: Logging not implemented yet
-  #checkov:skip=CKV2_AZURE_1: Customer Managed Keys not implemented
-  #checkov:skip=CKV_AZURE_206: Replication not needed
-  #checkov:skip=CKV2_AZURE_40: Enable key-based authentication to allow ADO to access the storage account
-  name                             = "${local.org}stredaction${var.environment}${local.location_short}"
-  resource_group_name              = azurerm_resource_group.primary.name
-  location                         = local.location
-  account_tier                     = "Standard"
-  account_replication_type         = var.storage_account_replication_type
-  account_kind                     = "StorageV2"
-  min_tls_version                  = "TLS1_2"
-  allow_nested_items_to_be_public  = "false"
-  cross_tenant_replication_enabled = "false"
-  shared_access_key_enabled        = true
-  default_to_oauth_authentication  = true
-  public_network_access_enabled    = false
-  https_traffic_only_enabled       = true
-  tags                             = local.tags
-
-  blob_properties {
-    delete_retention_policy {
-      days = var.storage_retention_days
-    }
-  }
-
-  lifecycle {
-    prevent_destroy = false
-  }
-
-  sas_policy {
-    expiration_period = "01.12:00:00"
-  }
-
-  network_rules {
-    default_action = "Deny"
-    bypass         = ["AzureServices"] # Keep Azure platform services in scope
-  }
-}
-
-resource "azurerm_storage_container" "redaction_storage" {
-  #checkov:skip=CKV2_AZURE_21: Not needed
-  for_each = local.storage_containers
-
-  name                  = each.key
-  storage_account_id    = azurerm_storage_account.redaction_storage.id
-  container_access_type = "private"
-}
-
-resource "azurerm_storage_share" "function_app" {
-  name               = azurerm_linux_function_app.redaction_system.name
-  storage_account_id = azurerm_storage_account.redaction_storage.id
-  quota              = 5120
-}
 
 #import {
 #  to = azurerm_storage_share.function_app
@@ -92,8 +38,8 @@ resource "azurerm_linux_function_app" "redaction_system" {
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
 
-  storage_account_name          = azurerm_storage_account.redaction_storage.name
-  storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
+  storage_account_name          = null
+  storage_account_access_key    = null
   service_plan_id               = azurerm_service_plan.redaction_system.id
   public_network_access_enabled = false
   virtual_network_subnet_id     = azurerm_subnet.function_app.id
