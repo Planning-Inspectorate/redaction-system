@@ -37,6 +37,7 @@ class JsonPayloadStructure(BaseModel):
     fileKind: str
     readDetails: ReadDetails = None
     writeDetails: WriteDetails = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class RedactionManager:
