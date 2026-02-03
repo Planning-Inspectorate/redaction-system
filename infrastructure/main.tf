@@ -60,7 +60,10 @@ resource "azurerm_storage_container" "redaction_storage" {
   container_access_type = "private"
 }
 
+# The dev env fileshare was manually created - deleting the dev infra to resync is quite a long process (due to resource locks)
+# there are higher priority things to focus on right now. This should be resynced when possible
 resource "azurerm_storage_share" "function_app" {
+  count              = var.environment != "dev"
   name               = azurerm_linux_function_app.redaction_system.name
   storage_account_id = azurerm_storage_account.redaction_storage.id
   quota              = 5120
