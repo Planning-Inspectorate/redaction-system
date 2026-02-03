@@ -31,6 +31,8 @@ from core.redaction.exceptions import (
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
 
+from yaml import safe_load
+
 
 class Redactor(ABC):
     """
@@ -146,8 +148,18 @@ class LLMTextRedactor(TextRedactor):
         )
         return llm_redaction_result
 
+    def _remove_stopwords_(self,text_to_redact: List[str]): 
+        """
+        Check the text_to_redact list against the list in the stopwords yaml
+        """
+        stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
+        stopwords_list = stopwords["stopwords"]
+        text_to_redact = list(set(text_to_redact) - set(stopwords_list))
+        return text_to_redact
+
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
+        self.LLMTextRedactionResult.redaction_strings = self._remove_stopwords_(self.LLMTextRedactionResult.redaction_strings)
         return self._analyse_text(self.config.text)
 
 
