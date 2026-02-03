@@ -23,7 +23,7 @@ from core.redaction.result import (
     LLMRedactionResultFormat,
 )
 from core.util.logging_util import log_to_appins, LoggingUtil
-from core.util.multiprocessing_util import TokenSemaphore, set_max_workers
+from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 
 
 load_dotenv(verbose=True)
@@ -159,7 +159,7 @@ class LLMUtil:
     def _set_workers(self, n: int = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
-        self.config.max_concurrent_requests = set_max_workers(n)
+        self.config.max_concurrent_requests = get_max_workers(n)
 
     @log_to_appins
     def _num_tokens_consumed(

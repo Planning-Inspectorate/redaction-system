@@ -30,7 +30,7 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
-from core.util.multiprocessing_util import set_max_workers
+from core.util.multiprocessing_util import get_max_workers
 
 
 class FileProcessor(ABC):
@@ -212,7 +212,7 @@ class PDFProcessor(FileProcessor):
 
         # Check for exact match among candidate words
         match_result = False
-        for i, word in enumerate(candidate_words):
+        for word in candidate_words:
             match_result = text_to_redact_normalised == word
 
             # Try to match by ignoring possessive markers
@@ -324,7 +324,7 @@ class PDFProcessor(FileProcessor):
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
         n_highlights = 0
-        with ProcessPoolExecutor(max_workers=set_max_workers(n_workers)) as executor:
+        with ProcessPoolExecutor(max_workers=get_max_workers(n_workers)) as executor:
             # Submit task to the executor
             futures_to_page = {
                 executor.submit(

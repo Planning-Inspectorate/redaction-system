@@ -11,6 +11,11 @@ def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
 
 
 def test__pdf_processor__examine_provisional_text_redaction():
+    """
+    Given I have a provisional redaction candidate for a PDF
+    I want to determine whether it exactly matches the text on the page
+    If if is a multi-part redaction, I want to capture all parts of the redaction
+    """
     with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
@@ -108,6 +113,11 @@ def test__pdf_processor__examine_provisional_text_redaction():
 
 
 def test__pdf_processor__examine_provisional_redactions_on_page():
+    """
+    Given I have some provisional redaction candidates for a PDF
+    I want to examine each candidate and determine which should be kept as a redaction instance
+    With multi-part redactions handled correctly
+    """
     with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
@@ -145,6 +155,10 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
 
 
 def test__find_next_redaction_instance__on_page():
+    """
+    Given a text redaction candidate list for a PDF
+    I want to find the next instance of a redaction on the same page
+    """
     with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [

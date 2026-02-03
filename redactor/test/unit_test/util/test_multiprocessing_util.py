@@ -2,7 +2,7 @@ import os
 import pytest
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from core.util.multiprocessing_util import TokenSemaphore, set_max_workers
+from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 
 
 def test__token_semaphore__acquire():
@@ -55,9 +55,9 @@ def test__token_semaphore__timeout():
     assert token_semaphore.tokens == 0
 
 
-def test__set_max_workers():
+def test__get_max_workers():
     max_workers = min(32, (os.cpu_count() or 1) + 4)
-    assert set_max_workers(2) == 2
-    assert set_max_workers(0) == 1
-    assert set_max_workers(1000) == max_workers
-    assert set_max_workers() == max_workers
+    assert get_max_workers(2) == 2
+    assert get_max_workers(0) == 1
+    assert get_max_workers(1000) == max_workers
+    assert get_max_workers() == max_workers

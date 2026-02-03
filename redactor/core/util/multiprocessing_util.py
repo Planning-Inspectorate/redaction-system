@@ -50,9 +50,13 @@ class TokenSemaphore:
         self.release()
 
 
-def set_max_workers(n: int = None) -> int:
+def get_max_workers(n: int = None) -> int:
     """Determine the number of worker threads to use, capped at 32 or
-    (os.cpu_count() or 1) + 4."""
+    (os.cpu_count() or 1) + 4.
+
+    :param int n: Desired number of workers. If None, use system default.
+    :return int: The number of worker threads to use.
+    """
     max_workers = min(32, (os.cpu_count() or 1) + 4)
     if n is not None:
         if n < 1:
