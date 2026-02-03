@@ -147,6 +147,41 @@ def test__config_processor__validate_and_filter_config():
             assert expected_output == actual_output
 
 
+def test__config_processor__validate_and_pars_config__unknown_text_redaction_rule():
+    file_processor_class = FileProcessorInst
+    config = {
+        "redactors": [
+            {
+                "redactor_type": "LLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "text_rule_2",
+                        "model": "gpt-4.1",
+                        "system_prompt": "value_1",
+                        "constraints": "value_2",
+                    }
+                ],
+            },
+            {
+                "redactor_type": "ImageLLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "image_text_rule",
+                        "text_redaction_rule": "text_rule_1",
+                        "constraints": "overridden_value",
+                    }
+                ],
+            },
+        ],
+    }
+
+    with mock.patch.object(RedactionConfig, "__init__", return_value=None):
+        with pytest.raises(Exception) as excinfo:
+            ConfigProcessor.validate_and_filter_config(config, file_processor_class)
+
+    assert "references unknown text_redaction_rule" in str(excinfo.value)
+
+
 def test__config_processor__convert_to_redaction_config():
     """
     - Given I have some valid config and a target RedactionConfig class I want to convert to
