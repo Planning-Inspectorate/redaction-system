@@ -246,3 +246,6 @@ scratch
 # PDF redaction outputs
 *_PROVISIONAL.pdf
 *_REDACTED.pdf
+
+# Profile outputs
+*.profile

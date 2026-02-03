@@ -1,4 +1,6 @@
+import os
 from threading import Condition, Lock
+
 from core.util.logging_util import log_to_appins, LoggingUtil
 
 
@@ -46,3 +48,21 @@ class TokenSemaphore:
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.release()
+
+
+def get_max_workers(n: int = None) -> int:
+    """Determine the number of worker threads to use, capped at 32 or
+    (os.cpu_count() or 1) + 4.
+
+    :param int n: Desired number of workers. If None, use system default.
+    :return int: The number of worker threads to use.
+    """
+    max_workers = min(32, (os.cpu_count() or 1) + 4)
+    if n is not None:
+        if n < 1:
+            return 1
+        elif n > max_workers:
+            return max_workers
+        else:
+            return n
+    return max_workers

@@ -1,3 +1,5 @@
+from typing import List
+from string import punctuation
 from langdetect import detect_langs, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
 from unidecode import unidecode
@@ -47,3 +49,24 @@ def normalise_punctuation_unidecode(text: str) -> str:
     return "".join(
         c if not category(c).startswith("P") else unidecode(c) or c for c in text
     )
+
+
+def get_normalised_words(text: str) -> List[str]:
+    """
+    Normalise the given text into a list of words for redaction matching
+
+    :param str text: The text to normalise
+    :return List[str]: The list of normalised words
+    """
+    text_normalised = (
+        normalise_punctuation_unidecode(text)  # Normalise punctuation to ASCII
+        .lower()
+        .split(" ")
+    )
+    words_normalised = [
+        word.strip().strip(  # Remove leading/trailing whitespace
+            punctuation  # Remove punctuation around the word
+        )
+        for word in (text_normalised)
+    ]
+    return [word for word in words_normalised if word]  # Remove empty words

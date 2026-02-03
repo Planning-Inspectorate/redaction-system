@@ -4,6 +4,7 @@ import pytest
 from PIL import Image
 from io import BytesIO
 from mock import patch, Mock
+from concurrent.futures import ProcessPoolExecutor
 
 from core.redaction.file_processor import (
     PDFProcessor,
@@ -14,7 +15,6 @@ from core.redaction.result import (
 )
 from core.util.text_util import is_english_text
 from core.redaction.exceptions import NonEnglishContentException
-from core.util.logging_util import LoggingUtil
 
 
 def test__pdf_processor__get_name():
@@ -234,132 +234,201 @@ def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_unifo
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
-def test__pdf_processor__apply_provisional_text_redactions():
-    """
-    - Given I have a PDF with some provisional redactions
-    - When I apply the redactions
-    - Then the provisional redactions should be removed, and the text content of the PDF
-      should not contain the text identified by the provisional redactions
-    """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    redaction_strings = [
-        "he's",
-        "he",
-        "Riker",
-        "Phillipa",
-        "him",
-        "Commander Data",
-        "him",
-        "him",
+def test__pdf_processor__find_next_redaction_instance__same_page():
+    candidates_on_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term1"),
+        (pymupdf.Rect(20, 20, 30, 30), "term2"),
     ]
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
-            document_bytes, redaction_strings
-        )
-
-    # Generate expected redaction text from the raw document
-    with open(
-        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
-        "rb",
-    ) as f:
-        expected_provisional_redaction_bytes = BytesIO(f.read())
-    expected_annotated_text = []
-    for page in pymupdf.open(stream=expected_provisional_redaction_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            annotation_rect = annotation.rect
-            expected_annotated_text.append(
-                " ".join(page.get_textbox(annotation_rect).split()).lower()
-            )
-
-    # Get the actual redacted text
-    actual_annotated_text = []
-    for page in pymupdf.open(stream=redacted_document_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            annotation_rect = annotation.rect
-            actual_annotated_text.append(
-                " ".join(page.get_textbox(annotation_rect).split()).lower()
-            )
-
-    matches = {
-        expected_text: expected_text in actual_annotated_text
-        for expected_text in expected_annotated_text
-    }
-    valid_match_count = len([x for x in matches.values() if x])
-
-    assert valid_match_count == len(matches)
-
-
-def test__pdf_processor__apply_provisional_text_redactions__partial_match():
-    """
-    - Given I have a PDF with some provisional redactions
-    - When I apply the redactions
-    - Then the provisional redactions should be removed, and the text content of the PDF
-      should not contain the text identified by the provisional redactions
-    """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    redaction_strings = ["it"]
+    current_index = 0  # Start at first candidate
+    page = pymupdf.open().new_page()
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
-        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
-            document_bytes, redaction_strings
+        next_page, next_rect, next_term = PDFProcessor()._find_next_redaction_instance(
+            candidates_on_page, current_index, page
         )
 
-    # Get the actual redacted text
-    annotated_text_expanded = []
-    for page in pymupdf.open(stream=redacted_document_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            annotation_rect = annotation.rect
-            w = annotation_rect.width / 4
-            annotated_text_expanded.append(
-                page.get_textbox(annotation_rect + (-w, 0, w, 0)).strip().lower()
-            )
+    assert next_page == page
+    assert next_rect == candidates_on_page[1][0]
+    assert next_term == candidates_on_page[1][1]
 
-    # Find all instances of "it" in the annotated text
-    actual_annotated_text = [
-        t for text in annotated_text_expanded for t in text.split(" ") if "it" in t
+
+def test__pdf_processor__find_next_redaction_instance__next_page():
+    candidates_on_first_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term1"),
+        (pymupdf.Rect(20, 20, 30, 30), "term2"),
     ]
+    first_page = pymupdf.open().new_page()
 
-    for word in ["criteria", "with", "servitude", "sits", "waiting"]:
-        assert word not in actual_annotated_text
-
-    partial_info_message = "Partial redaction found when attempting to redact 'it'."
-    assert 5 == sum(
-        partial_info_message in call.args[0]
-        for call in LoggingUtil.log_info.call_args_list
-    )
-
-    assert set(actual_annotated_text) == set(["it"])
-
-
-def test__pdf_processor__apply_provisional_text_redactions__line_break():
-    """
-    - Given I have a PDF with some provisional redactions
-    - When I apply the redactions
-    - Then the provisional redactions should be removed, and the text content of the PDF
-      should not contain the text identified by the provisional redactions
-    """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    redaction_strings = ["all who come after him"]
+    candidates_on_second_page = [
+        (pymupdf.Rect(0, 0, 10, 10), "term3"),
+        (pymupdf.Rect(20, 20, 30, 30), "term4"),
+    ]
+    second_page = pymupdf.open().new_page()
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
-        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
-            document_bytes, redaction_strings
-        )
+        pdf_processor = PDFProcessor()
+        pdf_processor.redaction_candidates = [
+            candidates_on_first_page,
+            candidates_on_second_page,
+        ]
+        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
 
-    # Get the actual redacted text
-    actual_annotated_text = []
-    for page in pymupdf.open(stream=redacted_document_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            actual_annotated_text.append(
-                page.get_textbox(annotation.rect).strip().lower()
+        with patch.object(pymupdf, "open", return_value=[first_page, second_page]):
+            next_page, next_rect, next_term = (
+                pdf_processor._find_next_redaction_instance(
+                    candidates_on_first_page, 1, first_page
+                )
+            )
+            pymupdf.open.assert_called_with(
+                stream=pdf_processor.file_bytes
+            )  # Ensure file_bytes used
+
+    assert next_page == second_page
+    assert next_rect == candidates_on_second_page[0][0]
+    assert next_term == candidates_on_second_page[0][1]
+
+
+def test__pdf_processor__is_partial_redaction_across_line_breaks():
+    term = "Hello World"
+    next_rect = pymupdf.Rect(0, 0, 10, 20)
+    next_page = pymupdf.open().new_page()
+
+    with patch.object(
+        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, "World")
+    ):
+        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
+            term, "Hello", next_page, next_rect
+        )
+    assert match_result
+
+
+def test__pdf_processor__is_partial_redaction_across_line_breaks__no_match():
+    term = "Hello World"
+    next_rect = pymupdf.Rect(0, 0, 10, 20)
+    next_page = pymupdf.open().new_page()
+
+    with patch.object(
+        PDFProcessor, "_is_full_text_being_redacted", return_value=(False, "You")
+    ):
+        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
+            term, "Hello", next_page, next_rect
+        )
+    assert not match_result
+
+
+def test__pdf_processor__examine_provisional_text_redaction():
+    page = pymupdf.open().new_page()
+    term = "test term"
+    rect = pymupdf.Rect(0, 0, 10, 10)
+
+    with patch.object(
+        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, term)
+    ):
+        result = PDFProcessor()._examine_provisional_text_redaction(page, term, rect, 0)
+
+    assert result == [(page.number, rect, term)]
+
+
+@patch.object(PDFProcessor, "_is_full_text_being_redacted", return_value=(False, ""))
+@patch.object(PDFProcessor, "_find_next_redaction_instance", return_value=None)
+def test__pdf_processor__examine_provisional_text_redaction__no_matches(
+    mock_full_redaction, mock_find_next
+):
+    page = pymupdf.open().new_page()
+    term = "test term"
+    rect = pymupdf.Rect(0, 0, 10, 10)
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        pdf_processor = PDFProcessor()
+        pdf_processor.redaction_candidates = [[(rect, term)]]
+        result = pdf_processor._examine_provisional_text_redaction(page, term, rect, 0)
+
+    assert result == []
+
+
+@patch.object(
+    PDFProcessor, "_is_full_text_being_redacted", return_value=(False, "test")
+)
+@patch.object(
+    PDFProcessor, "_is_partial_redaction_across_line_breaks", return_value=True
+)
+def test__pdf_processor__examine_provisional_text_redaction__line_break(
+    mock_full_redaction, mock_find_next
+):
+    page = pymupdf.open().new_page()
+    term = "test term"
+    rect = pymupdf.Rect(0, 0, 10, 10)
+    next_rect = pymupdf.Rect(20, 20, 30, 30)
+    candidates_on_page = [(rect, term), (next_rect, term)]
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_find_next_redaction_instance",
+            return_value=(page, next_rect, term),
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.redaction_candidates = [candidates_on_page]
+            result = pdf_processor._examine_provisional_text_redaction(
+                page, term, rect, 0
             )
 
-    # assert len(actual_annotated_text) == 2
-    assert "all who" in actual_annotated_text
-    assert "come after him" in actual_annotated_text
+    assert result == [(page.number, rect, term), (page.number, next_rect, term)]
+
+
+@patch("pymupdf.open", return_value=[pymupdf.open().new_page()])
+@patch.object(PDFProcessor, "__init__", return_value=None)
+def test__pdf_processor__examine_provisional_redactions_on_page(
+    mock_page_open, mock_init
+):
+    rect = pymupdf.Rect(0, 0, 10, 10)
+    term = "term1"
+    candidates_on_page = [(rect, term)]
+
+    expected_result = [(0, rect, term)]
+    with patch.object(
+        PDFProcessor,
+        "_examine_provisional_text_redaction",
+        return_value=expected_result,
+    ):
+        pdf_processor = PDFProcessor()
+        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
+
+        result = pdf_processor._examine_provisional_redactions_on_page(
+            0, candidates_on_page
+        )
+
+    assert result == expected_result
+
+
+@patch("pymupdf.open", return_value=[pymupdf.open().new_page()])
+@patch.object(PDFProcessor, "__init__", return_value=None)
+def test__pdf_processor__examine_provisional_redactions_on_page__line_break(
+    mock_page_open, mock_init
+):
+    rect = pymupdf.Rect(0, 0, 10, 10)
+    next_rect = pymupdf.Rect(20, 20, 30, 30)
+    term = "term1"
+    candidates_on_page = [(rect, term), (next_rect, term)]
+
+    expected_result = [(0, rect, term), (0, next_rect, term)]
+    side_effects = [
+        [(0, rect, term), (0, next_rect, term)],
+        [],
+    ]
+    with patch.object(
+        PDFProcessor,
+        "_examine_provisional_text_redaction",
+        side_effect=side_effects,
+    ):
+        pdf_processor = PDFProcessor()
+        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
+
+        result = pdf_processor._examine_provisional_redactions_on_page(
+            0, candidates_on_page
+        )
+
+    assert result == expected_result
 
 
 @pytest.mark.parametrize(
@@ -405,6 +474,13 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
         ("(https://example.com)", "https://example.com", True),  # URL with punctuation
         ("https://example.com/", "https://example.com", True),  # URL with punctuation
         ("(https://example.com/)", "https://example.com", True),  # URL with punctuation
+        (
+            "and down",
+            "d",
+            False,
+        ),  # Partial match within multiple words should not be redacted
+        ("£120,000", "£120,000", True),  # Amount with punctuation should be redacted
+        ("Something: else", "Something: else", True),  # Punctuation within phrase
     ],
 )
 def test__pdf_processor__is_full_text_being_redacted(test_case):
@@ -434,18 +510,59 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     assert result[0] == expected_result, error_message
 
 
-def test__pdf_processor__is_partial_redaction_across_line_breaks():
-    term = "Hello World"
-    next_redaction_inst = (pymupdf.open().new_page, pymupdf.Rect(0, 0, 10, 20), term)
-    next_page, next_rect, next_term = next_redaction_inst
+class MockPDFPPage:
+    def __init__(self, number: int):
+        self.number = number
 
-    with patch.object(
-        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, "World")
+    def annots(self, annot_type):
+        return []
+
+    def search_for(self, text):
+        return []
+
+
+class MockPDFDocument:
+    def __init__(self, num_pages: int):
+        self.num_pages = num_pages
+        self.pages = [MockPDFPPage(i) for i in range(num_pages)]
+
+    def __iter__(self):
+        return iter(self.pages)
+
+    def __len__(self):
+        return self.num_pages
+
+    def save(self, stream: BytesIO, **kwargs):
+        pass
+
+
+@patch.object(pymupdf, "open", return_value=MockPDFDocument(2))
+def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
+    with (
+        patch.object(
+            ProcessPoolExecutor, "submit", return_value=None
+        ) as mock_executor_submit,
+        patch(
+            "core.redaction.file_processor.as_completed", return_value=[]
+        ) as mock_as_completed,
+        patch.object(
+            ProcessPoolExecutor, "__init__", return_value=None
+        ) as mock_executor_init,
+        patch.object(
+            ProcessPoolExecutor, "__exit__", return_value=None
+        ) as mock_executor_exit,
+        patch.object(
+            PDFProcessor, "_examine_provisional_redactions_on_page", return_value=[]
+        ),
     ):
-        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
-            term, "Hello", next_page, next_rect, next_term
+        PDFProcessor()._apply_provisional_text_redactions(
+            BytesIO(), ["redaction1", "redaction2"], n_workers=4
         )
-    assert match_result
+
+    mock_executor_init.assert_called_once_with(max_workers=4)
+    assert mock_executor_submit.call_count == 2  # One per page
+    assert mock_as_completed.call_count == 1
+    mock_executor_exit.assert_called_once()
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
