@@ -1,23 +1,24 @@
 parameters:
-  - name: env
-    default: test
-    values:
-      - dev
-      - test
-      - prod
+- name: env
+  type: string
+  default: test
+  values:
+    - dev
+    - test
+    - prod
 
-  - name: perfConcurrency
-    type: number
-    default: 5
-  - name: perfTotal
-    type: number
-    default: 5
-  - name: perfTimeoutSeconds
-    type: number
-    default: 7200
-  - name: perfPollSeconds
-    type: number
-    default: 2
+- name: perfConcurrency
+  type: number
+  default: 5
+- name: perfTotal
+  type: number
+  default: 5
+- name: perfTimeoutSeconds
+  type: number
+  default: 7200
+- name: perfPollSeconds
+  type: number
+  default: 2
 
 pr: none
 trigger: none
@@ -44,6 +45,7 @@ extends:
             clean: true
           - checkout: templates
 
+          # ---- Choose subscriptionId at compile time ----
           - template: ../steps/azure_auth.yml@templates
             parameters:
               ${{ if eq(parameters.env, 'dev') }}:
@@ -53,53 +55,50 @@ extends:
               ${{ if eq(parameters.env, 'prod') }}:
                 subscriptionId: $(SUBSCRIPTION_ID_PROD)
 
-
           - script: |
               set -e
               cd redaction-system
               python3 -m pip install -r redactor/requirements.txt
-            displayName: 'Install requirements'
+            displayName: Install requirements
 
           - script: |
               set -e
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
+              export PYTHONPATH="$(pwd)"
 
-              echo "env=$ENV"
-              echo "E2E_FUNCTION_BASE_URL=$E2E_FUNCTION_BASE_URL"
-              echo "E2E_STORAGE_ACCOUNT=$E2E_STORAGE_ACCOUNT"
-              echo "E2E_CONTAINER_NAME=$E2E_CONTAINER_NAME"
+              echo "env=${{ parameters.env }}"
+
+              # ---- Set concrete values (no nested $(...)) ----
+              ${{ if eq(parameters.env, 'dev') }}:
+                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_DEV)"
+                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_DEV)"
+              ${{ if eq(parameters.env, 'test') }}:
+                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_TEST)"
+                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_TEST)"
+              ${{ if eq(parameters.env, 'prod') }}:
+                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_PROD)"
+                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_PROD)"
+
+              export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
+              export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+
+              export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
+              export PERF_TOTAL="${{ parameters.perfTotal }}"
+              export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
+              export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
+
+              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
+              echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
+              echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
+              echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
 
               python3 -m pytest -q -s \
                 test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
                 --junitxml=junit/perf_test_results.xml
-            displayName: 'Run perf tests (deployed env)'
-            env:
-              ENV: ${{ parameters.env }}
-              E2E_STORAGE_ACCOUNT: pinsstredaction${{ parameters.env }}uks
-              E2E_RUN_ID: ado-perf-$(Build.BuildId)
-
-              PERF_CONCURRENCY: ${{ parameters.perfConcurrency }}
-              PERF_TOTAL: ${{ parameters.perfTotal }}
-              PERF_TIMEOUT_S: ${{ parameters.perfTimeoutSeconds }}
-              PERF_POLL_S: ${{ parameters.perfPollSeconds }}
-
-              # ---- per-env values (compile-time) ----
-              ${{ if eq(parameters.env, 'dev') }}:
-                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_DEV)
-                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_DEV)
-
-              ${{ if eq(parameters.env, 'test') }}:
-                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_TEST)
-                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_TEST)
-
-              ${{ if eq(parameters.env, 'prod') }}:
-                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_PROD)
-                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_PROD)
-
+            displayName: Run perf tests (deployed env)
 
           - task: PublishTestResults@2
-            displayName: 'Publish perf test results'
+            displayName: Publish perf test results
             condition: succeededOrFailed()
             inputs:
               testResultsFiles: '**/perf_test_results.xml'
@@ -108,15 +107,15 @@ extends:
               failTaskOnFailedTests: true
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish perf artefacts'
+            displayName: Publish perf artefacts
             condition: always()
             inputs:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/redactor/junit'
-              ArtifactName: 'perf-junit'
+              ArtifactName: perf-junit
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish run artefacts'
+            displayName: Publish run artefacts
             condition: always()
             inputs:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: 'perf-run-artifacts'
+              ArtifactName: perf-run-artifacts
