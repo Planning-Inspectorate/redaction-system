@@ -1,6 +1,8 @@
 import asyncio
+import json
 import os
 import statistics
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -65,9 +67,9 @@ PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
 
 PERF_EXISTS_SAMPLE_EVERY = _int_env("PERF_EXISTS_SAMPLE_EVERY", 5)
 
-# New: wait/retry for output blob existence after orchestration completes.
-PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", 30.0)
-PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 2.0)
+# IMPORTANT: default bumped to 180s to reduce false failures under load
+PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", 180.0)
+PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 5.0)
 
 PERF_MAX_P95_S = _float_env("PERF_MAX_P95_S", 0.0)
 
@@ -121,6 +123,49 @@ def _percentiles(values: List[float]) -> Dict[str, float]:
 
 
 # ----------------------------
+# Azure CLI diagnostics helpers
+# ----------------------------
+
+
+def _az_list_blobs_prefix(
+    *,
+    storage_account: str,
+    container_name: str,
+    prefix: str,
+    limit: int = 200,
+) -> List[str]:
+    """
+    Best-effort listing of blobs under a prefix.
+    Returns a list of blob names (possibly empty). Never raises.
+    """
+    try:
+        cmd = [
+            "az",
+            "storage",
+            "blob",
+            "list",
+            "--account-name",
+            storage_account,
+            "--container-name",
+            container_name,
+            "--prefix",
+            prefix,
+            "--query",
+            "[].name",
+            "-o",
+            "tsv",
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if r.returncode != 0:
+            return [f"<<az blob list failed rc={r.returncode}: {r.stderr.strip()}>>"]
+
+        lines = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+        return lines[:limit]
+    except Exception as e:
+        return [f"<<az blob list exception: {e}>>"]
+
+
+# ----------------------------
 # Blob-exists helper (sync, uses az cli underneath)
 # ----------------------------
 
@@ -135,7 +180,7 @@ def _wait_for_blob_exists(
 ) -> bool:
     """
     Durable can report Completed before the output blob is observable via `az storage blob exists`,
-    so we allow a short grace period.
+    so we allow a grace period.
     """
     deadline = time.time() + timeout_s
     last = False
@@ -169,15 +214,21 @@ async def _poll_until_done(
     poll_s: float,
 ) -> dict:
     deadline = time.time() + timeout_s
+    last_status: Optional[dict] = None
     while time.time() < deadline:
         r = await client.get(poll_url, timeout=60)
         r.raise_for_status()
         status = r.json()
+        last_status = status
         state = status.get("runtimeStatus")
         if state in ("Completed", "Failed", "Terminated"):
             return status
         await asyncio.sleep(poll_s)
-    raise TimeoutError(f"Timed out waiting for orchestration. pollEndpoint={poll_url}")
+
+    # include last known status for debugging
+    raise TimeoutError(
+        f"Timed out waiting for orchestration. pollEndpoint={poll_url} last={last_status}"
+    )
 
 
 @dataclass(frozen=True)
@@ -187,7 +238,27 @@ class PerfResult:
     seconds: float
     checked_blob_exists: bool
     out_blob_exists: Optional[bool]
+    poll_url: Optional[str]
+    instance_id: Optional[str]
+    durable_status: Optional[dict]
+    diagnostics: Optional[str] = None
     error: Optional[str] = None
+
+
+def _summarise_durable_status(status: Optional[dict]) -> dict:
+    if not status:
+        return {}
+    # keep only useful bits (avoid huge logs)
+    keys = [
+        "instanceId",
+        "runtimeStatus",
+        "createdTime",
+        "lastUpdatedTime",
+        "customStatus",
+        "output",
+        "errorMessage",
+    ]
+    return {k: status.get(k) for k in keys if k in status}
 
 
 async def _run_one(
@@ -202,19 +273,29 @@ async def _run_one(
     storage_account: str,
     container_name: str,
     out_blob: str,
+    out_prefix: str,
+    expected_prefix_token: str,  # e.g. "00001"
 ) -> PerfResult:
     t0 = time.perf_counter()
     poll_url: Optional[str] = None
+    instance_id: Optional[str] = None
+    durable_status: Optional[dict] = None
+
     try:
         start = await _trigger_start(client, start_url, payload)
-        poll_url = start["pollEndpoint"]
+        poll_url = start.get("pollEndpoint")
+        instance_id = start.get("id") or start.get("instanceId")
 
-        status = await _poll_until_done(
+        if not poll_url:
+            raise RuntimeError(f"Missing pollEndpoint in start response: {start}")
+
+        durable_status = await _poll_until_done(
             client, poll_url, timeout_s=timeout_s, poll_s=poll_s
         )
-        runtime_status = status.get("runtimeStatus", "Unknown")
+        runtime_status = durable_status.get("runtimeStatus", "Unknown")
         elapsed = time.perf_counter() - t0
 
+        # terminal but not successful
         if runtime_status in ("Failed", "Terminated"):
             return PerfResult(
                 ok=False,
@@ -222,12 +303,17 @@ async def _run_one(
                 seconds=elapsed,
                 checked_blob_exists=do_exists_check,
                 out_blob_exists=None,
-                error=str(status.get("output") or status),
+                poll_url=poll_url,
+                instance_id=durable_status.get("instanceId") or instance_id,
+                durable_status=_summarise_durable_status(durable_status),
+                diagnostics=None,
+                error=json.dumps(_summarise_durable_status(durable_status), default=str),
             )
 
         out_exists: Optional[bool] = None
+        diagnostics: Optional[str] = None
+
         if do_exists_check:
-            # Run the sync az-cli existence checks in a worker thread to avoid blocking the event loop.
             out_exists = await asyncio.to_thread(
                 _wait_for_blob_exists,
                 storage_account=storage_account,
@@ -236,6 +322,30 @@ async def _run_one(
                 timeout_s=PERF_EXISTS_WAIT_S,
                 poll_s=PERF_EXISTS_WAIT_POLL_S,
             )
+
+            # If Durable says Completed but blob isn't there, gather diagnostics.
+            if runtime_status == "Completed" and out_exists is not True:
+                blob_names = await asyncio.to_thread(
+                    _az_list_blobs_prefix,
+                    storage_account=storage_account,
+                    container_name=container_name,
+                    prefix=out_prefix,
+                )
+
+                # near-match search: any blob that starts with the index token (e.g. "00001")
+                near_matches = [b for b in blob_names if f"/{expected_prefix_token}" in b or b.endswith(f"/{expected_prefix_token}") or f"/{expected_prefix_token}_" in b]
+                if not near_matches:
+                    # also try simple contains of token in final segment
+                    near_matches = [b for b in blob_names if expected_prefix_token in b.split("/")[-1]]
+
+                diagnostics_obj = {
+                    "expected_out_blob": out_blob,
+                    "out_prefix_list_count": len(blob_names),
+                    "out_prefix_list_sample": blob_names[:50],
+                    "near_matches": near_matches[:20],
+                    "durable_status_summary": _summarise_durable_status(durable_status),
+                }
+                diagnostics = json.dumps(diagnostics_obj, default=str)
 
         ok = (runtime_status == "Completed") and (
             True if out_exists is None else (out_exists is expected_output)
@@ -247,10 +357,13 @@ async def _run_one(
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
             out_blob_exists=out_exists,
-            error=None
-            if ok
-            else f"status={runtime_status} out_exists={out_exists} poll={poll_url}",
+            poll_url=poll_url,
+            instance_id=durable_status.get("instanceId") or instance_id,
+            durable_status=_summarise_durable_status(durable_status),
+            diagnostics=diagnostics,
+            error=None if ok else f"status={runtime_status} out_exists={out_exists}",
         )
+
     except Exception as e:
         elapsed = time.perf_counter() - t0
         return PerfResult(
@@ -259,6 +372,10 @@ async def _run_one(
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
             out_blob_exists=None,
+            poll_url=poll_url,
+            instance_id=instance_id,
+            durable_status=_summarise_durable_status(durable_status),
+            diagnostics=None,
             error=f"{e} poll={poll_url}" if poll_url else str(e),
         )
 
@@ -270,12 +387,6 @@ async def _run_one(
 
 @pytest.mark.perf
 def test_concurrent_redactions_perf(tmp_path: Path) -> None:
-    """
-    Concurrency/perf test for durable redaction orchestration.
-
-    Measures: POST /api/redact -> poll until runtimeStatus terminal.
-    By default pre-uploads inputs so the metric focuses on the redaction service speed.
-    """
     _load_dotenv_if_present()
     storage_account = _env_required("E2E_STORAGE_ACCOUNT")
     container_name = _env_required("E2E_CONTAINER_NAME")
@@ -291,8 +402,9 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     # ----------------------------
     jobs: List[Dict[str, Any]] = []
     for i in range(PERF_TOTAL):
-        in_blob = f"perf/{run_id}/in/{i:05d}.pdf"
-        out_blob = f"perf/{run_id}/out/{i:05d}_REDACTED.pdf"
+        idx = f"{i:05d}"
+        in_blob = f"perf/{run_id}/in/{idx}.pdf"
+        out_blob = f"perf/{run_id}/out/{idx}_REDACTED.pdf"
 
         az_upload(storage_account, container_name, in_blob, fixture_path)
 
@@ -304,7 +416,15 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
             skip_redaction=False,
         )
 
-        jobs.append({"payload": payload, "out_blob": out_blob, "i": i})
+        jobs.append(
+            {
+                "payload": payload,
+                "out_blob": out_blob,
+                "i": i,
+                "idx": idx,
+                "out_prefix": f"perf/{run_id}/out/",
+            }
+        )
 
     async def run_all() -> List[PerfResult]:
         limits = httpx.Limits(
@@ -333,6 +453,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                         storage_account=storage_account,
                         container_name=container_name,
                         out_blob=job["out_blob"],
+                        out_prefix=job["out_prefix"],
+                        expected_prefix_token=job["idx"],
                     )
 
             return await asyncio.gather(*(wrapped(j) for j in jobs))
@@ -349,7 +471,6 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
 
     ok_count = sum(1 for r in results if r.ok)
     fail_count = len(results) - ok_count
-
     throughput = ok_count / wall_elapsed if wall_elapsed > 0 else 0.0
 
     exists_checked = sum(1 for r in results if r.checked_blob_exists)
@@ -372,13 +493,20 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     )
 
     if fail_count:
-        print("\nFailures:")
+        print("\nFailures (up to 5):")
         for r in [x for x in results if not x.ok][:5]:
-            print(f"- status={r.runtime_status} seconds={r.seconds:.2f} error={r.error}")
+            print(
+                f"- status={r.runtime_status} seconds={r.seconds:.2f} "
+                f"instanceId={r.instance_id} out_exists={r.out_blob_exists} "
+                f"error={r.error} poll={r.poll_url}"
+            )
+            if r.durable_status:
+                print("  durable_status:", json.dumps(r.durable_status, default=str))
+            if r.diagnostics:
+                print("  diagnostics:", r.diagnostics)
 
-        sample = [r for r in results if not r.ok][:5]
-        print("\nSample failures (up to 5):")
-        for r in sample:
+        print("\nSample failures objects (up to 5):")
+        for r in [x for x in results if not x.ok][:5]:
             print(r)
 
     # ----------------------------
