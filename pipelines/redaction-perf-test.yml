@@ -1,23 +1,20 @@
 parameters:
-- name: env
-  default: 'test'
-  values:
-    - 'dev'
-    - 'test'
-    - 'prod'
+  - name: env
+    default: test
+    values: [dev, test, prod]
 
-- name: perfConcurrency
-  type: number
-  default: 5
-- name: perfTotal
-  type: number
-  default: 5
-- name: perfTimeoutSeconds
-  type: number
-  default: 7200
-- name: perfPollSeconds
-  type: number
-  default: 2
+  - name: perfConcurrency
+    type: number
+    default: 5
+  - name: perfTotal
+    type: number
+    default: 5
+  - name: perfTimeoutSeconds
+    type: number
+    default: 7200
+  - name: perfPollSeconds
+    type: number
+    default: 2
 
 pr: none
 trigger: none
@@ -44,44 +41,49 @@ extends:
             clean: true
           - checkout: templates
 
+          # Set targetSubscriptionId without using a top-level variables: block
+          - bash: |
+              set -e
+              if [ '${{ parameters.env }}' = 'dev' ]; then
+                echo "##vso[task.setvariable variable=targetSubscriptionId]$(SUBSCRIPTION_ID_DEV)"
+              elif [ '${{ parameters.env }}' = 'test' ]; then
+                echo "##vso[task.setvariable variable=targetSubscriptionId]$(SUBSCRIPTION_ID_TEST)"
+              else
+                echo "##vso[task.setvariable variable=targetSubscriptionId]$(SUBSCRIPTION_ID_PROD)"
+              fi
+              echo "Using subscriptionId=$(targetSubscriptionId)"
+            displayName: Select subscription ID
+
           - template: ../steps/azure_auth.yml@templates
             parameters:
-              subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+              subscriptionId: $(targetSubscriptionId)
 
           - script: |
               set -e
               cd redaction-system
               python3 -m pip install -r redactor/requirements.txt
-            displayName: 'Install requirements'
+            displayName: Install requirements
 
           - script: |
               set -e
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
+              export PYTHONPATH="$(pwd)"
 
-              # ---- Target deployed environment ----
               export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_${{ upper(parameters.env) }})"
-
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_${{ upper(parameters.env) }})"
               export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
 
-              # Perf knobs
               export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
               export PERF_TOTAL="${{ parameters.perfTotal }}"
               export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
               export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
 
-              echo "Running perf test against env=${{ parameters.env }}"
-              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
-              echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
-              echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
-              echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
-
               python3 -m pytest -q -s \
                 test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
                 --junitxml=junit/perf_test_results.xml
-            displayName: 'Run perf tests (deployed env)'
+            displayName: Run perf tests (deployed env)
+
 
           - task: PublishTestResults@2
             displayName: 'Publish perf test results'
