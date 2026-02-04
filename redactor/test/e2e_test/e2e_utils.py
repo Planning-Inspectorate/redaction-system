@@ -26,12 +26,6 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
 
 
 def function_start_url() -> str:
-    """
-    Accept either:
-      - E2E_FUNCTION_URL: full URL including /api/redact (and ?code=... for Azure)
-      - E2E_FUNCTION_BASE_URL: base host e.g. https://<app>.azurewebsites.net or http://localhost:7071
-        + optional E2E_FUNCTION_KEY (Azure Functions key)
-    """
     full = _env("E2E_FUNCTION_URL")
     if full:
         return full
@@ -43,6 +37,14 @@ def function_start_url() -> str:
         )
 
     base = base.rstrip("/")
+
+    # 🔒 Guard against accidentally passing a full URL into BASE_URL
+    if "/api/" in base or "?code=" in base or "?sig=" in base:
+        raise RuntimeError(
+            f"E2E_FUNCTION_BASE_URL should be host only (no path/query). Got: {base}. "
+            "Use E2E_FUNCTION_URL for full URLs, or set E2E_FUNCTION_KEY separately."
+        )
+
     url = f"{base}/api/redact"
 
     key = _env("E2E_FUNCTION_KEY")
