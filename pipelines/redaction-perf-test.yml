@@ -63,32 +63,40 @@ extends:
           - script: |
               set -e
               cd redaction-system/redactor
-              export PYTHONPATH="$(pwd)"
+              export PYTHONPATH=$(pwd)
 
-              echo "Running perf test against env=${{ parameters.env }}"
-              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
-              echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
-              echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
-              echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
+              echo "env=$ENV"
+              echo "E2E_FUNCTION_BASE_URL=$E2E_FUNCTION_BASE_URL"
+              echo "E2E_STORAGE_ACCOUNT=$E2E_STORAGE_ACCOUNT"
+              echo "E2E_CONTAINER_NAME=$E2E_CONTAINER_NAME"
 
               python3 -m pytest -q -s \
                 test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
                 --junitxml=junit/perf_test_results.xml
             displayName: 'Run perf tests (deployed env)'
             env:
-              # these come from pipelines/azure-pipelines-variables.yml@self
-              E2E_FUNCTION_BASE_URL: ${{ variables[format('E2E_FUNCTION_BASE_URL_{0}', upper(parameters.env))] }}
-              E2E_CONTAINER_NAME: ${{ variables[format('E2E_CONTAINER_NAME_{0}', upper(parameters.env))] }}
-
-              # built from parameter
+              ENV: ${{ parameters.env }}
               E2E_STORAGE_ACCOUNT: pinsstredaction${{ parameters.env }}uks
               E2E_RUN_ID: ado-perf-$(Build.BuildId)
 
-              # perf knobs
               PERF_CONCURRENCY: ${{ parameters.perfConcurrency }}
               PERF_TOTAL: ${{ parameters.perfTotal }}
               PERF_TIMEOUT_S: ${{ parameters.perfTimeoutSeconds }}
               PERF_POLL_S: ${{ parameters.perfPollSeconds }}
+
+              # ---- per-env values (compile-time) ----
+              ${{ if eq(parameters.env, 'dev') }}:
+                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_DEV)
+                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_DEV)
+
+              ${{ if eq(parameters.env, 'test') }}:
+                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_TEST)
+                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_TEST)
+
+              ${{ if eq(parameters.env, 'prod') }}:
+                E2E_FUNCTION_BASE_URL: $(E2E_FUNCTION_BASE_URL_PROD)
+                E2E_CONTAINER_NAME: $(E2E_CONTAINER_NAME_PROD)
+
 
           - task: PublishTestResults@2
             displayName: 'Publish perf test results'
