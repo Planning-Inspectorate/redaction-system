@@ -59,7 +59,7 @@ extends:
               export PYTHONPATH="$(pwd)"
 
               # Pull env-specific pipeline variables (macro expansion), then export as env vars for pytest
-              export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_${{ upper(parameters.env) }})?code=$(FUNCTION_APP_KEY_${{ upper(parameters.env) }})"
+              export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_${{ upper(parameters.env) }})/api/redact?code=$(FUNCTION_APP_KEY_${{ upper(parameters.env) }})"
               export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_${{ upper(parameters.env) }})"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
