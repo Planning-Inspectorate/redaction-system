@@ -2,10 +2,7 @@ parameters:
 - name: env
   type: string
   default: test
-  values:
-    - dev
-    - test
-    - prod
+  values: [dev, test, prod]
 
 - name: perfConcurrency
   type: number
@@ -45,15 +42,21 @@ extends:
             clean: true
           - checkout: templates
 
-          # ---- Choose subscriptionId at compile time ----
-          - template: ../steps/azure_auth.yml@templates
-            parameters:
-              ${{ if eq(parameters.env, 'dev') }}:
-                subscriptionId: $(SUBSCRIPTION_ID_DEV)
-              ${{ if eq(parameters.env, 'test') }}:
-                subscriptionId: $(SUBSCRIPTION_ID_TEST)
-              ${{ if eq(parameters.env, 'prod') }}:
-                subscriptionId: $(SUBSCRIPTION_ID_PROD)
+          # ---- Azure auth per env ----
+          - ${{ if eq(parameters.env, 'dev') }}:
+              - template: ../steps/azure_auth.yml@templates
+                parameters:
+                  subscriptionId: $(SUBSCRIPTION_ID_DEV)
+
+          - ${{ if eq(parameters.env, 'test') }}:
+              - template: ../steps/azure_auth.yml@templates
+                parameters:
+                  subscriptionId: $(SUBSCRIPTION_ID_TEST)
+
+          - ${{ if eq(parameters.env, 'prod') }}:
+              - template: ../steps/azure_auth.yml@templates
+                parameters:
+                  subscriptionId: $(SUBSCRIPTION_ID_PROD)
 
           - script: |
               set -e
@@ -61,61 +64,73 @@ extends:
               python3 -m pip install -r redactor/requirements.txt
             displayName: Install requirements
 
-          - script: |
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH="$(pwd)"
+          # ---- Env wiring per environment (clean + explicit) ----
 
-              echo "env=${{ parameters.env }}"
+          - ${{ if eq(parameters.env, 'dev') }}:
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH="$(pwd)"
 
-              # ---- Set concrete values (no nested $(...)) ----
-              ${{ if eq(parameters.env, 'dev') }}:
-                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_DEV)"
-                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_DEV)"
-              ${{ if eq(parameters.env, 'test') }}:
-                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_TEST)"
-                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_TEST)"
-              ${{ if eq(parameters.env, 'prod') }}:
-                export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_PROD)"
-                export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_PROD)"
+                  export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_DEV)"
+                  export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_DEV)"
+                  export E2E_STORAGE_ACCOUNT="pinsstredactiondevuks"
+                  export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
 
-              export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
-              export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+                  export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
+                  export PERF_TOTAL="${{ parameters.perfTotal }}"
+                  export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
+                  export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
 
-              export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
-              export PERF_TOTAL="${{ parameters.perfTotal }}"
-              export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
-              export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
+                  python3 -m pytest -q -s \
+                    test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
+                    --junitxml=junit/perf_test_results.xml
+                displayName: Run perf (dev)
 
-              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
-              echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
-              echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
-              echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
+          - ${{ if eq(parameters.env, 'test') }}:
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH="$(pwd)"
 
-              python3 -m pytest -q -s \
-                test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
-                --junitxml=junit/perf_test_results.xml
-            displayName: Run perf tests (deployed env)
+                  export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_TEST)"
+                  export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_TEST)"
+                  export E2E_STORAGE_ACCOUNT="pinsstredactiontestuks"
+                  export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+
+                  export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
+                  export PERF_TOTAL="${{ parameters.perfTotal }}"
+                  export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
+                  export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
+
+                  python3 -m pytest -q -s \
+                    test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
+                    --junitxml=junit/perf_test_results.xml
+                displayName: Run perf (test)
+
+          - ${{ if eq(parameters.env, 'prod') }}:
+              - script: |
+                  set -e
+                  cd redaction-system/redactor
+                  export PYTHONPATH="$(pwd)"
+
+                  export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_PROD)"
+                  export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_PROD)"
+                  export E2E_STORAGE_ACCOUNT="pinsstredactionproduks"
+                  export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+
+                  export PERF_CONCURRENCY="${{ parameters.perfConcurrency }}"
+                  export PERF_TOTAL="${{ parameters.perfTotal }}"
+                  export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
+                  export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
+
+                  python3 -m pytest -q -s \
+                    test/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
+                    --junitxml=junit/perf_test_results.xml
+                displayName: Run perf (prod)
 
           - task: PublishTestResults@2
-            displayName: Publish perf test results
             condition: succeededOrFailed()
             inputs:
               testResultsFiles: '**/perf_test_results.xml'
-              testRunTitle: 'Redaction perf report - $(Build.BuildId) - env=${{ parameters.env }}'
               mergeTestResults: true
-              failTaskOnFailedTests: true
-
-          - task: PublishBuildArtifacts@1
-            displayName: Publish perf artefacts
-            condition: always()
-            inputs:
-              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/redactor/junit'
-              ArtifactName: perf-junit
-
-          - task: PublishBuildArtifacts@1
-            displayName: Publish run artefacts
-            condition: always()
-            inputs:
-              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: perf-run-artifacts
