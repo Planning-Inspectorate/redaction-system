@@ -18,6 +18,7 @@ from redactor.test.e2e_test.e2e_utils import (
 )
 
 import logging
+
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
@@ -34,9 +35,11 @@ def _load_dotenv_if_present() -> None:
         k, v = k.strip(), v.strip().strip('"').strip("'")
         os.environ.setdefault(k, v)
 
+
 # ----------------------------
 # Perf config (env-driven)
 # ----------------------------
+
 
 def _int_env(name: str, default: int) -> int:
     v = os.getenv(name)
@@ -70,6 +73,7 @@ PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "PINS_first_page_only.pdf")
 # Repo helpers
 # ----------------------------
 
+
 def _repo_root() -> Path:
     """
     This file is typically:
@@ -81,13 +85,15 @@ def _repo_root() -> Path:
 
 
 def _run_id() -> str:
-    return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("perf-%Y-%m-%d-%H-%M-%S")
-
+    return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime(
+        "perf-%Y-%m-%d-%H-%M-%S"
+    )
 
 
 # ----------------------------
 # Stats
 # ----------------------------
+
 
 def _percentiles(values: List[float]) -> Dict[str, float]:
     xs = sorted(values)
@@ -115,6 +121,7 @@ def _percentiles(values: List[float]) -> Dict[str, float]:
 # ----------------------------
 # Async durable runner
 # ----------------------------
+
 
 async def _trigger_start(
     client: httpx.AsyncClient,
@@ -172,7 +179,9 @@ async def _run_one(
         start = await _trigger_start(client, start_url, payload)
         poll_url = start["pollEndpoint"]
 
-        status = await _poll_until_done(client, poll_url, timeout_s=timeout_s, poll_s=poll_s)
+        status = await _poll_until_done(
+            client, poll_url, timeout_s=timeout_s, poll_s=poll_s
+        )
         runtime_status = status.get("runtimeStatus", "Unknown")
         elapsed = time.perf_counter() - t0
 
@@ -218,6 +227,7 @@ async def _run_one(
 # Pytest perf test
 # ----------------------------
 
+
 @pytest.mark.perf
 def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     """
@@ -256,7 +266,6 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
 
         jobs.append({"payload": payload, "out_blob": out_blob, "i": i})
 
-
     async def run_all() -> List[PerfResult]:
         limits = httpx.Limits(
             max_connections=max(50, PERF_CONCURRENCY * 4),
@@ -270,9 +279,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
             async def wrapped(job: Dict[str, Any]) -> PerfResult:
                 async with sem:
                     i = int(job["i"])
-                    do_exists_check = (
-                        PERF_EXISTS_SAMPLE_EVERY > 0
-                        and (i % PERF_EXISTS_SAMPLE_EVERY == 0)
+                    do_exists_check = PERF_EXISTS_SAMPLE_EVERY > 0 and (
+                        i % PERF_EXISTS_SAMPLE_EVERY == 0
                     )
                     return await _run_one(
                         client=client,
@@ -306,8 +314,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
 
     exists_checked = sum(1 for r in results if r.checked_blob_exists)
     exists_failures = [
-        r for r in results
-        if r.checked_blob_exists and r.out_blob_exists is not True
+        r for r in results if r.checked_blob_exists and r.out_blob_exists is not True
     ]
 
     print("\n=== PERF SUMMARY ===")
@@ -317,12 +324,16 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(f"ok={ok_count} fail={fail_count}")
     print(f"wall_seconds={wall_elapsed:.2f} throughput_ok_per_sec={throughput:.4f}")
     print("timings_seconds:", {k: round(v, 3) for k, v in stats.items()})
-    print(f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}")
+    print(
+        f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}"
+    )
 
     if fail_count:
         print("\nFailures:")
         for r in [x for x in results if not x.ok][:5]:
-            print(f"- status={r.runtime_status} seconds={r.seconds:.2f} error={r.error}")
+            print(
+                f"- status={r.runtime_status} seconds={r.seconds:.2f} error={r.error}"
+            )
 
     if fail_count:
         sample = [r for r in results if not r.ok][:5]
