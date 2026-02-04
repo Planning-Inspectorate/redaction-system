@@ -3,9 +3,9 @@ import os
 import statistics
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 import httpx
 import pytest
@@ -65,6 +65,10 @@ PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
 
 PERF_EXISTS_SAMPLE_EVERY = _int_env("PERF_EXISTS_SAMPLE_EVERY", 5)
 
+# New: wait/retry for output blob existence after orchestration completes.
+PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", 30.0)
+PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 2.0)
+
 PERF_MAX_P95_S = _float_env("PERF_MAX_P95_S", 0.0)
 
 PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "PINS_first_page_only.pdf")
@@ -86,7 +90,6 @@ def _repo_root() -> Path:
 
 def _run_id() -> str:
     return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-
 
 
 # ----------------------------
@@ -115,6 +118,33 @@ def _percentiles(values: List[float]) -> Dict[str, float]:
         "max": xs[-1],
         "mean": statistics.mean(xs),
     }
+
+
+# ----------------------------
+# Blob-exists helper (sync, uses az cli underneath)
+# ----------------------------
+
+
+def _wait_for_blob_exists(
+    *,
+    storage_account: str,
+    container_name: str,
+    blob_name: str,
+    timeout_s: float,
+    poll_s: float,
+) -> bool:
+    """
+    Durable can report Completed before the output blob is observable via `az storage blob exists`,
+    so we allow a short grace period.
+    """
+    deadline = time.time() + timeout_s
+    last = False
+    while time.time() < deadline:
+        last = az_blob_exists(storage_account, container_name, blob_name)
+        if last:
+            return True
+        time.sleep(poll_s)
+    return bool(last)
 
 
 # ----------------------------
@@ -174,6 +204,7 @@ async def _run_one(
     out_blob: str,
 ) -> PerfResult:
     t0 = time.perf_counter()
+    poll_url: Optional[str] = None
     try:
         start = await _trigger_start(client, start_url, payload)
         poll_url = start["pollEndpoint"]
@@ -196,7 +227,15 @@ async def _run_one(
 
         out_exists: Optional[bool] = None
         if do_exists_check:
-            out_exists = az_blob_exists(storage_account, container_name, out_blob)
+            # Run the sync az-cli existence checks in a worker thread to avoid blocking the event loop.
+            out_exists = await asyncio.to_thread(
+                _wait_for_blob_exists,
+                storage_account=storage_account,
+                container_name=container_name,
+                blob_name=out_blob,
+                timeout_s=PERF_EXISTS_WAIT_S,
+                poll_s=PERF_EXISTS_WAIT_POLL_S,
+            )
 
         ok = (runtime_status == "Completed") and (
             True if out_exists is None else (out_exists is expected_output)
@@ -208,7 +247,9 @@ async def _run_one(
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
             out_blob_exists=out_exists,
-            error=None if ok else f"status={runtime_status} out_exists={out_exists}",
+            error=None
+            if ok
+            else f"status={runtime_status} out_exists={out_exists} poll={poll_url}",
         )
     except Exception as e:
         elapsed = time.perf_counter() - t0
@@ -218,7 +259,7 @@ async def _run_one(
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
             out_blob_exists=None,
-            error=str(e),
+            error=f"{e} poll={poll_url}" if poll_url else str(e),
         )
 
 
@@ -320,6 +361,9 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(f"fixture={PERF_FIXTURE_PDF}")
     print(f"concurrency={PERF_CONCURRENCY} total={PERF_TOTAL} poll_s={PERF_POLL_S}")
     print(f"timeout_s={PERF_TIMEOUT_S} exists_sample_every={PERF_EXISTS_SAMPLE_EVERY}")
+    print(
+        f"exists_wait_s={PERF_EXISTS_WAIT_S} exists_wait_poll_s={PERF_EXISTS_WAIT_POLL_S}"
+    )
     print(f"ok={ok_count} fail={fail_count}")
     print(f"wall_seconds={wall_elapsed:.2f} throughput_ok_per_sec={throughput:.4f}")
     print("timings_seconds:", {k: round(v, 3) for k, v in stats.items()})
@@ -330,11 +374,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     if fail_count:
         print("\nFailures:")
         for r in [x for x in results if not x.ok][:5]:
-            print(
-                f"- status={r.runtime_status} seconds={r.seconds:.2f} error={r.error}"
-            )
+            print(f"- status={r.runtime_status} seconds={r.seconds:.2f} error={r.error}")
 
-    if fail_count:
         sample = [r for r in results if not r.ok][:5]
         print("\nSample failures (up to 5):")
         for r in sample:
