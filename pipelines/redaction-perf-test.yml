@@ -46,7 +46,13 @@ extends:
 
           - template: ../steps/azure_auth.yml@templates
             parameters:
-              subscriptionId: ${{ variables[format('SUBSCRIPTION_ID_{0}', upper(parameters.env))] }}
+              ${{ if eq(parameters.env, 'dev') }}:
+                subscriptionId: $(SUBSCRIPTION_ID_DEV)
+              ${{ if eq(parameters.env, 'test') }}:
+                subscriptionId: $(SUBSCRIPTION_ID_TEST)
+              ${{ if eq(parameters.env, 'prod') }}:
+                subscriptionId: $(SUBSCRIPTION_ID_PROD)
+
 
           - script: |
               set -e
