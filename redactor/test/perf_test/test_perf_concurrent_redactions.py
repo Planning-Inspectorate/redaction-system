@@ -85,9 +85,8 @@ def _repo_root() -> Path:
 
 
 def _run_id() -> str:
-    return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime(
-        "perf-%Y-%m-%d-%H-%M-%S"
-    )
+    return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+
 
 
 # ----------------------------
