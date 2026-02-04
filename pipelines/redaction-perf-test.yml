@@ -87,6 +87,9 @@ extends:
               echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
               echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
               echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
+              echo "Has function key? $( [ -n "${E2E_FUNCTION_KEY}" ] && echo yes || echo no )"
+              echo "Key length: ${#E2E_FUNCTION_KEY}"
+
 
               # Run tests (capture exit code so we can list blobs even on failure)
               set +e
