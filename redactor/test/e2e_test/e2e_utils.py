@@ -38,7 +38,7 @@ def function_start_url() -> str:
 
     base = base.rstrip("/")
 
-    # 🔒 Guard against accidentally passing a full URL into BASE_URL
+    # Guard against accidentally passing a full URL into BASE_URL
     if "/api/" in base or "?code=" in base or "?sig=" in base:
         raise RuntimeError(
             f"E2E_FUNCTION_BASE_URL should be host only (no path/query). Got: {base}. "

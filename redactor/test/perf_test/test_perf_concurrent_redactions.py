@@ -159,7 +159,7 @@ def _az_list_blobs_prefix(
             "--prefix",
             prefix,
             "--auth-mode",
-            "login",  # ✅ critical: avoid key lookup / RBAC listKeys failure
+            "login",
             "--query",
             "[].name",
             "-o",
