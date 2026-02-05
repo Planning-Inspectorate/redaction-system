@@ -62,7 +62,7 @@ variable "storage_containers" {
 }
 
 variable "openai_quota" {
-  description = "The quota allocation for the Open AI deployment, which equates to x million tokens per minute"
+  description = "The quota allocation for the Open AI deployment, which equates to x thousand tokens per minute"
   type        = number
-  default     = 1
+  default     = 1000
 }
