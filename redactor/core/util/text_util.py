@@ -18,6 +18,18 @@ def is_english_text(
     min_chars: int = 20,
     min_words: int = 3,
 ) -> bool:
+    """
+    Detect whether text is English.
+
+    Returns True only if both conditions hold:
+    - English probability >= threshold; and
+    - English probability exceeds the next-highest language by at least margin.
+
+    Notes:
+    - Whitespace is normalised; empty/whitespace-only returns False.
+    - The detector is seeded for deterministic results.
+    - On detection errors (e.g., too short/ambiguous text), returns False.
+    """
     normalised = " ".join(text.split())
     if not normalised:
         return False
