@@ -32,6 +32,7 @@ from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
 
 from yaml import safe_load
+import os
 
 
 class Redactor(ABC):
@@ -142,7 +143,7 @@ class LLMTextRedactor(TextRedactor):
         )
         return llm_redaction_result
 
-    def _remove_stopwords_(self,text_to_redact: List[str]): 
+    def _remove_stopwords(self, text_to_redact: List[str]):
         """
         Check the text_to_redact list against the list in the stopwords yaml
         """
@@ -153,8 +154,9 @@ class LLMTextRedactor(TextRedactor):
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
-        self.LLMTextRedactionResult.redaction_strings = self._remove_stopwords_(self.LLMTextRedactionResult.redaction_strings)
-        return self._analyse_text(self.config.text)
+        result = self._analyse_text(self.config.text)
+        result.redaction_strings = self._remove_stopwords(result.redaction_strings)
+        return result
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -373,6 +375,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
                 # Analyse detected text with LLM
                 redaction_strings = self._analyse_text(text_content).redaction_strings
+                redaction_strings = self._remove_stopwords(redaction_strings)
 
                 # Identify text rectangles to redact based on redaction strings
                 text_rects_to_redact = []
