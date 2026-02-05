@@ -7,7 +7,8 @@ from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing as mp
 
 from core.redaction.redactor import (
     Redactor,
@@ -324,7 +325,10 @@ class PDFProcessor(FileProcessor):
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
         n_highlights = 0
-        with ThreadPoolExecutor(max_workers=get_max_workers(n_workers)) as executor:
+        with ProcessPoolExecutor(
+            max_workers=get_max_workers(n_workers),
+            mp_context=mp.get_context("fork"),
+        ) as executor:
             # Submit task to the executor
             futures_to_page = {
                 executor.submit(
