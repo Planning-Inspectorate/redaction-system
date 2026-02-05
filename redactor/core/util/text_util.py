@@ -1,10 +1,10 @@
+from email.mime import text
 from typing import List
 from string import punctuation
 from langdetect import detect_langs, DetectorFactory
 from langdetect.lang_detect_exception import LangDetectException
 from unidecode import unidecode
 from unicodedata import category
-
 import threading
 
 _LANGDETECT_LOCK = threading.Lock()
@@ -12,13 +12,19 @@ _LANGDETECT_LOCK = threading.Lock()
 DetectorFactory.seed = 0
 
 
-def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) -> bool:
+def is_english_text(
+    text: str,
+    threshold: float = 0.90,
+    margin: float = 0.20,
+    min_chars: int = 20,
+    min_words: int = 3,
+) -> bool:
     normalised = " ".join(text.split())
     if not normalised:
         return False
 
-    if len(normalised) < 50:
-        return True
+    if len(normalised) < min_chars or len(normalised.split()) < min_words:
+        return False
 
     try:
         with _LANGDETECT_LOCK:

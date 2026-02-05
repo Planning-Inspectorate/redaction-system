@@ -548,9 +548,7 @@ def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
         patch.object(
             ProcessPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
-        patch.object(
-            ProcessPoolExecutor, "__exit__", return_value=None
-        ) as mock_executor_exit,
+        patch.object(ProcessPoolExecutor, "__exit__", return_value=None),
         patch.object(
             PDFProcessor, "_examine_provisional_redactions_on_page", return_value=[]
         ),
