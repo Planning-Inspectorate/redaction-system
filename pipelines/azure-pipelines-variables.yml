@@ -3,3 +3,18 @@ variables:
   unitTestCoverageThreshold: 80
   integrationTestCoverageThreshold: 80
   totalTestCoverageThreshold: 80
+
+  # ---- Subscriptions ----
+  SUBSCRIPTION_ID_DEV: 962e477c-0f3b-4372-97fc-a198a58e259e
+  SUBSCRIPTION_ID_TEST: 76cf28c6-6fda-42f1-bcd9-6d7dbed704ef
+  SUBSCRIPTION_ID_PROD: d1d6c393-2fe3-40af-ac27-f5b6bad36735
+
+  # ---- Function endpoints ----
+  E2E_FUNCTION_BASE_URL_DEV: https://pins-func-redaction-system-dev-uks.azurewebsites.net
+  E2E_FUNCTION_BASE_URL_TEST: https://pins-func-redaction-system-test-uks.azurewebsites.net
+  E2E_FUNCTION_BASE_URL_PROD: https://pins-func-redaction-system-prod-uks.azurewebsites.net
+
+  # ---- Storage containers ----
+  E2E_CONTAINER_NAME_DEV: pinsfuncredactionsystemdevuks-applease
+  E2E_CONTAINER_NAME_TEST: pinsfuncredactionsystemtestuks-applease
+  E2E_CONTAINER_NAME_PROD: pinsfuncredactionsystemproduks-applease

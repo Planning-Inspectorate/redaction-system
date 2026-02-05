@@ -133,7 +133,7 @@ CASES = [
         fixture_pdf="name_number_email.pdf",
         in_name="name_number_email.pdf",
         out_name="name_number_email_REDACTED.pdf",
-        skip_redaction=True,
+        skip_redaction=False,
         expects_output=True,
     ),
     RedactionCase(
