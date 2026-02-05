@@ -306,7 +306,9 @@ async def _poll_until_done(
 
         # 4xx on poll suggests the poll URL is invalid/expired or auth wrong -> test fail
         if 400 <= r.status_code < 500:
-            raise RuntimeError(f"Durable poll returned HTTP {r.status_code}: {(r.text or '')[:500]}")
+            raise RuntimeError(
+                f"Durable poll returned HTTP {r.status_code}: {(r.text or '')[:500]}"
+            )
 
         r.raise_for_status()
         status = r.json()
@@ -424,7 +426,9 @@ async def _run_one(
                 instance_id=durable_status.get("instanceId") or instance_id,
                 durable_status=_summarise_durable_status(durable_status),
                 diagnostics=None,
-                error=json.dumps(_summarise_durable_status(durable_status), default=str),
+                error=json.dumps(
+                    _summarise_durable_status(durable_status), default=str
+                ),
             )
 
         out_exists: Optional[bool] = None
@@ -461,7 +465,9 @@ async def _run_one(
                 ]
                 if not near_matches:
                     near_matches = [
-                        b for b in blob_names if expected_prefix_token in b.split("/")[-1]
+                        b
+                        for b in blob_names
+                        if expected_prefix_token in b.split("/")[-1]
                     ]
 
                 diagnostics_obj = {
@@ -528,7 +534,9 @@ async def _run_one(
             instance_id=durable_status.get("instanceId") or instance_id,
             durable_status=_summarise_durable_status(durable_status),
             diagnostics=diagnostics,
-            error=None if success else f"App considered non-success: status={runtime_status} out_exists={out_exists}",
+            error=None
+            if success
+            else f"App considered non-success: status={runtime_status} out_exists={out_exists}",
             downloaded_to=downloaded_to,
         )
 
@@ -663,8 +671,12 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(
         f"exists_wait_s={PERF_EXISTS_WAIT_S} exists_wait_poll_s={PERF_EXISTS_WAIT_POLL_S}"
     )
-    print(f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}")
-    print(f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}")
+    print(
+        f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
+    )
+    print(
+        f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}"
+    )
     print("timings_seconds:", {k: round(v, 3) for k, v in stats.items()})
     print(
         f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}"
@@ -698,7 +710,9 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     # ----------------------------
     # Assertions
     # ----------------------------
-    assert len(test_failures) == 0, f"{len(test_failures)} test-side failures (see summary above)"
+    assert len(test_failures) == 0, (
+        f"{len(test_failures)} test-side failures (see summary above)"
+    )
 
     if PERF_MAX_P95_S and PERF_MAX_P95_S > 0:
         assert stats["p95"] <= PERF_MAX_P95_S, (
