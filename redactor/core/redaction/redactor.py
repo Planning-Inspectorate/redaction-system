@@ -104,7 +104,7 @@ class LLMTextRedactor(TextRedactor):
     """
 
     TEXT_SPLITTER = RecursiveCharacterTextSplitter(
-        chunk_size=500, chunk_overlap=250, separators=["\n\n", "\n", " ", ""]
+        chunk_size=6000, chunk_overlap=250, separators=["\n\n", "\n", " ", ""]
     )
 
     @classmethod
