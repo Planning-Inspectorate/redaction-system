@@ -1,4 +1,6 @@
-from core.redaction.config import RedactionConfig
+from core.redaction.config import (
+    RedactionConfig,
+)
 from core.redaction.file_processor import FileProcessor
 from core.redaction.config_processor import ConfigProcessor
 from core.redaction.redactor import Redactor, RedactorFactory
@@ -109,6 +111,97 @@ def test_config_processor__validate_and_parse_redaction_config__with_list_of_con
         assert expected_output == actual_output
 
 
+class MockLLMTextRedactionConfig:
+    def __init__(self, name, redactor_type, **kwargs):
+        self.name = name
+        self.redactor_type = redactor_type
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+    @classmethod
+    def model_validate(cls, config_inst):
+        pass
+
+
+class MockImageLLMTextRedactionConfig(MockLLMTextRedactionConfig):
+    pass
+
+
+class MockLLMTextRedactor:
+    @classmethod
+    def get_name(cls):
+        return "LLMTextRedaction"
+
+    @classmethod
+    def get_redaction_config_class(cls):
+        return MockLLMTextRedactionConfig
+
+
+class MockImageLLMTextRedactor(MockLLMTextRedactor):
+    @classmethod
+    def get_name(cls):
+        return "ImageLLMTextRedaction"
+
+    @classmethod
+    def get_redaction_config_class(cls):
+        return MockImageLLMTextRedactionConfig
+
+
+def test__config_processor__validate_and_parse_redaction_config__named_text_redaction_rule():
+    config = {
+        "redactors": [
+            {
+                "redactor_type": "LLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "text_rule_1",
+                        "model": "gpt-4.1",
+                        "system_prompt": "value_1",
+                        "constraints": "value_2",
+                    }
+                ],
+            },
+            {
+                "redactor_type": "ImageLLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "image_text_rule",
+                        "text_redaction_rule": "text_rule_1",
+                        "constraints": "overridden_value",
+                    }
+                ],
+            },
+        ],
+    }
+
+    expected_output = [
+        MockLLMTextRedactionConfig(
+            name="text_rule_1",
+            redactor_type="LLMTextRedaction",
+            model="gpt-4.1",
+            system_prompt="value_1",
+            constraints="value_2",
+        ),
+        MockImageLLMTextRedactionConfig(
+            name="image_text_rule",
+            redactor_type="ImageLLMTextRedaction",
+            model="gpt-4.1",
+            system_prompt="value_1",
+            constraints="overridden_value",
+        ),
+    ]
+
+    with mock.patch.object(
+        RedactorFactory,
+        "REDACTOR_TYPES",
+        [MockLLMTextRedactor, MockImageLLMTextRedactor],
+    ):
+        actual_output = ConfigProcessor.validate_and_parse_redaction_config(config)
+
+    for expected_config, actual_config in zip(expected_output, actual_output):
+        assert expected_config.__dict__ == actual_config.__dict__
+
+
 def test__config_processor__validate_and_filter_config():
     """
     - Given I have some config and a file processor class
@@ -145,6 +238,41 @@ def test__config_processor__validate_and_filter_config():
                 config, file_processor_class
             )
             assert expected_output == actual_output
+
+
+def test__config_processor__validate_and_pars_config__unknown_text_redaction_rule():
+    file_processor_class = FileProcessorInst
+    config = {
+        "redactors": [
+            {
+                "redactor_type": "LLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "text_rule_2",
+                        "model": "gpt-4.1",
+                        "system_prompt": "value_1",
+                        "constraints": "value_2",
+                    }
+                ],
+            },
+            {
+                "redactor_type": "ImageLLMTextRedaction",
+                "redaction_rules": [
+                    {
+                        "name": "image_text_rule",
+                        "text_redaction_rule": "text_rule_1",
+                        "constraints": "overridden_value",
+                    }
+                ],
+            },
+        ],
+    }
+
+    with mock.patch.object(RedactionConfig, "__init__", return_value=None):
+        with pytest.raises(Exception) as excinfo:
+            ConfigProcessor.validate_and_filter_config(config, file_processor_class)
+
+    assert "references unknown text_redaction_rule" in str(excinfo.value)
 
 
 def test__config_processor__convert_to_redaction_config():

@@ -49,10 +49,15 @@ redactors:
     
     redaction_rules: 
     - name: "Image_Text_Redactor_01"
-      model: "gpt-4.1"
-      system_prompt: "You will be sent text to analyse. Please find all strings in the text that adhere to the following rules: "
-      redaction_terms:
-      - "Find all human names in the text"
-      - "Find all dates in the test"
+      text_redaction_rule: "Text_Redactor_01"
+    
+    - name: "Image_Text_Redactor_02"
+      text_redaction_rule: "Text_Redactor_02"
+
+    - name: "Image_Text_Redactor_03"
+      text_redaction_rule: "Text_Redactor_03"
+    
+    - name: "Image_Text_Redactor_04"
+      text_redaction_rule: "Text_Redactor_04"
 
 provisional_redactions:

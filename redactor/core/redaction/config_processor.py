@@ -45,6 +45,36 @@ class ConfigProcessor:
                     {"redactor_type": redactor_type, **rule}
                 )
 
+        # Get LLM text redaction rules
+        text_redaction_rules = {
+            redactor["name"]: redactor
+            for redactor in flattened_redaction_config
+            if redactor["redactor_type"] == "LLMTextRedaction"
+        }
+
+        # Copy config from named LLMTextRedaction rules in ImageLLMTextRedaction config
+        for redactor in flattened_redaction_config:
+            if redactor["redactor_type"] == "ImageLLMTextRedaction":
+                # Find named text redaction rule
+                text_rule_name = redactor.pop("text_redaction_rule", None)
+                if text_rule_name:
+                    if text_rule_name in text_redaction_rules:
+                        text_rule_config = text_redaction_rules[text_rule_name]
+
+                        # Copy over all fields except name and redactor_type
+                        for key, value in text_rule_config.items():
+                            # Only copy if the key is not already present - allow overrides
+                            if (
+                                key not in ["name", "redactor_type"]
+                                and key not in redactor
+                            ):
+                                redactor[key] = value
+                    else:
+                        raise InvalidRedactionConfigException(
+                            f"ImageLLMTextRedaction redactor '{redactor['name']}' "
+                            f"references unknown text_redaction_rule '{text_rule_name}'"
+                        )
+
         # Check all redactor types are valid
         invalid_redaction_config = [
             x
