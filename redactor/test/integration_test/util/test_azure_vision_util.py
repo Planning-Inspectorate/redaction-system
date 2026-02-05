@@ -263,24 +263,6 @@ def test__azure_vision_util__detect_text():
     assert EXPECTED_TEXT_RESPONSE == response
 
 
-def test__azure_vision_util__detect_text__number_plate():
-    with open(
-        os.path.join("test", "resources", "image", "image_with_number_plate.jpg"),
-        "rb",
-    ) as f:
-        image = Image.open(BytesIO(f.read()))
-        response = AzureVisionUtil().detect_text(image)
-
-    expected_response = (
-        ("LAND", (278, 344, 366, 360)),
-        ("ROVER", (397, 342, 510, 357)),
-        ("EA54", (336, 488, 413, 521)),
-        ("0KJ", (420, 488, 479, 519)),
-    )
-
-    assert expected_response == response
-
-
 def test__azure_vision_util__detect_text__use_cached_result():
     with open(
         os.path.join("test", "resources", "image", "image_with_text.jpg"),

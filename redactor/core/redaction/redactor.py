@@ -193,17 +193,27 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
         # Regex pattern from https://gist.github.com/danielrbradley/7567269
         uk_number_plate_pattern = (
-            r"(^[A-Z]{2}[0-9]{2}\s?[A-Z]{3}$)"  # Current format: AB12 CDE
-            r"|(^[A-Z][0-9]{1,3}\s?[A-Z]{3}$)"  # Prefix format: A12 BCD
-            r"|(^[A-Z]{3}\s?[0-9]{1,3}\s?[A-Z]$)"  # Suffix format: ABC 1 D
-            r"|(^[0-9]{1,4}\s?[A-Z]{1,2}$)"  # Dateless format with long number prefix: 1234 AB
-            r"|(^[0-9]{1,3}\s?[A-Z]{1,3}$)"  # Dateless format with short number prefix: 123 A
-            r"|(^[A-Z]{1,2}\s?[0-9]{1,4}$)"  # Dateless format with long number suffix: AB 1234
-            r"|(^[A-Z]{1,3}\s?[0-9]{1,3}$)"  # Dateless format with short number suffix: ABC 123
-            r"|(^[A-Z]{1,3}\s?[0-9]{1,4}$)"  # Northern Ireland format: AIZ 1234
-            r"|(^[0-9]{3}\s?[DX]{1}\s?[0-9]{3}$)"  # Diplomatic format: 101D234
+            r"([A-Z]{2}[0-9]{2}\s[A-Z]{3})"  # Current format: AB12 CDE
+            r"|([A-Z][0-9]{1,3}\s[A-Z]{3})"  # Prefix format: A12 BCD
+            r"|([A-Z]{3}\s[0-9]{1,3}\s[A-Z])"  # Suffix format: ABC 1 D
+            r"|([0-9]{1,4}\s[A-Z]{1,2})"  # Dateless format with long number prefix: 1234 AB
+            r"|([0-9]{1,3}\s[A-Z]{1,3})"  # Dateless format with short number prefix: 123 A
+            r"|([A-Z]{1,2}\s[0-9]{1,4})"  # Dateless format with long number suffix: AB 1234
+            r"|([A-Z]{1,3}\s[0-9]{1,3})"  # Dateless format with short number suffix: ABC 123
+            r"|([A-Z]{1,3}\s[0-9]{1,4})"  # Northern Ireland format: AIZ 1234
+            r"|([0-9]{3}\s[DX]{1}\s[0-9]{3})"  # Diplomatic format: 101D234
         )
-        matches = re.findall(uk_number_plate_pattern, text_to_analyse, re.MULTILINE)
+        # Replace any 0s with Os and any 1s with Is to account for common OCR misreads
+        replacements = [str.maketrans("01", "OI"), str.maketrans("OI", "01")]
+        matches = [
+            re.findall(
+                uk_number_plate_pattern,
+                text_to_analyse.translate(r),
+                re.MULTILINE,
+            )
+            for r in replacements
+        ]
+
         return tuple(
             set(
                 chain.from_iterable(

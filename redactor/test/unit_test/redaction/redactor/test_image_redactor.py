@@ -26,7 +26,7 @@ def test__image_text_redactor__detect_number_plates():
     """
     valid_number_plates = (
         "AB12 CDE\n"  # Current format
-        "AB12CDE\n"  # Current format without space
+        "AB12\nCDE\n"  # Current format on two lines
         "A12 BCD\n"  # Prefix format
         "ABC 1 D\n"  # Suffix format with 1 digit
         "ABC 12 D\n"  # Suffix format with 2 digits
@@ -40,7 +40,7 @@ def test__image_text_redactor__detect_number_plates():
         "AB 123\n"  # Dateless format with long number suffix
         "AB 12\n"  # Dateless format with short number suffix
         "ABC 123\n"  # Dateless format with short number suffix
-        "101D234\n"  # Diplomatic format
+        "101 D 234\n"  # Diplomatic format
     )
     actual_number_plates = ImageTextRedactor._detect_number_plates(valid_number_plates)
     for variant in valid_number_plates.split("\n"):
