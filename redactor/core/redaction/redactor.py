@@ -28,6 +28,9 @@ from core.redaction.exceptions import (
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
 
+from yaml import safe_load
+import os
+
 
 class Redactor(ABC):
     """
@@ -137,9 +140,20 @@ class LLMTextRedactor(TextRedactor):
         )
         return llm_redaction_result
 
+    def _remove_stopwords(self, text_to_redact: List[str]):
+        """
+        Check the text_to_redact list against the list in the stopwords yaml
+        """
+        stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
+        stopwords_list = stopwords["stopwords"]
+        text_to_redact = list(set(text_to_redact) - set(stopwords_list))
+        return text_to_redact
+
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
-        return self._analyse_text(self.config.text)
+        result = self._analyse_text(self.config.text)
+        result.redaction_strings = self._remove_stopwords(result.redaction_strings)
+        return result
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
@@ -214,6 +228,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 text_content = " ".join([x[0] for x in text_rect_map])
 
                 redaction_strings = self._analyse_text(text_content).redaction_strings
+                redaction_strings = self._remove_stopwords(redaction_strings)
 
                 # Identify text rectangles to redact based on redaction strings
                 text_rects_to_redact = tuple(
