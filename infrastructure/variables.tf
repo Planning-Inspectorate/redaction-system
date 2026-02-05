@@ -60,3 +60,9 @@ variable "storage_containers" {
   description = "The containers to create in the main storage account"
   type        = list(string)
 }
+
+variable "openai_quota" {
+  description = "The quota allocation for the Open AI deployment, which equates to x million tokens per minute"
+  type        = number
+  default     = 1
+}

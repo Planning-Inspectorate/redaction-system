@@ -150,18 +150,34 @@ resource "azurerm_application_insights" "redaction_system" {
 ############################################################################
 resource "azurerm_cognitive_account" "open_ai" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
-  name                               = "${local.org}-openai-${local.resource_suffix}"
-  location                           = local.location
+  name                               = "${local.org}-openai-${local.ai_resource_suffix}"
+  location                           = local.ai_location
   resource_group_name                = azurerm_resource_group.primary.name
   kind                               = "OpenAI"
   sku_name                           = "S0"
-  custom_subdomain_name              = "${local.org}-openai-${local.resource_suffix}"
+  custom_subdomain_name              = "${local.org}-openai-${local.ai_resource_suffix}"
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
   fqdns                              = ["azureprivatedns.net"]
   local_auth_enabled                 = false
   identity {
     type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_cognitive_deployment" "open_ai" {
+  name                 = "gpt-4.1"
+  cognitive_account_id = azurerm_cognitive_account.open_ai.id
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-4.1"
+    version = "2025-04-14"
+  }
+
+  sku {
+    name     = "DataZoneStandard"
+    capacity = var.openai_quota
   }
 }
 
