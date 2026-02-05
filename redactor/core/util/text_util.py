@@ -6,17 +6,19 @@ from unidecode import unidecode
 from unicodedata import category
 
 import threading
+
 _LANGDETECT_LOCK = threading.Lock()
 
 DetectorFactory.seed = 0
+
 
 def is_english_text(text: str, threshold: float = 0.90, margin: float = 0.20) -> bool:
     normalised = " ".join(text.split())
     if not normalised:
         return False
 
-    if len(normalised) < 50: 
-        return True  
+    if len(normalised) < 50:
+        return True
 
     try:
         with _LANGDETECT_LOCK:
