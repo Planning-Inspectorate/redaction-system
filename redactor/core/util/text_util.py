@@ -1,4 +1,3 @@
-from email.mime import text
 from typing import List
 from string import punctuation
 from langdetect import detect_langs, DetectorFactory
