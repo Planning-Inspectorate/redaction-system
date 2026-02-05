@@ -60,6 +60,7 @@ def test_remove_stopwords():
     - Testing whether remove_stopwords function is filtering the list correctly
     """
     with patch("yaml.safe_load", return_value={"stopwords": ["my", "the"]}):
-        redaction_strings = ["my", "the", "list", "to", "check"]
-        result = LLMTextRedactor()._remove_stopwords(redaction_strings)
-        assert result == ["list", "to", "check"]
+        with patch.object("LLMTextRedactor", "__init__", return_value=None):
+            redaction_strings = ["my", "the", "list", "to", "check"]
+            result = LLMTextRedactor()._remove_stopwords(redaction_strings)
+            assert result == ["list", "to", "check"]
