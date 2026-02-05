@@ -53,3 +53,13 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
 
     mock_llm_util_init.assert_called_once_with(config)
     mock_analyse_text.assert_called_once()
+
+
+def test_remove_stopwords():
+    """
+    - Testing whether remove_stopwords function is filtering the list correctly
+    """
+    with patch("yaml.safe_load", return_value={"stopwords": ["my", "the"]}):
+        redaction_strings = ["my", "the", "list", "to", "check"]
+        result = LLMTextRedactor._remove_stopwords_(redaction_strings)
+        assert result == ["list", "to", "check"]
