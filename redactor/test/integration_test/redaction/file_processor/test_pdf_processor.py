@@ -1,10 +1,11 @@
+import pymupdf
+from io import BytesIO
+
 from core.redaction.file_processor import PDFProcessor
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
     LLMTextRedactionConfig,
 )
-from io import BytesIO
-import pymupdf
 
 
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):

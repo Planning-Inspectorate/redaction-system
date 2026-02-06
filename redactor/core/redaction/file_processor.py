@@ -335,7 +335,11 @@ class PDFProcessor(FileProcessor):
         n_highlights = 0
         with ProcessPoolExecutor(
             max_workers=get_max_workers(n_workers),
-            mp_context=mp.get_context("fork"),
+            # Use fork if available to avoid overhead of copying pdf for each process,
+            # but fall back to spawn if fork is not available (e.g. on Windows)
+            mp_context=mp.get_context("fork")
+            if mp.get_start_method() == "fork"
+            else None,
         ) as executor:
             # Submit task to the executor
             futures_to_page = {

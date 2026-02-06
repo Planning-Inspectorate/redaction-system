@@ -563,7 +563,13 @@ def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
     assert kwargs["max_workers"] == 4
 
     assert "mp_context" in kwargs
-    assert kwargs["mp_context"].get_start_method() == "fork"
+    assert (
+        kwargs["mp_context"].get_start_method() == "fork"
+        if hasattr(
+            kwargs["mp_context"], "get_start_method"
+        )  # To allow local testing on Windows where 'fork' is not available
+        else True
+    )
 
     assert mock_executor_submit.call_count == 2
     mock_as_completed.assert_called_once()
