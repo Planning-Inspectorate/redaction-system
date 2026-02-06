@@ -57,22 +57,10 @@ class LLMUtil:
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
     OPENAI_MODELS = {
         "gpt-4.1": {
-            "token_rate_limit": 250000,
-            "request_rate_limit": 250,
+            "token_rate_limit": 1000000,
+            "request_rate_limit": 1000,
             "input_cost": 149,
             "output_cost": 593,
-        },
-        "gpt-4.1-mini": {
-            "token_rate_limit": 250000,
-            "request_rate_limit": 250,
-            "input_cost": 30,
-            "output_cost": 119,
-        },
-        "gpt-4.1-nano": {
-            "token_rate_limit": 250000,
-            "request_rate_limit": 250,
-            "input_cost": 8,
-            "output_cost": 30,
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
