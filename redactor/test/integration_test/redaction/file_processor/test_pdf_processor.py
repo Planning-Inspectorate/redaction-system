@@ -1,9 +1,11 @@
+import pymupdf
+from io import BytesIO
+
 from core.redaction.file_processor import PDFProcessor
 from core.redaction.config import (
+    ImageLLMTextRedactionConfig,
     LLMTextRedactionConfig,
 )
-from io import BytesIO
-import pymupdf
 
 
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
@@ -16,7 +18,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
     I want to determine whether it exactly matches the text on the page
     If if is a multi-part redaction, I want to capture all parts of the redaction
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
         [
@@ -118,7 +120,7 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
     I want to examine each candidate and determine which should be kept as a redaction instance
     With multi-part redactions handled correctly
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
         (
@@ -159,7 +161,7 @@ def test__find_next_redaction_instance__on_page():
     Given a text redaction candidate list for a PDF
     I want to find the next instance of a redaction on the same page
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
         (
@@ -191,7 +193,7 @@ def test__pdf_processor__apply_provisional_text_redactions():
     - Then the provisional redactions should be removed, and the text content of the PDF
       should not contain the text identified by the provisional redactions
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = [
         "he's",
@@ -209,7 +211,7 @@ def test__pdf_processor__apply_provisional_text_redactions():
 
     # Generate expected redaction text from the raw document
     with open(
-        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "test/resources/pdf/test__pdf_processor__provisional_redactions.pdf",
         "rb",
     ) as f:
         expected_provisional_redaction_bytes = BytesIO(f.read())
@@ -246,7 +248,7 @@ def test__pdf_processor__apply_provisional_text_redactions__partial_match():
     - Then the provisional redactions should be removed, and the text content of the PDF
       should not contain the text identified by the provisional redactions
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = ["it"]
 
@@ -282,7 +284,7 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
     - Then the provisional redactions should be removed, and the text content of the PDF
       should not contain the text identified by the provisional redactions
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = ["all who come after him"]
 
@@ -309,7 +311,7 @@ def test__pdf_processor__redact():
     - When I call redact() with some config and the pdf content as bytes
     - Then I should receive a new bytes object which contains the PDF with redactions as specified by the input config
     """
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         file_bytes = BytesIO(f.read())
     expected_redacted_text = {
         "commander",
@@ -373,6 +375,190 @@ def test__pdf_processor__redact():
     assert match_percent >= acceptance_threshold, error_message
 
 
+def test__pdf_processor__redact__image_text():
+    """
+    - Given I have a PDF with some content
+    - When I call redact() with some config and the pdf content as bytes
+    - Then I should receive a new bytes object which contains the PDF with redactions as specified by the input config
+    """
+    with open("test/resources/pdf/test__pdf_processor__source_image.pdf", "rb") as f:
+        file_bytes = BytesIO(f.read())
+    expected_redacted_text = {
+        "commander",
+        "data",
+        "you",
+        "he",
+        "him",
+        "you",
+        "he's",
+        "them",
+    }
+    pdf_before = pymupdf.open(stream=file_bytes)
+    page_annotations_before = get_pdf_annotations(
+        pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
+    )
+    assert not page_annotations_before
+
+    redacted_file_bytes = PDFProcessor().redact(
+        file_bytes,
+        {
+            "redaction_rules": [
+                ImageLLMTextRedactionConfig(
+                    name="config name",
+                    redactor_type="ImageLLMTextRedaction",
+                    model="gpt-4.1",
+                    system_prompt=(
+                        "You will be sent text to analyse. The text is a quote from Star Trek. "
+                        "Please find all strings in the text that adhere to the following rules: "
+                    ),
+                    redaction_terms=[
+                        "The names of characters",
+                        "Rank",
+                        "Genders, such as she, her, he, him, they, their",
+                    ],
+                )
+            ]
+        },
+    )
+
+    pdf_after = pymupdf.open(stream=redacted_file_bytes)
+
+    expected_annotation_rects = [
+        pymupdf.Rect(
+            448.9051818847656, 131.69879150390625, 469.8133850097656, 144.7745361328125
+        ),
+        pymupdf.Rect(
+            437.7434387207031, 203.3111572265625, 458.2377014160156, 216.69097900390625
+        ),
+        pymupdf.Rect(
+            125.64540100097656,
+            217.90728759765625,
+            145.86898803710938,
+            231.28717041015625,
+        ),
+        pymupdf.Rect(
+            396.392578125, 74.3953857421875, 414.3232727050781, 87.4710693359375
+        ),
+        pymupdf.Rect(
+            325.8874816894531, 88.68743896484375, 343.80230712890625, 102.37127685546875
+        ),
+        pymupdf.Rect(
+            118.94203186035156,
+            174.9466552734375,
+            136.60203552246094,
+            188.02239990234375,
+        ),
+        pymupdf.Rect(
+            466.6270446777344, 103.3511962890625, 493.506103515625, 115.8187255859375
+        ),
+        pymupdf.Rect(
+            72.32075500488281,
+            117.62628173828125,
+            115.28176879882812,
+            131.00616455078125,
+        ),
+        pymupdf.Rect(
+            271.08197021484375, 217.3160400390625, 298.1842346191406, 231.60809326171875
+        ),
+        pymupdf.Rect(
+            294.9021301269531, 217.3160400390625, 340.4108581542969, 231.60809326171875
+        ),
+        pymupdf.Rect(
+            359.51593017578125, 131.681884765625, 386.7773132324219, 145.06170654296875
+        ),
+        pymupdf.Rect(
+            179.11331176757812, 145.9739990234375, 244.79586791992188, 159.9619140625
+        ),
+        pymupdf.Rect(
+            241.30679321289062, 145.686767578125, 274.3641052246094, 159.97882080078125
+        ),
+        pymupdf.Rect(
+            72.32077026367188, 74.37847900390625, 95.5218505859375, 87.75830078125
+        ),
+        pymupdf.Rect(
+            451.21392822265625, 88.68743896484375, 480.4974365234375, 102.37127685546875
+        ),
+        pymupdf.Rect(
+            119.76990509033203,
+            102.70916748046875,
+            149.84971618652344,
+            117.00128173828125,
+        ),
+        pymupdf.Rect(
+            221.00552368164062,
+            102.70916748046875,
+            251.0853271484375,
+            117.00128173828125,
+        ),
+        pymupdf.Rect(
+            365.1365661621094, 102.74298095703125, 388.7358093261719, 116.4268798828125
+        ),
+        pymupdf.Rect(
+            353.4334716796875, 145.9739990234375, 377.16009521484375, 159.9619140625
+        ),
+        pymupdf.Rect(
+            310.3948059082031, 203.27740478515625, 334.66278076171875, 217.265380859375
+        ),
+        pymupdf.Rect(
+            242.11883544921875,
+            231.91217041015625,
+            265.4315490722656,
+            246.20428466796875,
+        ),
+        pymupdf.Rect(
+            266.6078186035156, 117.33917236328125, 286.146728515625, 131.02301025390625
+        ),
+        pymupdf.Rect(
+            423.12652587890625,
+            117.35601806640625,
+            443.3501281738281,
+            130.73590087890625,
+        ),
+        pymupdf.Rect(
+            145.27786254882812, 160.2998046875, 165.21495056152344, 174.28778076171875
+        ),
+        pymupdf.Rect(
+            502.7712097167969, 160.89111328125, 522.8673095703125, 173.966796875
+        ),
+        pymupdf.Rect(
+            371.09161376953125, 88.68743896484375, 380.3445739746094, 102.37127685546875
+        ),
+        pymupdf.Rect(
+            72.1933364868164, 102.72607421875, 107.01799774169922, 116.71405029296875
+        ),
+        pymupdf.Rect(
+            162.80857849121094,
+            102.70916748046875,
+            208.31735229492188,
+            117.00128173828125,
+        ),
+        pymupdf.Rect(
+            339.7560119628906, 131.681884765625, 362.68646240234375, 145.06170654296875
+        ),
+        pymupdf.Rect(
+            359.51593017578125, 131.681884765625, 386.7773132324219, 145.06170654296875
+        ),
+    ]
+
+    actual_annotation_rects = []
+    for page in pdf_after:
+        actual_annotation_rects.extend(
+            [annotation.rect for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
+        )
+
+    matches = sum(
+        actual_rect in expected_annotation_rects
+        for actual_rect in actual_annotation_rects
+    )
+    match_percent = float(matches) / float(len(expected_annotation_rects))
+    acceptance_threshold = 0.1
+    error_message = (
+        f"Expected a match threshold of at least {acceptance_threshold}, but was {match_percent}."
+        f"\nExpected results {expected_redacted_text}\nActual results: {actual_annotation_rects}"
+    )
+    assert match_percent >= acceptance_threshold, error_message
+
+
 def test__pdf_processor__apply():
     """
     - Given we have a pdf with some provisional redations, and a sample of what a fully-redacted pdf (with the same redactions) should look like
@@ -381,7 +567,7 @@ def test__pdf_processor__apply():
     """
     # Run the redaction process against the provisional redaction file
     with open(
-        "test/resources/pdf/test_pdf_processor__provisional_redactions.pdf",
+        "test/resources/pdf/test__pdf_processor__provisional_redactions.pdf",
         "rb",
     ) as f:
         provisional_redaction_file_bytes = BytesIO(f.read())
@@ -414,7 +600,7 @@ def test__pdf_processor__apply():
         },
     )
     # Extract text from source and final documents
-    with open("test/resources/pdf/test_pdf_processor__redacted.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__redacted.pdf", "rb") as f:
         expected_redacted_document_bytes = BytesIO(f.read())
     expected_redacted_document_text = "\n".join(
         page.get_text()

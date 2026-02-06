@@ -46,7 +46,7 @@ def test__pdf_processor__extract_pdf_text():
         "Well, here it is. Make a good one."
     )
     expected_text_split = " ".split(expected_text)
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     actual_text = PDFProcessor()._extract_pdf_text(document_bytes)
     actual_text_split = " ".split(actual_text)
@@ -563,7 +563,13 @@ def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
     assert kwargs["max_workers"] == 4
 
     assert "mp_context" in kwargs
-    assert kwargs["mp_context"].get_start_method() == "fork"
+    assert (
+        kwargs["mp_context"].get_start_method() == "fork"
+        if hasattr(
+            kwargs["mp_context"], "get_start_method"
+        )  # To allow local testing on Windows where 'fork' is not available
+        else True
+    )
 
     assert mock_executor_submit.call_count == 2
     mock_as_completed.assert_called_once()
@@ -603,6 +609,28 @@ def test__pdf_processor__redact_skips_non_english_raises_exception():
     pdf = pymupdf.open(stream=file_bytes)
     annots = [a for p in pdf for a in p.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
     assert not annots
+
+
+def test__pdf_processor__redact__no_text():
+    file_bytes = _make_pdf_with_text(" \n")
+    doc_text = "\n".join(page.get_text() for page in pymupdf.open(stream=file_bytes))
+    file_bytes.seek(0)
+    assert is_english_text(doc_text) is False
+
+    # does not raise exception
+    with (
+        patch.object(PDFProcessor, "_extract_pdf_images", return_value=[]),
+        patch.object(PDFProcessor, "_extract_unique_pdf_images", return_value=""),
+        patch.object(
+            PDFProcessor, "_apply_provisional_image_redactions", return_value=file_bytes
+        ),
+        patch.object(
+            PDFProcessor, "_apply_provisional_text_redactions", return_value=file_bytes
+        ),
+    ):
+        result = PDFProcessor().redact(file_bytes, {"redaction_rules": []})
+
+    assert result == file_bytes
 
 
 def test__pdf_processor__extract_unique_pdf_images():

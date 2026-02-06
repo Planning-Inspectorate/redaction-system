@@ -1,4 +1,6 @@
-from core.redaction.redactor import ImageRedactor
+from core.redaction.redactor import (
+    ImageRedactor,
+)
 from core.util.azure_vision_util import AzureVisionUtil
 from core.redaction.config import (
     ImageRedactionConfig,

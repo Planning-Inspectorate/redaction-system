@@ -45,6 +45,11 @@ redactors:
     redaction_rules: 
     - name: "Image_Redactor_01"
 
+  - redactor_type: "ImageTextRedaction"
+
+    redaction_rules: 
+    - name: "Image_Text_Redactor_01"
+
   - redactor_type: "ImageLLMTextRedaction"
     
     redaction_rules: 

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, List
 from dataclasses import dataclass, field
 from PIL.Image import Image
 from pydantic import BaseModel
@@ -47,4 +47,4 @@ class LLMTextRedactionResult(TextRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
+    redaction_strings: List[str]
