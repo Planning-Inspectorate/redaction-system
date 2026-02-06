@@ -113,3 +113,21 @@ async def test_azure_vision_connection(
         analyse_image(),
         status_code=200,
     )
+
+
+@app.route(route="testservicebusconnection", methods=["GET"])
+@app.durable_client_input(client_name="client")
+async def test_service_bus_connection(
+    req: func.HttpRequest, client: df.DurableOrchestrationClient
+):
+    """
+    This function is called via HTTP get and confirms that the function app can
+    connect to the Back Office Service Bus
+    """
+    from core.connectivity import send_service_bus_message
+
+    # Return a response with a simplified body
+    return func.HttpResponse(
+        send_service_bus_message(),
+        status_code=200,
+    )

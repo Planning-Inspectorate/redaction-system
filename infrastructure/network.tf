@@ -85,6 +85,16 @@ resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
   tags = local.tags
 }
 
+resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
+  name                  = "${local.org}-vnetlink-servicebus-${local.service_name}-${var.environment}"
+  resource_group_name   = var.tooling_config.network_rg
+  private_dns_zone_name = data.azurerm_private_dns_zone.servicebus.name
+  virtual_network_id    = azurerm_virtual_network.redaction_system.id
+  provider              = azurerm.tooling
+
+  tags = local.tags
+}
+
 ############################################################################
 # Private endpoints
 ############################################################################

@@ -1,4 +1,5 @@
 from core.redaction_manager import RedactionManager
+from test.util.util import ServiceBusUtil
 from test.util.test_case import TestCase
 from azure.identity import (
     AzureCliCredential,
@@ -9,6 +10,7 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 import os
 import pymupdf
+from time import sleep
 
 
 load_dotenv(verbose=True)
@@ -64,6 +66,10 @@ class TestIntegrationRedactionManager(TestCase):
             callback_container_client,
             f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
         )
+        try:
+            ServiceBusUtil().receive_service_bus_complete_messages()
+        except Exception:
+            pass
 
     def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
         try:
@@ -74,6 +80,27 @@ class TestIntegrationRedactionManager(TestCase):
     def extract_pdf_highlights(self, pdf_bytes: bytes):
         pdf = pymupdf.open(stream=pdf_bytes)
         return [annot for page in pdf for annot in page.annots()]
+
+    def validate_service_bus_message_sent(self, run_id: str):
+        max_wait_time = 2 * 60
+        current_wait_time = 0
+        retry_delay = 10
+        while current_wait_time < max_wait_time:
+            try:
+                new_messages = ServiceBusUtil().extract_service_bus_complete_messages()
+            except Exception:
+                new_messages = []
+            new_messages = [str(x) for x in new_messages]
+            relevant_messages = [x for x in new_messages if run_id in x]
+            if relevant_messages:
+                assert relevant_messages
+                return
+            else:
+                sleep(retry_delay)
+                current_wait_time += retry_delay
+        assert False, (
+            f"Exceeded max wait time of {max_wait_time} seconds for service bus messages with id '{run_id}' to appear"
+        )
 
     def test__redaction__manager__try_redact__skip_redaction(self):
         """
@@ -105,6 +132,7 @@ class TestIntegrationRedactionManager(TestCase):
         manager = RedactionManager(guid)
         params = {
             "tryApplyProvisionalRedactions": True,
+            "pinsService": "REDACTION_SYSTEM",
             "skipRedaction": True,
             "configName": "default",
             "fileKind": "pdf",
@@ -138,6 +166,7 @@ class TestIntegrationRedactionManager(TestCase):
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
         assert pdf_bytes == blob_bytes
+        self.validate_service_bus_message_sent(guid)
 
     def test__redaction__manager__try_redact(self):
         """
@@ -169,6 +198,7 @@ class TestIntegrationRedactionManager(TestCase):
         manager = RedactionManager(guid)
         params = {
             "tryApplyProvisionalRedactions": True,
+            "pinsService": "REDACTION_SYSTEM",
             "skipRedaction": False,
             "configName": "default",
             "fileKind": "pdf",
@@ -204,6 +234,7 @@ class TestIntegrationRedactionManager(TestCase):
         assert redacted_pdf_highlights, (
             "The uploaded PDF should have some of its content marked for redaction"
         )
+        self.validate_service_bus_message_sent(guid)
 
     def test__redaction_manager__try_redact__failure(self):
         """
