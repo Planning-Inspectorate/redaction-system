@@ -64,8 +64,8 @@ def test__image_llm_text_redactor__redact():
                 image_dimensions=(1000, 1000),
                 source_image=config.images[0],
                 redaction_boxes=(
-                    (10, 10, 50, 50),
                     (100, 100, 50, 50),
+                    (10, 10, 50, 50),
                 ),
             ),
             ImageRedactionResult.Result(
@@ -76,7 +76,7 @@ def test__image_llm_text_redactor__redact():
             ImageRedactionResult.Result(
                 image_dimensions=(1000, 1000),
                 source_image=config.images[2],
-                redaction_boxes=((10, 10, 50, 50), (100, 100, 50, 50)),
+                redaction_boxes=((100, 100, 50, 50), (10, 10, 50, 50)),
             ),
         )
     )
@@ -86,17 +86,19 @@ def test__image_llm_text_redactor__redact():
             input_token_count=80, output_token_count=20, total_token_count=100
         ),
     )
-    with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
-        with mock.patch.object(
+    with (
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(
             AzureVisionUtil, "detect_text", side_effect=detect_text_side_effects
-        ):
-            with mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None):
-                with mock.patch.object(
-                    ImageLLMTextRedactor,
-                    "_analyse_text",
-                    return_value=mock_text_redaction_result,
-                ):
-                    inst = ImageLLMTextRedactor()
-                    inst.config = config
-                    actual_results = inst.redact()
-                    assert expected_results == actual_results
+        ),
+        mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            ImageLLMTextRedactor,
+            "_analyse_text",
+            return_value=mock_text_redaction_result,
+        ),
+    ):
+        inst = ImageLLMTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+        assert expected_results == actual_results

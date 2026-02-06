@@ -92,12 +92,15 @@ class AzureVisionUtil:
         )
 
     @log_to_appins
-    def detect_text(self, image: Image.Image):
+    def detect_text(
+        self, image: Image.Image
+    ) -> Tuple[Tuple[str, Tuple[int, int, int, int]], ...]:
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
 
         :param Image.Image image: The image to analyse
-        :returns: The text content of the image, with each individual "block" separated by " "
+        :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
+        detected in the image, as a 2D tuple of <word, bounding box>.
         """
         try:
             # Check cache

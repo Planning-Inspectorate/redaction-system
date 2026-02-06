@@ -1,7 +1,9 @@
 import json
+import re
 
 from abc import ABC, abstractmethod
-from typing import Type, List, Dict
+from typing import Type, List, Dict, Tuple
+from itertools import chain
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -27,6 +29,7 @@ from core.redaction.exceptions import (
     RedactorNameNotFoundException,
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.text_util import get_normalised_words
 
 
 class Redactor(ABC):
@@ -181,7 +184,138 @@ class ImageRedactor(Redactor):  # pragma: no cover
 class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
-    pass
+    OCR_TRANSLATIONS = [str.maketrans("01", "OI"), str.maketrans("OI", "01")]
+
+    @classmethod
+    def get_name(cls) -> str:
+        return "ImageTextRedaction"
+
+    @classmethod
+    def detect_number_plates(cls, text_to_analyse: str) -> Tuple[str]:
+        """
+        Detect number plates in the given text
+
+        :param str text_to_analyse: The text to analyse for number plates
+        :return TextRedactionResult: The redaction result containing the detected
+        number plates
+        """
+
+        # Regex pattern from https://gist.github.com/danielrbradley/7567269
+        uk_number_plate_pattern = (
+            r"([A-Z]{2}[0-9]{2}\s[A-Z]{3})"  # Current format: AB12 CDE
+            r"|([A-Z][0-9]{1,3}\s[A-Z]{3})"  # Prefix format: A12 BCD
+            r"|([A-Z]{3}\s[0-9]{1,3}\s[A-Z])"  # Suffix format: ABC 1 D
+            r"|([0-9]{3}\s[DX]{1}\s[0-9]{3})"  # Diplomatic format: 101D234
+            r"|([A-Z]{1,2}\s[0-9]{1,4})"  # Dateless format with long number suffix: AB 1234
+            r"|([0-9]{1,3}\s[A-Z]{1,3})"  # Dateless format with short number prefix: 123 A
+            r"|([0-9]{1,4}\s[A-Z]{1,2})"  # Dateless format with long number prefix: 1234 AB
+            r"|([A-Z]{1,3}\s[0-9]{1,4})"  # Northern Ireland format: AIZ 1234
+            r"|([A-Z]{1,3}\s[0-9]{1,3})"  # Dateless format with short number suffix: ABC 123
+        )
+        # Replace any 0s with Os and any 1s with Is to account for common OCR misreads
+        matches = []
+        for translation in cls.OCR_TRANSLATIONS:
+            matches.extend(
+                re.findall(
+                    uk_number_plate_pattern,
+                    text_to_analyse.translate(translation),
+                    re.MULTILINE,
+                )
+            )
+
+        return tuple(
+            set(
+                chain.from_iterable(
+                    [item for item in match if item] for match in matches
+                )
+            )
+        )
+
+    @classmethod
+    def examine_redaction_boxes(
+        cls,
+        text_rect_map: List[Tuple[str, Tuple[int, int, int, int]]],
+        redaction_string: str,
+    ) -> List[Tuple[int, int, int, int]]:
+        text_rects_to_redact = []
+        words_to_redact = get_normalised_words(redaction_string)
+
+        if len(words_to_redact) == 1:
+            for text_at_box, bounding_box in text_rect_map:
+                normalised_text = get_normalised_words(text_at_box)[0]
+                if words_to_redact[0] == normalised_text:
+                    text_rects_to_redact.append(bounding_box)
+        else:
+            # Multiple words to redact; need to match sequence
+            for i, (text_at_box, bounding_box) in enumerate(text_rect_map):
+                words_to_redact_copy = words_to_redact.copy()
+                first_word = words_to_redact_copy.pop(0)
+
+                # Proceed only if the first word matches
+                if first_word == get_normalised_words(text_at_box)[0]:
+                    boxes = [bounding_box]
+                    i_copy = i
+                    # Check subsequent words
+                    while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
+                        word = words_to_redact_copy.pop(0)
+                        next_text, next_bounding_box = text_rect_map[i_copy + 1]
+                        text_normalised = get_normalised_words(next_text)[0]
+                        if word == text_normalised:
+                            boxes.append(next_bounding_box)
+                            if not words_to_redact_copy:
+                                # All words matched
+                                text_rects_to_redact.extend(boxes)
+                            i_copy += 1
+                        else:
+                            continue
+
+        return text_rects_to_redact
+
+    @log_to_appins
+    def redact(self) -> ImageRedactionResult:
+        # Initialisation
+        self.config: ImageRedactionConfig
+        results = []
+
+        for image_to_redact in self.config.images:
+            # Detect and analyse text in the image
+            LoggingUtil().log_info(f"image: {image_to_redact}")
+
+            try:
+                vision_util = AzureVisionUtil()
+                text_rect_map = vision_util.detect_text(image_to_redact)
+                text_content = " ".join([x[0] for x in text_rect_map])
+
+                # Detect number plates using regex
+                redaction_strings = self.detect_number_plates(text_content)
+
+                # Identify text rectangles to redact based on redaction strings
+                text_rects_to_redact = []
+                for redaction_string in redaction_strings:
+                    for translation in self.OCR_TRANSLATIONS:
+                        text_rects_to_redact.extend(
+                            self.examine_redaction_boxes(
+                                text_rect_map,
+                                redaction_string.translate(translation),
+                            )
+                        )
+
+                results.append(
+                    ImageRedactionResult.Result(
+                        redaction_boxes=tuple(set(text_rects_to_redact)),
+                        image_dimensions=(
+                            image_to_redact.width,
+                            image_to_redact.height,
+                        ),
+                        source_image=image_to_redact,
+                    )
+                )
+            except Exception as e:
+                LoggingUtil().log_exception(
+                    f"Error analysing image for text redaction: {e}"
+                )
+
+        return ImageRedactionResult(redaction_results=tuple(results))
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
@@ -213,22 +347,22 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 text_rect_map = vision_util.detect_text(image_to_redact)
                 text_content = " ".join([x[0] for x in text_rect_map])
 
+                # Analyse detected text with LLM
                 redaction_strings = self._analyse_text(text_content).redaction_strings
 
                 # Identify text rectangles to redact based on redaction strings
-                text_rects_to_redact = tuple(
-                    (text, bounding_box)
-                    for text, bounding_box in text_rect_map
-                    if text in redaction_strings
-                    or any(
-                        redaction_string in text
-                        for redaction_string in redaction_strings
+                text_rects_to_redact = []
+                for redaction_string in redaction_strings:
+                    text_rects_to_redact.extend(
+                        self.examine_redaction_boxes(
+                            text_rect_map,
+                            redaction_string,
+                        )
                     )
-                )
 
                 results.append(
                     ImageRedactionResult.Result(
-                        redaction_boxes=tuple(x[1] for x in text_rects_to_redact),
+                        redaction_boxes=tuple(set(text_rects_to_redact)),
                         image_dimensions=(
                             image_to_redact.width,
                             image_to_redact.height,
@@ -252,6 +386,7 @@ class RedactorFactory:
     REDACTOR_TYPES: List[Type[Redactor]] = [
         LLMTextRedactor,
         ImageRedactor,
+        ImageTextRedactor,
         ImageLLMTextRedactor,
     ]
     """The Redactor classes that are known to the factory"""

@@ -105,6 +105,12 @@ class PDFProcessor(FileProcessor):
     def get_name(cls) -> str:
         return "pdf"
 
+    def _extract_page_text(self, page: pymupdf.Page) -> str:
+        text = page.get_text().strip()
+        if text == "" or text == "\n":  # No text found on the page
+            return None
+        return text
+
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
         Return text content of the given PDF
@@ -113,8 +119,10 @@ class PDFProcessor(FileProcessor):
         :return str: The text content of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        page_text = "\n".join(page.get_text() for page in pdf)
-        return page_text
+        page_text = [self._extract_page_text(page) for page in pdf]
+        if all(text is None for text in page_text):  # No text found on any page
+            return None
+        return "\n".join(text for text in page_text if text is not None)
 
     def _extract_pdf_images(self, file_bytes: BytesIO):
         """
@@ -557,8 +565,8 @@ class PDFProcessor(FileProcessor):
                         untransformed_bounding_box = pymupdf.Rect(
                             x0=bounding_box[0],
                             y0=bounding_box[1],
-                            x1=bounding_box[0] + bounding_box[2],
-                            y1=bounding_box[1] + bounding_box[3],
+                            x1=bounding_box[2],
+                            y1=bounding_box[3],
                         )
                         rect_in_global_space = (
                             self._transform_bounding_box_to_global_space(
@@ -629,7 +637,7 @@ class PDFProcessor(FileProcessor):
         """
         # Extract text from PDF
         pdf_text = self._extract_pdf_text(file_bytes)
-        if not is_english_text(pdf_text):
+        if pdf_text and not is_english_text(pdf_text):
             LoggingUtil().log_exception(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."

@@ -46,7 +46,7 @@ def test__pdf_processor__extract_pdf_text():
         "Well, here it is. Make a good one."
     )
     expected_text_split = " ".split(expected_text)
-    with open("test/resources/pdf/test_pdf_processor__source.pdf", "rb") as f:
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     actual_text = PDFProcessor()._extract_pdf_text(document_bytes)
     actual_text_split = " ".split(actual_text)
