@@ -605,6 +605,28 @@ def test__pdf_processor__redact_skips_non_english_raises_exception():
     assert not annots
 
 
+def test__pdf_processor__redact__no_text():
+    file_bytes = _make_pdf_with_text(" \n")
+    doc_text = "\n".join(page.get_text() for page in pymupdf.open(stream=file_bytes))
+    file_bytes.seek(0)
+    assert is_english_text(doc_text) is False
+
+    # does not raise exception
+    with (
+        patch.object(PDFProcessor, "_extract_pdf_images", return_value=[]),
+        patch.object(PDFProcessor, "_extract_unique_pdf_images", return_value=""),
+        patch.object(
+            PDFProcessor, "_apply_provisional_image_redactions", return_value=file_bytes
+        ),
+        patch.object(
+            PDFProcessor, "_apply_provisional_text_redactions", return_value=file_bytes
+        ),
+    ):
+        result = PDFProcessor().redact(file_bytes, {"redaction_rules": []})
+
+    assert result == file_bytes
+
+
 def test__pdf_processor__extract_unique_pdf_images():
     """
     - Given I have some image metadata that contains 6 images, 2 of which are duplicates of at least 1 of the other 4

@@ -107,7 +107,7 @@ class PDFProcessor(FileProcessor):
 
     def _extract_page_text(self, page: pymupdf.Page) -> str:
         text = page.get_text().strip()
-        if text == "" or text == "\n":  # No text found on the page
+        if text == "":  # No text found on the page
             return None
         return text
 
