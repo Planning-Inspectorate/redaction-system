@@ -184,6 +184,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
 class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
+    # Translations to account for common OCR misreads of 0s and 1s
     OCR_TRANSLATIONS = [str.maketrans("01", "OI"), str.maketrans("OI", "01")]
 
     @classmethod
@@ -237,6 +238,17 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         text_rect_map: List[Tuple[str, Tuple[int, int, int, int]]],
         redaction_string: str,
     ) -> List[Tuple[int, int, int, int]]:
+        """
+        Examine the text rectangles and return the bounding boxes that correspond
+        to the given redaction string. If it's a multi-term redaction string, then
+        the bounding boxes will only be returned if the full sequence is found in
+        the correct order.
+
+        :param str text_rect_map: A list of tuples of the form (text_at_box, bounding_box)
+        :param str redaction_string: The string to redact
+        :return List[Tuple[int, int, int, int]]: A list of bounding boxes that correspond
+        to the redaction string
+        """
         text_rects_to_redact = []
         words_to_redact = get_normalised_words(redaction_string)
 
