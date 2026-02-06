@@ -66,3 +66,9 @@ variable "openai_quota" {
   type        = number
   default     = 1000
 }
+
+variable "service_bus_premium_enabled" {
+  description = "If the servcie bus should have the premium SKU"
+  type        = bool
+  default     = false
+}

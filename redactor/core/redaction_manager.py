@@ -7,6 +7,8 @@ from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
 from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
+from core.util.service_bus_util import ServiceBusUtil
+from core.util.enum import PINSService
 from pydantic import BaseModel
 import re
 import traceback
@@ -32,6 +34,7 @@ class JsonPayloadStructure(BaseModel):
         properties: Dict[str, Any]
 
     tryApplyProvisionalRedactions: Optional[bool] = True
+    pinsService: Optional[PINSService] = None
     skipRedaction: Optional[bool] = False
     configName: Optional[str] = "default"
     fileKind: str
@@ -155,6 +158,20 @@ class RedactionManager:
             blob_path=f"{self.job_id}/exception.txt",
         )
 
+    def send_service_bus_completion_message(
+        self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
+    ):
+        """
+        Send a message to the complete topic in the service bus
+        """
+        pins_service_raw: str = request_params.get("pinsService", None)
+        if not pins_service_raw:
+            return
+        pins_service = PINSService(pins_service_raw.upper())
+        ServiceBusUtil().send_redaction_process_complete_message(
+            pins_service, redaction_result
+        )
+
     def try_redact(self, params: Dict[str, Any]):
         """
         Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
@@ -164,6 +181,7 @@ class RedactionManager:
         {
             "tryApplyProvisionalRedactions": True,
             "skipRedaction": True,
+            "pinsService": "CBOS",
             "configName": "default",
             "fileKind": "pdf",
             "readDetails": {
@@ -200,4 +218,10 @@ class RedactionManager:
             self.log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
-        return base_response | {"status": status, "message": message}
+        final_output = base_response | {"status": status, "message": message}
+        try:
+            self.send_service_bus_completion_message(params, final_output)
+        except Exception as e:
+            self.log_exception(e)
+            message = f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+        return final_output

@@ -4,6 +4,7 @@ azure-functions-durable==1.4.0
 azure-identity==1.25.1
 azure-monitor-opentelemetry==1.8.3
 azure-storage-blob==12.23.1
+azure-servicebus==7.14.3
 coverage==7.12.0
 filelock==3.20.3
 langchain==1.1.0
@@ -26,5 +27,9 @@ pytest-cov==7.0.0
 pytest-rerunfailures==16.1
 PyYAML==6.0.3
 ruff==0.14.7
-tiktoken==0.12.0
 unidecode==1.4.0
+pypdf>=4.0.0
+langdetect==1.0.9
+azure-monitor-opentelemetry==1.8.3
+tiktoken==0.12.0
+StrEnum==0.4.15  # Not ideal, but this is needed due to compatibility issues between ADO agents and the Function App

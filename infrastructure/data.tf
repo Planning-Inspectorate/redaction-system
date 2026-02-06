@@ -62,3 +62,24 @@ data "azurerm_private_dns_zone" "openai" {
 
   tags = local.tags
 }
+
+data "azurerm_private_dns_zone" "servicebus" {
+  name                = "privatelink.servicebus.windows.net"
+  resource_group_name = var.tooling_config.network_rg
+  provider            = azurerm.tooling
+
+  tags = local.tags
+}
+
+##
+# Service bus
+##
+data "azurerm_servicebus_namespace" "backoffice" {
+  name                = "pins-sb-back-office-${var.environment}-ukw-001"
+  resource_group_name = "pins-rg-back-office-${var.environment}-ukw-001"
+}
+
+data "azurerm_servicebus_topic" "redaction_process_complete" {
+  name         = "redaction-process-complete"
+  namespace_id = data.azurerm_servicebus_namespace.backoffice.id
+}

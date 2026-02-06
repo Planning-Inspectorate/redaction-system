@@ -8,9 +8,12 @@ from azure.identity import (
 from PIL import Image
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
+from core.util.service_bus_util import ServiceBusUtil
+from core.util.enum import PINSService
 import os
 import traceback
 from io import BytesIO
+from uuid import uuid4
 
 
 """
@@ -76,3 +79,15 @@ def analyse_image():
         return f"Connection with Azure Computer Vision was successful and returned the result {result}"
     except Exception as e:
         return "".join(traceback.TracebackException.from_exception(e).format())
+
+
+def send_service_bus_message():
+    message = str(uuid4())
+    message = {"test_connectivity": message}
+    try:
+        ServiceBusUtil().send_redaction_process_complete_message(
+            PINSService.REDACTION_SYSTEM, message
+        )
+    except Exception as e:
+        return "".join(traceback.TracebackException.from_exception(e).format())
+    return f"Successfully sent a message to subscription {PINSService.REDACTION_SYSTEM} with content {message}"
