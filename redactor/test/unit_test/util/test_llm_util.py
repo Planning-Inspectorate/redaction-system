@@ -37,6 +37,10 @@ class MockLLMChatCompletionUsage:
         self.completion_tokens = completion_tokens
 
 
+TOKEN_RATE_LIMIT = 1000000
+REQUEST_RATE_LIMIT = 1000
+
+
 def test__handle_last_retry_error():
     retry_state = Mock()
     retry_state.outcome = Mock()
@@ -68,14 +72,14 @@ def test__llm_util___set_model_details(mock_llm_util_init):
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1",
-        token_rate_limit=2000,
-        request_rate_limit=100,
+        token_rate_limit=TOKEN_RATE_LIMIT / 10,
+        request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
 
     llm_util._set_model_details()
 
-    assert llm_util.config.token_rate_limit == 2000
-    assert llm_util.config.request_rate_limit == 100
+    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT / 10
+    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT / 10
 
     assert llm_util.input_token_cost == 149 * 0.000001
     assert llm_util.output_token_cost == 593 * 0.000001
@@ -86,16 +90,16 @@ def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_i
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1",
-        token_rate_limit=300000,
-        request_rate_limit=100,
+        token_rate_limit=TOKEN_RATE_LIMIT * 3,
+        request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
 
     llm_util._set_model_details()
 
-    assert llm_util.config.token_rate_limit == 250000
+    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
         "Token rate limit for model gpt-4.1 exceeds maximum. "
-        "Setting to maximum of 250000 tokens per minute."
+        f"Setting to maximum of {TOKEN_RATE_LIMIT} tokens per minute."
     )
 
 
@@ -104,16 +108,16 @@ def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_llm_util
     llm_util = LLMUtil()
     llm_util.config = LLMUtilConfig(
         model="gpt-4.1",
-        token_rate_limit=100000,
-        request_rate_limit=300,
+        token_rate_limit=TOKEN_RATE_LIMIT / 10,
+        request_rate_limit=REQUEST_RATE_LIMIT * 2,
     )
 
     llm_util._set_model_details()
 
-    assert llm_util.config.request_rate_limit == 250
+    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
         "Request rate limit for model gpt-4.1 exceeds maximum. "
-        "Setting to maximum of 250 requests per minute."
+        f"Setting to maximum of {REQUEST_RATE_LIMIT} requests per minute."
     )
 
 
@@ -130,8 +134,8 @@ def test__llm_util___set_model_details__zero_token_request_rate_limit(
 
     llm_util._set_model_details()
 
-    assert llm_util.config.token_rate_limit == 250000 * 0.2
-    assert llm_util.config.request_rate_limit == 250 * 0.2
+    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.2
+    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.2
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
