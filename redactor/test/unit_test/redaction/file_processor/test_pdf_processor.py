@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 from io import BytesIO
 from mock import patch, Mock
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 
 from core.redaction.file_processor import (
     PDFProcessor,
@@ -540,17 +540,15 @@ class MockPDFDocument:
 def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
     with (
         patch.object(
-            ThreadPoolExecutor, "submit", return_value=None
+            ProcessPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
         patch(
             "core.redaction.file_processor.as_completed", return_value=[]
         ) as mock_as_completed,
         patch.object(
-            ThreadPoolExecutor, "__init__", return_value=None
+            ProcessPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
-        patch.object(
-            ThreadPoolExecutor, "__exit__", return_value=None
-        ) as mock_executor_exit,
+        patch.object(ProcessPoolExecutor, "__exit__", return_value=None),
         patch.object(
             PDFProcessor, "_examine_provisional_redactions_on_page", return_value=[]
         ),
@@ -559,10 +557,16 @@ def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
             BytesIO(), ["redaction1", "redaction2"], n_workers=4
         )
 
-    mock_executor_init.assert_called_once_with(max_workers=4)
-    assert mock_executor_submit.call_count == 2  # One per page
-    assert mock_as_completed.call_count == 1
-    mock_executor_exit.assert_called_once()
+    mock_executor_init.assert_called_once()
+    _, kwargs = mock_executor_init.call_args
+
+    assert kwargs["max_workers"] == 4
+
+    assert "mp_context" in kwargs
+    assert kwargs["mp_context"].get_start_method() == "fork"
+
+    assert mock_executor_submit.call_count == 2
+    mock_as_completed.assert_called_once()
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:

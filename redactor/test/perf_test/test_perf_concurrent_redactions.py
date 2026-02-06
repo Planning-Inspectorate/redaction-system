@@ -80,7 +80,7 @@ PERF_DOWNLOAD_SAMPLE_EVERY = _int_env("PERF_DOWNLOAD_SAMPLE_EVERY", 1)
 
 PERF_MAX_P95_S = _float_env("PERF_MAX_P95_S", 0.0)
 
-PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "PINS_first_page_only.pdf")
+PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "pas_13.pdf")
 
 
 # ----------------------------
