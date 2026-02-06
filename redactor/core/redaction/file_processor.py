@@ -106,7 +106,29 @@ class PDFProcessor(FileProcessor):
         return "pdf"
 
     def _extract_page_text(self, page: pymupdf.Page) -> str:
-        text = page.get_text().strip()
+        page_text = page.get_text("words", sort=True)
+        lines = []
+        current_line = 0
+        current_block = 1
+        line_text = []
+        line_rects = []
+        for word in page_text:
+            x0, y0, x1, y1, word_text, block_no, line_no, _ = word
+            if line_no != current_line or block_no != current_block:
+                lines.append((line_text, line_rects))
+                line_text = []
+                line_rects = []
+                current_line = line_no
+                current_block = block_no
+            line_text.append(word_text)
+            line_rects.append(pymupdf.Rect(x0=x0, y0=y0, x1=x1, y1=y1))
+
+        text = "\n".join("".join(line_text for line_text, _ in lines if line_text))
+        self.word_rect_map = [
+            [tuple([word, rect]) for word, rect in zip(line[0], line[1])]
+            for line in lines
+        ]
+
         if text == "":  # No text found on the page
             return None
         return text
