@@ -4,6 +4,8 @@ from core.io.azure_blob_io import AzureBlobIO
 from core.io.io_factory import IOFactory
 from core.redaction.file_processor import FileProcessorFactory
 from core.redaction.config_processor import ConfigProcessor
+from core.util.service_bus_util import ServiceBusUtil
+from core.util.enum import PINSService
 from io import BytesIO
 import mock
 import pytest
@@ -281,6 +283,7 @@ def check__try_redact__successful_output(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     expected_response = {
         "parameters": {"some_payload", ""},
@@ -299,6 +302,7 @@ def check__try_redact__failed_output(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     expected_response = {
         "parameters": {"some_payload", ""},
@@ -317,6 +321,7 @@ def check__try_redact__validate_json_payload__called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     mock_validate_json.assert_called_once_with(params)
 
@@ -329,6 +334,7 @@ def check__try_redact__validate_json_payload__not_called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     not mock_validate_json.called
 
@@ -341,6 +347,7 @@ def check__try_redact__redact__called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     mock_redact.assert_called_once_with(params)
 
@@ -353,6 +360,7 @@ def check__try_redact__redact__not_called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     not mock_redact.called
 
@@ -365,6 +373,7 @@ def check__try_redact__log_exception__called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     mock_log_exception.assert_called_once_with(exception)
 
@@ -377,6 +386,7 @@ def check__try_redact__log_exception__not_called(
     mock_redact,
     mock_validate_json,
     mock_init,
+    mock_send_service_bus_message,
 ):
     not mock_log_exception.called
 
@@ -390,12 +400,18 @@ def check__try_redact__log_exception__not_called(
         check__try_redact__log_exception__not_called,
     ],
 )
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__successful(
-    mock_log_exception, mock_redact, mock_validate_json, mock_init, test_case
+    mock_log_exception,
+    mock_redact,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    test_case,
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
@@ -410,6 +426,7 @@ def test__try_redact__successful(
         mock_redact,
         mock_validate_json,
         mock_init,
+        mock_send_service_bus_message,
     )
 
 
@@ -422,12 +439,18 @@ def test__try_redact__successful(
         check__try_redact__log_exception__called,
     ],
 )
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__param_validation_failure(
-    mock_log_exception, mock_redact, mock_validate_json, mock_init, test_case
+    mock_log_exception,
+    mock_redact,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    test_case,
 ):
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
@@ -444,6 +467,7 @@ def test__try_redact__param_validation_failure(
         mock_redact,
         mock_validate_json,
         mock_init,
+        mock_send_service_bus_message,
     )
 
 
@@ -456,12 +480,18 @@ def test__try_redact__param_validation_failure(
         check__try_redact__log_exception__called,
     ],
 )
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__redaction_failure(
-    mock_log_exception, mock_redact, mock_validate_json, mock_init, test_case
+    mock_log_exception,
+    mock_redact,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    test_case,
 ):
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
@@ -478,4 +508,30 @@ def test__try_redact__redaction_failure(
         mock_redact,
         mock_validate_json,
         mock_init,
+        mock_send_service_bus_message,
     )
+
+
+def test__send_service_bus_completion_message__with_missing_pins_service():
+    with mock.patch.object(RedactionManager, "__init__", return_value=None):
+        with mock.patch.object(
+            ServiceBusUtil, "send_redaction_process_complete_message"
+        ):
+            params = dict()
+            result = {"body": "some result"}
+            RedactionManager().send_service_bus_completion_message(params, result)
+            assert not ServiceBusUtil.send_redaction_process_complete_message.called
+
+
+@pytest.mark.parametrize("pins_service", [enum.value for enum in PINSService])
+def test__send_service_bus_completion_message__successful(pins_service):
+    with mock.patch.object(RedactionManager, "__init__", return_value=None):
+        with mock.patch.object(
+            ServiceBusUtil, "send_redaction_process_complete_message"
+        ):
+            params = {"pinsService": pins_service}
+            result = {"body": "some result"}
+            RedactionManager().send_service_bus_completion_message(params, result)
+            ServiceBusUtil.send_redaction_process_complete_message.assert_called_once_with(
+                pins_service, result
+            )
