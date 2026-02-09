@@ -159,7 +159,7 @@ class RedactionManager:
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
 
-    def dump_logs(self):
+    def save_logs(self):
         """
         Write a log file locally and in Azure
         """
@@ -248,7 +248,8 @@ class RedactionManager:
         }
         ```
         """
-        error_messages = []
+        fatal_error = None
+        non_fatal_errors = []
         base_response = {
             "parameters": params,
             "id": self.job_id,
@@ -261,32 +262,41 @@ class RedactionManager:
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
-            error_messages.append(
-                f"Redaction process failed with the following error: {e}"
-            )
+            message = f"Redaction process failed with the following error: {e}"
+            fatal_error = message
         final_output = base_response | {"status": status, "message": message}
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
             self.log_exception(e)
-            error_messages.append(
+            non_fatal_errors.append(
                 f"Failed to submit a service bus message with the following error: {e}"
             )
         try:
-            self.dump_logs()
+            self.save_logs()
         except Exception as e:
             self.log_exception(e)
-            error_messages.append(
+            non_fatal_errors.append(
                 f"Failed to write logs with the following error: {e}"
             )
         try:
             self.save_exception_log()
         except Exception as e:
-            error_messages.append(
+            non_fatal_errors.append(
                 f"Failed to write an exception log with the following error: {e}"
             )
         # Return any non-fatal errors to the caller
-        if error_messages:
-            message = "Redaction process completed successfully, but had some non-fatal errors: " + "\n".join(error_messages)
+        if non_fatal_errors:
+            if fatal_error:
+                message = (
+                    message
+                    + "\nAdditionally, the following non-fatal errors occurred: "
+                    + "\n".join(non_fatal_errors)
+                )
+            else:
+                message = (
+                    "Redaction process completed successfully, but had some non-fatal errors: "
+                    + "\n".join(non_fatal_errors)
+                )
         final_output = base_response | {"status": status, "message": message}
         return final_output
