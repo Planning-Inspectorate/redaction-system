@@ -7,9 +7,6 @@ from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
 
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing as mp
-
 from core.redaction.redactor import (
     Redactor,
     TextRedactor,
@@ -28,10 +25,9 @@ from core.redaction.result import (
     TextRedactionResult,
     ImageRedactionResult,
 )
-from core.util.text_util import is_english_text, get_normalised_words
+from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
-from core.util.multiprocessing_util import get_max_workers
 
 
 class FileProcessor(ABC):
@@ -96,6 +92,34 @@ class PDFImageMetadata(BaseModel):
     """The transform of the instance of the image in the PDF, represented as a pymupdf.Matrix"""
 
 
+class PDFLineMetadata(BaseModel):
+    line_number: int
+    """The line number on the page (0-indexed)"""
+    words: Tuple[str, ...]
+    """The words in the line"""
+    y0: float
+    """The y0 coordinate of the line's bounding box"""
+    y1: float
+    """The y1 coordinate of the line's bounding box"""
+    x0: Tuple[float, ...]
+    """The x0 coordinates of the words in the line"""
+    x1: Tuple[float, ...]
+    """The x1 coordinates of the words in the line"""
+
+
+class PDFPageMetadata(BaseModel):
+    page_number: int
+    """The page the image belongs to (0-indexed)"""
+    text: str
+    """The text content of the page"""
+    lines: List[PDFLineMetadata]
+
+
+class PDFTextMetadata(BaseModel):
+    pages: List[PDFPageMetadata]
+    """The metadata for the text content of the PDF, represented as a list of PDFPageMetadata objects"""
+
+
 class PDFProcessor(FileProcessor):
     """
     Class for managing the redaction of PDF documents
@@ -105,6 +129,20 @@ class PDFProcessor(FileProcessor):
     def get_name(cls) -> str:
         return "pdf"
 
+    def _update_line_info(self, lines, line_text, line_rects, line_no):
+        line_y0 = min(rect[1] for rect in line_rects) if line_rects else 0
+        line_y1 = max(rect[3] for rect in line_rects) if line_rects else 0
+        lines.append(
+            PDFLineMetadata(
+                line_number=line_no,
+                words=tuple(normalise_text(word) for word in line_text),
+                y0=line_y0,
+                y1=line_y1,
+                x0=tuple(rect[0] for rect in line_rects),
+                x1=tuple(rect[2] for rect in line_rects),
+            )
+        )
+
     def _extract_page_text(self, page: pymupdf.Page) -> str:
         page_text = page.get_text("words", sort=True)
         lines = []
@@ -112,26 +150,28 @@ class PDFProcessor(FileProcessor):
         current_block = 1
         line_text = []
         line_rects = []
+        n_lines = 0
+
         for word in page_text:
             x0, y0, x1, y1, word_text, block_no, line_no, _ = word
             if line_no != current_line or block_no != current_block:
-                lines.append((line_text, line_rects))
+                n_lines += 1
+                self._update_line_info(lines, line_text, line_rects, n_lines)
                 line_text = []
                 line_rects = []
                 current_line = line_no
                 current_block = block_no
+
             line_text.append(word_text)
-            line_rects.append(pymupdf.Rect(x0=x0, y0=y0, x1=x1, y1=y1))
+            line_rects.append((x0, y0, x1, y1))
 
-        text = "\n".join("".join(line_text for line_text, _ in lines if line_text))
-        self.word_rect_map = [
-            [tuple([word, rect]) for word, rect in zip(line[0], line[1])]
-            for line in lines
-        ]
+        n_lines += 1
+        self._update_line_info(lines, line_text, line_rects, n_lines)
 
-        if text == "":  # No text found on the page
-            return None
-        return text
+        text = "\n".join(" ".join(line.words) for line in lines if line.words)
+        page = PDFPageMetadata(page_number=page.number, text=text, lines=lines)
+
+        return page
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
@@ -141,10 +181,12 @@ class PDFProcessor(FileProcessor):
         :return str: The text content of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        page_text = [self._extract_page_text(page) for page in pdf]
-        if all(text is None for text in page_text):  # No text found on any page
+        pages = [self._extract_page_text(page) for page in pdf]
+        self.pdf_text = PDFTextMetadata(pages=pages)
+
+        if all(page.text == "" for page in pages):  # No text found on any page
             return None
-        return "\n".join(text for text in page_text if text is not None)
+        return "\n".join(page.text for page in pages)
 
     def _extract_pdf_images(self, file_bytes: BytesIO):
         """
@@ -202,7 +244,7 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _is_full_text_being_redacted(
-        cls, page: pymupdf.Page, term: str, rect: pymupdf.Rect
+        cls, normalised_words_to_redact: List[str], line_to_check: PDFLineMetadata
     ) -> Tuple[bool, str]:
         """
         Check whether the text found at the given bounding box on the provided
@@ -217,50 +259,51 @@ class PDFProcessor(FileProcessor):
         an exact match for the given redaction text candidate (i.e., the text
         should be redacted), and the actual text found at the expanded bounding box.
         """
+        # Find first word in line that matches the first word in the term to redact
+        matching_indices = [
+            i
+            for i, word in enumerate(line_to_check.words)
+            if word == normalised_words_to_redact[0]
+        ]
 
-        # Normalise term: remove punctuation and extra whitespace, convert to lowercase
-        text_to_redact_normalised = (" ").join(get_normalised_words(term))
+        # Check subsequent words to redact for the first matching index
+        matches = []
+        for index in matching_indices:
+            candidate_words = []
+            end_index = index
+            words_to_redact = normalised_words_to_redact.copy()
+            while words_to_redact and end_index < len(line_to_check.words):
+                word = line_to_check.words[end_index]
+                word_to_redact = words_to_redact.pop(0)
+                # Check for exact match or ignore possessive markers
+                if word == word_to_redact or (
+                    word.endswith("'s") and word[:-2] == word_to_redact
+                ):
+                    candidate_words.append(word)
+                    end_index += 1
+                else:
+                    end_index = -1
+                    break
+            matches.append((" ".join(candidate_words), index, end_index - 1))
 
-        # Expand rect slightly by approximately a quarter of a character on each side
-        char_width = rect.width / len(term)
-        quarter_char_width = char_width / 4
-        actual_text_at_rect = page.get_textbox(
-            rect + (-quarter_char_width, 0, quarter_char_width, 0)
-        ).strip()  # Remove trailing/leading whitespace
-        words_at_rect_normalised = get_normalised_words(actual_text_at_rect)
+        return matches
 
-        # If the text found contains multiple words, split to the same number of words
-        # as the term to redact
-        candidate_words = []
-        n_words_to_redact = len(text_to_redact_normalised.split(" "))
-        if len(words_at_rect_normalised) >= n_words_to_redact and n_words_to_redact > 1:
-            for i in range(len(words_at_rect_normalised) - n_words_to_redact + 1):
-                candidate_words.append(
-                    " ".join(words_at_rect_normalised[i : i + n_words_to_redact])
-                )
-        else:
-            candidate_words = words_at_rect_normalised
-
-        # Check for exact match among candidate words
-        match_result = False
-        for word in candidate_words:
-            match_result = text_to_redact_normalised == word
-
-            # Try to match by ignoring possessive markers
-            if word.endswith("'s"):
-                word = word[:-2]
-                match_result = match_result or text_to_redact_normalised == word
-
-            if match_result:
-                # Once a match is found, no need to check further
-                return True, actual_text_at_rect
-        return match_result, actual_text_at_rect
+    @classmethod
+    def _construct_pdf_rect(
+        cls, line: PDFLineMetadata, start_index: int, end_index: int
+    ) -> pymupdf.Rect:
+        return pymupdf.Rect(
+            line.x0[start_index],
+            line.y0,
+            line.x1[end_index],
+            line.y1,
+        )
 
     @classmethod
     def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
-        highlight_annotation = page.add_highlight_annot(rect)
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
+        highlight_annotation = page.add_highlight_annot(rect)
         highlight_annotation.set_info(
             {
                 "content": "REDACTION CANDIDATE",
@@ -268,13 +311,12 @@ class PDFProcessor(FileProcessor):
             }
         )
 
-    @classmethod
-    def _is_partial_redaction_across_line_breaks(
-        cls,
-        term: str,
-        actual_text_at_rect: str,
-        next_page: pymupdf.Page,
-        next_rect: pymupdf.Rect,
+    def _check_partial_redaction_across_line_breaks(
+        self,
+        normalised_words_to_redact: List[str],
+        partial_term_found: str,
+        page_metadata: PDFPageMetadata,
+        line_checked: PDFLineMetadata,
     ) -> bool:
         """
         Check if the given term is partially redacted in the current rect, and
@@ -286,32 +328,61 @@ class PDFProcessor(FileProcessor):
         :param pymupdf.Rect next_rect: The next redaction candidate's bounding box (on the page)
         :return bool: True if the full term is found across the two rects, else False
         """
-        partial_term_in_rect = ""
-        words_to_redact = term.split(" ")
-        # Try to find the largest partial match in the current rect
-        while True:
-            if not words_to_redact:
-                break
-            partial_term_in_rect = " ".join(words_to_redact)
-            if partial_term_in_rect in actual_text_at_rect:
-                break
-            words_to_redact = words_to_redact[:-1]
+        words_to_redact = normalised_words_to_redact.copy()
+        term_to_redact = " ".join(words_to_redact)
 
         # Check next redaction instance for the remaining words
-        if partial_term_in_rect and partial_term_in_rect != term:
+        if partial_term_found and partial_term_found != term_to_redact:
             # Remove the part already found in the current rect
-            remaining_words_to_redact = term.replace(partial_term_in_rect, "").strip()
-            # Check if the next rect contains the remaining words to redact
-            match_result, _ = cls._is_full_text_being_redacted(
-                next_page, remaining_words_to_redact, next_rect
+            remaining_words_to_redact = (
+                term_to_redact.replace(partial_term_found, "").strip().split(" ")
             )
-            return match_result
 
-        return False
+            # Check if the next line contains the remaining words to redact
+            next_line = next(
+                (
+                    line
+                    for line in page_metadata.lines
+                    if line.line_number == line_checked.line_number + 1
+                ),
+                None,
+            )
+            if not next_line:
+                #  Check the next page for remaining words to redact
+                next_page_number = page_metadata.page_number + 1
+                next_page_metadata = next(
+                    page
+                    for page in self.pdf_text.pages
+                    if page.page_number == next_page_number
+                )
+                next_line = next(
+                    line for line in next_page_metadata.lines if line.line_number == 0
+                )
+            else:
+                next_page_metadata = page_metadata
+
+            if next_line:
+                end_index = 0
+                while remaining_words_to_redact and end_index < len(next_line.words):
+                    word = next_line.words[end_index]
+                    word_to_redact = remaining_words_to_redact[0]
+                    if word == word_to_redact or (
+                        word.endswith("'s") and word[:-2] == word_to_redact
+                    ):
+                        remaining_words_to_redact.pop(0)
+                        end_index += 1
+                    else:
+                        break
+                if not remaining_words_to_redact:
+                    LoggingUtil().log_info(
+                        f"Partial redaction found across line break for term '{term_to_redact}'."
+                    )
+                    return next_page_metadata, next_line, end_index - 1
+        return None, None, None
 
     @log_to_appins
     def _apply_provisional_text_redactions(
-        self, file_bytes: BytesIO, text_to_redact: List[str], n_workers: int = None
+        self, file_bytes: BytesIO, text_to_redact: List[str]
     ):
         """
         Redact the given list of redaction strings as provisional redactions in
@@ -323,10 +394,9 @@ class PDFProcessor(FileProcessor):
         :return BytesIO: Bytes stream for the PDF with provisional text
         redactions applied
         """
-        self.file_bytes = file_bytes
         self.redaction_candidates: List[List[Tuple[pymupdf.Rect, str]]] = []
 
-        pdf = pymupdf.open(stream=self.file_bytes)
+        pdf = pymupdf.open(stream=file_bytes)
 
         # Find location of each redaction candidate by page
         for page in pdf:
@@ -354,52 +424,33 @@ class PDFProcessor(FileProcessor):
 
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
-        n_highlights = 0
-        with ProcessPoolExecutor(
-            max_workers=get_max_workers(n_workers),
-            # Use fork if available to avoid overhead of copying pdf for each process,
-            # but fall back to spawn if fork is not available (e.g. on Windows)
-            mp_context=mp.get_context("fork")
-            if mp.get_start_method() == "fork"
-            else None,
-        ) as executor:
-            # Submit task to the executor
-            futures_to_page = {
-                executor.submit(
-                    self._examine_provisional_redactions_on_page,
-                    i,
-                    candidates_on_page,
-                ): i
-                for i, candidates_on_page in enumerate(self.redaction_candidates)
-            }
-            for future in as_completed(futures_to_page):
-                try:
-                    page_num = futures_to_page[future]
-                    instances_to_redact_on_page = future.result()
+        for page in pdf:
+            page_number = page.number
+            candidates_on_page = self.redaction_candidates[page_number]
 
-                    n_highlights_on_page = len(instances_to_redact_on_page)
-                    n_highlights += n_highlights_on_page
+            page_metadata = next(
+                page for page in self.pdf_text.pages if page.page_number == page_number
+            )
+
+            n_highlights = 0
+            for rect, term_to_redact in candidates_on_page:
+                LoggingUtil().log_info(
+                    f"    Examining redaction candidate for term '{term_to_redact}'"
+                )
+                redaction_instances = self._examine_provisional_text_redaction(
+                    page_metadata, term_to_redact, rect
+                )
+                for page_number, rect, term in redaction_instances:
+                    self._add_provisional_redaction(pdf[page_number], rect)
                     LoggingUtil().log_info(
-                        f"Found {n_highlights_on_page} redaction instances to apply"
-                        f" on page {page_num}."
+                        f"    Applied provisional redaction for term '{term}'"
+                        f" at location '{rect}' on page {page_number}."
                     )
+                    n_highlights += 1
 
-                    # Apply accepted provisional redaction highlights for the human-in-the-loop to review
-                    for redaction_inst in instances_to_redact_on_page:
-                        page_number, rect, term = redaction_inst
-                        page = pdf[page_number]
-                        self._add_provisional_redaction(page, rect)
-                        LoggingUtil().log_info(
-                            f"    Applying highlight for term '{term}' at location"
-                            f" '{rect}' on page {page.number}."
-                        )
-                except Exception as e:
-                    LoggingUtil().log_exception(
-                        f"An error occurred while examining provisional text"
-                        f" redactions on page {page_num}: {e}"
-                    )
-
-        LoggingUtil().log_info(f"Applied {n_highlights} redaction highlights.")
+            LoggingUtil().log_info(
+                f"Applied {n_highlights} provisional redactions on page {page_number}."
+            )
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
@@ -446,10 +497,9 @@ class PDFProcessor(FileProcessor):
     @log_to_appins
     def _examine_provisional_text_redaction(
         self,
-        page,
-        term,
-        rect,
-        i,
+        page_metadata: PDFPageMetadata,
+        term_to_redact: str,
+        rect: pymupdf.Rect,
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidate is valid, i.e., a full
@@ -467,49 +517,104 @@ class PDFProcessor(FileProcessor):
         full matches, a two entry list for partial redactions across line breaks, or
         an empty list if no valid redaction is found.
         """
-        # Only redact text that is fully matched - do not apply partial redactions
-        match_result, actual_text_at_rect = self._is_full_text_being_redacted(
-            page, term, rect
-        )
-        if match_result:
-            return [(page.number, rect, term)]
-        elif (
-            len(term.split(" ")) > 1
-        ):  # Check for line breaks causing partial redactions
-            candidates_on_page = self.redaction_candidates[page.number]
-            next_redaction_inst = self._find_next_redaction_instance(
-                candidates_on_page, i, page
-            )
-            if next_redaction_inst is None:
-                return []
-            next_page, next_rect, next_term = next_redaction_inst
-
-            # Check this is for the same term
-            if next_term == term:
-                # Check whether the remaining part of the term is in the next rect
-                next_match_result = self._is_partial_redaction_across_line_breaks(
-                    term,
-                    actual_text_at_rect,
-                    next_page,
-                    next_rect,
-                )
-                if next_match_result:
-                    LoggingUtil().log_info(
-                        f"        Partial redaction across line break"
-                        f" for term '{term}'."
-                    )
-                    return [
-                        (page.number, rect, term),
-                        (next_page.number, next_rect, next_term),
-                    ]
-
-        # No full match found, skip redaction
         LoggingUtil().log_info(
-            "        Partial match found when attempting to redact "
-            f"'{term}'. The surrounding box contains "
-            f"'{actual_text_at_rect}'. Skipping this candidate."
+            f"    Examining redaction candidate for term '{term_to_redact}'"
         )
-        return []
+        # Find line corresponding to the redaction candidate
+        lines_on_page = page_metadata.lines
+        try:
+            line_to_check = next(
+                line for line in lines_on_page if line.y0 <= rect.y0 <= line.y1
+            )
+        except StopIteration:
+            LoggingUtil().log_info(
+                f"        No line found for redaction candidate at location '{rect}'. "
+                " Skipping this candidate."
+            )
+            return []
+
+        redaction_instances = []
+        words_to_redact = get_normalised_words(term_to_redact)
+        if len(words_to_redact) == 1:
+            # Single term redaction: check for exact match with words in line
+            matching_indices = [
+                i
+                for i, word in enumerate(line_to_check.words)
+                if any(
+                    x == normalise_text(term_to_redact)
+                    for x in [word, word[:-2] if word.endswith("'s") else ""]
+                )
+            ]
+            if matching_indices:
+                # Apply each highlight for match found
+                for matching_index in matching_indices:
+                    # Calculate the rect for the individual word to redact
+                    rect = self._construct_pdf_rect(
+                        line_to_check, matching_index, matching_index
+                    )
+                    redaction_instances.append(
+                        (page_metadata.page_number, rect, term_to_redact)
+                    )
+            else:
+                LoggingUtil().log_info(
+                    f"        No exact match found for single-word term '{term_to_redact}'"
+                    " in line '{line_to_check.words}'. Skipping this candidate."
+                )
+        else:  # Multi-word redaction candidate
+            # Find first word in line that matches the first word in the term to redact
+            matches = self._is_full_text_being_redacted(words_to_redact, line_to_check)
+            for term_found, start, end in matches:
+                # No match found
+                if end == -1:
+                    LoggingUtil().log_info(
+                        f"        No exact match found for term '{term_to_redact}'"
+                        f" in line '{line_to_check.words}'. Skipping this candidate."
+                    )
+                    continue
+
+                # Exact match found - apply highlight
+                elif end - start == len(words_to_redact) - 1:
+                    if term_found != term_to_redact:
+                        LoggingUtil().log_info(
+                            f"        Exact match not found for term '{term_to_redact}'"
+                            f" in line '{line_to_check.words}', but found '{term_found}'."
+                            " Applying redaction since this is likely an OCR issue."
+                        )
+                    # Calculate the rect for the term to redact
+                    rect = self._construct_pdf_rect(line_to_check, start, end)
+                    redaction_instances.append(
+                        (page_metadata.page_number, rect, term_to_redact)
+                    )
+
+                # Partial match found - check for partial redaction across line breaks
+                elif end == len(line_to_check.words) - 1:
+                    # Check for partial redaction across line break
+                    next_page_metadata, next_line, next_line_end_index = (
+                        self._check_partial_redaction_across_line_breaks(
+                            words_to_redact,
+                            term_found,
+                            page_metadata,
+                            line_to_check,
+                        )
+                    )
+                    if next_line:
+                        # Calculate the rect for the term to redact
+                        rect = self._construct_pdf_rect(
+                            line_to_check, start, len(line_to_check.words) - 1
+                        )
+
+                        # Remaining part of the term to redact
+                        next_rect = self._construct_pdf_rect(
+                            next_line, 0, next_line_end_index
+                        )
+                        redaction_instances.append(
+                            (page_metadata.page_number, rect, term_to_redact)
+                        )
+                        redaction_instances.append(
+                            (next_page_metadata.page_number, next_rect, term_to_redact)
+                        )
+
+        return redaction_instances
 
     def _find_next_redaction_instance(
         self,
@@ -649,7 +754,6 @@ class PDFProcessor(FileProcessor):
         self,
         file_bytes: BytesIO,
         redaction_config: Dict[str, Any],
-        n_workers: int = None,
     ) -> BytesIO:
         """
         Redact the given PDF file bytes according to the redaction configuration.
@@ -657,8 +761,6 @@ class PDFProcessor(FileProcessor):
         :param file_bytes: File bytes of the PDF to redact.
         :param redaction_config: Dictionary of RedactionConfig objects specifying
         the redaction rules to apply.
-        :param n_workers: The number of worker processes to use for parallel processing
-        in applying text redactions.
         :return: The redacted PDF file bytes.
         """
         # Extract text from PDF
@@ -730,7 +832,7 @@ class PDFProcessor(FileProcessor):
 
         # Apply text redactions by highlighting text to redact
         new_file_bytes = self._apply_provisional_text_redactions(
-            file_bytes, text_redactions, n_workers=n_workers
+            file_bytes, text_redactions
         )
 
         # Apply image redactions
