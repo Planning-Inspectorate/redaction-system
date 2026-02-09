@@ -113,7 +113,7 @@ class PDFPageMetadata(BaseModel):
     """The text content of the page"""
     lines: List[PDFLineMetadata]
     """The metadata for the text content of the page"""
-    text: str
+    text: str = None
     """The text content of the page"""
 
 
@@ -159,8 +159,9 @@ class PDFProcessor(FileProcessor):
         for word in page_text:
             x0, y0, x1, y1, word_text, block_no, line_no, _ = word
             if line_no != current_line or block_no != current_block:
-                n_lines += 1
-                self._update_line_info(lines, line_text, line_rects, n_lines)
+                if line_text:
+                    n_lines += 1
+                    self._update_line_info(lines, line_text, line_rects, n_lines)
                 line_text = []
                 line_rects = []
                 current_line = line_no
@@ -169,11 +170,12 @@ class PDFProcessor(FileProcessor):
             line_text.append(word_text)
             line_rects.append((x0, y0, x1, y1))
 
-        n_lines += 1
-        self._update_line_info(lines, line_text, line_rects, n_lines)
+        if line_text:
+            n_lines += 1
+            self._update_line_info(lines, line_text, line_rects, n_lines)
 
         return PDFPageMetadata(
-            page_number=page.number, lines=lines, text=page.get_text()
+            page_number=page.number, lines=lines, text=page.get_text().strip()
         )
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
@@ -447,24 +449,13 @@ class PDFProcessor(FileProcessor):
         # across line breaks
         redaction_instances = []
         for page in pdf:
-            page_number = page.number
-            candidates_on_page = self.redaction_candidates[page_number]
-
-            page_metadata = next(
-                page for page in self.pdf_text.pages if page.page_number == page_number
+            redaction_instances.extend(
+                self._examine_provisional_redactions_on_page(
+                    page, self.redaction_candidates[page.number]
+                )
             )
 
-            n_highlights = 0
-            for rect, term_to_redact in candidates_on_page:
-                LoggingUtil().log_info(
-                    f"    Examining redaction candidate for term '{term_to_redact}'"
-                )
-                redaction_instances.extend(
-                    self._examine_provisional_text_redaction(
-                        page_metadata, term_to_redact, rect
-                    )
-                )
-
+        n_highlights = 0
         for page_to_redact, rect, term in redaction_instances:
             self._add_provisional_redaction(pdf[page_to_redact], rect)
             LoggingUtil().log_info(
@@ -484,40 +475,37 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins
     def _examine_provisional_redactions_on_page(
-        self, page_number: int, candidates_on_page: List[Tuple[pymupdf.Rect, str]]
+        self, page: pymupdf.Page, candidates_on_page: List[Tuple[pymupdf.Rect, str]]
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
         valid redactions (i.e. full matches or partial matches across line breaks).
 
-        :param int page_number: The page number to examine
+        :param pymupdf.Page page: The page to examine
         :param int candidates_on_page: The list of provisional redaction candidates
         on the page
-        :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid
-        redaction instances to apply on the page. Each tuple contains the page number
+        :return List[Tuple[PDFPageMetadata, pymupdf.Rect, str]]: The list of valid
+        redaction instances to apply on the page. Each tuple contains the page metadata
         (which may be the following page for partial redactions across line breaks),
         the bounding box to redact, and the full term being redacted.
         """
-        page = pymupdf.open(stream=self.file_bytes)[page_number]
-        instances_to_redact: List[Tuple[int, pymupdf.Rect, str]] = []
+        redaction_instances = []
+        page_number = page.number
+        candidates_on_page = self.redaction_candidates[page_number]
+        page_metadata = next(
+            page for page in self.pdf_text.pages if page.page_number == page_number
+        )
 
-        for i, (rect, term) in enumerate(candidates_on_page):
+        for rect, term_to_redact in candidates_on_page:
             LoggingUtil().log_info(
-                f"    Validating redaction instance {i} on page {page.number} at"
-                f" location '{rect}' for term '{term}' ."
+                f"    Examining redaction candidate for term '{term_to_redact}'"
             )
-            try:
-                instances_to_redact.extend(
-                    self._examine_provisional_text_redaction(page, term, rect, i)
+            redaction_instances.extend(
+                self._examine_provisional_text_redaction(
+                    page_metadata, term_to_redact, rect
                 )
-
-            except Exception as e:
-                LoggingUtil().log_exception(
-                    f"        Failed to validate redaction instance {i} on page"
-                    f" {page.number} for term '{term}', at location '{rect}':"
-                    f" {str(e)}"
-                )
-        return instances_to_redact
+            )
+        return redaction_instances
 
     @log_to_appins
     def _examine_provisional_text_redaction(
@@ -578,6 +566,8 @@ class PDFProcessor(FileProcessor):
                     f" in line '{line_to_check.words}'. Skipping this candidate."
                 )
         else:  # Multi-word redaction candidate
+            if not matches:
+                return redaction_instances
             # Find first word in line that matches the first word in the term to redact
             for term_found, start, end in matches:
                 # No match found
@@ -630,48 +620,6 @@ class PDFProcessor(FileProcessor):
                         )
 
         return redaction_instances
-
-    def _find_next_redaction_instance(
-        self,
-        candidates_on_page: List[Tuple[pymupdf.Rect, str]],
-        i: int,
-        page: pymupdf.Page,
-    ) -> Tuple[pymupdf.Page, pymupdf.Rect, str]:
-        """
-        Find the next redaction instance after the current one. This may be on the
-        same page or the next page.
-
-        :param List[Tuple[pymupdf.Rect, str]] candidates_on_page: The list of
-        provisional redaction candidates on the current page
-        :param int i: The index of the current redaction candidate in the list
-        :param pymupdf.Page page: The current page
-        :return Tuple[pymupdf.Page, pymupdf.Rect, str]: The next page
-        and the next redaction candidate (bounding box and term). If there is no
-        next redaction candidate, returns (None, (None, None)).
-        """
-        # Check next redaction on the same page
-        next_redaction_inst = (
-            candidates_on_page[i + 1] if i + 1 < len(candidates_on_page) else None
-        )
-        if next_redaction_inst:
-            next_page = page
-            next_rect, next_term = next_redaction_inst
-        else:
-            # If next page is different, check first redaction on next page
-            if page.number + 1 < len(self.redaction_candidates):
-                next_page_redaction_candidates = self.redaction_candidates[
-                    page.number + 1
-                ]
-                next_page = pymupdf.open(stream=self.file_bytes)[page.number + 1]
-                next_rect, next_term = (
-                    next_page_redaction_candidates[0]
-                    if next_page_redaction_candidates
-                    else (None, None)
-                )
-            else:
-                return None
-
-        return next_page, next_rect, next_term
 
     def _apply_provisional_image_redactions(
         self, file_bytes: BytesIO, redactions: List[ImageRedactionResult]
