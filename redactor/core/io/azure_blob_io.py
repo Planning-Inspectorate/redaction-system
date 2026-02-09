@@ -4,6 +4,7 @@ from azure.identity import (
     ChainedTokenCredential,
 )
 from azure.storage.blob import BlobServiceClient
+from core.util.logging_util import LoggingUtil
 from io import BytesIO
 from typing import Any
 from .storage_io import StorageIO
@@ -35,6 +36,9 @@ class AzureBlobIO(StorageIO):
         return "AzureBlob"
 
     def read(self, container_name: str, blob_path: str, **kwargs) -> BytesIO:
+        LoggingUtil().log_info(
+            f"Reading blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
+        )
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
@@ -45,6 +49,9 @@ class AzureBlobIO(StorageIO):
         return byte_stream
 
     def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
+        LoggingUtil().log_info(
+            f"Writing blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
+        )
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
