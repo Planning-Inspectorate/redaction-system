@@ -7,4 +7,3 @@ function_app_python_version = 3.13
 storage_containers = [
   "redactiondata"
 ]
-service_bus_premium_enabled = true
