@@ -18,7 +18,7 @@ parameters:
   default: 2
 - name: perfFixturePdf
   type: string
-  default: PINS_first_page_only.pdf
+  default: PINS_first_10_pages.pdf
 
 pr: none
 trigger: none
