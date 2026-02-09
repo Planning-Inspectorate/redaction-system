@@ -163,9 +163,6 @@ class RedactionManager:
         Write a log file locally and in Azure
         """
         log_bytes = LoggingUtil().get_log_bytes()
-        # Dump locally
-        with open("logs.txt", "wb") as f:
-            f.write(log_bytes)
         # Dump in Azure
         AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
