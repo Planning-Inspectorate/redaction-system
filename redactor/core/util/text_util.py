@@ -67,7 +67,7 @@ def normalise_text(text: str) -> str:
     :param str text: The text to normalise
     :return str: The normalised text
     """
-    return normalise_punctuation_unidecode(text).lower().strip(punctuation)
+    return normalise_punctuation_unidecode(text).lower().strip().strip(punctuation)
 
 
 def get_normalised_words(text: str) -> List[str]:
