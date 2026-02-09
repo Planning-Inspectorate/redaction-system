@@ -6,6 +6,7 @@ from logging import Logger, getLogger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
+import traceback
 
 
 @pytest.mark.nologgerfixt
@@ -94,6 +95,11 @@ def test_logging_util__log_info(mock_logger_info):
             call(f"some_guid: {info_message}"),
         ]
     )
+    assert (
+        "INFO: some_guid: Logging initialised for redactor_logs.\n"
+        in logging_util_inst.raw_logs
+    )
+    assert f"INFO: some_guid: {info_message}"
 
 
 @pytest.mark.nologgerfixt
@@ -105,7 +111,32 @@ def test_logging_util__log_exception(mock_logger_exception):
     error_message = Exception("some_exception_message")
     logging_util_inst.log_exception(error_message)
 
-    Logger.exception.assert_called_once_with(f"some_guid: {error_message}")
+    stack_trace = "".join(
+        traceback.TracebackException.from_exception(error_message).format()
+    )
+    base_message = f"some_guid: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+
+    Logger.exception.assert_called_once_with(base_message)
+    assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
+
+
+@pytest.mark.nologgerfixt
+@patch.object(Logger, "exception", return_value=None)
+def test_logging_util__log_exception_with_message(mock_logger_exception):
+    logging_util_inst = get_new_logging_instance()
+    logging_util_inst.logger = getLogger()
+
+    error_message = Exception("some_exception_message")
+    message = "some preceding message"
+    logging_util_inst.log_exception_with_message(message, error_message)
+
+    stack_trace = "".join(
+        traceback.TracebackException.from_exception(error_message).format()
+    )
+    base_message = f"some_guid: {message}: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+
+    Logger.exception.assert_called_once_with(base_message)
+    assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
 
 
 @pytest.mark.nologgerfixt
@@ -148,7 +179,7 @@ def test_log_to_appins__with_args(mock_init, mock_log_info):
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
-@patch.object(LoggingUtil, "log_exception", return_value=None)
+@patch.object(LoggingUtil, "log_exception_with_message", return_value=None)
 def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_exception):
     exception = Exception("Some exception")
 
@@ -166,8 +197,8 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
         f"Function my_function_with_exception called with args: "
         f"{', '.join(args_repr + kwargs_repr)}"
     )
-    LoggingUtil.log_exception.assert_called_once_with(
-        f"Exception raised in function my_function_with_exception: {exception}"
+    LoggingUtil.log_exception_with_message.assert_called_once_with(
+        "Exception raised in function my_function_with_exception:", exception
     )
 
 
