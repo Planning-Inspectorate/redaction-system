@@ -1,5 +1,5 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -52,7 +52,8 @@ class RedactionManager:
             raise RuntimeError(
                 "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
-        # Ensure the job id is set to the job id
+        self.runtime_errors: List[str] = []
+        # Ensure the logger's job id is set to the job id
         LoggingUtil(job_id=self.job_id)
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
@@ -174,18 +175,30 @@ class RedactionManager:
 
     def log_exception(self, exception: Exception):
         """
-        Store an exception log in the redaction storage account
+        Store an exception log
         """
         LoggingUtil().log_exception(exception)
         error_trace = "".join(
             traceback.TracebackException.from_exception(exception).format()
         )
-        AzureBlobIO(
+        self.runtime_errors.append(error_trace)
+
+    def save_exception_log(self):
+        """
+        Save any logged exceptions to the redaction storage account. If there are no exceptions, then nothing is written
+        Note: This should only be called once - overwrites are not permitted
+        """
+        if not self.runtime_errors:
+            return
+        blob_io = AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
-        ).write(
-            data_bytes=error_trace.encode("utf-8"),
+        )
+        text_encoding = "utf-8"
+        data_to_write = "\n\n\n".join(self.runtime_errors)
+        blob_io.write(
+            data_bytes=data_to_write.encode(text_encoding),
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/exception.txt",
+            blob_path=f"{self.job_id}/exceptions.txt",
         )
 
     def send_service_bus_completion_message(
@@ -249,6 +262,7 @@ class RedactionManager:
             self.log_exception(e)
             status = "FAIL"
             error_messages.append(f"Redaction process failed with the following error: {e}")
+        final_output = base_response | {"status": status, "message": message}
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
@@ -261,6 +275,13 @@ class RedactionManager:
         except Exception as e:
             self.log_exception(e)
             error_messages.append(f"Redaction process completed successfully, but failed to write logs with the following error: {e}")
+        try:
+            self.save_exception_log()
+        except Exception:
+            error_messages.append(
+                f"Redaction process completed successfully, but failed to write an exception log with the following error: {e}"
+            )
+        # Return any non-fatal errors to the caller
         if error_messages:
             message = "\n".join(error_messages)
         final_output = base_response | {"status": status, "message": message}
