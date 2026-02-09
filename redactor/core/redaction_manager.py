@@ -261,28 +261,32 @@ class RedactionManager:
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
-            error_messages.append(f"Redaction process failed with the following error: {e}")
+            error_messages.append(
+                f"Redaction process failed with the following error: {e}"
+            )
         final_output = base_response | {"status": status, "message": message}
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
             self.log_exception(e)
             error_messages.append(
-                f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+                f"Failed to submit a service bus message with the following error: {e}"
             )
         try:
             self.dump_logs()
         except Exception as e:
             self.log_exception(e)
-            error_messages.append(f"Redaction process completed successfully, but failed to write logs with the following error: {e}")
+            error_messages.append(
+                f"Failed to write logs with the following error: {e}"
+            )
         try:
             self.save_exception_log()
-        except Exception:
+        except Exception as e:
             error_messages.append(
-                f"Redaction process completed successfully, but failed to write an exception log with the following error: {e}"
+                f"Failed to write an exception log with the following error: {e}"
             )
         # Return any non-fatal errors to the caller
         if error_messages:
-            message = "\n".join(error_messages)
+            message = "Redaction process completed successfully, but had some non-fatal errors: " + "\n".join(error_messages)
         final_output = base_response | {"status": status, "message": message}
         return final_output

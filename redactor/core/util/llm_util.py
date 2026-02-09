@@ -180,7 +180,7 @@ class LLMUtil:
             return total_tokens
         except Exception as e:
             LoggingUtil().log_exception_with_message(
-                f"An error occurred while counting tokens:", e
+                "An error occurred while counting tokens:", e
             )
             return 0
 

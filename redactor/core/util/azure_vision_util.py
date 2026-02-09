@@ -15,7 +15,7 @@ from azure.identity import (
     AzureCliCredential,
 )
 
-from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.logging_util import log_to_appins
 
 
 load_dotenv(verbose=True)
