@@ -13,7 +13,13 @@ def mock_logging_util(request):
         with patch.object(LoggingUtil, "__init__", return_value=None):
             with patch.object(LoggingUtil, "log_info", return_value=None):
                 with patch.object(LoggingUtil, "log_exception", return_value=None):
-                    yield
+                    with patch.object(
+                        LoggingUtil, "log_exception_with_message", return_value=None
+                    ):
+                        with patch.object(
+                            LoggingUtil, "log_warning", return_value=None
+                        ):
+                            yield
 
 
 def pytest_configure():

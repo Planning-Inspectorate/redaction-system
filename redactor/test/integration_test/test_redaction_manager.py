@@ -167,6 +167,11 @@ class TestIntegrationRedactionManager(TestCase):
         blob_bytes = blob_client.download_blob().read()
         assert pdf_bytes == blob_bytes
         self.validate_service_bus_message_sent(guid)
+        log_container_client = blob_service_client.get_container_client("redactiondata")
+        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        assert log_blob_client.exists(), (
+            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )
 
     def test__redaction__manager__try_redact(self):
         """
@@ -235,6 +240,11 @@ class TestIntegrationRedactionManager(TestCase):
             "The uploaded PDF should have some of its content marked for redaction"
         )
         self.validate_service_bus_message_sent(guid)
+        log_container_client = blob_service_client.get_container_client("redactiondata")
+        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        assert log_blob_client.exists(), (
+            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )
 
     def test__redaction_manager__try_redact__failure(self):
         """
@@ -268,5 +278,11 @@ class TestIntegrationRedactionManager(TestCase):
         response = manager.try_redact(params)
         assert response["status"] == "FAIL"
         container_client = blob_service_client.get_container_client("redactiondata")
-        blob_client = container_client.get_blob_client(f"{guid}/exception.txt")
-        assert blob_client.exists()
+        exception_blob_client = container_client.get_blob_client(
+            f"{guid}/exceptions.txt"
+        )
+        assert exception_blob_client.exists()
+        log_blob_client = container_client.get_blob_client(f"{guid}/log.txt")
+        assert log_blob_client.exists(), (
+            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )

@@ -1,5 +1,5 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -14,6 +14,7 @@ import re
 import traceback
 from dotenv import load_dotenv
 import os
+import json
 
 
 load_dotenv(verbose=True, override=True)
@@ -51,7 +52,8 @@ class RedactionManager:
             raise RuntimeError(
                 "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
-        # Ensure the job id is set to the job id
+        self.runtime_errors: List[str] = []
+        # Ensure the logger's job id is set to the job id
         LoggingUtil(job_id=self.job_id)
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
@@ -71,6 +73,9 @@ class RedactionManager:
         """
         Perform a redaction using the supplied parameters
         """
+        LoggingUtil().log_info(
+            f"Starting the redaction process with params '{json.dumps(params, indent=4)}'"
+        )
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
@@ -92,6 +97,7 @@ class RedactionManager:
         )
 
         # Load the data
+        LoggingUtil().log_info("Reading the raw file to redact")
         read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
         file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
@@ -99,6 +105,7 @@ class RedactionManager:
         file_processor_class = FileProcessorFactory.get(file_kind)
 
         # Load redaction config
+        LoggingUtil().log_info(f"Loading the redaction config '{config_name}'")
         config = ConfigProcessor.load_config(config_name)
         # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
         # file_format = magic.from_buffer(file_data.read(), mime=True)
@@ -111,6 +118,7 @@ class RedactionManager:
         )
 
         # Store a copy of the raw data in redaction storage before processing begins
+        LoggingUtil().log_info("Saving a copy of the raw file to redact")
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
@@ -119,18 +127,24 @@ class RedactionManager:
 
         # Process the data
         if skip_redaction:
+            LoggingUtil().log_info(
+                "skip_redaction=True, so the redaction process is being skipped"
+            )
             # Allow the process to skip redaction and just return the read data
             # this should be used just for testing, as a way of quickly verifying the
             # end to end process for connectivity
             proposed_redaction_file_data = file_data
             proposed_redaction_file_data.seek(0)
         else:
+            LoggingUtil().log_info("Starting the redaction process")
             file_processor_inst = file_processor_class()
             proposed_redaction_file_data = file_processor_inst.redact(
                 file_data, config_cleaned
             )
+            LoggingUtil().log_info("Redaction process complete")
 
         # Store a copy of the proposed redactions in redaction storage
+        LoggingUtil().log_info("Saving a copy of the proposed redactions")
         redaction_storage_io_inst.write(
             proposed_redaction_file_data,
             container_name="redactiondata",
@@ -139,23 +153,52 @@ class RedactionManager:
         proposed_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
+        LoggingUtil().log_info(
+            "Sending a copy of the proposed redactions to the caller"
+        )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
 
+    def save_logs(self):
+        """
+        Write a log file locally and in Azure
+        """
+        log_bytes = LoggingUtil().get_log_bytes()
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=log_bytes,
+            container_name="redactiondata",
+            blob_path=f"{self.job_id}/log.txt",
+        )
+
     def log_exception(self, exception: Exception):
         """
-        Store an exception log in the redaction storage account
+        Store an exception log
         """
         LoggingUtil().log_exception(exception)
         error_trace = "".join(
             traceback.TracebackException.from_exception(exception).format()
         )
-        AzureBlobIO(
+        self.runtime_errors.append(error_trace)
+
+    def save_exception_log(self):
+        """
+        Save any logged exceptions to the redaction storage account. If there are no exceptions, then nothing is written
+        Note: This should only be called once - overwrites are not permitted
+        """
+        if not self.runtime_errors:
+            return
+        blob_io = AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
-        ).write(
-            data_bytes=error_trace.encode("utf-8"),
+        )
+        text_encoding = "utf-8"
+        data_to_write = "\n\n\n".join(self.runtime_errors)
+        blob_io.write(
+            data_bytes=data_to_write.encode(text_encoding),
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/exception.txt",
+            blob_path=f"{self.job_id}/exceptions.txt",
         )
 
     def send_service_bus_completion_message(
@@ -205,6 +248,8 @@ class RedactionManager:
         }
         ```
         """
+        fatal_error = None
+        non_fatal_errors = []
         base_response = {
             "parameters": params,
             "id": self.job_id,
@@ -218,10 +263,40 @@ class RedactionManager:
             self.log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
+            fatal_error = message
         final_output = base_response | {"status": status, "message": message}
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
             self.log_exception(e)
-            message = f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+            non_fatal_errors.append(
+                f"Failed to submit a service bus message with the following error: {e}"
+            )
+        try:
+            self.save_logs()
+        except Exception as e:
+            self.log_exception(e)
+            non_fatal_errors.append(
+                f"Failed to write logs with the following error: {e}"
+            )
+        try:
+            self.save_exception_log()
+        except Exception as e:
+            non_fatal_errors.append(
+                f"Failed to write an exception log with the following error: {e}"
+            )
+        # Return any non-fatal errors to the caller
+        if non_fatal_errors:
+            if fatal_error:
+                message = (
+                    message
+                    + "\nAdditionally, the following non-fatal errors occurred: "
+                    + "\n".join(non_fatal_errors)
+                )
+            else:
+                message = (
+                    "Redaction process completed successfully, but had some non-fatal errors: "
+                    + "\n".join(non_fatal_errors)
+                )
+        final_output = base_response | {"status": status, "message": message}
         return final_output

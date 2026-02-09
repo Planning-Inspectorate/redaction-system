@@ -13,6 +13,7 @@ from core.redaction.result import (
 )
 from core.util.llm_util import LLMUtil, handle_last_retry_error
 from core.util.logging_util import LoggingUtil
+from openai import RateLimitError
 
 
 class MockLLMChatCompletion:
@@ -35,6 +36,12 @@ class MockLLMChatCompletionUsage:
     def __init__(self, prompt_tokens, completion_tokens):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+
+
+class MockOpenAIAPIResponse:
+    request = None
+    status_code = None
+    headers = dict()
 
 
 TOKEN_RATE_LIMIT = 1000000
@@ -334,6 +341,8 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
 
     llm_util.request_semaphore.acquire.return_value = False
 
+    user_prompt = ""
+
     result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
 
     assert result is None  # Timeout occurred, so None is returned
@@ -344,8 +353,15 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     llm_util.token_semaphore.acquire.assert_not_called()
     llm_util.token_semaphore.release.assert_not_called()
 
-    LoggingUtil.log_exception.assert_called_with(
-        "Timeout while waiting for request semaphore to be available."
+    logging_util_calls = LoggingUtil.log_exception.call_args_list
+    logging_util_calls_as_string = [str(x) for x in logging_util_calls]
+    timeout_error = str(
+        TimeoutError(
+            f"(chunk id {hash(user_prompt)}) Timeout while waiting for request semaphore to be available."
+        )
+    )
+    assert any(timeout_error in x for x in logging_util_calls_as_string), (
+        f"Expected {timeout_error} to be called. Called list was {logging_util_calls}"
     )
 
 
@@ -360,15 +376,21 @@ def test__llm_util___analyse_text_chunk__exception(mock_invoke_chain):
 
     llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
 
-    result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+    with pytest.raises(Exception):
+        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+        LoggingUtil.log_exception.assert_called_with(
+            "An error occurred while processing the chunk: Some LLM invocation error"
+        )
 
-    assert result is None  # Exception occurred, so None is returned
-    LoggingUtil.log_exception.assert_called_with(
-        "An error occurred while processing the chunk: Some LLM invocation error"
-    )
 
-
-def test__llm_util___analyse_text_chunk__retry_on_exception():
+@pytest.mark.parametrize(
+    "exception",
+    [
+        RateLimitError("message", response=MockOpenAIAPIResponse(), body="body"),
+        TimeoutError("Some LLM invocation error"),
+    ],
+)
+def test__llm_util___analyse_text_chunk__retry_on_exception(exception):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
@@ -379,7 +401,7 @@ def test__llm_util___analyse_text_chunk__retry_on_exception():
         LLMUtil,
         "invoke_chain",
         side_effect=[
-            Exception("Some LLM invocation error"),
+            exception,
             create_mock_chat_completion(["string A", "string B"]),
         ],
     ):

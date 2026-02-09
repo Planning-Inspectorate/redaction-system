@@ -201,8 +201,21 @@ def test__redaction_manager__redact(
     )
 
 
-def check__log_exception__azure_blob_write__single_call(
-    job_id, expected_exception_message, exception
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__redaction_manager__log_exception(mock_init):
+    expected_exception_message = "An exception with a message"
+    inst = RedactionManager("job_id")
+    inst.job_id = "inst"
+    inst.env = "dev"
+    inst.runtime_errors = []
+    some_exception = Exception(expected_exception_message)
+    inst.log_exception(some_exception)
+    LoggingUtil.log_exception.assert_called_once_with(some_exception)
+    assert any(expected_exception_message in x for x in inst.runtime_errors)
+
+
+def check__save_exception_log__azure_blob_write__single_call(
+    job_id, expected_exception_message
 ):
     calls = AzureBlobIO.write.call_args_list
     assert len(calls) == 1, (
@@ -210,8 +223,8 @@ def check__log_exception__azure_blob_write__single_call(
     )
 
 
-def check__log_exception__azure_blob_write__data_bytes(
-    job_id, expected_exception_message, exception
+def check__save_exception_log__azure_blob_write__data_bytes(
+    job_id, expected_exception_message
 ):
     calls = AzureBlobIO.write.call_args_list
     if calls:
@@ -223,8 +236,8 @@ def check__log_exception__azure_blob_write__data_bytes(
         )
 
 
-def check__log_exception__azure_blob_write__container_name(
-    job_id, expected_exception_message, exception
+def check__save_exception_log__azure_blob_write__container_name(
+    job_id, expected_exception_message
 ):
     calls = AzureBlobIO.write.call_args_list
     if calls:
@@ -232,47 +245,59 @@ def check__log_exception__azure_blob_write__container_name(
         assert call[1].get("container_name", None) == "redactiondata"
 
 
-def check__log_exception__azure_blob_write__blob_path(
-    job_id, expected_exception_message, exception
+def check__save_exception_log__azure_blob_write__blob_path(
+    job_id, expected_exception_message
 ):
     calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
-        assert call[1].get("blob_path", None) == f"{job_id}/exception.txt"
-
-
-def check__log_exception__azure_blob_write__logging_util_called(
-    job_id, expected_exception_message, exception
-):
-    LoggingUtil.log_exception.assert_called_once_with(exception)
+        assert call[1].get("blob_path", None) == f"{job_id}/exceptions.txt"
 
 
 @pytest.mark.parametrize(
     "test_case",
     [
-        check__log_exception__azure_blob_write__single_call,
-        check__log_exception__azure_blob_write__data_bytes,
-        check__log_exception__azure_blob_write__container_name,
-        check__log_exception__azure_blob_write__blob_path,
-        check__log_exception__azure_blob_write__logging_util_called,
+        check__save_exception_log__azure_blob_write__single_call,
+        check__save_exception_log__azure_blob_write__data_bytes,
+        check__save_exception_log__azure_blob_write__container_name,
+        check__save_exception_log__azure_blob_write__blob_path,
     ],
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
-def test__redaction_manager__log_exception(
+def test__redaction_manager__save_exception_log(
     mock_blob_write,
     mock_blob_init,
     mock_init,
     test_case,
 ):
-    expected_exception_message = "An exception with a message"
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.env = "dev"
-    some_exception = Exception(expected_exception_message)
-    inst.log_exception(some_exception)
-    test_case(inst.job_id, expected_exception_message, some_exception)
+    inst.runtime_errors = ["some exception A", "some exception B"]
+    expected_exception_message = "\n\n\n".join(inst.runtime_errors)
+    inst.save_exception_log()
+    test_case(inst.job_id, expected_exception_message)
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
+def test__redaction_manager__save_exception_log__with_no_exception(
+    mock_blob_write,
+    mock_blob_init,
+    mock_init,
+):
+    inst = RedactionManager("job_id")
+    inst.job_id = "inst"
+    inst.env = "dev"
+    inst.runtime_errors = []
+    inst.save_exception_log()
+    calls = AzureBlobIO.write.call_args_list
+    assert len(calls) == 0, (
+        f"Expected AzureBlobIO.write to be not have been called, but was called {len(calls)} times"
+    )
 
 
 def check__try_redact__successful_output(
@@ -284,6 +309,8 @@ def check__try_redact__successful_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     expected_response = {
         "parameters": {"some_payload", ""},
@@ -303,6 +330,8 @@ def check__try_redact__failed_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     expected_response = {
         "parameters": {"some_payload", ""},
@@ -322,6 +351,8 @@ def check__try_redact__validate_json_payload__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     mock_validate_json.assert_called_once_with(params)
 
@@ -335,6 +366,8 @@ def check__try_redact__validate_json_payload__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     not mock_validate_json.called
 
@@ -348,6 +381,8 @@ def check__try_redact__redact__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     mock_redact.assert_called_once_with(params)
 
@@ -361,6 +396,8 @@ def check__try_redact__redact__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     not mock_redact.called
 
@@ -374,6 +411,8 @@ def check__try_redact__log_exception__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     mock_log_exception.assert_called_once_with(exception)
 
@@ -387,6 +426,8 @@ def check__try_redact__log_exception__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
 ):
     not mock_log_exception.called
 
@@ -400,6 +441,8 @@ def check__try_redact__log_exception__not_called(
         check__try_redact__log_exception__not_called,
     ],
 )
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
@@ -411,6 +454,8 @@ def test__try_redact__successful(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
     test_case,
 ):
     inst = RedactionManager("job_id")
@@ -427,6 +472,8 @@ def test__try_redact__successful(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
     )
 
 
@@ -439,6 +486,8 @@ def test__try_redact__successful(
         check__try_redact__log_exception__called,
     ],
 )
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
@@ -450,6 +499,8 @@ def test__try_redact__param_validation_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
     test_case,
 ):
     exception = Exception("Some exception")
@@ -468,6 +519,8 @@ def test__try_redact__param_validation_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
     )
 
 
@@ -480,6 +533,8 @@ def test__try_redact__param_validation_failure(
         check__try_redact__log_exception__called,
     ],
 )
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_json_payload")
@@ -491,6 +546,8 @@ def test__try_redact__redaction_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
     test_case,
 ):
     exception = Exception("Some exception")
@@ -509,6 +566,129 @@ def test__try_redact__redaction_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
+    )
+
+
+@mock.patch.object(
+    RedactionManager,
+    "save_exception_log",
+    side_effect=Exception("save_exception_log exception"),
+)
+@mock.patch.object(
+    RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
+)
+@mock.patch.object(
+    RedactionManager,
+    "send_service_bus_completion_message",
+    side_effect=Exception("send_service_bus_completion_message exception"),
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "redact")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_redact__success_with_non_fatal_error(
+    mock_log_exception,
+    mock_redact,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    """
+    - Given the redaction process is successful
+    - When there are non-fatal errors
+    - Then the redaction process should succeed with any non-fatal errors reported as a warning to the caller
+    """
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__try_redact__non_fatal_error"
+    inst.env = "dev"
+    params = {"some_payload", ""}
+    response = inst.try_redact(params)
+    expected_response = {
+        "parameters": params,
+        "id": inst.job_id,
+        "status": "SUCCESS",
+        "message": (
+            "Redaction process completed successfully, but had some non-fatal errors: "
+            "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
+            "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
+            "following error: save_exception_log exception"
+        ),
+    }
+    assert response == expected_response
+
+
+@mock.patch.object(
+    RedactionManager,
+    "save_exception_log",
+    side_effect=Exception("save_exception_log exception"),
+)
+@mock.patch.object(
+    RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
+)
+@mock.patch.object(
+    RedactionManager,
+    "send_service_bus_completion_message",
+    side_effect=Exception("send_service_bus_completion_message exception"),
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "redact")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_redact__fail_with_extra_non_fatal_error(
+    mock_log_exception,
+    mock_redact,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    """
+    - Given the redaction process is not successful
+    - When there are also non-fatal errors
+    - Then the redaction process should fail with all fatal and non-fatal errors reported to the caller
+    """
+    exception = Exception("Some exception")
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__try_redact__non_fatal_error"
+    inst.env = "dev"
+    mock_redact.side_effect = exception
+    params = {"some_payload", ""}
+    response = inst.try_redact(params)
+    expected_response = {
+        "parameters": params,
+        "id": inst.job_id,
+        "status": "FAIL",
+        "message": (
+            f"Redaction process failed with the following error: {exception}"
+            "\nAdditionally, the following non-fatal errors occurred: "
+            "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
+            "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
+            "following error: save_exception_log exception"
+        ),
+    }
+    assert response == expected_response
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
+@mock.patch.object(LoggingUtil, "get_log_bytes", return_value=b"xyz")
+def test__redaction_manager__save_logs(
+    mock_get_log_bytes, mock_blob_write, mock_blob_init, mock_init
+):
+    inst = RedactionManager()
+    inst.job_id = "test__redaction_manager__save_logs"
+    inst.env = "dev"
+    inst.save_logs()
+    AzureBlobIO.write.assert_called_once_with(
+        data_bytes=b"xyz",
+        container_name="redactiondata",
+        blob_path=f"{inst.job_id}/log.txt",
     )
 
 
