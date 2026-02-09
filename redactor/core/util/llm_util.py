@@ -208,7 +208,7 @@ class LLMUtil:
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
     # Only retry if there is a rate limit exception. All other errors are logged and skipped
     @retry(
-        retry=retry_if_exception_type((RateLimitError,)),
+        retry=retry_if_exception_type((RateLimitError, TimeoutError)),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
