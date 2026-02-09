@@ -235,6 +235,7 @@ class RedactionManager:
         }
         ```
         """
+        error_messages = []
         base_response = {
             "parameters": params,
             "id": self.job_id,
@@ -247,16 +248,20 @@ class RedactionManager:
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
-            message = f"Redaction process failed with the following error: {e}"
-        final_output = base_response | {"status": status, "message": message}
+            error_messages.append(f"Redaction process failed with the following error: {e}")
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
             self.log_exception(e)
-            message = f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+            error_messages.append(
+                f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+            )
         try:
             self.dump_logs()
         except Exception as e:
             self.log_exception(e)
-            message = f"Redaction process completed successfully, but failed to write logs with the following error: {e}"
+            error_messages.append(f"Redaction process completed successfully, but failed to write logs with the following error: {e}")
+        if error_messages:
+            message = "\n".join(error_messages)
+        final_output = base_response | {"status": status, "message": message}
         return final_output
