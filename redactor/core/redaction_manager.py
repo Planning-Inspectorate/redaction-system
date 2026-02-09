@@ -257,4 +257,9 @@ class RedactionManager:
         except Exception as e:
             self.log_exception(e)
             message = f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
+        try:
+            self.dump_logs()
+        except Exception as e:
+            self.log_exception(e)
+            message = f"Redaction process completed successfully, but failed to write logs with the following error: {e}"
         return final_output
