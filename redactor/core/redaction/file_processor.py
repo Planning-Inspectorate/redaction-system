@@ -113,12 +113,8 @@ class PDFPageMetadata(BaseModel):
     """The text content of the page"""
     lines: List[PDFLineMetadata]
     """The metadata for the text content of the page"""
-    text: str = None
+    text: str
     """The text content of the page"""
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        self.text = "\n".join(" ".join(line.words) for line in self.lines if line.words)
 
 
 class PDFTextMetadata(BaseModel):
@@ -130,6 +126,8 @@ class PDFProcessor(FileProcessor):
     """
     Class for managing the redaction of PDF documents
     """
+
+    pdf_text: PDFTextMetadata = None
 
     @classmethod
     def get_name(cls) -> str:
@@ -174,7 +172,9 @@ class PDFProcessor(FileProcessor):
         n_lines += 1
         self._update_line_info(lines, line_text, line_rects, n_lines)
 
-        return PDFPageMetadata(page_number=page.number, lines=lines)
+        return PDFPageMetadata(
+            page_number=page.number, lines=lines, text=page.get_text()
+        )
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
@@ -414,6 +414,8 @@ class PDFProcessor(FileProcessor):
         redactions applied
         """
         self.redaction_candidates: List[List[Tuple[pymupdf.Rect, str]]] = []
+        if not self.pdf_text:
+            self._extract_pdf_text(file_bytes)
 
         pdf = pymupdf.open(stream=file_bytes)
 
