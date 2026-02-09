@@ -32,6 +32,7 @@ from core.util.text_util import is_english_text, get_normalised_words
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
 from core.util.multiprocessing_util import get_max_workers
+import dataclasses
 
 
 class FileProcessor(ABC):
@@ -641,14 +642,16 @@ class PDFProcessor(FileProcessor):
         """
         # Extract text from PDF
         pdf_text = self._extract_pdf_text(file_bytes)
+        LoggingUtil().log_info(
+            f"The following text was extracted from the PDF: '{pdf_text}'"
+        )
         if pdf_text and not is_english_text(pdf_text):
-            LoggingUtil().log_exception(
+            exception = NonEnglishContentException(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
-            raise NonEnglishContentException
-
-        # Extract images from PDF
+            LoggingUtil().log_exception(exception)
+            raise exception
         pdf_images = self._extract_pdf_images(file_bytes)
 
         # Generate list of redaction rules from config
@@ -671,11 +674,17 @@ class PDFProcessor(FileProcessor):
         # Generate redactions
         # TODO convert back to a set
         redaction_results: List[RedactionResult] = []
-
         # Apply each redaction rule
+        LoggingUtil().log_info("Analysing PDF to identify redactions")
         for rule_to_apply in redaction_rules_to_apply:
-            redaction_results.append(rule_to_apply.redact())
-
+            LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
+            redaction_result = rule_to_apply.redact()
+            LoggingUtil().log_info(
+                f"The redactor {rule_to_apply} yielded the following result: "
+                f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+            )
+            redaction_results.append(redaction_result)
+        LoggingUtil().log_info("PDF analysis complete")
         # Separate out text and image redaction results
         text_redaction_results: List[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
@@ -705,7 +714,7 @@ class PDFProcessor(FileProcessor):
             ) as e:
                 LoggingUtil().log_exception(e)
                 raise e
-
+        LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions, n_workers=n_workers

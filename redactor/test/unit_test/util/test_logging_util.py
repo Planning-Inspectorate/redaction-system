@@ -102,7 +102,7 @@ def test_logging_util__log_exception(mock_logger_exception):
     logging_util_inst = get_new_logging_instance()
     logging_util_inst.logger = getLogger()
 
-    error_message = "some_exception_message"
+    error_message = Exception("some_exception_message")
     logging_util_inst.log_exception(error_message)
 
     Logger.exception.assert_called_once_with(f"some_guid: {error_message}")

@@ -14,6 +14,7 @@ import re
 import traceback
 from dotenv import load_dotenv
 import os
+import json
 
 
 load_dotenv(verbose=True, override=True)
@@ -71,6 +72,9 @@ class RedactionManager:
         """
         Perform a redaction using the supplied parameters
         """
+        LoggingUtil().log_info(
+            f"Starting the redaction process with params '{json.dumps(params, indent=4)}'"
+        )
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
@@ -92,6 +96,7 @@ class RedactionManager:
         )
 
         # Load the data
+        LoggingUtil().log_info("Reading the raw file to redact")
         read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
         file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
@@ -99,6 +104,7 @@ class RedactionManager:
         file_processor_class = FileProcessorFactory.get(file_kind)
 
         # Load redaction config
+        LoggingUtil().log_info(f"Loading the redaction config '{config_name}'")
         config = ConfigProcessor.load_config(config_name)
         # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
         # file_format = magic.from_buffer(file_data.read(), mime=True)
@@ -111,6 +117,7 @@ class RedactionManager:
         )
 
         # Store a copy of the raw data in redaction storage before processing begins
+        LoggingUtil().log_info("Saving a copy of the raw file to redact")
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
@@ -119,18 +126,24 @@ class RedactionManager:
 
         # Process the data
         if skip_redaction:
+            LoggingUtil().log_info(
+                "skip_redaction=True, so the redaction process is being skipped"
+            )
             # Allow the process to skip redaction and just return the read data
             # this should be used just for testing, as a way of quickly verifying the
             # end to end process for connectivity
             proposed_redaction_file_data = file_data
             proposed_redaction_file_data.seek(0)
         else:
+            LoggingUtil().log_info("Starting the redaction process")
             file_processor_inst = file_processor_class()
             proposed_redaction_file_data = file_processor_inst.redact(
                 file_data, config_cleaned
             )
+            LoggingUtil().log_info("Redaction process complete")
 
         # Store a copy of the proposed redactions in redaction storage
+        LoggingUtil().log_info("Saving a copy of the proposed redactions")
         redaction_storage_io_inst.write(
             proposed_redaction_file_data,
             container_name="redactiondata",
@@ -139,8 +152,28 @@ class RedactionManager:
         proposed_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
+        LoggingUtil().log_info(
+            "Sending a copy of the proposed redactions to the caller"
+        )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+
+    def dump_logs(self):
+        """
+        Write a log file locally and in Azure
+        """
+        log_bytes = LoggingUtil().get_log_bytes()
+        # Dump locally
+        with open("logs.txt", "wb") as f:
+            f.write(log_bytes)
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=log_bytes,
+            container_name="redactiondata",
+            blob_path=f"{self.job_id}/log.txt",
+        )
 
     def log_exception(self, exception: Exception):
         """
