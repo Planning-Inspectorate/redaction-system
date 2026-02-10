@@ -4,6 +4,7 @@ from azure.identity import (
     ChainedTokenCredential,
 )
 from azure.storage.blob import BlobServiceClient
+from azure.core.exceptions import ResourceExistsError
 from core.util.logging_util import LoggingUtil
 from io import BytesIO
 from typing import Any
@@ -58,4 +59,8 @@ class AzureBlobIO(StorageIO):
         blob_client = blob_service_client.get_blob_client(
             container=container_name, blob=blob_path
         )
-        blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
+        try:
+            blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
+        except ResourceExistsError:
+            # Improve the base Azure error, which does not include helpful info
+            raise ResourceExistsError(f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists")
