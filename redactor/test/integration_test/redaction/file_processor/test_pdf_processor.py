@@ -57,14 +57,17 @@ def test__pdf_processor__examine_provisional_text_redaction():
     ]
 
     pdf_processor = PDFProcessor()
-    pdf_processor._extract_pdf_text(document_bytes)
     pdf_processor.redaction_candidates = redaction_candidates
+    pdf = pymupdf.open(stream=document_bytes)
 
     instances_to_redact = []
     for i, (rect, term) in enumerate(redaction_candidates[0]):
         instances_to_redact.append(
             pdf_processor._examine_provisional_text_redaction(
-                pdf_processor.pdf_text.pages[0], term, rect
+                term,
+                rect,
+                pdf_processor._extract_page_text(pdf[0]),
+                pdf_processor._extract_page_text(pdf[1]),
             )
         )
 
@@ -148,11 +151,13 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
         ),
     ]
     pdf_processor = PDFProcessor()
-    pdf_processor._extract_pdf_text(document_bytes)
     pdf_processor.redaction_candidates = [redaction_candidates]
     pdf = pymupdf.open(stream=document_bytes)
+
     instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
-        pdf[0], redaction_candidates
+        pdf_processor._extract_page_text(pdf[0]),
+        pdf_processor._extract_page_text(pdf[1]),
+        redaction_candidates,
     )
     assert instances_to_redact == [
         (0, rect, term) for rect, term in redaction_candidates

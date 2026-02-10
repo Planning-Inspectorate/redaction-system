@@ -95,15 +95,15 @@ class PDFImageMetadata(BaseModel):
 class PDFLineMetadata(BaseModel):
     line_number: int
     """The line number on the page (0-indexed)"""
-    words: Tuple[str, ...]
+    words: Tuple[str, ...] = []
     """The words in the line"""
-    y0: float
+    y0: float = None
     """The y0 coordinate of the line's bounding box"""
-    y1: float
+    y1: float = None
     """The y1 coordinate of the line's bounding box"""
-    x0: Tuple[float, ...]
+    x0: Tuple[float, ...] = ()
     """The x0 coordinates of the words in the line"""
-    x1: Tuple[float, ...]
+    x1: Tuple[float, ...] = ()
     """The x1 coordinates of the words in the line"""
 
 
@@ -111,15 +111,8 @@ class PDFPageMetadata(BaseModel):
     page_number: int
     """The page the image belongs to (0-indexed)"""
     """The text content of the page"""
-    lines: List[PDFLineMetadata]
+    lines: List[PDFLineMetadata] = []
     """The metadata for the text content of the page"""
-    text: str = None
-    """The text content of the page"""
-
-
-class PDFTextMetadata(BaseModel):
-    pages: List[PDFPageMetadata]
-    """The metadata for the text content of the PDF, represented as a list of PDFPageMetadata objects"""
 
 
 class PDFProcessor(FileProcessor):
@@ -127,13 +120,14 @@ class PDFProcessor(FileProcessor):
     Class for managing the redaction of PDF documents
     """
 
-    pdf_text: PDFTextMetadata = None
-
     @classmethod
     def get_name(cls) -> str:
         return "pdf"
 
     def _update_line_info(self, lines, line_text, line_rects, line_no):
+        """
+        Helper function to update PDFLineMetadata for PDFPageMetadata
+        """
         line_y0 = min(rect[1] for rect in line_rects) if line_rects else 0
         line_y1 = max(rect[3] for rect in line_rects) if line_rects else 0
         lines.append(
@@ -147,7 +141,16 @@ class PDFProcessor(FileProcessor):
             )
         )
 
-    def _extract_page_text(self, page: pymupdf.Page) -> str:
+    def _extract_page_text(self, page: pymupdf.Page) -> PDFPageMetadata:
+        """
+        Extract text content and metadata from a PDF page.
+
+        :param pymupdf.Page page: The PDF page to extract text from
+
+        :return PDFPageMetadata: The metadata for the text content of the page,
+        including for each line the list of words and bounding box coordinates as
+        a PDFLineMetadata object.
+        """
         page_text = page.get_text("words", sort=True)
         lines = []
         current_line = 0
@@ -159,7 +162,7 @@ class PDFProcessor(FileProcessor):
         for word in page_text:
             x0, y0, x1, y1, word_text, block_no, line_no, _ = word
             if line_no != current_line or block_no != current_block:
-                if line_text:
+                if line_text:  # Don't add empty lines
                     n_lines += 1
                     self._update_line_info(lines, line_text, line_rects, n_lines)
                 line_text = []
@@ -174,9 +177,7 @@ class PDFProcessor(FileProcessor):
             n_lines += 1
             self._update_line_info(lines, line_text, line_rects, n_lines)
 
-        return PDFPageMetadata(
-            page_number=page.number, lines=lines, text=page.get_text().strip()
-        )
+        return PDFPageMetadata(page_number=page.number, lines=lines)
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
@@ -186,12 +187,11 @@ class PDFProcessor(FileProcessor):
         :return str: The text content of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        pages = [self._extract_page_text(page) for page in pdf]
-        self.pdf_text = PDFTextMetadata(pages=pages)
+        pages = [page.get_text().strip() for page in pdf]
 
-        if all(page.text == "" for page in pages):  # No text found on any page
+        if all(page == "" for page in pages):  # No text found on any page
             return None
-        return "\n".join(page.text for page in pages)
+        return "\n".join(page for page in pages)
 
     def _extract_pdf_images(self, file_bytes: BytesIO):
         """
@@ -250,7 +250,7 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _is_full_text_being_redacted(
         cls, term_to_redact: str, line_to_check: PDFLineMetadata
-    ) -> Tuple[bool, str]:
+    ) -> List[Tuple[str, int, int]]:
         """
         Check whether the text found at the given bounding box on the provided
         page is an exact match for the given redaction text candidate, i.e.,
@@ -258,11 +258,14 @@ class PDFProcessor(FileProcessor):
         by approximately half a character on each side, to identify partial matches.
 
         :param pymupdf.Page page: The page containing the text to redact
-        :param str term: The redaction text candidate
-        :param pymupdf.Rect rect: The redaction candidate's bounding box (on the page)
-        :return tuple(bool, str): Whether the text found at rect on the page is
-        an exact match for the given redaction text candidate (i.e., the text
-        should be redacted), and the actual text found at the expanded bounding box.
+        :param str term_to_redact: The redaction text candidate
+        :param PDFLineMetadata line_to_check: The line metadata to check
+        :return List[Tuple[str, int, int]]: A list of matches found. Each tuple
+        contains the text found, and the start and end index of the match in the line,
+        For single-word redaction candidates, this will be a list of all exact matches
+        found in the line. For multi-word redaction candidates, this will be a list of
+        potential matches for the first word in the term to redact, with the end index
+        set to -1 if there is no exact match for the full term.
         """
         # Find first word in line that matches the first word in the term to redact
         normalised_words_to_redact = get_normalised_words(term_to_redact)
@@ -280,14 +283,15 @@ class PDFProcessor(FileProcessor):
             return [
                 (line_to_check.words[index], index, index) for index in matching_indices
             ]
-        else:
+        else:  # Multi-word redaction
+            # Find matches for the first word
             matching_indices = [
                 i
                 for i, word in enumerate(line_to_check.words)
                 if word == normalised_words_to_redact[0]
             ]
 
-            # Check subsequent words to redact for the first matching index
+            # Check subsequent words to redact for each first matching index
             matches = []
             for index in matching_indices:
                 candidate_words = []
@@ -300,9 +304,11 @@ class PDFProcessor(FileProcessor):
                     if word == word_to_redact or (
                         word.endswith("'s") and word[:-2] == word_to_redact
                     ):
+                        # Potential match, move to next word
                         candidate_words.append(word)
                         end_index += 1
                     else:
+                        # No match found
                         end_index = -1
                         break
                 matches.append((" ".join(candidate_words), index, end_index - 1))
@@ -313,6 +319,16 @@ class PDFProcessor(FileProcessor):
     def _construct_pdf_rect(
         cls, line: PDFLineMetadata, start_index: int, end_index: int
     ) -> pymupdf.Rect:
+        """
+        Construct the bouding box for the words in the line between the start and
+        and indices.
+
+        :param PDFLineMetadata line: The line metadata containing the words to redact
+        :param int start_index: The index of the first word
+        :param int end_index: The index of the last word
+
+        :return pymupdf.Rect: The bounding box
+        """
         return pymupdf.Rect(
             line.x0[start_index],
             line.y0,
@@ -336,18 +352,24 @@ class PDFProcessor(FileProcessor):
         self,
         normalised_words_to_redact: List[str],
         partial_term_found: str,
-        page_metadata: PDFPageMetadata,
         line_checked: PDFLineMetadata,
-    ) -> bool:
+        page_metadata: PDFPageMetadata,
+        next_page_metadata: PDFPageMetadata = None,
+    ) -> Tuple[int, PDFLineMetadata, int]:
         """
         Check if the given term is partially redacted in the current rect, and
         the remaining part is in the next rect (i.e. redaction across line breaks)
 
-        :param str term: The redaction text candidate
-        :param str actual_text_at_rect: The actual text found at the current rect
-        :param pymupdf.Page next_page: The next page containing the next redaction instance
-        :param pymupdf.Rect next_rect: The next redaction candidate's bounding box (on the page)
-        :return bool: True if the full term is found across the two rects, else False
+        :param List[str] normalised_words_to_redact: The redaction text candidate
+        :param str partial_term_found: The text found on the current line
+        :param PDFLineMetadata line_checked: The line containing the partial redaction instance
+        :param PDFPageMetadata page_metadata: The page containing the partial redaction
+        instance
+        :param PDFPageMetadata next_page_metadata: The next page containing the next redaction instance
+
+        :return Tuple[int, PDFLineMetadata, int]: If a partial redaction across line
+        breaks is found, return a tuple containing the page number, line metadata,
+        and end index of the redaction instance on the next line. Otherwise, return None.
         """
         words_to_redact = normalised_words_to_redact.copy()
         term_to_redact = " ".join(words_to_redact)
@@ -368,19 +390,20 @@ class PDFProcessor(FileProcessor):
                 ),
                 None,
             )
+
             if not next_line:
                 #  Check the next page for remaining words to redact
-                next_page_number = page_metadata.page_number + 1
-                next_page_metadata = next(
-                    page
-                    for page in self.pdf_text.pages
-                    if page.page_number == next_page_number
-                )
-                next_line = next(
-                    line for line in next_page_metadata.lines if line.line_number == 0
-                )
+                if next_page_metadata:
+                    next_line = next(
+                        line
+                        for line in next_page_metadata.lines
+                        if line.line_number == 0
+                    )
+                    page_number = next_page_metadata.page_number
+                else:
+                    return None
             else:
-                next_page_metadata = page_metadata
+                page_number = page_metadata.page_number
 
             if next_line:
                 end_index = 0
@@ -398,8 +421,24 @@ class PDFProcessor(FileProcessor):
                     LoggingUtil().log_info(
                         f"Partial redaction found across line break for term '{term_to_redact}'."
                     )
-                    return next_page_metadata, next_line, end_index - 1
+                    return page_number, next_line, end_index - 1
         return None
+
+    def _get_next_page_metadata(self, pdf, page_number):
+        """
+        Helper function to get the metadata for the next page if it exists
+
+        :param pdf: The PDF document
+        :param page_number: The current page number
+
+        :return PDFPageMetadata: The metadata for the next page, or None if there
+        is no next page
+        """
+        return (
+            self._extract_page_text(pdf[page_number + 1])
+            if page_number + 1 < len(pdf)
+            else None
+        )
 
     @log_to_appins
     def _apply_provisional_text_redactions(
@@ -416,9 +455,6 @@ class PDFProcessor(FileProcessor):
         redactions applied
         """
         self.redaction_candidates: List[List[Tuple[pymupdf.Rect, str]]] = []
-        if not self.pdf_text:
-            self._extract_pdf_text(file_bytes)
-
         pdf = pymupdf.open(stream=file_bytes)
 
         # Find location of each redaction candidate by page
@@ -448,10 +484,18 @@ class PDFProcessor(FileProcessor):
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
         redaction_instances = []
-        for page in pdf:
+        for i, page in enumerate(pdf):
+            if i == 0:
+                page_metadata = self._extract_page_text(page)
+                next_page_metadata = self._get_next_page_metadata(pdf, page.number)
+            else:
+                page_metadata = next_page_metadata
+                next_page_metadata = self._get_next_page_metadata(pdf, page.number)
             redaction_instances.extend(
                 self._examine_provisional_redactions_on_page(
-                    page, self.redaction_candidates[page.number]
+                    page_metadata,
+                    next_page_metadata,
+                    self.redaction_candidates[page.number],
                 )
             )
 
@@ -475,13 +519,18 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins
     def _examine_provisional_redactions_on_page(
-        self, page: pymupdf.Page, candidates_on_page: List[Tuple[pymupdf.Rect, str]]
+        self,
+        page_metadata: PDFPageMetadata,
+        next_page_metadata: PDFPageMetadata,
+        candidates_on_page: List[Tuple[pymupdf.Rect, str]],
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
         valid redactions (i.e. full matches or partial matches across line breaks).
 
-        :param pymupdf.Page page: The page to examine
+        :param PDFPageMetadata page_metadata: The metadata of the page to examine
+        :param PDFPageMetadata next_page_metadata: The metadata of the next page to
+        examine, in case of a line break on the next page
         :param int candidates_on_page: The list of provisional redaction candidates
         on the page
         :return List[Tuple[PDFPageMetadata, pymupdf.Rect, str]]: The list of valid
@@ -490,19 +539,13 @@ class PDFProcessor(FileProcessor):
         the bounding box to redact, and the full term being redacted.
         """
         redaction_instances = []
-        page_number = page.number
-        candidates_on_page = self.redaction_candidates[page_number]
-        page_metadata = next(
-            page for page in self.pdf_text.pages if page.page_number == page_number
-        )
-
         for rect, term_to_redact in candidates_on_page:
             LoggingUtil().log_info(
                 f"    Examining redaction candidate for term '{term_to_redact}'"
             )
             redaction_instances.extend(
                 self._examine_provisional_text_redaction(
-                    page_metadata, term_to_redact, rect
+                    term_to_redact, rect, page_metadata, next_page_metadata
                 )
             )
         return redaction_instances
@@ -510,19 +553,21 @@ class PDFProcessor(FileProcessor):
     @log_to_appins
     def _examine_provisional_text_redaction(
         self,
-        page_metadata: PDFPageMetadata,
         term_to_redact: str,
         rect: pymupdf.Rect,
+        page_metadata: PDFPageMetadata,
+        next_page_metadata: PDFPageMetadata,
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidate is valid, i.e., a full
         match or a partial match across line breaks.
 
-        :param pymupdf.Page page: The page where the redaction candidate is found
         :param str term: The redaction text candidate
         :param pymupdf.Rect rect: The bounding box of the redaction candidate
-        :param int i: The index of the redaction candidate in the list of candidates
-        on the page
+        :param PDFPageMetadata page_metadata: The metadata of the page where the
+        redaction candidate is found
+        :param PDFPageMetadata next_page_metadata: The metadata of the next page
+        to examine, in case of a line break on the next page
 
         :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid redaction
         candidates to apply. Each tuple contains the page number, the bounding box
@@ -592,11 +637,12 @@ class PDFProcessor(FileProcessor):
                     result = self._check_partial_redaction_across_line_breaks(
                         words_to_redact,
                         term_found,
-                        page_metadata,
                         line_to_check,
+                        page_metadata,
+                        next_page_metadata,
                     )
                     if result:
-                        next_page_metadata, next_line, next_line_end_index = result
+                        next_page_number, next_line, next_line_end_index = result
                         # Remaining part of the term to redact
                         redaction_instances.extend(
                             [
@@ -610,7 +656,7 @@ class PDFProcessor(FileProcessor):
                                     term_to_redact,
                                 ),
                                 (
-                                    next_page_metadata.page_number,
+                                    next_page_number,
                                     self._construct_pdf_rect(
                                         next_line, 0, next_line_end_index
                                     ),
