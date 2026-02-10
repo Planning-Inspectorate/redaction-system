@@ -63,4 +63,6 @@ class AzureBlobIO(StorageIO):
             blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
         except ResourceExistsError:
             # Improve the base Azure error, which does not include helpful info
-            raise ResourceExistsError(f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists")
+            raise ResourceExistsError(
+                f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists"
+            )

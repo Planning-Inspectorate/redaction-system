@@ -160,7 +160,9 @@ class PDFProcessor(FileProcessor):
                         transform.f,
                     ),
                 )
-                LoggingUtil().log_info(f"Loaded image with the following metadata {image_metadata}")
+                LoggingUtil().log_info(
+                    f"Loaded image with the following metadata {image_metadata}"
+                )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 
@@ -242,7 +244,9 @@ class PDFProcessor(FileProcessor):
             # If the rect is invalid, then normalise it
             initial_rect = str(rect)
             rect = rect.normalize()
-            LoggingUtil().log_info(f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}")
+            LoggingUtil().log_info(
+                f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
+            )
         highlight_annotation = page.add_highlight_annot(rect)
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
@@ -382,7 +386,7 @@ class PDFProcessor(FileProcessor):
                         except Exception as e:
                             LoggingUtil().log_exception_with_message(
                                 f"Failed to apply highlight for rect {rect} on page {page.number} with dimensions {page.rect}",
-                                e
+                                e,
                             )
                 except Exception as e:
                     LoggingUtil().log_exception(
@@ -599,11 +603,13 @@ class PDFProcessor(FileProcessor):
                         )
                         try:
                             self._add_provisional_redaction(page, rect_in_global_space)
-                            LoggingUtil().log_info(f"Applied image redaction highlight for rect {rect_in_global_space} on page {page.number}")
+                            LoggingUtil().log_info(
+                                f"Applied image redaction highlight for rect {rect_in_global_space} on page {page.number}"
+                            )
                         except Exception as e:
                             LoggingUtil().log_exception_with_message(
                                 f"Failed to apply image redaction highlight for rect {rect_in_global_space} on page {page.number} with dimensions {page.rect}",
-                                e
+                                e,
                             )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
