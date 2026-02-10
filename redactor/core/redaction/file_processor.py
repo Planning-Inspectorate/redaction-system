@@ -124,21 +124,19 @@ class PDFProcessor(FileProcessor):
     def get_name(cls) -> str:
         return "pdf"
 
-    def _update_line_info(self, lines, line_text, line_rects, line_no):
+    def _create_line_metadata(self, line_text, line_rects, line_no):
         """
-        Helper function to update PDFLineMetadata for PDFPageMetadata
+        Helper function to create PDFLineMetadata for PDFPageMetadata
         """
         line_y0 = min(rect[1] for rect in line_rects) if line_rects else 0
         line_y1 = max(rect[3] for rect in line_rects) if line_rects else 0
-        lines.append(
-            PDFLineMetadata(
-                line_number=line_no,
-                words=tuple(normalise_text(word) for word in line_text),
-                y0=line_y0,
-                y1=line_y1,
-                x0=tuple(rect[0] for rect in line_rects),
-                x1=tuple(rect[2] for rect in line_rects),
-            )
+        return PDFLineMetadata(
+            line_number=line_no,
+            words=tuple(normalise_text(word) for word in line_text),
+            y0=line_y0,
+            y1=line_y1,
+            x0=tuple(rect[0] for rect in line_rects),
+            x1=tuple(rect[2] for rect in line_rects),
         )
 
     def _extract_page_text(self, page: pymupdf.Page) -> PDFPageMetadata:
@@ -163,8 +161,10 @@ class PDFProcessor(FileProcessor):
             x0, y0, x1, y1, word_text, block_no, line_no, _ = word
             if line_no != current_line or block_no != current_block:
                 if line_text:  # Don't add empty lines
+                    lines.append(
+                        self._create_line_metadata(line_text, line_rects, n_lines)
+                    )
                     n_lines += 1
-                    self._update_line_info(lines, line_text, line_rects, n_lines)
                 line_text = []
                 line_rects = []
                 current_line = line_no
@@ -174,8 +174,7 @@ class PDFProcessor(FileProcessor):
             line_rects.append((x0, y0, x1, y1))
 
         if line_text:
-            n_lines += 1
-            self._update_line_info(lines, line_text, line_rects, n_lines)
+            lines.append(self._create_line_metadata(line_text, line_rects, n_lines))
 
         return PDFPageMetadata(page_number=page.number, lines=lines)
 
@@ -493,9 +492,9 @@ class PDFProcessor(FileProcessor):
                 next_page_metadata = self._get_next_page_metadata(pdf, page.number)
             redaction_instances.extend(
                 self._examine_provisional_redactions_on_page(
+                    self.redaction_candidates[page.number],
                     page_metadata,
                     next_page_metadata,
-                    self.redaction_candidates[page.number],
                 )
             )
 
@@ -520,9 +519,9 @@ class PDFProcessor(FileProcessor):
     @log_to_appins
     def _examine_provisional_redactions_on_page(
         self,
-        page_metadata: PDFPageMetadata,
-        next_page_metadata: PDFPageMetadata,
         candidates_on_page: List[Tuple[pymupdf.Rect, str]],
+        page_metadata: PDFPageMetadata,
+        next_page_metadata: PDFPageMetadata = None,
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
@@ -556,7 +555,7 @@ class PDFProcessor(FileProcessor):
         term_to_redact: str,
         rect: pymupdf.Rect,
         page_metadata: PDFPageMetadata,
-        next_page_metadata: PDFPageMetadata,
+        next_page_metadata: PDFPageMetadata = None,
     ) -> List[Tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidate is valid, i.e., a full

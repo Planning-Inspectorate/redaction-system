@@ -67,7 +67,6 @@ def test__pdf_processor__examine_provisional_text_redaction():
                 term,
                 rect,
                 pdf_processor._extract_page_text(pdf[0]),
-                pdf_processor._extract_page_text(pdf[1]),
             )
         )
 
@@ -155,9 +154,8 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
     pdf = pymupdf.open(stream=document_bytes)
 
     instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
-        pdf_processor._extract_page_text(pdf[0]),
-        pdf_processor._extract_page_text(pdf[1]),
         redaction_candidates,
+        pdf_processor._extract_page_text(pdf[0]),
     )
     assert instances_to_redact == [
         (0, rect, term) for rect, term in redaction_candidates
