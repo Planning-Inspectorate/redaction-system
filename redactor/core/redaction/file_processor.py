@@ -160,6 +160,7 @@ class PDFProcessor(FileProcessor):
                         transform.f,
                     ),
                 )
+                LoggingUtil().log_info(f"Loaded image with the following metadata {image_metadata}")
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 
@@ -237,6 +238,11 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
+        if rect.is_empty:
+            # If the rect is invalid, then normalise it
+            initial_rect = str(rect)
+            rect = rect.normalize()
+            LoggingUtil().log_info(f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}")
         highlight_annotation = page.add_highlight_annot(rect)
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
@@ -367,11 +373,17 @@ class PDFProcessor(FileProcessor):
                     for redaction_inst in instances_to_redact_on_page:
                         page_number, rect, term = redaction_inst
                         page = pdf[page_number]
-                        self._add_provisional_redaction(page, rect)
-                        LoggingUtil().log_info(
-                            f"    Applying highlight for term '{term}' at location"
-                            f" '{rect}' on page {page.number}."
-                        )
+                        try:
+                            self._add_provisional_redaction(page, rect)
+                            LoggingUtil().log_info(
+                                f"Applied text redaction highlight for term '{term}' at location"
+                                f" '{rect}' on page {page.number}."
+                            )
+                        except Exception as e:
+                            LoggingUtil().log_exception_with_message(
+                                f"Failed to apply highlight for rect {rect} on page {page.number} with dimensions {page.rect}",
+                                e
+                            )
                 except Exception as e:
                     LoggingUtil().log_exception(
                         f"An error occurred while examining provisional text"
@@ -580,7 +592,19 @@ class PDFProcessor(FileProcessor):
                                 pymupdf.Matrix(image_transform),
                             )
                         )
-                        self._add_provisional_redaction(page, rect_in_global_space)
+                        LoggingUtil().log_info(
+                            f"Transformed the rect {untransformed_bounding_box} in image-space "
+                            f"for an image with dimensions {(pdf_image.width, pdf_image.height)} "
+                            f"to the new rect {rect_in_global_space} in page-space, using the transform {image_transform}"
+                        )
+                        try:
+                            self._add_provisional_redaction(page, rect_in_global_space)
+                            LoggingUtil().log_info(f"Applied image redaction highlight for rect {rect_in_global_space} on page {page.number}")
+                        except Exception as e:
+                            LoggingUtil().log_exception_with_message(
+                                f"Failed to apply image redaction highlight for rect {rect_in_global_space} on page {page.number} with dimensions {page.rect}",
+                                e
+                            )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)

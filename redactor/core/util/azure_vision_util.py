@@ -46,7 +46,7 @@ class AzureVisionUtil:
 
         :param Image.Image image: The image to analyse
         :param  floatconfidence_threshold: Confidence threshold between 0 and 1
-        :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, box width, box height), for boxes
+        :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
         try:
@@ -78,8 +78,8 @@ class AzureVisionUtil:
                     "box": (
                         person.bounding_box.x,
                         person.bounding_box.y,
-                        person.bounding_box.width,
-                        person.bounding_box.height,
+                        person.bounding_box.x + person.bounding_box.width,
+                        person.bounding_box.y + person.bounding_box.height,
                     ),
                     "confidence": person.confidence,
                 }
