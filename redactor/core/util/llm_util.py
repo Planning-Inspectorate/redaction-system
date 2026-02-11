@@ -12,8 +12,8 @@ from azure.identity import (
     AzureCliCredential,
 )
 from langchain_core.prompts import PromptTemplate
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import AzureOpenAI, RateLimitError
+from concurrent.futures import ThreadPoolExecutor
+from openai import AsyncAzureOpenAI, RateLimitError
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 from threading import Semaphore
@@ -26,6 +26,7 @@ from core.redaction.result import (
 from core.util.logging_util import log_to_appins, LoggingUtil
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 import json
+import trio
 
 
 load_dotenv(verbose=True)
@@ -84,7 +85,7 @@ class LLMUtil:
         LoggingUtil().log_info(
             f"Establishing connection to the LLM at {self.azure_endpoint}"
         )
-        self.llm = AzureOpenAI(
+        self.llm = AsyncAzureOpenAI(
             azure_endpoint=self.azure_endpoint,
             api_version="2024-12-01-preview",
             azure_ad_token=self.token,
@@ -194,8 +195,8 @@ class LLMUtil:
             {"role": "user", "content": user_prompt},
         ]
 
-    def invoke_chain(self, api_messages: str, response_format: BaseModel):
-        response = self.llm.chat.completions.parse(
+    async def invoke_chain(self, api_messages: str, response_format: BaseModel):
+        response = await self.llm.chat.completions.parse(
             model=self.config.model,
             messages=api_messages,
             temperature=self.config.temperature,
@@ -203,6 +204,13 @@ class LLMUtil:
             response_format=response_format,
         )
         return response
+
+    async def _analyse_text_chunks(self, system_prompt: str, text_chunks: List[str]):
+        tasks = [self._analyse_text_chunk(system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)) for chunk in text_chunks]
+        return [
+            await x
+            for x in tasks
+        ]
 
     @log_to_appins
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
@@ -214,7 +222,7 @@ class LLMUtil:
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
     )
-    def _analyse_text_chunk(
+    async def _analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
@@ -251,7 +259,7 @@ class LLMUtil:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
-                response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
+                response = await self.invoke_chain(api_messages, LLMRedactionResultFormat)
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
                 )
@@ -310,8 +318,6 @@ class LLMUtil:
 
         # Initialise LLM interface
         request_counter = 0
-        text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
@@ -325,40 +331,18 @@ class LLMUtil:
             f"Starting text analysis with {self.config.max_concurrent_requests} "
             "workers."
         )
-        with ThreadPoolExecutor(
-            max_workers=self.config.max_concurrent_requests
-        ) as executor:
-            # Submit tasks to the executor
-            future_to_chunk = {
-                executor.submit(
-                    self._analyse_text_chunk,
-                    system_prompt,
-                    self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
-                ): chunk
-                for chunk in text_chunks
-            }
-            for future in as_completed(future_to_chunk):
-                chunk = future_to_chunk[future]
-                request_counter += 1
-
-                try:
-                    # Get redaction result for chunk and append to overall results
-                    response, redaction_strings = future.result()
-                    responses.append(response)
-                    text_to_redact.extend(redaction_strings)
-                except Exception as e:
-                    LoggingUtil().log_exception_with_message(
-                        f"Function call with chunk id ({hash(chunk)}) generated an exception:",
-                        e,
-                    )
-
-                # Check budget after each request
-                if self.config.budget and self.total_cost >= self.config.budget:
-                    LoggingUtil().log_info(
-                        f"Budget of £{self.config.budget:.2f} exceeded with total cost "
-                        f"£{self.total_cost:.2f}. Stopping further requests."
-                    )
-                    break
+        def inner_wrapper():
+            return trio.run(
+                self._analyse_text_chunks, system_prompt, text_chunks
+            )
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            response = executor.submit(inner_wrapper)
+            results = response.result()
+        text_to_redact = [
+            y
+            for x in results
+            for y in x[1]
+        ]
 
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
