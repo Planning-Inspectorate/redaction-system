@@ -17,7 +17,21 @@ def test__config_processor__process_config():
     llm_text_redaction_attributes = {
         "model": "gpt-4.1",
         "system_prompt": "You are a thorough assistant that extracts all of the requested terms from a given text.",
-        "redaction_terms": ["People's names. List each part of the name separately."],
+        "redaction_terms": [
+            "People's names",
+            "Personal addresses and postcodes",
+            "Personal email addresses, unless its a Planning Inspectorate email",
+            "Telephone numbers, unless its a Planning Inspectorate customer service team telephone number",
+            "National Insurance Numbers, e.g. AB 12 34 56 C",
+            "Hyperlinks, except those that are .gov.uk, .org, .gov.wales",
+            "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text.",
+            "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership",
+            "Criminal offence data, e.g. allegations, investigations, proceedings, penalties",
+            "Any defamatory (libellous) or inflammatory information",
+            "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares",
+            "Dates of birth, and ages of people",
+            "The location of any of the following: badger sett, bat maternity roost, bird nest",
+        ],
         "constraints": [
             "Do not include locations or organisations",
             "Do not include names of anything which is not a person",
