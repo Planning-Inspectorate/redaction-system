@@ -45,6 +45,7 @@ class RedactJsonPayloadStructure(JsonPayloadStructure):
     """
     Validator for the payload for the web request for performing AI analysis in the redaction process
     """
+
     tryApplyProvisionalRedactions: Optional[bool] = True
     skipRedaction: Optional[bool] = False
     configName: Optional[str] = "default"
@@ -54,6 +55,7 @@ class ApplyJsonPayloadStructure(JsonPayloadStructure):
     """
     Validator for the payload for the web request for applying redactions in the redaction process
     """
+
     pass
 
 
@@ -175,7 +177,7 @@ class RedactionManager:
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
-    
+
     def apply(self, params: Dict[str, Any]):
         """
         Apply any redactions to a file that has already been analysed

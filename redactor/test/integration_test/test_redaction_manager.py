@@ -310,7 +310,9 @@ class TestIntegrationRedactionManager(TestCase):
         )
         container_client = blob_service_client.get_container_client("test")
         with open(
-            os.path.join("test", "resources", "pdf", "test__pdf_processor__proposed.pdf"),
+            os.path.join(
+                "test", "resources", "pdf", "test__pdf_processor__proposed.pdf"
+            ),
             "rb",
         ) as f:
             pdf_bytes = f.read()

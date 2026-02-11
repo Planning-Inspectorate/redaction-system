@@ -18,7 +18,7 @@ from core.redaction.exceptions import (
     FileProcessorNameNotFoundException,
     UnprocessedRedactionResultException,
     NonEnglishContentException,
-    NothingToRedactException
+    NothingToRedactException,
 )
 from core.redaction.config import RedactionConfig
 from core.redaction.result import (
@@ -923,7 +923,9 @@ class PDFProcessor(FileProcessor):
             raise NothingToRedactException(
                 "No annotations were found in the PDF - please confirm that this is correct"
             )
-        pdf.scrub(True, True, True, True, True, True, True, 1, True, True, True, True, True)
+        pdf.scrub(
+            True, True, True, True, True, True, True, 1, True, True, True, True, True
+        )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)

@@ -81,9 +81,7 @@ def redact_task(params: Dict[str, Any]):
 # An HTTP-triggered function with a Durable Functions client binding
 @app.route(route="apply", methods=["POST"])
 @app.durable_client_input(client_name="client")
-async def trigger_apply(
-    req: func.HttpRequest, client: df.DurableOrchestrationClient
-):
+async def trigger_apply(req: func.HttpRequest, client: df.DurableOrchestrationClient):
     """
     This function is called via HTTP post and triggers the redaction application process.
     This asynchronously triggers the process, and returns a response object containing callback info
@@ -101,9 +99,7 @@ async def trigger_apply(
         )
     logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
     logging.info("request params: %s", request_params)
-    run_id = await client.start_new(
-        "apply_orchestrator", client_input=request_params
-    )
+    run_id = await client.start_new("apply_orchestrator", client_input=request_params)
     response = client.create_check_status_response(req, run_id)
     respose_body = json.loads(response.get_body().decode("utf-8"))
     # Return a response with a simplified body
