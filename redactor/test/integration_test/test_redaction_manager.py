@@ -36,6 +36,10 @@ class TestIntegrationRedactionManager(TestCase):
             callback_container_client,
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
         )
+        self.try_delete_blob(
+            callback_container_client,
+            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
+        )
 
     def session_teardown(self):
         storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
@@ -56,6 +60,10 @@ class TestIntegrationRedactionManager(TestCase):
         )
         self.try_delete_blob(
             callback_container_client,
+            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
+        )
+        self.try_delete_blob(
+            callback_container_client,
             f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
         )
         self.try_delete_blob(
@@ -65,6 +73,10 @@ class TestIntegrationRedactionManager(TestCase):
         self.try_delete_blob(
             callback_container_client,
             f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
+        )
+        self.try_delete_blob(
+            callback_container_client,
+            f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
         )
         try:
             ServiceBusUtil().receive_service_bus_complete_messages()
@@ -286,3 +298,63 @@ class TestIntegrationRedactionManager(TestCase):
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
+
+    def test__redaction_manager__try_apply(self):
+        # Upload test data to Azure
+        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
+        blob_service_client = BlobServiceClient(
+            storage_endpoint,
+            credential=ChainedTokenCredential(
+                ManagedIdentityCredential(), AzureCliCredential()
+            ),
+        )
+        container_client = blob_service_client.get_container_client("test")
+        with open(
+            os.path.join("test", "resources", "pdf", "test__pdf_processor__proposed.pdf"),
+            "rb",
+        ) as f:
+            pdf_bytes = f.read()
+        container_client.upload_blob(
+            f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
+            pdf_bytes,
+            overwrite=True,
+        )
+        # Run test
+        guid = f"{RUN_ID}-trmta"
+        manager = RedactionManager(guid)
+        params = {
+            "pinsService": "REDACTION_SYSTEM",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+        }
+        response = manager.try_apply(params)
+        assert response["status"] == "SUCCESS", (
+            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+        )
+        blob_client = container_client.get_blob_client(
+            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
+        )
+        assert blob_client.exists()
+        blob_bytes = blob_client.download_blob().read()
+        redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
+        assert not redacted_pdf_highlights, (
+            f"There should be no remaining highlights in the PDF after redacting, but there were {len(redacted_pdf_highlights)}"
+        )
+        self.validate_service_bus_message_sent(guid)

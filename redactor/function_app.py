@@ -78,6 +78,69 @@ def redact_task(params: Dict[str, Any]):
     return RedactionManager(job_id).try_redact(params)
 
 
+# An HTTP-triggered function with a Durable Functions client binding
+@app.route(route="apply", methods=["POST"])
+@app.durable_client_input(client_name="client")
+async def trigger_apply(
+    req: func.HttpRequest, client: df.DurableOrchestrationClient
+):
+    """
+    This function is called via HTTP post and triggers the redaction application process.
+    This asynchronously triggers the process, and returns a response object containing callback info
+    for the caller to check the status via the `statusQueryGetUri` property of the json response
+    """
+    try:
+        request_params = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps(
+                {
+                    "error": "The json payload is missing from the request - unable to trigger the redaction process"
+                }
+            )
+        )
+    logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
+    logging.info("request params: %s", request_params)
+    run_id = await client.start_new(
+        "apply_orchestrator", client_input=request_params
+    )
+    response = client.create_check_status_response(req, run_id)
+    respose_body = json.loads(response.get_body().decode("utf-8"))
+    # Return a response with a simplified body
+    return func.HttpResponse(
+        json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
+        status_code=response.status_code,
+        headers=response.headers,
+        mimetype="application/json",
+        charset=response.charset,
+    )
+
+
+# Orchestrator
+@app.orchestration_trigger(context_name="context")
+def apply_orchestrator(context: df.DurableOrchestrationContext):
+    """
+    Orchestrator of the redaction application process
+    """
+    input_params = context.get_input() | {"job_id": context.instance_id}
+    result = yield context.call_activity("apply_task", input_params)
+    return result
+
+
+# Activity
+@app.activity_trigger(input_name="params")
+def apply_task(params: Dict[str, Any]):
+    """
+    Task which completes the redaction application process
+    """
+    # Import inside this function so that the function app has a chance to start
+    # Exceptions will instead be raised when this function is trigger
+    from core.redaction_manager import RedactionManager  # noqa: F402
+
+    job_id = params.pop("job_id")
+    return RedactionManager(job_id).try_apply(params)
+
+
 # Functions just for smoke testing connections
 @app.route(route="testllm", methods=["GET"])
 @app.durable_client_input(client_name="client")

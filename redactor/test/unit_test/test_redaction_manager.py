@@ -50,7 +50,7 @@ def test__redaction_manager__convert_kwargs_for_io(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__redaction_manager__validate_json_payload__valid(mock_init):
+def test__redaction_manager__validate_redact_json_payload__valid(mock_init):
     payload = {
         "tryApplyProvisionalRedactions": True,
         "skipRedaction": True,
@@ -79,7 +79,7 @@ def test__redaction_manager__validate_json_payload__valid(mock_init):
     inst.env = "dev"
     raised_exception = None
     try:
-        inst.validate_json_payload(payload)
+        inst.validate_redact_json_payload(payload)
     except Exception as e:
         raised_exception = e
     assert not raised_exception, (
@@ -88,12 +88,12 @@ def test__redaction_manager__validate_json_payload__valid(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__redaction_manager__validate_json_payload__invalid(mock_init):
+def test__redaction_manager__validate_redact_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
     inst.env = "dev"
     with pytest.raises(Exception):
-        inst.validate_json_payload(payload)
+        inst.validate_redact_json_payload(payload)
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -342,7 +342,7 @@ def check__try_redact__failed_output(
     assert response == expected_response
 
 
-def check__try_redact__validate_json_payload__called(
+def check__try_redact__validate_redact_json_payload__called(
     response,
     params,
     exception,
@@ -357,7 +357,7 @@ def check__try_redact__validate_json_payload__called(
     mock_validate_json.assert_called_once_with(params)
 
 
-def check__try_redact__validate_json_payload__not_called(
+def check__try_redact__validate_redact_json_payload__not_called(
     response,
     params,
     exception,
@@ -436,7 +436,7 @@ def check__try_redact__log_exception__not_called(
     "test_case",
     [
         check__try_redact__successful_output,
-        check__try_redact__validate_json_payload__called,
+        check__try_redact__validate_redact_json_payload__called,
         check__try_redact__redact__called,
         check__try_redact__log_exception__not_called,
     ],
@@ -445,7 +445,7 @@ def check__try_redact__log_exception__not_called(
 @mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "validate_redact_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__successful(
@@ -481,7 +481,7 @@ def test__try_redact__successful(
     "test_case",
     [
         check__try_redact__failed_output,
-        check__try_redact__validate_json_payload__called,
+        check__try_redact__validate_redact_json_payload__called,
         check__try_redact__redact__not_called,
         check__try_redact__log_exception__called,
     ],
@@ -490,7 +490,7 @@ def test__try_redact__successful(
 @mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "validate_redact_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__param_validation_failure(
@@ -528,7 +528,7 @@ def test__try_redact__param_validation_failure(
     "test_case",
     [
         check__try_redact__failed_output,
-        check__try_redact__validate_json_payload__called,
+        check__try_redact__validate_redact_json_payload__called,
         check__try_redact__redact__called,
         check__try_redact__log_exception__called,
     ],
@@ -537,7 +537,7 @@ def test__try_redact__param_validation_failure(
 @mock.patch.object(RedactionManager, "save_logs")
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "validate_redact_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__redaction_failure(

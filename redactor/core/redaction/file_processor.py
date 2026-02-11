@@ -18,6 +18,7 @@ from core.redaction.exceptions import (
     FileProcessorNameNotFoundException,
     UnprocessedRedactionResultException,
     NonEnglishContentException,
+    NothingToRedactException
 )
 from core.redaction.config import RedactionConfig
 from core.redaction.result import (
@@ -898,8 +899,10 @@ class PDFProcessor(FileProcessor):
                 return False
 
         pdf = pymupdf.open(stream=file_bytes)
+        redaction_highlight_count = 0
         for page in pdf:
-            page_annotations = page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)
+            page_annotations = list(page.annots())
+            redaction_highlight_count += len(page_annotations)
             for annotation in page_annotations:
                 annotation_rect = annotation.rect
                 if annotation.info["subject"]:
@@ -914,7 +917,13 @@ class PDFProcessor(FileProcessor):
                         pass
                 page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
                 page.delete_annot(annotation)
+                page.clean_contents(True)
             page.apply_redactions()
+        if redaction_highlight_count == 0:
+            raise NothingToRedactException(
+                "No annotations were found in the PDF - please confirm that this is correct"
+            )
+        pdf.scrub(True, True, True, True, True, True, True, 1, True, True, True, True, True)
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
