@@ -737,7 +737,10 @@ class PDFProcessor(FileProcessor):
                             )
                         except Exception as e:
                             LoggingUtil().log_exception_with_message(
-                                f"Failed to apply image redaction highlight for rect {rect_in_global_space} on page {page.number} with dimensions {page.rect}",
+                                (
+                                    f"Failed to apply image redaction highlight for rect '{rect_in_global_space}' on page "
+                                    f"'{page.number}' with dimensions '{page.rect}'"
+                                ),
                                 e,
                             )
         new_file_bytes = BytesIO()
@@ -799,7 +802,7 @@ class PDFProcessor(FileProcessor):
         # Extract text from PDF
         pdf_text = self._extract_pdf_text(file_bytes)
         LoggingUtil().log_info(
-            f"The following text was extracted from the PDF: '{pdf_text}'"
+            f"The following text was extracted from the PDF:\n'{pdf_text}'"
         )
         if pdf_text and not is_english_text(pdf_text):
             exception = NonEnglishContentException(

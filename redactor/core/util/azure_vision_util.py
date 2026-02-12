@@ -7,15 +7,13 @@ from dotenv import load_dotenv
 
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
-from core.util.logging_util import LoggingUtil
+from core.util.logging_util import LoggingUtil, log_to_appins
 
 from azure.identity import (
     ChainedTokenCredential,
     ManagedIdentityCredential,
     AzureCliCredential,
 )
-
-from core.util.logging_util import log_to_appins
 
 
 load_dotenv(verbose=True)

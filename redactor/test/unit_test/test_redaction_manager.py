@@ -612,7 +612,7 @@ def test__try_redact__success_with_non_fatal_error(
         "id": inst.job_id,
         "status": "SUCCESS",
         "message": (
-            "Redaction process completed successfully, but had some non-fatal errors: "
+            "Redaction process completed successfully, but had some non-fatal errors:\n"
             "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
             "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
             "following error: save_exception_log exception"
@@ -665,7 +665,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
         "status": "FAIL",
         "message": (
             f"Redaction process failed with the following error: {exception}"
-            "\nAdditionally, the following non-fatal errors occurred: "
+            "\nAdditionally, the following non-fatal errors occurred:\n"
             "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
             "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
             "following error: save_exception_log exception"

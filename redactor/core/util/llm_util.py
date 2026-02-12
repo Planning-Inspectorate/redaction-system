@@ -221,7 +221,7 @@ class LLMUtil:
     ) -> tuple[ParsedChatCompletion, List[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
-        chunk_hash_string = f"(chunk id {hash(user_prompt)})"
+        chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
         estimated_tokens = self._num_tokens_consumed(api_messages)
@@ -348,7 +348,7 @@ class LLMUtil:
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        f"Function call with chunk id ({hash(chunk)}) generated an exception:",
+                        f"Function call with chunk ID ({hash(chunk)}) generated an exception:",
                         e,
                     )
 

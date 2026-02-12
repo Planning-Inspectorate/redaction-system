@@ -368,7 +368,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 )
                 text_content = " ".join([x[0] for x in text_rect_map])
                 LoggingUtil().log_info(
-                    f"The following text was extracted from an image in the PDF: '{text_content}'"
+                    f"The following text was extracted from an image in the PDF:\n'{text_content}'"
                 )
 
                 # Analyse detected text with LLM

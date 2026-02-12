@@ -290,12 +290,12 @@ class RedactionManager:
             if fatal_error:
                 message = (
                     message
-                    + "\nAdditionally, the following non-fatal errors occurred: "
+                    + "\nAdditionally, the following non-fatal errors occurred:\n"
                     + "\n".join(non_fatal_errors)
                 )
             else:
                 message = (
-                    "Redaction process completed successfully, but had some non-fatal errors: "
+                    "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
         final_output = base_response | {"status": status, "message": message}
