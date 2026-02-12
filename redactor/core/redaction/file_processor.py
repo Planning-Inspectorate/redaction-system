@@ -401,6 +401,20 @@ class PDFProcessor(FileProcessor):
                 ]
             )
 
+        if "-" in term_to_redact:
+            # Check for partial match of parts of the term before the hyphen
+            hyphen_matches = cls._check_partial_match_before_hyphen(
+                normalised_words_to_redact, line_to_check
+            )
+            matches.extend(
+                [
+                    h_match
+                    for h_match in hyphen_matches
+                    if h_match[0]
+                    != term_to_redact  # Full matches will be detected, avoid duplicates by validating
+                ]
+            )
+
         return matches
 
     @classmethod
