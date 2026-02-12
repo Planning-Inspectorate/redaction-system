@@ -149,7 +149,7 @@ class LLMTextRedactor(TextRedactor):
         """
         stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
         stopwords_list = stopwords["stopwords"]
-        text_to_redact = list(set(text_to_redact) - set(stopwords_list))
+        text_to_redact = [x for x in text_to_redact if x.lower() not in stopwords_list] 
         return text_to_redact
 
     def redact(self) -> LLMTextRedactionResult:
