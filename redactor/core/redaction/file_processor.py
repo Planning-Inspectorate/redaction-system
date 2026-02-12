@@ -846,6 +846,7 @@ class PDFProcessor(FileProcessor):
             )
             redaction_results.append(redaction_result)
         LoggingUtil().log_info("PDF analysis complete")
+        
         # Ingest Stopword list
         def _remove_stopwords(self, text_to_redact: List[str]):
             stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
