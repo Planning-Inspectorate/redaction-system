@@ -28,6 +28,7 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
+import dataclasses
 
 from yaml import safe_load
 import os
@@ -233,6 +234,9 @@ class PDFProcessor(FileProcessor):
                 LoggingUtil().log_info(
                     f"Loaded image with the following metadata {image_metadata}"
                 )
+                LoggingUtil().log_info(
+                    f"Loaded image with the following metadata {image_metadata}"
+                )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 
@@ -343,6 +347,13 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
+        if rect.is_empty:
+            # If the rect is invalid, then normalise it
+            initial_rect = str(rect)
+            rect = rect.normalize()
+            LoggingUtil().log_info(
+                f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
+            )
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
         highlight_annotation = page.add_highlight_annot(rect)
@@ -829,6 +840,7 @@ class PDFProcessor(FileProcessor):
         # TODO convert back to a set
         redaction_results: List[RedactionResult] = []
         # Apply each redaction rule
+        LoggingUtil().log_info("Analysing PDF to identify redactions")
         LoggingUtil().log_info("Analysing PDF to identify redactions")
         for rule_to_apply in redaction_rules_to_apply:
             LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
