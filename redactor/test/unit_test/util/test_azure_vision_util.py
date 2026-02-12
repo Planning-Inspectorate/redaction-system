@@ -34,7 +34,7 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
         mock_analyze.return_value = MockImageAnalysisClientResult(people_list)
         result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
 
-    assert result == ((10, 20, 30, 40),)
+    assert result == ((10, 20, 40, 60),)
 
     # Verify caching
     assert azure_vision_util._IMAGE_FACE_CACHE == [
@@ -42,11 +42,11 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
             "image": image,
             "faces": (
                 {
-                    "box": (10, 20, 30, 40),
+                    "box": (10, 20, 40, 60),
                     "confidence": 0.9,
                 },
                 {
-                    "box": (10, 20, 30, 40),
+                    "box": (10, 20, 40, 60),
                     "confidence": 0.4,
                 },
             ),
@@ -58,14 +58,14 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
 def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()
     image = Mock()
-    image_rects = ((10, 20, 30, 40),)
+    image_rects = ((10, 20, 40, 60),)
 
     azure_vision_util._IMAGE_FACE_CACHE = [
         {
             "image": image,
             "faces": (
                 {
-                    "box": (10, 20, 30, 40),
+                    "box": (10, 20, 40, 60),
                     "confidence": 0.9,
                 },
             ),
