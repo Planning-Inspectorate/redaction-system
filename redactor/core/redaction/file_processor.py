@@ -28,6 +28,7 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
+import dataclasses
 
 from yaml import safe_load
 import os
@@ -229,6 +230,9 @@ class PDFProcessor(FileProcessor):
                         transform.f,
                     ),
                 )
+                LoggingUtil().log_info(
+                    f"Loaded image with the following metadata {image_metadata}"
+                )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 
@@ -339,6 +343,13 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
+        if rect.is_empty:
+            # If the rect is invalid, then normalise it
+            initial_rect = str(rect)
+            rect = rect.normalize()
+            LoggingUtil().log_info(
+                f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
+            )
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
         highlight_annotation = page.add_highlight_annot(rect)
@@ -716,7 +727,24 @@ class PDFProcessor(FileProcessor):
                                 pymupdf.Matrix(image_transform),
                             )
                         )
-                        self._add_provisional_redaction(page, rect_in_global_space)
+                        LoggingUtil().log_info(
+                            f"Transformed the rect {untransformed_bounding_box} in image-space "
+                            f"for an image with dimensions {(pdf_image.width, pdf_image.height)} "
+                            f"to the new rect {rect_in_global_space} in page-space, using the transform {image_transform}"
+                        )
+                        try:
+                            self._add_provisional_redaction(page, rect_in_global_space)
+                            LoggingUtil().log_info(
+                                f"Applied image redaction highlight for rect {rect_in_global_space} on page {page.number}"
+                            )
+                        except Exception as e:
+                            LoggingUtil().log_exception_with_message(
+                                (
+                                    f"Failed to apply image redaction highlight for rect '{rect_in_global_space}' on page "
+                                    f"'{page.number}' with dimensions '{page.rect}'"
+                                ),
+                                e,
+                            )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
@@ -775,14 +803,16 @@ class PDFProcessor(FileProcessor):
         """
         # Extract text from PDF
         pdf_text = self._extract_pdf_text(file_bytes)
+        LoggingUtil().log_info(
+            f"The following text was extracted from the PDF:\n'{pdf_text}'"
+        )
         if pdf_text and not is_english_text(pdf_text):
-            LoggingUtil().log_exception(
+            exception = NonEnglishContentException(
                 "Language check: non-English or insufficient English content "
                 "detected; skipping provisional redactions."
             )
-            raise NonEnglishContentException
-
-        # Extract images from PDF
+            LoggingUtil().log_exception(exception)
+            raise exception
         pdf_images = self._extract_pdf_images(file_bytes)
 
         # Generate list of redaction rules from config
@@ -805,11 +835,17 @@ class PDFProcessor(FileProcessor):
         # Generate redactions
         # TODO convert back to a set
         redaction_results: List[RedactionResult] = []
-
         # Apply each redaction rule
+        LoggingUtil().log_info("Analysing PDF to identify redactions")
         for rule_to_apply in redaction_rules_to_apply:
-            redaction_results.append(rule_to_apply.redact())
-
+            LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
+            redaction_result = rule_to_apply.redact()
+            LoggingUtil().log_info(
+                f"The redactor {rule_to_apply} yielded the following result: "
+                f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+            )
+            redaction_results.append(redaction_result)
+        LoggingUtil().log_info("PDF analysis complete")
         # Ingest Stopword list
         def _remove_stopwords(self, text_to_redact: List[str]):
             stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
@@ -848,7 +884,7 @@ class PDFProcessor(FileProcessor):
             ) as e:
                 LoggingUtil().log_exception(e)
                 raise e
-
+        LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions

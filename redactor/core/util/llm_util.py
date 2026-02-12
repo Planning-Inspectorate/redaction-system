@@ -2,6 +2,7 @@ import os
 import time
 
 from typing import List
+from tenacity.retry import retry_if_exception_type
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -12,7 +13,7 @@ from azure.identity import (
 )
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import AzureOpenAI
+from openai import AzureOpenAI, RateLimitError
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
 from threading import Semaphore
@@ -24,6 +25,7 @@ from core.redaction.result import (
 )
 from core.util.logging_util import log_to_appins, LoggingUtil
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
+import json
 
 
 load_dotenv(verbose=True)
@@ -79,6 +81,9 @@ class LLMUtil:
         self.token = credential.get_token(
             "https://cognitiveservices.azure.com/.default"
         ).token
+        LoggingUtil().log_info(
+            f"Establishing connection to the LLM at {self.azure_endpoint}"
+        )
         self.llm = AzureOpenAI(
             azure_endpoint=self.azure_endpoint,
             api_version="2024-12-01-preview",
@@ -174,7 +179,9 @@ class LLMUtil:
             total_tokens = n_tokens + completion_tokens
             return total_tokens
         except Exception as e:
-            LoggingUtil().log_exception(e)
+            LoggingUtil().log_exception_with_message(
+                "An error occurred while counting tokens:", e
+            )
             return 0
 
     def create_api_message(
@@ -199,7 +206,9 @@ class LLMUtil:
 
     @log_to_appins
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
+    # Only retry if there is a rate limit exception. All other errors are logged and skipped
     @retry(
+        retry=retry_if_exception_type((RateLimitError, TimeoutError)),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
@@ -211,6 +220,8 @@ class LLMUtil:
         user_prompt: str,
     ) -> tuple[ParsedChatCompletion, List[str]]:
         """Redact a single chunk of text using the LLM."""
+        # Chunk hash to distinguish between messages when multithreading
+        chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
         estimated_tokens = self._num_tokens_consumed(api_messages)
@@ -220,9 +231,10 @@ class LLMUtil:
             timeout=self.config.request_timeout
         )  # returns True if acquired, False on timeout
         if not thread_available:
-            LoggingUtil().log_exception(
-                "Timeout while waiting for request semaphore to be available."
+            exception = TimeoutError(
+                f"{chunk_hash_string} Timeout while waiting for request semaphore to be available."
             )
+            LoggingUtil().log_exception(exception)
             raise TimeoutError
 
         try:
@@ -230,24 +242,35 @@ class LLMUtil:
             try:
                 self.token_semaphore.acquire(estimated_tokens)
             except TimeoutError as te:
-                LoggingUtil().log_exception(
-                    f"Timeout while waiting for tokens to be released: {te}"
+                LoggingUtil().log_exception_with_message(
+                    f"{chunk_hash_string} Timeout while waiting for tokens to be released :",
+                    te,
                 )
                 raise te
             try:
+                LoggingUtil().log_info(
+                    f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
+                )
                 response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
+                LoggingUtil().log_info(
+                    f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
+                )
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
                     0
                 ].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
+                LoggingUtil().log_info(
+                    f"{chunk_hash_string} The following redaction_strings were generated"
+                )
 
                 # Update token counts and costs
                 self._compute_costs(response)
                 return response, redaction_strings
             except Exception as e:
-                LoggingUtil().log_exception(
-                    f"An error occurred while processing the chunk: {e}"
+                LoggingUtil().log_exception_with_message(
+                    f"{chunk_hash_string} An error occurred while processing the chunk:",
+                    e,
                 )
                 raise e
             finally:
@@ -280,6 +303,10 @@ class LLMUtil:
 
         Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
         """
+        chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
+        LoggingUtil().log_info(
+            f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
+        )
 
         # Initialise LLM interface
         request_counter = 0
@@ -320,8 +347,9 @@ class LLMUtil:
                     responses.append(response)
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
-                    LoggingUtil().log_exception(
-                        f"Function call with chunk {chunk} generated an exception: {e}"
+                    LoggingUtil().log_exception_with_message(
+                        f"Function call with chunk ID ({hash(chunk)}) generated an exception:",
+                        e,
                     )
 
                 # Check budget after each request
