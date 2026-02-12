@@ -680,11 +680,13 @@ class PDFProcessor(FileProcessor):
         text_redaction_results: List[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         ]
-        text_redactions = [
-            redaction_string
-            for result in text_redaction_results
-            for redaction_string in result.redaction_strings
-        ]
+        text_redactions = self.remove_stopwords(
+            [
+                redaction_string
+                for result in text_redaction_results
+                for redaction_string in result.redaction_strings
+            ]
+        )
         image_redaction_results: List[ImageRedactionResult] = [
             x
             for x in redaction_results

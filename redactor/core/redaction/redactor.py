@@ -154,9 +154,7 @@ class LLMTextRedactor(TextRedactor):
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
-        result = self._analyse_text(self.config.text)
-        result.redaction_strings = self._remove_stopwords(result.redaction_strings)
-        return result
+        return self._analyse_text(self.config.text)
 
 
 class ImageRedactor(Redactor):  # pragma: no cover
