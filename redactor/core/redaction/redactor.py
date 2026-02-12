@@ -31,9 +31,6 @@ from core.redaction.exceptions import (
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
 
-from yaml import safe_load
-import os
-
 
 class Redactor(ABC):
     """
