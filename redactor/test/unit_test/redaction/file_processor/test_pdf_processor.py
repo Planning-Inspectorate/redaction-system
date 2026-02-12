@@ -4,16 +4,17 @@ import pytest
 from PIL import Image
 from io import BytesIO
 from mock import patch, Mock
-from concurrent.futures import ProcessPoolExecutor
 
 from core.redaction.file_processor import (
     PDFProcessor,
     PDFImageMetadata,
+    PDFPageMetadata,
+    PDFLineMetadata,
 )
 from core.redaction.result import (
     ImageRedactionResult,
 )
-from core.util.text_util import is_english_text
+from core.util.text_util import is_english_text, get_normalised_words
 from core.redaction.exceptions import NonEnglishContentException
 
 
@@ -234,155 +235,259 @@ def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_unifo
     assert expected_transformed_bounding_box == actual_transformed_bounding_box
 
 
-def test__pdf_processor__find_next_redaction_instance__same_page():
-    candidates_on_page = [
-        (pymupdf.Rect(0, 0, 10, 10), "term1"),
-        (pymupdf.Rect(20, 20, 30, 30), "term2"),
-    ]
-    current_index = 0  # Start at first candidate
+def test__pdf_processor__create_line_metadata():
+    """
+    - Given I have a line of text with some metadata, and a bounding box that partially overlaps with that line
+    - When I call _update_line_info with the bounding box and the line metadata
+    - Then the line metadata should be updated to reflect the redaction of the text within the bounding box
+    """
+    expected_line_metadata = PDFLineMetadata(
+        line_number=0,
+        words=("hello", "world"),
+        y0=0,
+        y1=10,
+        x0=(0, 15),
+        x1=(10, 25),
+    )
+    line_metadata = PDFProcessor()._create_line_metadata(
+        ["Hello", "World!"],
+        [
+            pymupdf.Rect(
+                0,
+                0,
+                10,
+                10,
+            ),
+            pymupdf.Rect(15, 0, 25, 10),
+        ],
+        0,
+    )
+    assert expected_line_metadata == line_metadata
+
+
+def test__pdf_processor__extract_page_text():
     page = pymupdf.open().new_page()
+    with patch.object(
+        pymupdf.Page,
+        "get_text",
+        return_value=[
+            (0, 0, 10, 10, "Hello", 0, 0, None),
+            (5, 0, 15, 10, "World", 0, 0, None),
+            (0, 10, 10, 20, "Hey", 0, 1, None),
+            (5, 10, 15, 20, "there", 0, 1, None),
+        ],
+    ):
+        page_metadata = PDFProcessor()._extract_page_text(page)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        next_page, next_rect, next_term = PDFProcessor()._find_next_redaction_instance(
-            candidates_on_page, current_index, page
-        )
+    expected_page_metadata = PDFPageMetadata(
+        page_number=page.number,
+        lines=[
+            PDFLineMetadata(
+                line_number=0,
+                words=("hello", "world"),
+                y0=0,
+                y1=10,
+                x0=(0, 5),
+                x1=(10, 15),
+            ),
+            PDFLineMetadata(
+                line_number=1,
+                words=("hey", "there"),
+                y0=10,
+                y1=20,
+                x0=(0, 5),
+                x1=(10, 15),
+            ),
+        ],
+    )
 
-    assert next_page == page
-    assert next_rect == candidates_on_page[1][0]
-    assert next_term == candidates_on_page[1][1]
+    assert expected_page_metadata == page_metadata
 
 
-def test__pdf_processor__find_next_redaction_instance__next_page():
-    candidates_on_first_page = [
-        (pymupdf.Rect(0, 0, 10, 10), "term1"),
-        (pymupdf.Rect(20, 20, 30, 30), "term2"),
-    ]
-    first_page = pymupdf.open().new_page()
+def create_mock_page_metadata(
+    page_number, lines=None, y0=None, y1=None, x0=None, x1=None
+):
+    line_metadata = []
 
-    candidates_on_second_page = [
-        (pymupdf.Rect(0, 0, 10, 10), "term3"),
-        (pymupdf.Rect(20, 20, 30, 30), "term4"),
-    ]
-    second_page = pymupdf.open().new_page()
-
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        pdf_processor = PDFProcessor()
-        pdf_processor.redaction_candidates = [
-            candidates_on_first_page,
-            candidates_on_second_page,
-        ]
-        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
-
-        with patch.object(pymupdf, "open", return_value=[first_page, second_page]):
-            next_page, next_rect, next_term = (
-                pdf_processor._find_next_redaction_instance(
-                    candidates_on_first_page, 1, first_page
+    if lines:
+        for i, line in enumerate(lines):
+            line_metadata.append(
+                PDFLineMetadata(
+                    line_number=i,
+                    words=tuple(get_normalised_words(line)),
+                    y0=y0[i],
+                    y1=y1[i],
+                    x0=tuple(x0[i]),
+                    x1=tuple(x1[i]),
                 )
             )
-            pymupdf.open.assert_called_with(
-                stream=pdf_processor.file_bytes
-            )  # Ensure file_bytes used
-
-    assert next_page == second_page
-    assert next_rect == candidates_on_second_page[0][0]
-    assert next_term == candidates_on_second_page[0][1]
+    return PDFPageMetadata(page_number=page_number, lines=line_metadata)
 
 
-def test__pdf_processor__is_partial_redaction_across_line_breaks():
+def test__pdf_processor__check_partial_redaction_across_line_breaks():
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello", "World"],
+        y0=[0, 20],
+        y1=[10, 30],
+        x0=[[0], [0]],
+        x1=[[10], [10]],
+    )
     term = "Hello World"
-    next_rect = pymupdf.Rect(0, 0, 10, 20)
-    next_page = pymupdf.open().new_page()
+    normalised_words_to_redact = get_normalised_words(term)
 
-    with patch.object(
-        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, "World")
-    ):
-        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
-            term, "Hello", next_page, next_rect
-        )
-    assert match_result
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_is_full_text_being_redacted",
+            side_effect=[([("hello", 0, 0)]), [("world", 0, 0)]],
+        ):
+            match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+                normalised_words_to_redact,
+                "hello",
+                page_metadata.lines[0],
+                page_metadata,
+            )
+    expected_result = (0, page_metadata.lines[1], 0)
+
+    assert match_result == expected_result
 
 
-def test__pdf_processor__is_partial_redaction_across_line_breaks__no_match():
+def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello", "You"],
+        y0=[0, 20],
+        y1=[10, 30],
+        x0=[[0], [0]],
+        x1=[[10], [10]],
+    )
     term = "Hello World"
-    next_rect = pymupdf.Rect(0, 0, 10, 20)
-    next_page = pymupdf.open().new_page()
+    normalised_words_to_redact = get_normalised_words(term)
 
-    with patch.object(
-        PDFProcessor, "_is_full_text_being_redacted", return_value=(False, "You")
-    ):
-        match_result = PDFProcessor()._is_partial_redaction_across_line_breaks(
-            term, "Hello", next_page, next_rect
-        )
-    assert not match_result
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_is_full_text_being_redacted",
+            side_effect=[([("hello", 0, 0)]), []],
+        ):
+            result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+                normalised_words_to_redact,
+                "hello",
+                page_metadata.lines[0],
+                page_metadata,
+            )
+
+    assert result is None
 
 
 def test__pdf_processor__examine_provisional_text_redaction():
-    page = pymupdf.open().new_page()
-    term = "test term"
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello World"],
+        y0=[0],
+        y1=[10],
+        x0=[[0, 6]],
+        x1=[[10, 11]],
+    )
+    term = "Hello"
     rect = pymupdf.Rect(0, 0, 10, 10)
 
-    with patch.object(
-        PDFProcessor, "_is_full_text_being_redacted", return_value=(True, term)
-    ):
-        result = PDFProcessor()._examine_provisional_text_redaction(page, term, rect, 0)
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_is_full_text_being_redacted",
+            return_value=([("hello world", 0, 0)]),
+        ):
+            result = PDFProcessor()._examine_provisional_text_redaction(
+                "Hello",
+                rect,
+                page_metadata,
+            )
 
-    assert result == [(page.number, rect, term)]
+    assert result == [(page_metadata.page_number, rect, term)]
 
 
-@patch.object(PDFProcessor, "_is_full_text_being_redacted", return_value=(False, ""))
-@patch.object(PDFProcessor, "_find_next_redaction_instance", return_value=None)
+@patch.object(PDFProcessor, "_is_full_text_being_redacted", return_value=[])
 def test__pdf_processor__examine_provisional_text_redaction__no_matches(
-    mock_full_redaction, mock_find_next
+    mock_full_redaction,
 ):
-    page = pymupdf.open().new_page()
-    term = "test term"
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello World"],
+        y0=[0],
+        y1=[10],
+        x0=[[0, 6]],
+        x1=[[10, 11]],
+    )
+    term = "test"
     rect = pymupdf.Rect(0, 0, 10, 10)
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
         pdf_processor = PDFProcessor()
         pdf_processor.redaction_candidates = [[(rect, term)]]
-        result = pdf_processor._examine_provisional_text_redaction(page, term, rect, 0)
+        result = pdf_processor._examine_provisional_text_redaction(
+            term,
+            rect,
+            page_metadata,
+        )
 
     assert result == []
 
 
-@patch.object(
-    PDFProcessor, "_is_full_text_being_redacted", return_value=(False, "test")
-)
-@patch.object(
-    PDFProcessor, "_is_partial_redaction_across_line_breaks", return_value=True
-)
-def test__pdf_processor__examine_provisional_text_redaction__line_break(
-    mock_full_redaction, mock_find_next
-):
-    page = pymupdf.open().new_page()
-    term = "test term"
+def test__pdf_processor__examine_provisional_text_redaction__line_break():
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello", "World"],
+        y0=[0, 20],
+        y1=[10, 30],
+        x0=[[0], [0]],
+        x1=[[10], [10]],
+    )
+    term = "Hello World"
     rect = pymupdf.Rect(0, 0, 10, 10)
-    next_rect = pymupdf.Rect(20, 20, 30, 30)
+    next_rect = pymupdf.Rect(0, 20, 10, 30)
     candidates_on_page = [(rect, term), (next_rect, term)]
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
-            PDFProcessor,
-            "_find_next_redaction_instance",
-            return_value=(page, next_rect, term),
+        with (
+            patch.object(
+                PDFProcessor,
+                "_check_partial_redaction_across_line_breaks",
+                return_value=(0, page_metadata.lines[1], 0),
+            ),
+            patch.object(
+                PDFProcessor,
+                "_is_full_text_being_redacted",
+                side_effect=[[("hello", 0, 0)], [("world", 0, 0)]],
+            ),
         ):
             pdf_processor = PDFProcessor()
             pdf_processor.redaction_candidates = [candidates_on_page]
             result = pdf_processor._examine_provisional_text_redaction(
-                page, term, rect, 0
+                term,
+                rect,
+                page_metadata,
             )
 
-    assert result == [(page.number, rect, term), (page.number, next_rect, term)]
+    assert result == [
+        (page_metadata.page_number, rect, term),
+        (page_metadata.page_number, next_rect, term),
+    ]
 
 
-@patch("pymupdf.open", return_value=[pymupdf.open().new_page()])
 @patch.object(PDFProcessor, "__init__", return_value=None)
-def test__pdf_processor__examine_provisional_redactions_on_page(
-    mock_page_open, mock_init
-):
+def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello", "World"],
+        y0=[0, 20],
+        y1=[10, 30],
+        x0=[[0], [0]],
+        x1=[[10], [10]],
+    )
+    term = "Hello"
     rect = pymupdf.Rect(0, 0, 10, 10)
-    term = "term1"
     candidates_on_page = [(rect, term)]
 
     expected_result = [(0, rect, term)]
@@ -393,22 +498,28 @@ def test__pdf_processor__examine_provisional_redactions_on_page(
     ):
         pdf_processor = PDFProcessor()
         pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
+        pdf_processor.redaction_candidates = [candidates_on_page]
 
         result = pdf_processor._examine_provisional_redactions_on_page(
-            0, candidates_on_page
+            candidates_on_page, page_metadata
         )
 
     assert result == expected_result
 
 
-@patch("pymupdf.open", return_value=[pymupdf.open().new_page()])
 @patch.object(PDFProcessor, "__init__", return_value=None)
-def test__pdf_processor__examine_provisional_redactions_on_page__line_break(
-    mock_page_open, mock_init
-):
+def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock_init):
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["Hello", "World"],
+        y0=[0, 20],
+        y1=[10, 30],
+        x0=[[0], [0]],
+        x1=[[10], [10]],
+    )
+    term = "Hello World"
     rect = pymupdf.Rect(0, 0, 10, 10)
-    next_rect = pymupdf.Rect(20, 20, 30, 30)
-    term = "term1"
+    next_rect = pymupdf.Rect(0, 20, 10, 30)
     candidates_on_page = [(rect, term), (next_rect, term)]
 
     expected_result = [(0, rect, term), (0, next_rect, term)]
@@ -416,17 +527,18 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(
         [(0, rect, term), (0, next_rect, term)],
         [],
     ]
-    with patch.object(
-        PDFProcessor,
-        "_examine_provisional_text_redaction",
-        side_effect=side_effects,
-    ):
-        pdf_processor = PDFProcessor()
-        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
-
-        result = pdf_processor._examine_provisional_redactions_on_page(
-            0, candidates_on_page
-        )
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_examine_provisional_text_redaction",
+            side_effect=side_effects,
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.redaction_candidates = [candidates_on_page]
+            result = pdf_processor._examine_provisional_redactions_on_page(
+                candidates_on_page,
+                page_metadata,
+            )
 
     assert result == expected_result
 
@@ -493,86 +605,36 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
 
     actual_text_at_rect = test_case[0]
     text_to_redact = test_case[1]
-    expected_result = test_case[2]
+    truth = test_case[2]
     error_message = (
-        f"Expected _is_full_text_being_redacted to return {expected_result} when trying "
+        f"Expected _is_full_text_being_redacted to return {truth} when trying "
         f"to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
     )
-
-    page = pymupdf.open().new_page()
 
     rect = Mock()
     rect.width = 100  # Dummy value
     rect.__add__ = Mock(return_value=rect)
 
-    with patch.object(pymupdf.Page, "get_textbox", return_value=actual_text_at_rect):
-        result = PDFProcessor._is_full_text_being_redacted(page, text_to_redact, rect)
-    assert result[0] == expected_result, error_message
-
-
-class MockPDFPPage:
-    def __init__(self, number: int):
-        self.number = number
-
-    def annots(self, annot_type):
-        return []
-
-    def search_for(self, text):
-        return []
-
-
-class MockPDFDocument:
-    def __init__(self, num_pages: int):
-        self.num_pages = num_pages
-        self.pages = [MockPDFPPage(i) for i in range(num_pages)]
-
-    def __iter__(self):
-        return iter(self.pages)
-
-    def __len__(self):
-        return self.num_pages
-
-    def save(self, stream: BytesIO, **kwargs):
-        pass
-
-
-@patch.object(pymupdf, "open", return_value=MockPDFDocument(2))
-def test__apply_provisional_text_redactions__check_pool_size(mock_pymupdf_open):
-    with (
-        patch.object(
-            ProcessPoolExecutor, "submit", return_value=None
-        ) as mock_executor_submit,
-        patch(
-            "core.redaction.file_processor.as_completed", return_value=[]
-        ) as mock_as_completed,
-        patch.object(
-            ProcessPoolExecutor, "__init__", return_value=None
-        ) as mock_executor_init,
-        patch.object(ProcessPoolExecutor, "__exit__", return_value=None),
-        patch.object(
-            PDFProcessor, "_examine_provisional_redactions_on_page", return_value=[]
-        ),
-    ):
-        PDFProcessor()._apply_provisional_text_redactions(
-            BytesIO(), ["redaction1", "redaction2"], n_workers=4
-        )
-
-    mock_executor_init.assert_called_once()
-    _, kwargs = mock_executor_init.call_args
-
-    assert kwargs["max_workers"] == 4
-
-    assert "mp_context" in kwargs
-    assert (
-        kwargs["mp_context"].get_start_method() == "fork"
-        if hasattr(
-            kwargs["mp_context"], "get_start_method"
-        )  # To allow local testing on Windows where 'fork' is not available
-        else True
+    line_to_check = PDFLineMetadata(
+        line_number=0,
+        words=tuple(get_normalised_words(actual_text_at_rect)),
+        y0=0,
+        y1=10,
+        x0=(0,) * len(actual_text_at_rect),
+        x1=tuple(range(1, len(actual_text_at_rect) + 1)),
     )
 
-    assert mock_executor_submit.call_count == 2
-    mock_as_completed.assert_called_once()
+    result = PDFProcessor._is_full_text_being_redacted(text_to_redact, line_to_check)
+
+    if truth:
+        expected_result = (
+            " ".join(get_normalised_words(actual_text_at_rect)),
+            0,
+            len(get_normalised_words(text_to_redact)) - 1,
+        )
+        assert result[0] == expected_result, error_message
+    else:
+        assert result == []
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:

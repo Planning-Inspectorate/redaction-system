@@ -60,6 +60,16 @@ def normalise_punctuation_unidecode(text: str) -> str:
     )
 
 
+def normalise_text(text: str) -> str:
+    """
+    Normalise text by normalising punctuation and converting to lowercase.
+
+    :param str text: The text to normalise
+    :return str: The normalised text
+    """
+    return normalise_punctuation_unidecode(text).lower().strip().strip(punctuation)
+
+
 def get_normalised_words(text: str) -> List[str]:
     """
     Normalise the given text into a list of words for redaction matching
@@ -67,11 +77,7 @@ def get_normalised_words(text: str) -> List[str]:
     :param str text: The text to normalise
     :return List[str]: The list of normalised words
     """
-    text_normalised = (
-        normalise_punctuation_unidecode(text)  # Normalise punctuation to ASCII
-        .lower()
-        .split(" ")
-    )
+    text_normalised = normalise_text(text).split(" ")
     words_normalised = [
         word.strip().strip(  # Remove leading/trailing whitespace
             punctuation  # Remove punctuation around the word
