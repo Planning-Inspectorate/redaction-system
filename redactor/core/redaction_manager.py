@@ -1,5 +1,5 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -300,52 +300,23 @@ class RedactionManager:
         ServiceBusUtil().send_redaction_process_complete_message(
             pins_service, redaction_result
         )
-
-    def try_redact(self, params: Dict[str, Any]):
+    
+    def _try_process(self, params: Dict[str, Any], base_response: Dict[str, Any], payload_validator: Callable, redaction_function: Callable):
         """
-        Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
-
-        Expected input structure
-        ```
-        {
-            "tryApplyProvisionalRedactions": True,
-            "skipRedaction": True,
-            "pinsService": "CBOS",
-            "configName": "default",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": "hbtCv.pdf",
-                    "storageName": "pinsstredactiondevuks",
-                    "containerName": "hbttest"
-                }
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
-                    "storageName": "pinsstredactiondevuks",
-                    "containerName": "hbttest"
-                }
-            }
-        }
-        ```
+        Generic function for running a redaction process
+        
+        :param Dict[str, Any] params: The parameters for the redaction_function
+        :param Dict[str, Any] base_response: The base content of the response to include in the return value
+        :param Callable payload_validator: Validation function for the payload
+        :param Callable redaction_function: Redaction process function to run
         """
         fatal_error = None
         non_fatal_errors = []
-        base_response = {
-            "parameters": params,
-            "stage": "ANALYSE",
-            "id": self.job_id,
-        }
         status = "SUCCESS"
         message = "Redaction process complete"
         try:
-            self.validate_redact_json_payload(params)
-            self.redact(params)
+            payload_validator(params)
+            redaction_function(params)
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
@@ -388,6 +359,46 @@ class RedactionManager:
         final_output = base_response | {"status": status, "message": message}
         return final_output
 
+    def try_redact(self, params: Dict[str, Any]):
+        """
+        Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
+
+        Expected input structure
+        ```
+        {
+            "tryApplyProvisionalRedactions": True,
+            "skipRedaction": True,
+            "pinsService": "CBOS",
+            "configName": "default",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            }
+        }
+        ```
+        """
+        base_response = {
+            "parameters": params,
+            "stage": "ANALYSE",
+            "id": self.job_id,
+        }
+        return self._try_process(params, base_response, self.validate_redact_json_payload, self.redact)
+
     def try_apply(self, params: Dict[str, Any]):
         """
         Apply redaction highlights using the provided parameters, and write exception details to storage/app insights if there is an error
@@ -396,7 +407,6 @@ class RedactionManager:
         ```
         {
             "pinsService": "CBOS",
-            "configName": "default",
             "fileKind": "pdf",
             "readDetails": {
                 "storageKind": "AzureBlob",
@@ -424,19 +434,4 @@ class RedactionManager:
             "stage": "REDACT",
             "id": self.job_id,
         }
-        status = "SUCCESS"
-        message = "Redaction process complete"
-        try:
-            self.validate_apply_json_payload(params)
-            self.apply(params)
-        except Exception as e:
-            self.log_exception(e)
-            status = "FAIL"
-            message = f"Redaction process failed with the following error: {e}"
-        final_output = base_response | {"status": status, "message": message}
-        try:
-            self.send_service_bus_completion_message(params, final_output)
-        except Exception as e:
-            self.log_exception(e)
-            message = f"Redaction process completed successfully, but failed to submit a service bus message with the following error: {e}"
-        return final_output
+        return self._try_process(params, base_response, self.validate_apply_json_payload, self.apply)

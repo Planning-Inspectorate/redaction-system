@@ -18,6 +18,9 @@ class MockRedactor:
     def redact(self):
         pass
 
+    def apply(self):
+        pass
+
 
 class MockIO:
     def __init__(self, **kwargs):
@@ -94,6 +97,51 @@ def test__redaction_manager__validate_redact_json_payload__invalid(mock_init):
     inst.env = "dev"
     with pytest.raises(Exception):
         inst.validate_redact_json_payload(payload)
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__redaction_manager__validate_apply_json_payload__valid(mock_init):
+    payload = {
+        "tryApplyProvisionalRedactions": True,
+        "fileKind": "pdf",
+        "readDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": "hbtCv.pdf",
+                "storageName": "pinsstredactiondevuks",
+                "containerName": "hbttest",
+            },
+        },
+        "writeDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                "storageName": "pinsstredactiondevuks",
+                "containerName": "hbttest",
+            },
+        },
+    }
+    inst = RedactionManager("")
+    inst.env = "dev"
+    raised_exception = None
+    try:
+        inst.validate_apply_json_payload(payload)
+    except Exception as e:
+        raised_exception = e
+    assert not raised_exception, (
+        f"Expected no validation errors, but {raised_exception} was raised"
+    )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
+    payload = {"bah": "bad"}
+    inst = RedactionManager("")
+    inst.env = "dev"
+    with pytest.raises(Exception):
+        inst.validate_apply_json_payload(payload)
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -197,6 +245,102 @@ def test__redaction_manager__redact(
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
         MockRedactor.redact.return_value,
+        property_example_b="value",
+    )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
+@mock.patch.object(IOFactory, "get", return_value=MockIO)
+@mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
+@mock.patch.object(MockIO, "write")
+@mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
+@mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
+@mock.patch.object(RedactionManager, "convert_kwargs_for_io")
+@mock.patch.object(ConfigProcessor, "validate_and_filter_config")
+@mock.patch.object(ConfigProcessor, "load_config")
+def test__redaction_manager__apply(
+    mock_load_config,
+    mock_validate_filter_config,
+    mock_convert_kwargs,
+    mock_redact,
+    mock_blob_write,
+    mock_file_processor_get,
+    mock_io_write,
+    mock_io_read,
+    mock_io_factory_get,
+    mock_blob_init,
+    mock_init,
+):
+    payload = {
+        "fileKind": "pdf",
+        "readDetails": {
+            "storageKind": "readStorageKind",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {"propertyExampleA": "value"},
+        },
+        "writeDetails": {
+            "storageKind": "writeStorageKind",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {"propertyExampleB": "value"},
+        },
+    }
+    convert_kwargs_for_io_side_effects = [
+        {"property_example_a": "value"},
+        {"property_example_b": "value"},
+    ]
+    mock_raw_config = {"rules": dict()}
+    mock_cleaned_config = {"cleaned_rules": dict()}
+    inst = RedactionManager("job_id")
+    inst.job_id = "inst"
+    inst.env = "dev"
+    mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
+    mock_load_config.return_value = mock_raw_config
+    mock_validate_filter_config.return_value = mock_cleaned_config
+    inst.apply(payload)
+    # Read and write properties should be converted to snake case
+    RedactionManager.convert_kwargs_for_io.assert_has_calls(
+        [
+            mock.call({"propertyExampleA": "value"}),
+            mock.call({"propertyExampleB": "value"}),
+        ]
+    )
+    # Read and write storage IO should be fetched, based on the specified storage kind in the payload
+    IOFactory.get.assert_has_calls(
+        [
+            mock.call("readStorageKind"),
+            mock.call("writeStorageKind"),
+        ]
+    )
+    # Data should be read once, using read config in the payload
+    MockIO.read.assert_called_once_with(property_example_a="value")
+    # File processor should be loaded based on the payload
+    FileProcessorFactory.get.assert_called_once_with("pdf")
+    # Sample document data should be written twice - one for the raw file,
+    # and once for the proposed redactions
+    AzureBlobIO.write.assert_has_calls(
+        [
+            mock.call(
+                MockIO.read.return_value,
+                container_name="redactiondata",
+                blob_path=f"{inst.job_id}/curated.pdf",
+            ),
+            mock.call(
+                MockRedactor.apply.return_value,
+                container_name="redactiondata",
+                blob_path=f"{inst.job_id}/redacted.pdf",
+            ),
+        ]
+    )
+    # Redact should be called once on the read file, using the loaded config
+    MockRedactor.apply.assert_called_once_with(
+        MockIO.read.return_value,
+        ConfigProcessor.validate_and_filter_config.return_value,
+    )
+    # Data should be written back to the specified write address in the payload
+    MockIO.write.assert_called_once_with(
+        MockRedactor.apply.return_value,
         property_example_b="value",
     )
 
@@ -315,6 +459,7 @@ def check__try_redact__successful_output(
     expected_response = {
         "parameters": {"some_payload", ""},
         "id": "test__redaction_manager__try_redact",
+        "stage": "ANALYSE",
         "status": "SUCCESS",
         "message": "Redaction process complete",
     }
@@ -336,6 +481,7 @@ def check__try_redact__failed_output(
     expected_response = {
         "parameters": {"some_payload", ""},
         "id": "test__redaction_manager__try_redact",
+        "stage": "ANALYSE",
         "status": "FAIL",
         "message": f"Redaction process failed with the following error: {exception}",
     }
@@ -585,7 +731,7 @@ def test__try_redact__redaction_failure(
     side_effect=Exception("send_service_bus_completion_message exception"),
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "validate_redact_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__success_with_non_fatal_error(
@@ -610,6 +756,7 @@ def test__try_redact__success_with_non_fatal_error(
     expected_response = {
         "parameters": params,
         "id": inst.job_id,
+        "stage": "ANALYSE",
         "status": "SUCCESS",
         "message": (
             "Redaction process completed successfully, but had some non-fatal errors:\n"
@@ -635,7 +782,7 @@ def test__try_redact__success_with_non_fatal_error(
     side_effect=Exception("send_service_bus_completion_message exception"),
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(RedactionManager, "validate_json_payload")
+@mock.patch.object(RedactionManager, "validate_redact_json_payload")
 @mock.patch.object(RedactionManager, "redact")
 @mock.patch.object(RedactionManager, "log_exception")
 def test__try_redact__fail_with_extra_non_fatal_error(
@@ -662,6 +809,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
     expected_response = {
         "parameters": params,
         "id": inst.job_id,
+        "stage": "ANALYSE",
         "status": "FAIL",
         "message": (
             f"Redaction process failed with the following error: {exception}"
@@ -690,6 +838,384 @@ def test__redaction_manager__save_logs(
         container_name="redactiondata",
         blob_path=f"{inst.job_id}/log.txt",
     )
+
+
+def check__try_apply__successful_output(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    expected_response = {
+        "parameters": {"some_payload", ""},
+        "id": "test__redaction_manager__try_apply",
+        "stage": "REDACT",
+        "status": "SUCCESS",
+        "message": "Redaction process complete",
+    }
+    assert response == expected_response
+
+
+def check__try_apply__failed_output(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    expected_response = {
+        "parameters": {"some_payload", ""},
+        "id": "test__redaction_manager__try_apply",
+        "stage": "REDACT",
+        "status": "FAIL",
+        "message": f"Redaction process failed with the following error: {exception}",
+    }
+    assert response == expected_response
+
+
+def check__try_apply__validate_apply_json_payload__called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    mock_validate_json.assert_called_once_with(params)
+
+
+def check__try_apply__validate_redact_json_payload__not_called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    not mock_validate_json.called
+
+
+def check__try_apply__apply__called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    mock_apply.assert_called_once_with(params)
+
+
+def check__try_apply__redact__not_called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    not mock_apply.called
+
+
+def check__try_apply__log_exception__called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    mock_log_exception.assert_called_once_with(exception)
+
+
+def check__try_apply__log_exception__not_called(
+    response,
+    params,
+    exception,
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    not mock_log_exception.called
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        check__try_apply__successful_output,
+        check__try_apply__validate_apply_json_payload__called,
+        check__try_apply__apply__called,
+        check__try_apply__log_exception__not_called,
+    ],
+)
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_apply_json_payload")
+@mock.patch.object(RedactionManager, "apply")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_apply__successful(
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+    test_case,
+):
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__redaction_manager__try_apply"
+    inst.env = "dev"
+    params = {"some_payload", ""}
+    response = inst.try_apply(params)
+    test_case(
+        response,
+        params,
+        None,
+        mock_log_exception,
+        mock_apply,
+        mock_validate_json,
+        mock_init,
+        mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        check__try_apply__failed_output,
+        check__try_apply__validate_apply_json_payload__called,
+        check__try_apply__redact__not_called,
+        check__try_apply__log_exception__called,
+    ],
+)
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_apply_json_payload")
+@mock.patch.object(RedactionManager, "apply")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_apply__param_validation_failure(
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+    test_case,
+):
+    exception = Exception("Some exception")
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__redaction_manager__try_apply"
+    inst.env = "dev"
+    params = {"some_payload", ""}
+    mock_validate_json.side_effect = exception
+    response = inst.try_apply(params)
+    test_case(
+        response,
+        params,
+        exception,
+        mock_log_exception,
+        mock_apply,
+        mock_validate_json,
+        mock_init,
+        mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
+    )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        check__try_apply__failed_output,
+        check__try_apply__validate_apply_json_payload__called,
+        check__try_apply__apply__called,
+        check__try_apply__log_exception__called,
+    ],
+)
+@mock.patch.object(RedactionManager, "save_exception_log")
+@mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "send_service_bus_completion_message")
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_apply_json_payload")
+@mock.patch.object(RedactionManager, "apply")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_apply__apply_failure(
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+    test_case,
+):
+    exception = Exception("Some exception")
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__redaction_manager__try_apply"
+    inst.env = "dev"
+    params = {"some_payload", ""}
+    mock_apply.side_effect = exception
+    response = inst.try_apply(params)
+    test_case(
+        response,
+        params,
+        exception,
+        mock_log_exception,
+        mock_apply,
+        mock_validate_json,
+        mock_init,
+        mock_send_service_bus_message,
+        mock_save_logs,
+        mock_save_exception,
+    )
+
+
+@mock.patch.object(
+    RedactionManager,
+    "save_exception_log",
+    side_effect=Exception("save_exception_log exception"),
+)
+@mock.patch.object(
+    RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
+)
+@mock.patch.object(
+    RedactionManager,
+    "send_service_bus_completion_message",
+    side_effect=Exception("send_service_bus_completion_message exception"),
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_apply_json_payload")
+@mock.patch.object(RedactionManager, "apply")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_apply__success_with_non_fatal_error(
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    """
+    - Given the redaction process is successful
+    - When there are non-fatal errors
+    - Then the redaction process should succeed with any non-fatal errors reported as a warning to the caller
+    """
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__try_apply__non_fatal_error"
+    inst.env = "dev"
+    params = {"some_payload", ""}
+    response = inst.try_apply(params)
+    expected_response = {
+        "parameters": params,
+        "id": inst.job_id,
+        "stage": "REDACT",
+        "status": "SUCCESS",
+        "message": (
+            "Redaction process completed successfully, but had some non-fatal errors:\n"
+            "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
+            "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
+            "following error: save_exception_log exception"
+        ),
+    }
+    assert response == expected_response
+
+
+@mock.patch.object(
+    RedactionManager,
+    "save_exception_log",
+    side_effect=Exception("save_exception_log exception"),
+)
+@mock.patch.object(
+    RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
+)
+@mock.patch.object(
+    RedactionManager,
+    "send_service_bus_completion_message",
+    side_effect=Exception("send_service_bus_completion_message exception"),
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "validate_apply_json_payload")
+@mock.patch.object(RedactionManager, "apply")
+@mock.patch.object(RedactionManager, "log_exception")
+def test__try_apply__fail_with_extra_non_fatal_error(
+    mock_log_exception,
+    mock_apply,
+    mock_validate_json,
+    mock_init,
+    mock_send_service_bus_message,
+    mock_save_logs,
+    mock_save_exception,
+):
+    """
+    - Given the redaction process is not successful
+    - When there are also non-fatal errors
+    - Then the redaction process should fail with all fatal and non-fatal errors reported to the caller
+    """
+    exception = Exception("Some exception")
+    inst = RedactionManager("job_id")
+    inst.job_id = "test__try_apply__non_fatal_error"
+    inst.env = "dev"
+    mock_apply.side_effect = exception
+    params = {"some_payload", ""}
+    response = inst.try_apply(params)
+    expected_response = {
+        "parameters": params,
+        "id": inst.job_id,
+        "stage": "REDACT",
+        "status": "FAIL",
+        "message": (
+            f"Redaction process failed with the following error: {exception}"
+            "\nAdditionally, the following non-fatal errors occurred:\n"
+            "Failed to submit a service bus message with the following error: send_service_bus_completion_message exception\n"
+            "Failed to write logs with the following error: save_logs exception\nFailed to write an exception log with the "
+            "following error: save_exception_log exception"
+        ),
+    }
+    assert response == expected_response
 
 
 def test__send_service_bus_completion_message__with_missing_pins_service():

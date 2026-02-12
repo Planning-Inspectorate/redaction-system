@@ -814,3 +814,12 @@ def test__pdf_processor__apply_provisional_image_redactions():
         for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
             actual_annotated_rects.append(annotation.rect)
     assert expected_annotation_rects == actual_annotated_rects
+
+
+def test__pdf_processor__apply():
+    with open("redactor/test/resources/pdf/test__pdf_processor__proposed.pdf", "rb") as f:
+        curated_doc_bytes = BytesIO(f.read())
+    with open("redactor/test/resources/pdf/test__pdf_processor__redacted.pdf", "rb") as f:
+        expected_redacted_doc_bytes = BytesIO(f.read())
+    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes)
+    old_doc_content = ""
