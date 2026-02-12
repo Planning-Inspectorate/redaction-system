@@ -20,8 +20,8 @@ def test__config_processor__process_config():
         "redaction_terms": [
             "People's names",
             "Personal addresses and postcodes",
-            "Personal email addresses, unless its a Planning Inspectorate email",
-            "Telephone numbers, unless its a Planning Inspectorate customer service team telephone number",
+            "Personal email addresses, unless it's a Planning Inspectorate email",
+            "Telephone numbers, unless it's a Planning Inspectorate customer service team telephone number",
             "National Insurance Numbers, e.g. AB 12 34 56 C",
             "Hyperlinks, except those that are .gov.uk, .org, .gov.wales",
             "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text.",
@@ -33,9 +33,8 @@ def test__config_processor__process_config():
             "The location of any of the following: badger sett, bat maternity roost, bird nest",
         ],
         "constraints": [
-            "Do not include locations or organisations",
             "Do not include names of anything which is not a person",
-            "Do not list the author of the text",
+            "Do not include the name of the author of the text",
             "Do not include those on whose behalf the text was written",
         ],
     }
