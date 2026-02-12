@@ -348,6 +348,13 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
+        if rect.is_empty:
+            # If the rect is invalid, then normalise it
+            initial_rect = str(rect)
+            rect = rect.normalize()
+            LoggingUtil().log_info(
+                f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
+            )
         # Add the original rect in the subject, since highlight annotations may not have the same rect once created
         # i.e. this is needed to ensure the final redactions are in the correct location
         highlight_annotation = page.add_highlight_annot(rect)
