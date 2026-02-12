@@ -357,7 +357,7 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     logging_util_calls_as_string = [str(x) for x in logging_util_calls]
     timeout_error = str(
         TimeoutError(
-            f"(chunk id {hash(user_prompt)}) Timeout while waiting for request semaphore to be available."
+            f"(chunk ID {hash(user_prompt)}) Timeout while waiting for request semaphore to be available."
         )
     )
     assert any(timeout_error in x for x in logging_util_calls_as_string), (
