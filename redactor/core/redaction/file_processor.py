@@ -11,7 +11,7 @@ from core.redaction.redactor import (
     Redactor,
     TextRedactor,
     ImageRedactor,
-    RedactorFactory,
+    RedactorFactory
 )
 from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
@@ -29,6 +29,8 @@ from core.util.text_util import is_english_text, get_normalised_words, normalise
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
 
+from yaml import safe_load
+import os
 
 class FileProcessor(ABC):
     """
@@ -808,15 +810,24 @@ class PDFProcessor(FileProcessor):
         for rule_to_apply in redaction_rules_to_apply:
             redaction_results.append(rule_to_apply.redact())
 
+        # Ingest Stopword list
+        def _remove_stopwords(self, text_to_redact: List[str]):
+            stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
+            stopwords_list = stopwords["stopwords"]
+            text_to_redact = [x for x in text_to_redact if x.lower() not in stopwords_list]
+            return text_to_redact
+
         # Separate out text and image redaction results
         text_redaction_results: List[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         ]
-        text_redactions = [
-            redaction_string
-            for result in text_redaction_results
-            for redaction_string in result.redaction_strings
-        ]
+        text_redactions = self.remove_stopwords(
+            [
+                redaction_string
+                for result in text_redaction_results
+                for redaction_string in result.redaction_strings
+            ]
+        )
         image_redaction_results: List[ImageRedactionResult] = [
             x
             for x in redaction_results
