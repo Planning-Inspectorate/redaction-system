@@ -339,7 +339,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with patch.object(
             PDFProcessor,
-            "_is_full_text_being_redacted",
+            "_find_potential_matches_in_line",
             side_effect=[([("hello", 0, 0)]), [("world", 0, 0)]],
         ):
             match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
@@ -368,7 +368,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with patch.object(
             PDFProcessor,
-            "_is_full_text_being_redacted",
+            "_find_potential_matches_in_line",
             side_effect=[([("hello", 0, 0)]), []],
         ):
             result = PDFProcessor()._check_partial_redaction_across_line_breaks(
@@ -396,7 +396,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with patch.object(
             PDFProcessor,
-            "_is_full_text_being_redacted",
+            "_find_potential_matches_in_line",
             return_value=([("hello", 0, 0)]),
         ):
             result = PDFProcessor()._examine_provisional_text_redaction(
@@ -408,7 +408,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
     assert result == [(page_metadata.page_number, rect, term)]
 
 
-@patch.object(PDFProcessor, "_is_full_text_being_redacted", return_value=[])
+@patch.object(PDFProcessor, "_find_potential_matches_in_line", return_value=[])
 def test__pdf_processor__examine_provisional_text_redaction__no_matches(
     mock_full_redaction,
 ):
@@ -458,7 +458,7 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
             ),
             patch.object(
                 PDFProcessor,
-                "_is_full_text_being_redacted",
+                "_find_potential_matches_in_line",
                 side_effect=[[("hello", 0, 0)], [("world", 0, 0)]],
             ),
         ):
@@ -495,11 +495,11 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
             patch.object(
                 PDFProcessor,
                 "_check_partial_redaction_across_line_breaks",
-                return_value=(0, page_metadata.lines[1], 1),
+                return_value=(0, page_metadata.lines[1], 0),
             ),
             patch.object(
                 PDFProcessor,
-                "_is_full_text_being_redacted",
+                "_find_potential_matches_in_line",
                 side_effect=[[("something", 0, 0)], [("else", 0, 0)]],
             ),
         ):
@@ -602,7 +602,7 @@ def test__pdf_processor__check_subsequent_words():
         line_number=0, words=("hello", "world"), y0=0, y1=10, x0=(0, 5), x1=(10, 15)
     )
     index = 0
-    expected_result = (["hello", "world"], 2)
+    expected_result = (["hello", "world"], 1)
     result = PDFProcessor._check_subsequent_words(
         get_normalised_words(term), line_to_check, index
     )
@@ -691,10 +691,10 @@ def test__pdf_processor__check_partial_match_before_hyphen__preceding_words():
         ),  # Hyphenated word at line break with preceding word
     ],
 )
-def test__pdf_processor__is_full_text_being_redacted(test_case):
+def test__pdf_processor__find_potential_matches_in_line(test_case):
     """
     - Given I have a sample of some text to redact, and a sample of the corresponding text near the bounding box
-    - When i call _is_full_text_being_redacted
+    - When i call _find_potential_matches_in_line
     - Then the text should only be marked for redaction is it is not a partial redaction of another word.
       e.g, "he" is a partial redaction of "their" so should return False
     """
@@ -703,7 +703,7 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
     text_to_redact = test_case[1]
     truth = test_case[2]
     error_message = (
-        f"Expected _is_full_text_being_redacted to return {truth} when trying "
+        f"Expected _find_potential_matches_in_line to return {truth} when trying "
         f"to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
     )
 
@@ -720,7 +720,7 @@ def test__pdf_processor__is_full_text_being_redacted(test_case):
         x1=tuple(range(1, len(actual_text_at_rect) + 1)),
     )
 
-    result = PDFProcessor._is_full_text_being_redacted(text_to_redact, line_to_check)
+    result = PDFProcessor._find_potential_matches_in_line(text_to_redact, line_to_check)
 
     if truth:
         expected_result = (
