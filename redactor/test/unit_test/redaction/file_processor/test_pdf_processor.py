@@ -16,6 +16,7 @@ from core.redaction.result import (
 )
 from core.util.text_util import is_english_text, get_normalised_words
 from core.redaction.exceptions import NonEnglishContentException
+import os
 
 
 def test__pdf_processor__get_name():
@@ -817,9 +818,49 @@ def test__pdf_processor__apply_provisional_image_redactions():
 
 
 def test__pdf_processor__apply():
-    with open("redactor/test/resources/pdf/test__pdf_processor__proposed.pdf", "rb") as f:
+    with open(
+        os.path.join(
+            "test",
+            "resources",
+            "pdf",
+            "test__pdf_processor__text_and_image_proposed.pdf",
+        ),
+        "rb",
+    ) as f:
         curated_doc_bytes = BytesIO(f.read())
-    with open("redactor/test/resources/pdf/test__pdf_processor__redacted.pdf", "rb") as f:
+    with open(
+        os.path.join(
+            "test",
+            "resources",
+            "pdf",
+            "test__pdf_processor__text_and_image_redacted.pdf",
+        ),
+        "rb",
+    ) as f:
         expected_redacted_doc_bytes = BytesIO(f.read())
-    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes)
-    old_doc_content = ""
+    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, dict())
+    expected_redacted_doc = pymupdf.open(stream=expected_redacted_doc_bytes)
+    actual_redacted_doc = pymupdf.open(stream=actual_redacted_doc_bytes)
+    expected_missing_words = {"Riker)", "Phillipa)"}
+    expected_text = "".join(page.get_text() for page in expected_redacted_doc)
+    for word_to_remove in expected_missing_words:
+        expected_text = expected_text.replace(word_to_remove, "")
+    actual_text = "".join(page.get_text() for page in actual_redacted_doc)
+    assert expected_text == actual_text
+    # The redacted image has the text whited out
+    with open(
+        os.path.join("test", "resources", "image", "image_with_text_redacted.jpg"), "rb"
+    ) as f:
+        expected_image_bytes = BytesIO(f.read())
+        expected_image = Image.open(expected_image_bytes)
+    pdf_images = [
+        Image.open(BytesIO(actual_redacted_doc.extract_image(xref[0]).get("image")))
+        for page in actual_redacted_doc
+        for xref in page.get_images(full=True)
+    ]
+    temp_bytes = BytesIO()
+    pdf_images[0].save(temp_bytes, format="JPEG")
+    actual_image = Image.open(temp_bytes)
+    assert expected_image == actual_image, (
+        "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
+    )
