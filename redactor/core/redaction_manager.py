@@ -85,10 +85,12 @@ class RedactionManager:
             raise ValueError(
                 f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
+        # Remove special unicode characters from the string
         cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
+        # Replace any illegal characters that are not compatible with blob storage
         cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
+        # Remove any leading/trailing full stops
         cleaned = cleaned.strip(".")
-        cleaned = cleaned[:40]
         return cleaned
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
