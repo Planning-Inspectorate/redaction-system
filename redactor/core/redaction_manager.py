@@ -300,11 +300,17 @@ class RedactionManager:
         ServiceBusUtil().send_redaction_process_complete_message(
             pins_service, redaction_result
         )
-    
-    def _try_process(self, params: Dict[str, Any], base_response: Dict[str, Any], payload_validator: Callable, redaction_function: Callable):
+
+    def _try_process(
+        self,
+        params: Dict[str, Any],
+        base_response: Dict[str, Any],
+        payload_validator: Callable,
+        redaction_function: Callable,
+    ):
         """
         Generic function for running a redaction process
-        
+
         :param Dict[str, Any] params: The parameters for the redaction_function
         :param Dict[str, Any] base_response: The base content of the response to include in the return value
         :param Callable payload_validator: Validation function for the payload
@@ -397,7 +403,9 @@ class RedactionManager:
             "stage": "ANALYSE",
             "id": self.job_id,
         }
-        return self._try_process(params, base_response, self.validate_redact_json_payload, self.redact)
+        return self._try_process(
+            params, base_response, self.validate_redact_json_payload, self.redact
+        )
 
     def try_apply(self, params: Dict[str, Any]):
         """
@@ -434,4 +442,6 @@ class RedactionManager:
             "stage": "REDACT",
             "id": self.job_id,
         }
-        return self._try_process(params, base_response, self.validate_apply_json_payload, self.apply)
+        return self._try_process(
+            params, base_response, self.validate_apply_json_payload, self.apply
+        )
