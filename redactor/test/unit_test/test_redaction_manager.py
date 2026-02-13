@@ -35,7 +35,11 @@ class MockIO:
 
 def test__redaction_manager__init():
     job_id = "some_job_id"
-    with mock.patch.object(RedactionManager, "_convert_job_id_to_storage_folder_name", return_value=f"{job_id}_blob"):
+    with mock.patch.object(
+        RedactionManager,
+        "_convert_job_id_to_storage_folder_name",
+        return_value=f"{job_id}_blob",
+    ):
         inst = RedactionManager("some_job_id")
         assert inst.job_id == job_id
         assert inst.folder_for_job == f"{job_id}_blob"
@@ -1265,9 +1269,15 @@ def test__send_service_bus_completion_message__successful(pins_service):
     "test_case",
     [
         ("someid", "someid"),
-        ("cbb3b731-412f-4047-9eca-27d17f827e95", "cbb3b731-412f-4047-9eca-27d17f827e95"),
-        ("340089c1-8f8a-4793-b94b-5482e2e7e726:5", "340089c1-8f8a-4793-b94b-5482e2e7e726-5")
-    ]
+        (
+            "cbb3b731-412f-4047-9eca-27d17f827e95",
+            "cbb3b731-412f-4047-9eca-27d17f827e95",
+        ),
+        (
+            "340089c1-8f8a-4793-b94b-5482e2e7e726:5",
+            "340089c1-8f8a-4793-b94b-5482e2e7e726-5",
+        ),
+    ],
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
@@ -1277,14 +1287,7 @@ def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
     assert expected_output == inst._convert_job_id_to_storage_folder_name(id)
 
 
-@pytest.mark.parametrize(
-    "id",
-    [
-        None,
-        "a"*41,
-        2
-    ]
-)
+@pytest.mark.parametrize("id", [None, "a" * 41, 2])
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
     inst = RedactionManager()

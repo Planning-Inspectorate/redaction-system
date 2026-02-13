@@ -101,7 +101,9 @@ async def trigger_apply(req: func.HttpRequest, client: df.DurableOrchestrationCl
     logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
     logging.info("request params: %s", request_params)
     override_id = str(request_params.pop("overrideId", None))
-    run_id = await client.start_new("apply_orchestrator", client_input=request_params, instance_id=override_id)
+    run_id = await client.start_new(
+        "apply_orchestrator", client_input=request_params, instance_id=override_id
+    )
     response = client.create_check_status_response(req, run_id)
     respose_body = json.loads(response.get_body().decode("utf-8"))
     # Return a response with a simplified body

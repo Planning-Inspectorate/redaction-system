@@ -15,7 +15,6 @@ import traceback
 from dotenv import load_dotenv
 import os
 import json
-import re
 
 
 load_dotenv(verbose=True, override=True)
@@ -73,15 +72,19 @@ class RedactionManager:
         self.runtime_errors: List[str] = []
         # Ensure the logger's job id is set to the job id
         LoggingUtil(job_id=self.job_id)
-        LoggingUtil().log_info(f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'")
+        LoggingUtil().log_info(
+            f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
+        )
 
     def _convert_job_id_to_storage_folder_name(self, job_id: str) -> str:
         if job_id is None:
-            raise ValueError(f"Job id cannot be None")
+            raise ValueError("Job id cannot be None")
         if not isinstance(job_id, str):
             raise ValueError(f"Job id must be a string, but was a {type(job_id)}")
         if len(job_id) > 40:
-            raise ValueError(f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters")
+            raise ValueError(
+                f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
+            )
         cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
         cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
         cleaned = cleaned.strip(".")
