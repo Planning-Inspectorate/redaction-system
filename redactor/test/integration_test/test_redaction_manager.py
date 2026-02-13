@@ -360,3 +360,8 @@ class TestIntegrationRedactionManager(TestCase):
             f"There should be no remaining highlights in the PDF after redacting, but there were {len(redacted_pdf_highlights)}"
         )
         self.validate_service_bus_message_sent(guid)
+        log_container_client = blob_service_client.get_container_client("redactiondata")
+        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        assert log_blob_client.exists(), (
+            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )

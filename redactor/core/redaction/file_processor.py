@@ -924,7 +924,19 @@ class PDFProcessor(FileProcessor):
                 "No annotations were found in the PDF - please confirm that this is correct"
             )
         pdf.scrub(
-            True, True, True, True, True, True, True, 1, True, True, True, True, True
+            attached_files=True,
+            clean_pages=True,
+            embedded_files=True,
+            hidden_text=True,
+            javascript=True,
+            metadata=True,
+            redactions=True,
+            redact_images=1,
+            remove_links=True,
+            reset_fields=True,
+            reset_responses=True,
+            thumbnails=True,
+            xml_metadata=True,
         )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
