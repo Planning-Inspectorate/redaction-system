@@ -17,22 +17,9 @@ def test__config_processor__process_config():
     llm_text_redaction_attributes = {
         "model": "gpt-4.1",
         "system_prompt": "You are a thorough assistant that extracts all of the requested terms from a given text.",
-        "redaction_terms": [
-            "People's names",
-            "Personal addresses and postcodes",
-            "Personal email addresses, unless it's a Planning Inspectorate email",
-            "Telephone numbers, unless it's a Planning Inspectorate customer service team telephone number",
-            "National Insurance Numbers, e.g. AB 12 34 56 C",
-            "Hyperlinks, except those that are .gov.uk, .org, .gov.wales",
-            "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text.",
-            "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership",
-            "Criminal offence data, e.g. allegations, investigations, proceedings, penalties",
-            "Any defamatory (libellous) or inflammatory information",
-            "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares",
-            "Dates of birth, and ages of people",
-            "The location of any of the following: badger sett, bat maternity roost, bird nest",
-        ],
+        "redaction_terms": ["People's names"],
         "constraints": [
+            "Do not include locations or organisations",
             "Do not include names of anything which is not a person",
             "Do not include the name of the author of the text",
             "Do not include the names of those on whose behalf the text was written",
@@ -50,7 +37,7 @@ def test__config_processor__process_config():
                 name="Image_Redactor_01", redactor_type="ImageRedaction"
             ),
             ImageLLMTextRedactionConfig(
-                name="Image_Text_Redactor_01",
+                name="Image_LLM_Text_Redactor_01",
                 redactor_type="ImageLLMTextRedaction",
                 **llm_text_redaction_attributes,
             ),

@@ -7,22 +7,38 @@ redactors:
       system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
       - "People's names"
-      - "Personal addresses and postcodes"
+      constraints:
+      - "Do not include locations or organisations" 
+      - "Do not include names of anything which is not a person"
+      - "Do not include the name of the author of the text"
+      - "Do not include the names of those on whose behalf the text was written"
+
+    - name: "Text_Redactor_02"
+      model: "gpt-4.1"
+      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      redaction_terms: 
+      - "Personal addresses and postcodes" 
       - "Personal email addresses, unless it's a Planning Inspectorate email"
       - "Telephone numbers, unless it's a Planning Inspectorate customer service team telephone number"
       - "National Insurance Numbers, e.g. AB 12 34 56 C"
       - "Hyperlinks, except those that are .gov.uk, .org, .gov.wales"
+        
+    - name: "Text_Redactor_03"
+      model: "gpt-4.1"
+      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      redaction_terms: 
       - "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text."
       - "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership"
       - "Criminal offence data, e.g. allegations, investigations, proceedings, penalties"
       - "Any defamatory (libellous) or inflammatory information"
       - "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares"
+
+    - name: "Text_Redactor_04"
+      model: "gpt-4.1"
+      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      redaction_terms: 
       - "Dates of birth, and ages of people"
       - "The location of any of the following: badger sett, bat maternity roost, bird nest"
-      constraints:
-      - "Do not include names of anything which is not a person"
-      - "Do not include the name of the author of the text"
-      - "Do not include the names of those on whose behalf the text was written"
 
   - redactor_type: "ImageRedaction"
 
@@ -37,7 +53,16 @@ redactors:
   - redactor_type: "ImageLLMTextRedaction"
     
     redaction_rules: 
-    - name: "Image_Text_Redactor_01"
+    - name: "Image_LLM_Text_Redactor_01"
       text_redaction_rule: "Text_Redactor_01"
+    
+    - name: "Image_LLM_Text_Redactor_02"
+      text_redaction_rule: "Text_Redactor_02"
+
+    - name: "Image_LLM_Text_Redactor_03"
+      text_redaction_rule: "Text_Redactor_03"
+    
+    - name: "Image_LLM_Text_Redactor_04"
+      text_redaction_rule: "Text_Redactor_04"
 
 provisional_redactions:
