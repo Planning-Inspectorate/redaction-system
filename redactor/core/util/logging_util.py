@@ -65,7 +65,7 @@ class LoggingUtil(metaclass=Singleton):
         self.namespace = kwargs.pop("namespace", "redactor_logs")
         self.log_file = kwargs.pop("log_file", None)
         self.log_level = kwargs.pop("log_level", logging.DEBUG)
-        self.raw_logs = ""
+        self.raw_logs_list = []
 
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
@@ -104,7 +104,7 @@ class LoggingUtil(metaclass=Singleton):
         Log an information message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs += f"INFO: {message}\n"
+        self.raw_logs_list.append(f"INFO: {message}\n")
         # self.logger.info(message)
 
     def log_exception(self, ex: Exception):
@@ -113,7 +113,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs += f"ERROR: {message}\n"
+        self.raw_logs_list.append(f"ERROR: {message}\n")
         # self.logger.exception(message)
 
     def log_exception_with_message(self, message: str, ex: Exception):
@@ -122,7 +122,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs += f"ERROR: {message}\n"
+        self.raw_logs_list.append(f"ERROR: {message}\n")
         # self.logger.exception(message)
 
     def log_warning(self, msg: str):
@@ -130,11 +130,11 @@ class LoggingUtil(metaclass=Singleton):
         Log a warning message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs += f"WARNING: {message}\n"
+        self.raw_logs_list.append(f"WARNING: {message}\n")
         # self.logger.warning(message)
 
     def get_log_bytes(self) -> bytes:
-        return self.raw_logs.encode("utf-8")
+        return "".join(self.raw_logs_list).encode("utf-8")
 
 
 def log_to_appins(_func=None, *args, **kwargs):
