@@ -31,6 +31,7 @@ from core.util.types import PydanticImage
 
 from yaml import safe_load
 import os
+import dataclasses
 
 class FileProcessor(ABC):
     """
