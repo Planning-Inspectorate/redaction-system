@@ -35,8 +35,10 @@ class MockIO:
 
 def test__redaction_manager__init():
     job_id = "some_job_id"
-    inst = RedactionManager("some_job_id")
-    assert inst.job_id == job_id
+    with mock.patch.object(RedactionManager, "_convert_job_id_to_storage_folder_name", return_value=f"{job_id}_blob"):
+        inst = RedactionManager("some_job_id")
+        assert inst.job_id == job_id
+        assert inst.folder_for_job == f"{job_id}_blob"
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -192,6 +194,7 @@ def test__redaction_manager__redact(
     mock_cleaned_config = {"cleaned_rules": dict()}
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.folder_for_job = "instfolder"
     inst.env = "dev"
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
@@ -228,12 +231,12 @@ def test__redaction_manager__redact(
             mock.call(
                 MockIO.read.return_value,
                 container_name="redactiondata",
-                blob_path=f"{inst.job_id}/raw.pdf",
+                blob_path=f"{inst.folder_for_job}/raw.pdf",
             ),
             mock.call(
                 MockRedactor.redact.return_value,
                 container_name="redactiondata",
-                blob_path=f"{inst.job_id}/proposed.pdf",
+                blob_path=f"{inst.folder_for_job}/proposed.pdf",
             ),
         ]
     )
@@ -294,6 +297,7 @@ def test__redaction_manager__apply(
     mock_cleaned_config = {"cleaned_rules": dict()}
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.folder_for_job = "instfolder"
     inst.env = "dev"
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
@@ -324,12 +328,12 @@ def test__redaction_manager__apply(
             mock.call(
                 MockIO.read.return_value,
                 container_name="redactiondata",
-                blob_path=f"{inst.job_id}/curated.pdf",
+                blob_path=f"{inst.folder_for_job}/curated.pdf",
             ),
             mock.call(
                 MockRedactor.apply.return_value,
                 container_name="redactiondata",
-                blob_path=f"{inst.job_id}/redacted.pdf",
+                blob_path=f"{inst.folder_for_job}/redacted.pdf",
             ),
         ]
     )
@@ -350,6 +354,7 @@ def test__redaction_manager__log_exception(mock_init):
     expected_exception_message = "An exception with a message"
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.folder_for_job = "instfolder"
     inst.env = "dev"
     inst.runtime_errors = []
     some_exception = Exception(expected_exception_message)
@@ -395,7 +400,7 @@ def check__save_exception_log__azure_blob_write__blob_path(
     calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
-        assert call[1].get("blob_path", None) == f"{job_id}/exceptions.txt"
+        assert call[1].get("blob_path", None) == f"{job_id}folder/exceptions.txt"
 
 
 @pytest.mark.parametrize(
@@ -418,6 +423,7 @@ def test__redaction_manager__save_exception_log(
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.folder_for_job = "instfolder"
     inst.env = "dev"
     inst.runtime_errors = ["some exception A", "some exception B"]
     expected_exception_message = "\n\n\n".join(inst.runtime_errors)
@@ -435,6 +441,7 @@ def test__redaction_manager__save_exception_log__with_no_exception(
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
+    inst.folder_for_job = "instfolder"
     inst.env = "dev"
     inst.runtime_errors = []
     inst.save_exception_log()
@@ -606,6 +613,7 @@ def test__try_redact__successful(
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.folder_for_job = "test__redaction_manager__try_redact_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     response = inst.try_redact(params)
@@ -652,6 +660,7 @@ def test__try_redact__param_validation_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.folder_for_job = "test__redaction_manager__try_redact_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     mock_validate_json.side_effect = exception
@@ -699,6 +708,7 @@ def test__try_redact__redaction_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
+    inst.folder_for_job = "test__redaction_manager__try_redact_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     mock_redact.side_effect = exception
@@ -750,6 +760,7 @@ def test__try_redact__success_with_non_fatal_error(
     """
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_redact__non_fatal_error"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     response = inst.try_redact(params)
@@ -802,6 +813,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_redact__non_fatal_error"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     mock_redact.side_effect = exception
     params = {"some_payload", ""}
@@ -831,12 +843,13 @@ def test__redaction_manager__save_logs(
 ):
     inst = RedactionManager()
     inst.job_id = "test__redaction_manager__save_logs"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     inst.save_logs()
     AzureBlobIO.write.assert_called_once_with(
         data_bytes=b"xyz",
         container_name="redactiondata",
-        blob_path=f"{inst.job_id}/log.txt",
+        blob_path=f"{inst.folder_for_job}/log.txt",
     )
 
 
@@ -1002,6 +1015,7 @@ def test__try_apply__successful(
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     response = inst.try_apply(params)
@@ -1048,6 +1062,7 @@ def test__try_apply__param_validation_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     mock_validate_json.side_effect = exception
@@ -1095,6 +1110,7 @@ def test__try_apply__apply_failure(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     mock_apply.side_effect = exception
@@ -1146,6 +1162,7 @@ def test__try_apply__success_with_non_fatal_error(
     """
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_apply__non_fatal_error"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     params = {"some_payload", ""}
     response = inst.try_apply(params)
@@ -1198,6 +1215,7 @@ def test__try_apply__fail_with_extra_non_fatal_error(
     exception = Exception("Some exception")
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_apply__non_fatal_error"
+    inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
     mock_apply.side_effect = exception
     params = {"some_payload", ""}
@@ -1241,3 +1259,34 @@ def test__send_service_bus_completion_message__successful(pins_service):
             ServiceBusUtil.send_redaction_process_complete_message.assert_called_once_with(
                 pins_service, result
             )
+
+
+@pytest.mark.parametrize(
+    "test_case",
+    [
+        ("someid", "someid"),
+        ("cbb3b731-412f-4047-9eca-27d17f827e95", "cbb3b731-412f-4047-9eca-27d17f827e95"),
+        ("340089c1-8f8a-4793-b94b-5482e2e7e726:5", "340089c1-8f8a-4793-b94b-5482e2e7e726-5")
+    ]
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
+    id = test_case[0]
+    expected_output = test_case[1]
+    inst = RedactionManager("")
+    assert expected_output == inst._convert_job_id_to_storage_folder_name(id)
+
+
+@pytest.mark.parametrize(
+    "id",
+    [
+        None,
+        "a"*41,
+        2
+    ]
+)
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
+    inst = RedactionManager()
+    with pytest.raises(ValueError):
+        inst._convert_job_id_to_storage_folder_name(id)
