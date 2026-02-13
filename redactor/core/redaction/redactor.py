@@ -361,7 +361,6 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
                 # Analyse detected text with LLM
                 redaction_strings = self._analyse_text(text_content).redaction_strings
-                redaction_strings = self._remove_stopwords(redaction_strings)
 
                 # Identify text rectangles to redact based on redaction strings
                 text_rects_to_redact = []
