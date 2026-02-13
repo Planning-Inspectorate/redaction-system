@@ -31,3 +31,7 @@ class DuplicateRedactorNameException(Exception):  # pragma: no cover
 
 class RedactorNameNotFoundException(Exception):  # pragma: no cover
     pass
+
+
+class NothingToRedactException(Exception):  # pragma: no cover
+    pass
