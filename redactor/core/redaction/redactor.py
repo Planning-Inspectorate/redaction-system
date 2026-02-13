@@ -329,7 +329,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                     )
                 )
             except Exception as e:
-                LoggingUtil().log_exception(
+                LoggingUtil().log_exception_with_message(
                     f"Error analysing image for text redaction: {e}"
                 )
 
@@ -395,7 +395,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     )
                 )
             except Exception as e:
-                LoggingUtil().log_exception(
+                LoggingUtil().log_exception_with_message(
                     f"Error analysing image for text redaction: {e}"
                 )
 
