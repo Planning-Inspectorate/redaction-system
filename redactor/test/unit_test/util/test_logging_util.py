@@ -1,7 +1,7 @@
 import pytest
 import time
 
-from unittest.mock import patch
+from unittest.mock import patch, call
 from logging import Logger, getLogger
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -89,12 +89,12 @@ def test_logging_util__log_info(mock_logger_info):
     info_message = "some_info_message"
     logging_util_inst.log_info(info_message)
 
-    # Logger.info.assert_has_calls(
-    #    [
-    #        call("some_guid: Logging initialised for redactor_logs."),
-    #        call(f"some_guid: {info_message}"),
-    #    ]
-    # )
+    Logger.info.assert_has_calls(
+        [
+            call("some_guid: Logging initialised for redactor_logs."),
+            call(f"some_guid: {info_message}"),
+        ]
+    )
     assert (
         "INFO: some_guid: Logging initialised for redactor_logs.\n"
         in logging_util_inst.raw_logs
@@ -116,7 +116,7 @@ def test_logging_util__log_exception(mock_logger_exception):
     )
     base_message = f"some_guid: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
 
-    # Logger.exception.assert_called_once_with(base_message)
+    Logger.exception.assert_called_once_with(base_message)
     assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
 
 
@@ -135,7 +135,7 @@ def test_logging_util__log_exception_with_message(mock_logger_exception):
     )
     base_message = f"some_guid: {message}: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
 
-    # Logger.exception.assert_called_once_with(base_message)
+    Logger.exception.assert_called_once_with(base_message)
     assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
 
 
