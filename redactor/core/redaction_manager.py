@@ -1,5 +1,5 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -22,7 +22,7 @@ load_dotenv(verbose=True, override=True)
 
 class JsonPayloadStructure(BaseModel):
     """
-    Validator for the payload for the web request for the redaction process
+    Base model for the payload for the web request for the redaction process
     """
 
     class ReadDetails(BaseModel):
@@ -34,14 +34,29 @@ class JsonPayloadStructure(BaseModel):
         storageKind: str
         properties: Dict[str, Any]
 
-    tryApplyProvisionalRedactions: Optional[bool] = True
     pinsService: Optional[PINSService] = None
-    skipRedaction: Optional[bool] = False
-    configName: Optional[str] = "default"
     fileKind: str
     readDetails: ReadDetails = None
     writeDetails: WriteDetails = None
     metadata: Optional[Dict[str, Any]] = None
+
+
+class RedactJsonPayloadStructure(JsonPayloadStructure):
+    """
+    Validator for the payload for the web request for performing AI analysis in the redaction process
+    """
+
+    tryApplyProvisionalRedactions: Optional[bool] = True
+    skipRedaction: Optional[bool] = False
+    configName: Optional[str] = "default"
+
+
+class ApplyJsonPayloadStructure(JsonPayloadStructure):
+    """
+    Validator for the payload for the web request for applying redactions in the redaction process
+    """
+
+    pass
 
 
 class RedactionManager:
@@ -65,9 +80,13 @@ class RedactionManager:
             for k, v in some_parameters.items()
         }
 
-    def validate_json_payload(self, payload: Dict[str, Any]):
-        model_inst = JsonPayloadStructure(**payload)
-        JsonPayloadStructure.model_validate(model_inst)
+    def validate_redact_json_payload(self, payload: Dict[str, Any]):
+        model_inst = RedactJsonPayloadStructure(**payload)
+        RedactJsonPayloadStructure.model_validate(model_inst)
+
+    def validate_apply_json_payload(self, payload: Dict[str, Any]):
+        model_inst = ApplyJsonPayloadStructure(**payload)
+        ApplyJsonPayloadStructure.model_validate(model_inst)
 
     def redact(self, params: Dict[str, Any]):
         """
@@ -159,6 +178,73 @@ class RedactionManager:
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
 
+    def apply(self, params: Dict[str, Any]):
+        """
+        Apply any redactions to a file that has already been analysed
+        """
+        config_name = params.get("configName", "default")
+        file_kind = params.get("fileKind")
+        read_details: Dict[str, Any] = params.get("readDetails")
+        read_torage_kind = read_details.get("storageKind")
+        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+            read_details.get("properties")
+        )
+
+        write_details: Dict[str, Any] = params.get("writeDetails")
+        write_storage_kind = write_details.get("storageKind")
+        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+            write_details.get("properties")
+        )
+
+        # Set up connection to redaction storage
+        redaction_storage_io_inst = AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        )
+
+        # Load the data
+        read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
+        file_data = read_io_inst.read(**read_storage_properties)
+        file_data.seek(0)
+
+        file_processor_class = FileProcessorFactory.get(file_kind)
+
+        # Load redaction config
+        config = ConfigProcessor.load_config(config_name)
+        # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
+        # file_format = magic.from_buffer(file_data.read(), mime=True)
+        # Temp for now
+        file_format = "application/pdf"
+        extension = file_format.split("/").pop()
+        config["file_format"] = extension
+        config_cleaned = ConfigProcessor.validate_and_filter_config(
+            config, file_processor_class
+        )
+
+        # Store a copy of the raw data in redaction storage before processing begins
+        redaction_storage_io_inst.write(
+            file_data,
+            container_name="redactiondata",
+            blob_path=f"{self.job_id}/curated.{extension}",
+        )
+
+        # Process the data
+        file_processor_inst = file_processor_class()
+        proposed_redaction_file_data = file_processor_inst.apply(
+            file_data, config_cleaned
+        )
+
+        # Store a copy of the proposed redactions in redaction storage
+        redaction_storage_io_inst.write(
+            proposed_redaction_file_data,
+            container_name="redactiondata",
+            blob_path=f"{self.job_id}/redacted.{extension}",
+        )
+        proposed_redaction_file_data.seek(0)
+
+        # Write the data back to the sender's desired location
+        write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
+        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+
     def save_logs(self):
         """
         Write a log file locally and in Azure
@@ -215,50 +301,28 @@ class RedactionManager:
             pins_service, redaction_result
         )
 
-    def try_redact(self, params: Dict[str, Any]):
+    def _try_process(
+        self,
+        params: Dict[str, Any],
+        base_response: Dict[str, Any],
+        payload_validator: Callable,
+        redaction_function: Callable,
+    ):
         """
-        Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
+        Generic function for running a redaction process
 
-        Expected input structure
-        ```
-        {
-            "tryApplyProvisionalRedactions": True,
-            "skipRedaction": True,
-            "pinsService": "CBOS",
-            "configName": "default",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": "hbtCv.pdf",
-                    "storageName": "pinsstredactiondevuks",
-                    "containerName": "hbttest"
-                }
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
-                    "storageName": "pinsstredactiondevuks",
-                    "containerName": "hbttest"
-                }
-            }
-        }
-        ```
+        :param Dict[str, Any] params: The parameters for the redaction_function
+        :param Dict[str, Any] base_response: The base content of the response to include in the return value
+        :param Callable payload_validator: Validation function for the payload
+        :param Callable redaction_function: Redaction process function to run
         """
         fatal_error = None
         non_fatal_errors = []
-        base_response = {
-            "parameters": params,
-            "id": self.job_id,
-        }
         status = "SUCCESS"
         message = "Redaction process complete"
         try:
-            self.validate_json_payload(params)
-            self.redact(params)
+            payload_validator(params)
+            redaction_function(params)
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
@@ -300,3 +364,84 @@ class RedactionManager:
                 )
         final_output = base_response | {"status": status, "message": message}
         return final_output
+
+    def try_redact(self, params: Dict[str, Any]):
+        """
+        Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
+
+        Expected input structure
+        ```
+        {
+            "tryApplyProvisionalRedactions": True,
+            "skipRedaction": True,
+            "pinsService": "CBOS",
+            "configName": "default",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            }
+        }
+        ```
+        """
+        base_response = {
+            "parameters": params,
+            "stage": "ANALYSE",
+            "id": self.job_id,
+        }
+        return self._try_process(
+            params, base_response, self.validate_redact_json_payload, self.redact
+        )
+
+    def try_apply(self, params: Dict[str, Any]):
+        """
+        Apply redaction highlights using the provided parameters, and write exception details to storage/app insights if there is an error
+
+        Expected input structure
+        ```
+        {
+            "pinsService": "CBOS",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": "hbtCv_PROPOSED_REDACTIONS.pdf",
+                    "storageName": "pinsstredactiondevuks",
+                    "containerName": "hbttest"
+                }
+            }
+        }
+        ```
+        """
+        base_response = {
+            "parameters": params,
+            "stage": "REDACT",
+            "id": self.job_id,
+        }
+        return self._try_process(
+            params, base_response, self.validate_apply_json_payload, self.apply
+        )
