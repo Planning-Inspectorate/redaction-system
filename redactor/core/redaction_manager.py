@@ -39,6 +39,7 @@ class JsonPayloadStructure(BaseModel):
     readDetails: ReadDetails = None
     writeDetails: WriteDetails = None
     metadata: Optional[Dict[str, Any]] = None
+    overrideId: Optional[str] = None
 
 
 class RedactJsonPayloadStructure(JsonPayloadStructure):
@@ -62,6 +63,7 @@ class ApplyJsonPayloadStructure(JsonPayloadStructure):
 class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = job_id
+        self.folder_for_job = self._convert_job_id_to_storage_folder_name(self.job_id)
         self.env = os.environ.get("ENV", None)
         if not self.env:
             raise RuntimeError(
@@ -70,6 +72,26 @@ class RedactionManager:
         self.runtime_errors: List[str] = []
         # Ensure the logger's job id is set to the job id
         LoggingUtil(job_id=self.job_id)
+        LoggingUtil().log_info(
+            f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
+        )
+
+    def _convert_job_id_to_storage_folder_name(self, job_id: str) -> str:
+        if job_id is None:
+            raise ValueError("Job id cannot be None")
+        if not isinstance(job_id, str):
+            raise ValueError(f"Job id must be a string, but was a {type(job_id)}")
+        if len(job_id) > 40:
+            raise ValueError(
+                f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
+            )
+        # Remove special unicode characters from the string
+        cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
+        # Replace any illegal characters that are not compatible with blob storage
+        cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
+        # Remove any leading/trailing full stops
+        cleaned = cleaned.strip(".")
+        return cleaned
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
         """
@@ -141,7 +163,7 @@ class RedactionManager:
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/raw.{extension}",
+            blob_path=f"{self.folder_for_job}/raw.{extension}",
         )
 
         # Process the data
@@ -167,7 +189,7 @@ class RedactionManager:
         redaction_storage_io_inst.write(
             proposed_redaction_file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/proposed.{extension}",
+            blob_path=f"{self.folder_for_job}/proposed.{extension}",
         )
         proposed_redaction_file_data.seek(0)
 
@@ -224,7 +246,7 @@ class RedactionManager:
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/curated.{extension}",
+            blob_path=f"{self.folder_for_job}/curated.{extension}",
         )
 
         # Process the data
@@ -237,7 +259,7 @@ class RedactionManager:
         redaction_storage_io_inst.write(
             proposed_redaction_file_data,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/redacted.{extension}",
+            blob_path=f"{self.folder_for_job}/redacted.{extension}",
         )
         proposed_redaction_file_data.seek(0)
 
@@ -256,7 +278,7 @@ class RedactionManager:
         ).write(
             data_bytes=log_bytes,
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/log.txt",
+            blob_path=f"{self.folder_for_job}/log.txt",
         )
 
     def log_exception(self, exception: Exception):
@@ -284,7 +306,7 @@ class RedactionManager:
         blob_io.write(
             data_bytes=data_to_write.encode(text_encoding),
             container_name="redactiondata",
-            blob_path=f"{self.job_id}/exceptions.txt",
+            blob_path=f"{self.folder_for_job}/exceptions.txt",
         )
 
     def send_service_bus_completion_message(
