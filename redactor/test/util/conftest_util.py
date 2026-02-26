@@ -73,7 +73,9 @@ def configure_session():
     logging.info(f"Running with run_id='{os.environ['RUN_ID']}'")
     pytest_args = sys.argv[1:]
     if _is_lightweight_invocation(pytest_args):
-        logging.info("Skipping broad test module auto-import for lightweight invocation")
+        logging.info(
+            "Skipping broad test module auto-import for lightweight invocation"
+        )
         return
     import_all_testing_modules()
 

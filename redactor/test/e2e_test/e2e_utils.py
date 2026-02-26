@@ -168,7 +168,9 @@ def az_blob_exists(account: str, container: str, blob_name: str) -> bool:
     return exists
 
 
-def az_list_blob_names(account: str, container: str, prefix: str, limit: int = 200) -> list[str]:
+def az_list_blob_names(
+    account: str, container: str, prefix: str, limit: int = 200
+) -> list[str]:
     service_client = _blob_service_client(account)
     container_client = service_client.get_container_client(container)
     out: list[str] = []
