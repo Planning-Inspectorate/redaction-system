@@ -1,13 +1,20 @@
 # test/e2e_test/e2e_utils.py
 
-import json
 import logging
 import os
-import subprocess
 import time
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 import requests
+from azure.core.credentials import AzureNamedKeyCredential
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
+from azure.storage.blob import BlobServiceClient
 
 logger = logging.getLogger("e2e")
 
@@ -90,77 +97,61 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 600) -> dic
     raise TimeoutError(f"Timed out waiting for orchestration. pollEndpoint={poll_url}")
 
 
-def _run_az(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    logger.debug("Running: %s", " ".join(cmd))
-    try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        logger.error("AZ command failed: %s", " ".join(cmd))
-        logger.error("STDOUT:\n%s", e.stdout)
-        logger.error("STDERR:\n%s", e.stderr)
-        raise
+@lru_cache(maxsize=1)
+def _credential():
+    return ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential())
+
+
+@lru_cache(maxsize=8)
+def _blob_service_client(account: str) -> BlobServiceClient:
+    connection_string = _env("E2E_STORAGE_CONNECTION_STRING")
+    if connection_string:
+        return BlobServiceClient.from_connection_string(connection_string)
+    account_key = _env("E2E_STORAGE_KEY")
+    if account_key:
+        return BlobServiceClient(
+            account_url=f"https://{account}.blob.core.windows.net",
+            credential=AzureNamedKeyCredential(account, account_key),
+        )
+    return BlobServiceClient(
+        account_url=f"https://{account}.blob.core.windows.net", credential=_credential()
+    )
+
+
+def _blob_client(account: str, container: str, blob_name: str):
+    service_client = _blob_service_client(account)
+    return service_client.get_blob_client(container=container, blob=blob_name)
 
 
 def az_upload(account: str, container: str, blob_name: str, file_path) -> None:
     t0 = _t0()
+    path = Path(file_path)
     logger.info(
         "Uploading input blob: account=%s container=%s blob=%s file=%s",
         account,
         container,
         blob_name,
-        getattr(file_path, "name", str(file_path)),
+        path.name,
     )
-    _run_az(
-        [
-            "az",
-            "storage",
-            "blob",
-            "upload",
-            "--account-name",
-            account,
-            "--container-name",
-            container,
-            "--name",
-            blob_name,
-            "--file",
-            str(file_path),
-            "--auth-mode",
-            "login",
-            "--overwrite",
-            "true",
-        ]
-    )
+    with path.open("rb") as fh:
+        _blob_client(account, container, blob_name).upload_blob(fh, overwrite=True)
     logger.info("Upload complete (%s)", _dt(t0))
 
 
 def az_download(account: str, container: str, blob_name: str, out_path) -> None:
     t0 = _t0()
+    path = Path(out_path)
     logger.info(
         "Downloading blob: account=%s container=%s blob=%s -> %s",
         account,
         container,
         blob_name,
-        getattr(out_path, "name", str(out_path)),
+        path.name,
     )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    _run_az(
-        [
-            "az",
-            "storage",
-            "blob",
-            "download",
-            "--account-name",
-            account,
-            "--container-name",
-            container,
-            "--name",
-            blob_name,
-            "--file",
-            str(out_path),
-            "--auth-mode",
-            "login",
-        ]
-    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    stream = _blob_client(account, container, blob_name).download_blob()
+    with path.open("wb") as fh:
+        fh.write(stream.readall())
     logger.info("Download complete (%s)", _dt(t0))
 
 
@@ -172,27 +163,22 @@ def az_blob_exists(account: str, container: str, blob_name: str) -> bool:
         container,
         blob_name,
     )
-    p = _run_az(
-        [
-            "az",
-            "storage",
-            "blob",
-            "exists",
-            "--account-name",
-            account,
-            "--container-name",
-            container,
-            "--name",
-            blob_name,
-            "--auth-mode",
-            "login",
-            "-o",
-            "json",
-        ]
-    )
-    exists = bool(json.loads(p.stdout).get("exists"))
+    exists = bool(_blob_client(account, container, blob_name).exists())
     logger.info("Blob exists=%s (%s)", exists, _dt(t0))
     return exists
+
+
+def az_list_blob_names(
+    account: str, container: str, prefix: str, limit: int = 200
+) -> list[str]:
+    service_client = _blob_service_client(account)
+    container_client = service_client.get_container_client(container)
+    out: list[str] = []
+    for blob in container_client.list_blobs(name_starts_with=prefix):
+        out.append(blob.name)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def build_payload(

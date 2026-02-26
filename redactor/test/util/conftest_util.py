@@ -42,6 +42,25 @@ def quiet_azure_noise_early():
 _CONFIGURED = False
 
 
+def _is_lightweight_invocation(pytest_args: List[str]) -> bool:
+    """
+    For E2E/perf-focused runs, avoid importing every test module at configure-time.
+    That broad import triggers side effects from unrelated suites.
+    """
+    if "-m" in pytest_args:
+        m_idx = pytest_args.index("-m")
+        if m_idx + 1 < len(pytest_args):
+            marker_expr = pytest_args[m_idx + 1]
+            if "e2e" in marker_expr or "perf" in marker_expr:
+                return True
+
+    for arg in pytest_args:
+        if "test/e2e_test" in arg or "test/perf_test" in arg:
+            return True
+
+    return False
+
+
 def configure_session():
     global _CONFIGURED
     if _CONFIGURED:
@@ -52,6 +71,12 @@ def configure_session():
         run_id = str(uuid4())[:8]
         os.environ["RUN_ID"] = str(run_id)
     logging.info(f"Running with run_id='{os.environ['RUN_ID']}'")
+    pytest_args = sys.argv[1:]
+    if _is_lightweight_invocation(pytest_args):
+        logging.info(
+            "Skipping broad test module auto-import for lightweight invocation"
+        )
+        return
     import_all_testing_modules()
 
 
