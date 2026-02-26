@@ -29,17 +29,21 @@ wait-func:
 
 e2e: wait-func
 	@echo "Running e2e tests (expects Functions already running)..."
+	@if [ -f .env ]; then \
+		set -a; . ./.env; set +a; \
+	fi; \
 	cd redactor && \
 		export PYTHONPATH=$$(pwd) && \
 		export E2E_FUNCTION_BASE_URL=$(FUNC_BASE_URL) && \
 		export E2E_SKIP_REDACTION=false && \
-		pytest -m e2e -vv -rP
+		pytest test/e2e_test -m e2e -vv -rP
 
 perf: wait-func
 	@echo "Running perf tests (expects Functions already running)..."
+	@if [ -f .env ]; then \
+		set -a; . ./.env; set +a; \
+	fi; \
 	cd redactor && \
 		export PYTHONPATH=$$(pwd) && \
 		PERF_TOTAL=$(PERF_TOTAL) PERF_CONCURRENCY=$(PERF_CONCURRENCY) PERF_TIMEOUT_S=$(PERF_TIMEOUT_S) \
 		python3 -m pytest -q -s test/perf_test/test_perf_concurrent_redactions.py
-
-

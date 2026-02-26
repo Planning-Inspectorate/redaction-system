@@ -4,7 +4,6 @@ import asyncio
 import json
 import os
 import statistics
-import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,9 +14,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 import pytest
 
-from redactor.test.e2e_test.e2e_utils import (
+from test.e2e_test.e2e_utils import (
     az_blob_exists,
     az_download,
+    az_list_blob_names,
     az_upload,
     build_payload,
     function_start_url,
@@ -131,7 +131,7 @@ def _percentiles(values: List[float]) -> Dict[str, float]:
 
 
 # ----------------------------
-# Azure CLI diagnostics helpers
+# Blob diagnostics helpers
 # ----------------------------
 
 
@@ -147,36 +147,13 @@ def _az_list_blobs_prefix(
     Returns a list of blob names (possibly empty). Never raises.
     """
     try:
-        cmd = [
-            "az",
-            "storage",
-            "blob",
-            "list",
-            "--account-name",
-            storage_account,
-            "--container-name",
-            container_name,
-            "--prefix",
-            prefix,
-            "--auth-mode",
-            "login",
-            "--query",
-            "[].name",
-            "-o",
-            "tsv",
-        ]
-        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        if r.returncode != 0:
-            return [f"<<az blob list failed rc={r.returncode}: {r.stderr.strip()}>>"]
-
-        lines = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
-        return lines[:limit]
+        return az_list_blob_names(storage_account, container_name, prefix, limit=limit)
     except Exception as e:
-        return [f"<<az blob list exception: {e}>>"]
+        return [f"<<blob list exception: {e}>>"]
 
 
 # ----------------------------
-# Blob-exists helper (sync, uses az cli underneath)
+# Blob-exists helper (sync)
 # ----------------------------
 
 
@@ -189,7 +166,7 @@ def _wait_for_blob_exists(
     poll_s: float,
 ) -> bool:
     """
-    Durable can report Completed before the output blob is observable via `az storage blob exists`,
+    Durable can report Completed before the output blob is observable via blob exists checks,
     so we allow a grace period.
     """
     deadline = time.time() + timeout_s
@@ -356,6 +333,7 @@ async def _run_one(
     timeout_s: int,
     poll_s: float,
     do_exists_check: bool,
+    do_download_sample: bool,
     storage_account: str,
     container_name: str,
     out_blob: str,
@@ -492,9 +470,8 @@ async def _run_one(
                     error=f"Completed but output blob not observed: out_exists={out_exists}",
                 )
 
-            # If blob exists and download sampling is enabled, download to local file (proof it was written to disk)
-            if out_exists is True and PERF_DOWNLOAD_SAMPLE_EVERY > 0:
-                # reuse the same sampling cadence as exists checks, unless user changes it
+            # If this run is selected for download sampling and blob exists, download locally.
+            if out_exists is True and do_download_sample:
                 out_file = tmp_dir / Path(out_blob).name
                 try:
                     await asyncio.to_thread(
@@ -623,13 +600,17 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                     do_exists_check = PERF_EXISTS_SAMPLE_EVERY > 0 and (
                         i % PERF_EXISTS_SAMPLE_EVERY == 0
                     )
+                    do_download_sample = PERF_DOWNLOAD_SAMPLE_EVERY > 0 and (
+                        i % PERF_DOWNLOAD_SAMPLE_EVERY == 0
+                    )
                     return await _run_one(
                         client=client,
                         start_url=start_url,
                         payload=job["payload"],
                         timeout_s=PERF_TIMEOUT_S,
                         poll_s=PERF_POLL_S,
-                        do_exists_check=do_exists_check,
+                        do_exists_check=(do_exists_check or do_download_sample),
+                        do_download_sample=do_download_sample,
                         storage_account=storage_account,
                         container_name=container_name,
                         out_blob=job["out_blob"],

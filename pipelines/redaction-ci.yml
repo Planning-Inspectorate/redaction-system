@@ -207,7 +207,7 @@ extends:
               export E2E_SKIP_REDACTION="false"
               export AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY=true
 
-              python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
+              python3 -m pytest test/e2e_test -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
 
           - script: |

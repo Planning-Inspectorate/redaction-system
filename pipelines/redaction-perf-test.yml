@@ -16,6 +16,9 @@ parameters:
 - name: perfPollSeconds
   type: number
   default: 2
+- name: perfMaxP95Seconds
+  type: number
+  default: 0
 - name: perfFixturePdf
   type: string
   default: PINS_first_10_pages.pdf
@@ -73,7 +76,6 @@ extends:
 
               # Debug/validation knobs
               export PERF_EXISTS_SAMPLE_EVERY=1
-              export PERF_DEBUG_STATUS_JSON_ALWAYS=1
 
               # (Optional) give the output blob a longer window to appear
               # export PERF_EXISTS_WAIT_S=60
@@ -84,6 +86,7 @@ extends:
               export PERF_TOTAL="${{ parameters.perfTotal }}"
               export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
               export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
+              export PERF_MAX_P95_S="${{ parameters.perfMaxP95Seconds }}"
               export PERF_FIXTURE_PDF="${{ parameters.perfFixturePdf }}"
 
               echo "env=${{ parameters.env }}"
@@ -91,6 +94,7 @@ extends:
               echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
               echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
               echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
+              echo "PERF_MAX_P95_S=${PERF_MAX_P95_S}"
               echo "fixture=$PERF_FIXTURE_PDF"
 
 
