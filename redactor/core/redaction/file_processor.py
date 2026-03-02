@@ -275,7 +275,7 @@ class PDFProcessor(FileProcessor):
         normalised_words_to_redact: List[str],
         line_to_check: PDFLineMetadata,
         index: int,
-    ) -> List[str]:
+    ) -> Tuple[List[str], int]:
         """
         Given the index of a word in the line matching the first word to redact, check
         whether the subsequent words in the line match the subsequent words to redact.
