@@ -12,7 +12,6 @@ from core.redaction.redactor import (
     TextRedactor,
     ImageRedactor,
     RedactorFactory
-    RedactorFactory
 )
 from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
