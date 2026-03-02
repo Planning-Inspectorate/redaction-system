@@ -476,7 +476,9 @@ def check__try_redact__successful_output(
         "status": "SUCCESS",
         "message": "Redaction process complete",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_redact__failed_output(
@@ -498,7 +500,9 @@ def check__try_redact__failed_output(
         "status": "FAIL",
         "message": f"Redaction process failed with the following error: {exception}",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_redact__validate_redact_json_payload__called(
@@ -782,6 +786,7 @@ def test__try_redact__success_with_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
     assert response == expected_response
 
 
@@ -837,6 +842,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
     assert response == expected_response
 
 
@@ -878,7 +884,9 @@ def check__try_apply__successful_output(
         "status": "SUCCESS",
         "message": "Redaction process complete",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_apply__failed_output(
@@ -900,7 +908,9 @@ def check__try_apply__failed_output(
         "status": "FAIL",
         "message": f"Redaction process failed with the following error: {exception}",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_apply__validate_apply_json_payload__called(
@@ -1184,6 +1194,7 @@ def test__try_apply__success_with_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
     assert response == expected_response
 
 
@@ -1239,6 +1250,7 @@ def test__try_apply__fail_with_extra_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
     assert response == expected_response
 
 
