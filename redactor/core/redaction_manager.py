@@ -15,6 +15,7 @@ import traceback
 from dotenv import load_dotenv
 import os
 import json
+from time import time
 
 
 load_dotenv(verbose=True, override=True)
@@ -338,6 +339,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
+        start_time = time()
         fatal_error = None
         non_fatal_errors = []
         status = "SUCCESS"
@@ -350,7 +352,9 @@ class RedactionManager:
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
             fatal_error = message
-        final_output = base_response | {"status": status, "message": message}
+        end_time = time()
+        total_execution_time = end_time - start_time
+        final_output = base_response | {"status": status, "message": message, "execution_time_seconds": total_execution_time}
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
@@ -384,7 +388,7 @@ class RedactionManager:
                     "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
-        final_output = base_response | {"status": status, "message": message}
+        final_output = base_response | {"status": status, "message": message, "execution_time_seconds": total_execution_time}
         return final_output
 
     def try_redact(self, params: Dict[str, Any]):
