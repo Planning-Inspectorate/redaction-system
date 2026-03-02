@@ -136,7 +136,9 @@ def test_e2e_apply_redaction_evaluation_dataset(
         flow.redacted_text, group_b_strings
     )
     removed_group_a_ratio = 1 - remaining_group_a_ratio
-    removed_group_a_strings = missing_strings(group_a_strings, remaining_group_a_matches)
+    removed_group_a_strings = missing_strings(
+        group_a_strings, remaining_group_a_matches
+    )
     still_present_group_a_strings = remaining_group_a_matches
     missing_group_b_strings = missing_strings(group_b_strings, retained_group_b_matches)
     log_match_summary(
