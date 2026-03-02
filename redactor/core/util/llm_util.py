@@ -107,6 +107,7 @@ class LLMUtil:
 
     @log_to_appins
     def _set_model_details(self):
+        instance_quota_allocation = 0.5
         try:
             # Get specified model
             model_details = self.OPENAI_MODELS[self.config.model]
@@ -116,7 +117,7 @@ class LLMUtil:
             self.output_token_cost = model_details["output_cost"] * 0.000001
 
             # Validate and set token rate limit per minute
-            default_token_rate_limit = int(model_details["token_rate_limit"] * 0.2)
+            default_token_rate_limit = int(model_details["token_rate_limit"] * instance_quota_allocation)
 
             token_limit = self.config.token_rate_limit
             if token_limit is not None:
@@ -131,7 +132,7 @@ class LLMUtil:
             else:  # default to 20% of max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
-            default_request_rate_limit = int(model_details["request_rate_limit"] * 0.2)
+            default_request_rate_limit = int(model_details["request_rate_limit"] * instance_quota_allocation)
 
             # Validate and set request rate limit per minute
             req_limit = self.config.request_rate_limit
