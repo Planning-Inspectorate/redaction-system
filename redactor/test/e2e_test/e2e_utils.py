@@ -6,6 +6,7 @@ import os
 import subprocess
 import time
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import requests
 
@@ -25,10 +26,26 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     return v if v not in (None, "") else default
 
 
-def function_start_url() -> str:
+def function_start_url(route: str = "redact") -> str:
     full = _env("E2E_FUNCTION_URL")
     if full:
-        return full
+        parts = urlsplit(full)
+        if "/api/" not in parts.path:
+            if route == "redact":
+                return full
+            raise RuntimeError(
+                "E2E_FUNCTION_URL must include an /api/<route> path when using non-redact routes."
+            )
+        base_path = parts.path.rsplit("/", 1)[0]
+        return urlunsplit(
+            (
+                parts.scheme,
+                parts.netloc,
+                f"{base_path}/{route}",
+                parts.query,
+                parts.fragment,
+            )
+        )
 
     base = _env("E2E_FUNCTION_BASE_URL")
     if not base:
@@ -45,7 +62,7 @@ def function_start_url() -> str:
             "Use E2E_FUNCTION_URL for full URLs, or set E2E_FUNCTION_KEY separately."
         )
 
-    url = f"{base}/api/redact"
+    url = f"{base}/api/{route}"
 
     key = _env("E2E_FUNCTION_KEY")
     if key:
@@ -218,7 +235,47 @@ def build_payload(
     return {
         "tryApplyProvisionalRedactions": try_apply_provisional,
         "skipRedaction": skip_redaction,
-        "ruleName": rule_name,
+        "configName": rule_name,
+        "fileKind": file_kind,
+        "readDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": in_blob,
+                "storageName": storage_account,
+                "containerName": container_name,
+            },
+        },
+        "writeDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": out_blob,
+                "storageName": storage_account,
+                "containerName": container_name,
+            },
+        },
+    }
+
+
+def build_apply_payload(
+    *,
+    storage_account: str,
+    container_name: str,
+    in_blob: str,
+    out_blob: str,
+    config_name: str = "default",
+    file_kind: str = "pdf",
+) -> dict:
+    logger.info(
+        "Building apply payload: in=%s out=%s config=%s kind=%s",
+        in_blob,
+        out_blob,
+        config_name,
+        file_kind,
+    )
+    return {
+        "configName": config_name,
         "fileKind": file_kind,
         "readDetails": {
             "storageKind": "AzureBlob",
