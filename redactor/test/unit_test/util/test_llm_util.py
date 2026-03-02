@@ -141,8 +141,8 @@ def test__llm_util___set_model_details__zero_token_request_rate_limit(
 
     llm_util._set_model_details()
 
-    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.2
-    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.2
+    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.5
+    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.5
 
 
 @patch.object(LLMUtil, "__init__", return_value=None)
