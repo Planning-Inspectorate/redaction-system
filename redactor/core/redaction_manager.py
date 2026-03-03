@@ -379,7 +379,7 @@ class RedactionManager:
             "status": status,
             "message": message,
             "execution_time_seconds": total_execution_time,
-            "run_metrics": run_metrics
+            "run_metrics": run_metrics,
         }
         try:
             self.send_service_bus_completion_message(params, final_output)
@@ -425,7 +425,7 @@ class RedactionManager:
             "status": status,
             "message": message,
             "execution_time_seconds": total_execution_time,
-            "run_metrics": run_metrics
+            "run_metrics": run_metrics,
         }
         return final_output
 

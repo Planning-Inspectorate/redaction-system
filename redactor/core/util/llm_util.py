@@ -117,7 +117,9 @@ class LLMUtil:
             self.output_token_cost = model_details["output_cost"] * 0.000001
 
             # Validate and set token rate limit per minute
-            default_token_rate_limit = int(model_details["token_rate_limit"] * instance_quota_allocation)
+            default_token_rate_limit = int(
+                model_details["token_rate_limit"] * instance_quota_allocation
+            )
 
             token_limit = self.config.token_rate_limit
             if token_limit is not None:
@@ -132,7 +134,9 @@ class LLMUtil:
             else:  # default to 20% of max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
-            default_request_rate_limit = int(model_details["request_rate_limit"] * instance_quota_allocation)
+            default_request_rate_limit = int(
+                model_details["request_rate_limit"] * instance_quota_allocation
+            )
 
             # Validate and set request rate limit per minute
             req_limit = self.config.request_rate_limit
@@ -306,7 +310,9 @@ class LLMUtil:
         """
         chunk_count = len(text_chunks)
         character_count = sum(len(chunk) for chunk in text_chunks)
-        word_count = sum(len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks)
+        word_count = sum(
+            len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
+        )
         start_time = time.time()
         chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
         LoggingUtil().log_info(
@@ -379,8 +385,9 @@ class LLMUtil:
                 "llm_request_count": request_counter,
                 "llm_input_token_count": self.input_token_count,
                 "llm_output_token_count": self.output_token_count,
-                "llm_total_token_count": self.input_token_count + self.output_token_count,
-                "llm_total_cost": self.total_cost
+                "llm_total_token_count": self.input_token_count
+                + self.output_token_count,
+                "llm_total_cost": self.total_cost,
             },
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(

@@ -81,7 +81,7 @@ def test__image_llm_text_redactor__redact():
                 source_image=config.images[2],
                 redaction_boxes=((100, 100, 50, 50), (10, 10, 50, 50)),
             ),
-        )
+        ),
     )
     mock_text_redaction_result = LLMTextRedactionResult(
         rule_name="config name",

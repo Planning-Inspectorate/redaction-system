@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 
 
-class MetricUtil():
+class MetricUtil:
     @classmethod
     def combine_run_metrics(cls, run_metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -10,9 +10,7 @@ class MetricUtil():
         """
         combined = dict()
         all_available_metrics = [
-            metric
-            for dictionary in run_metrics
-            for metric in dictionary.keys()
+            metric for dictionary in run_metrics for metric in dictionary.keys()
         ]
         for metric in all_available_metrics:
             running_total = None

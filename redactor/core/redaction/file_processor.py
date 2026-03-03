@@ -39,6 +39,7 @@ class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
     """
+
     def __int__(self):
         self.run_metrics = None
 
@@ -94,9 +95,7 @@ class FileProcessor(ABC):
         Aggregate numeric metrics together to across a list of run metrics.
         Non-numeric metrics are dropped
         """
-        combined = {
-            "total_redaction_results": len(run_metrics)
-        }
+        combined = {"total_redaction_results": len(run_metrics)}
         return combined | MetricUtil.combine_run_metrics(run_metrics)
 
 
@@ -996,7 +995,9 @@ class PDFProcessor(FileProcessor):
         pdf_text_extraction_time_start = time()
         pdf_text = self._extract_pdf_text(file_bytes)
         pdf_text_extraction_time_end = time()
-        pdf_text_extraction_time = pdf_text_extraction_time_end - pdf_text_extraction_time_start
+        pdf_text_extraction_time = (
+            pdf_text_extraction_time_end - pdf_text_extraction_time_start
+        )
         LoggingUtil().log_info(
             f"The following text was extracted from the PDF:\n'{pdf_text}'"
         )
@@ -1082,7 +1083,9 @@ class PDFProcessor(FileProcessor):
                 LoggingUtil().log_exception(e)
                 raise e
         all_result_metrics = {x.rule_name: x.run_metrics for x in redaction_results}
-        combined_metrics = self.combine_run_metrics([x.run_metrics for x in redaction_results])
+        combined_metrics = self.combine_run_metrics(
+            [x.run_metrics for x in redaction_results]
+        )
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
         text_redaction_apply_time_start = time()
@@ -1090,7 +1093,9 @@ class PDFProcessor(FileProcessor):
             file_bytes, text_redactions
         )
         text_redaction_apply_time_end = time()
-        text_redaction_apply_time = text_redaction_apply_time_end - text_redaction_apply_time_start
+        text_redaction_apply_time = (
+            text_redaction_apply_time_end - text_redaction_apply_time_start
+        )
 
         # Apply image redactions
         image_redaction_apply_time_start = time()
@@ -1098,7 +1103,9 @@ class PDFProcessor(FileProcessor):
             new_file_bytes, image_redaction_results
         )
         image_redaction_apply_time_end = time()
-        image_redaction_apply_time = image_redaction_apply_time_end - image_redaction_apply_time_start
+        image_redaction_apply_time = (
+            image_redaction_apply_time_end - image_redaction_apply_time_start
+        )
         self.run_metrics = {
             "pdf_text_extraction_time": pdf_text_extraction_time,
             "pdf_image_extraction_time": image_extraction_time,
@@ -1108,7 +1115,7 @@ class PDFProcessor(FileProcessor):
             "text_redaction_apply_time": text_redaction_apply_time,
             "image_redaction_apply_time": image_redaction_apply_time,
             "result_metrics": all_result_metrics,
-            "aggregate_result_metrics": combined_metrics
+            "aggregate_result_metrics": combined_metrics,
         }
 
         return new_file_bytes
@@ -1173,10 +1180,7 @@ class PDFProcessor(FileProcessor):
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
-        self.run_metrics = {
-            "redaction_time": redaction_time,
-            "scrub_time": scrub_time
-        }
+        self.run_metrics = {"redaction_time": redaction_time, "scrub_time": scrub_time}
         return new_file_bytes
 
     @classmethod
