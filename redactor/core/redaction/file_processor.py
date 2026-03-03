@@ -30,6 +30,7 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
+from core.util.metric_util import MetricUtil
 import dataclasses
 from time import time
 
@@ -96,23 +97,7 @@ class FileProcessor(ABC):
         combined = {
             "total_redaction_results": len(run_metrics)
         }
-        all_available_metrics = [
-            metric
-            for dictionary in run_metrics
-            for metric in dictionary.keys()
-        ]
-        for metric in all_available_metrics:
-            running_total = None
-            for dictionary in run_metrics:
-                new_value = dictionary.get(metric, None)
-                if isinstance(new_value, int) or isinstance(new_value, float):
-                    if running_total is None:
-                        running_total = new_value
-                    else:
-                        running_total += new_value
-            if running_total is not None:
-                combined[metric] = running_total
-        return combined
+        return combined | MetricUtil.combine_run_metrics(run_metrics)
 
 
 class PDFImageMetadata(BaseModel):

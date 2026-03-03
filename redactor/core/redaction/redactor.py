@@ -30,6 +30,7 @@ from core.redaction.exceptions import (
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
+from core.util.metric_util import MetricUtil
 from time import time
 
 
@@ -358,9 +359,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             run_metrics={
                 "total_images_to_analyse": total_images_to_analyse,
                 "total_image_text_analysis_time": round(time() - start_time, 2),
-                "total_ocr_time": round(total_ocr_time, 2),
-                "total_number_plate_detection_time": round(total_number_plate_detection_time, 2),
-                "total_text_analysis_time": round(total_text_analysis_time, 2)
+                "total_image_ocr_time": round(total_ocr_time, 2),
+                "total_image_number_plate_detection_time": round(total_number_plate_detection_time, 2),
+                "total_image_text_analysis_time": round(total_text_analysis_time, 2)
             },
             redaction_results=tuple(results)
         )
@@ -390,6 +391,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         total_ocr_time = 0.0
         total_llm_analysis_time = 0.0
         total_text_analysis_time = 0.0
+        all_text_redaction_metrics = []
 
         for image_to_redact in self.config.images:
             # Detect and analyse text in the image
@@ -410,7 +412,10 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
                 # Analyse detected text with LLM
                 llm_analysis_time_start = time()
-                redaction_strings = self._analyse_text(text_content).redaction_strings
+                text_redaction_result = self._analyse_text(text_content)
+                redaction_strings = text_redaction_result.redaction_strings
+                text_redaction_metrics = text_redaction_result.run_metrics
+                all_text_redaction_metrics.append(text_redaction_metrics)
                 total_llm_analysis_time += (time() - llm_analysis_time_start)
 
                 # Identify text rectangles to redact based on redaction strings
@@ -440,15 +445,16 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 LoggingUtil().log_exception_with_message(
                     f"Error analysing image for text redaction:", e
                 )
+        combined_text_redaction_metrics = MetricUtil.combine_run_metrics(all_text_redaction_metrics)
 
         return ImageRedactionResult(
             run_metrics={
                 "total_images_to_analyse": total_images_to_analyse,
                 "total_image_text_analysis_time": round(time() - start_time, 2),
-                "total_ocr_time": round(total_ocr_time, 2),
-                "total_llm_analysis_time": round(total_llm_analysis_time, 2),
-                "total_text_analysis_time": round(total_text_analysis_time, 2)
-            },
+                "total_image_ocr_time": round(total_ocr_time, 2),
+                "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
+                "total_image_text_analysis_time": round(total_text_analysis_time, 2)
+            } | combined_text_redaction_metrics,
             redaction_results=tuple(results)
         )
 
