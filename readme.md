@@ -56,3 +56,22 @@ Below are the environment variables used by the project
 | Variable    | Description |
 | -------- | ------- |
 | OPENAI_ENDPOINT | The Open AI host. For example: "https://myazurefoundryresource.openai.azure.com/" |
+
+
+# Testing
+## Prerequisites
+1. Be connected to the **PINS VPN** (required for cloud-backed E2E/perf and Azure Storage access).
+2. Be logged into Azure CLI (`az login`) and using the expected subscription.
+3. Ensure `.env` in repo root contains E2E values (`E2E_STORAGE_ACCOUNT`, `E2E_CONTAINER_NAME`, etc.).
+4. Install local runtime tools: Azure Functions Core Tools (`func`) and Azurite (`azurite`).
+
+## Run tests
+1. Start local services:
+   - `make run`
+2. In another terminal, run E2E:
+   - `make e2e`
+3. Run perf tests:
+   - `make perf`
+
+Optional perf tuning:
+- `PERF_TOTAL=20 PERF_CONCURRENCY=5 PERF_TIMEOUT_S=1200 make perf`
