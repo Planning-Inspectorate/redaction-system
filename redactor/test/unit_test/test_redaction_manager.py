@@ -404,7 +404,9 @@ def check__save_exception_log__azure_blob_write__blob_path(
     calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
-        assert call[1].get("blob_path", None) == f"{job_id}folder/exceptions.txt"
+        assert (
+            call[1].get("blob_path", None) == f"{job_id}folder/mystage_exceptions.txt"
+        )
 
 
 @pytest.mark.parametrize(
@@ -431,7 +433,7 @@ def test__redaction_manager__save_exception_log(
     inst.env = "dev"
     inst.runtime_errors = ["some exception A", "some exception B"]
     expected_exception_message = "\n\n\n".join(inst.runtime_errors)
-    inst.save_exception_log()
+    inst.save_exception_log("mystage")
     test_case(inst.job_id, expected_exception_message)
 
 
@@ -448,7 +450,7 @@ def test__redaction_manager__save_exception_log__with_no_exception(
     inst.folder_for_job = "instfolder"
     inst.env = "dev"
     inst.runtime_errors = []
-    inst.save_exception_log()
+    inst.save_exception_log("mystage")
     calls = AzureBlobIO.write.call_args_list
     assert len(calls) == 0, (
         f"Expected AzureBlobIO.write to be not have been called, but was called {len(calls)} times"
@@ -849,11 +851,11 @@ def test__redaction_manager__save_logs(
     inst.job_id = "test__redaction_manager__save_logs"
     inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
-    inst.save_logs()
+    inst.save_logs("mystage")
     AzureBlobIO.write.assert_called_once_with(
         data_bytes=b"xyz",
         container_name="redactiondata",
-        blob_path=f"{inst.folder_for_job}/log.txt",
+        blob_path=f"{inst.folder_for_job}/mystage_log.txt",
     )
 
 
