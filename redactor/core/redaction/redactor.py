@@ -150,7 +150,7 @@ class LLMTextRedactor(TextRedactor):
             rule_name=self.config.name,
             run_metrics=llm_redaction_result.run_metrics,
             redaction_strings=llm_redaction_result.redaction_strings,
-            metadata=llm_redaction_result.metadata
+            metadata=llm_redaction_result.metadata,
         )
         return llm_redaction_result
 
@@ -199,7 +199,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
             rule_name=self.config.name,
             run_metrics={
                 "total_image_analysis_time": round(total_time, 2),
-                "total_images_to_analyse": total_images_to_analyse
+                "total_images_to_analyse": total_images_to_analyse,
             },
             redaction_results=tuple(results),
         )
@@ -332,7 +332,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 # Detect number plates using regex
                 number_plate_detection_start_time = time()
                 redaction_strings = self.detect_number_plates(text_content)
-                total_number_plate_detection_time += (time() - number_plate_detection_start_time)
+                total_number_plate_detection_time += (
+                    time() - number_plate_detection_start_time
+                )
 
                 # Identify text rectangles to redact based on redaction strings
                 text_analysis_start_time = time()
@@ -345,7 +347,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                                 redaction_string.translate(translation),
                             )
                         )
-                total_bounding_box_time += (time() - text_analysis_start_time)
+                total_bounding_box_time += time() - text_analysis_start_time
 
                 results.append(
                     ImageRedactionResult.Result(
@@ -359,7 +361,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 )
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
-                    f"Error analysing image for text redaction:", e
+                    "Error analysing image for text redaction:", e
                 )
 
         return ImageRedactionResult(
@@ -368,10 +370,14 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 "total_images_to_analyse": total_images_to_analyse,
                 "total_image_text_analysis_time": round(time() - start_time, 2),
                 "total_image_ocr_time": round(total_ocr_time, 2),
-                "total_image_number_plate_detection_time": round(total_number_plate_detection_time, 2),
-                "total_image_text_bounding_box_matching_time": round(total_bounding_box_time, 2)
+                "total_image_number_plate_detection_time": round(
+                    total_number_plate_detection_time, 2
+                ),
+                "total_image_text_bounding_box_matching_time": round(
+                    total_bounding_box_time, 2
+                ),
             },
-            redaction_results=tuple(results)
+            redaction_results=tuple(results),
         )
 
 
@@ -409,7 +415,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 vision_util = AzureVisionUtil()
                 ocr_start_time = time()
                 text_rect_map = vision_util.detect_text(image_to_redact)
-                total_ocr_time += (time() - ocr_start_time)
+                total_ocr_time += time() - ocr_start_time
                 LoggingUtil().log_info(
                     f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
                 )
@@ -424,7 +430,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 redaction_strings = text_redaction_result.redaction_strings
                 text_redaction_metrics = text_redaction_result.run_metrics
                 all_text_redaction_metrics.append(text_redaction_metrics)
-                total_llm_analysis_time += (time() - llm_analysis_time_start)
+                total_llm_analysis_time += time() - llm_analysis_time_start
 
                 # Identify text rectangles to redact based on redaction strings
                 text_analysis_start_time = time()
@@ -436,8 +442,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                             redaction_string,
                         )
                     )
-                total_bounding_box_time += (time() - text_analysis_start_time)
-                
+                total_bounding_box_time += time() - text_analysis_start_time
 
                 results.append(
                     ImageRedactionResult.Result(
@@ -451,9 +456,11 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 )
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
-                    f"Error analysing image for text redaction:", e
+                    "Error analysing image for text redaction:", e
                 )
-        combined_text_redaction_metrics = MetricUtil.combine_run_metrics(all_text_redaction_metrics)
+        combined_text_redaction_metrics = MetricUtil.combine_run_metrics(
+            all_text_redaction_metrics
+        )
 
         return ImageRedactionResult(
             rule_name=self.config.name,
@@ -462,9 +469,12 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 "total_image_text_analysis_time": round(time() - start_time, 2),
                 "total_image_ocr_time": round(total_ocr_time, 2),
                 "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
-                "total_image_text_bounding_box_matching_time": round(total_bounding_box_time, 2)
-            } | combined_text_redaction_metrics,
-            redaction_results=tuple(results)
+                "total_image_text_bounding_box_matching_time": round(
+                    total_bounding_box_time, 2
+                ),
+            }
+            | combined_text_redaction_metrics,
+            redaction_results=tuple(results),
         )
 
 

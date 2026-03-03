@@ -46,7 +46,7 @@ def test__image_redactor__redact():
                 redaction_boxes=faces_detected,
             )
             for i, faces_detected in enumerate(detect_faces_side_effects)
-        )
+        ),
     )
     with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
         with mock.patch.object(

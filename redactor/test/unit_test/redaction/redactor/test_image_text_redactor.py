@@ -104,7 +104,7 @@ def test__image_text_redactor__redact():
                 source_image=config.images[0],
                 redaction_boxes=tuple(x[1] for x in text_rect_map),
             ),
-        )
+        ),
     )
     with (
         mock.patch.object(ImageTextRedactor, "__init__", return_value=None),

@@ -884,7 +884,7 @@ def test__pdf_processor__apply_provisional_image_redactions():
                     source_image=source_image,
                     redaction_boxes=((0, 0, 100, 100),),
                 ),
-            )
+            ),
         )
     ]
     pdf_image_metadata = [

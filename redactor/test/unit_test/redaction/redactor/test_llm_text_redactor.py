@@ -53,8 +53,8 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
             input_token_count=0,
             output_token_count=0,
             total_token_count=0,
-            total_cost=0
-        )
+            total_cost=0,
+        ),
     )
 
     with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
