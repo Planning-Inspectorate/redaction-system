@@ -146,6 +146,12 @@ class LLMTextRedactor(TextRedactor):
             system_prompt,
             text_chunks,
         )
+        return LLMTextRedactionResult(
+            rule_name=self.config.name,
+            run_metrics=llm_redaction_result.run_metrics,
+            redaction_strings=llm_redaction_result.redaction_strings,
+            metadata=llm_redaction_result.metadata
+        )
         return llm_redaction_result
 
     def redact(self) -> LLMTextRedactionResult:
@@ -190,6 +196,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
         total_time = end_time - start_time
 
         return ImageRedactionResult(
+            rule_name=self.config.name,
             run_metrics={
                 "total_image_analysis_time": round(total_time, 2),
                 "total_images_to_analyse": total_images_to_analyse
@@ -309,7 +316,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         start_time = time()
         total_ocr_time = 0.0
         total_number_plate_detection_time = 0.0
-        total_text_analysis_time = 0.0
+        total_bounding_box_time = 0.0
         for image_to_redact in self.config.images:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
@@ -338,7 +345,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                                 redaction_string.translate(translation),
                             )
                         )
-                total_text_analysis_time += (time() - text_analysis_start_time)
+                total_bounding_box_time += (time() - text_analysis_start_time)
 
                 results.append(
                     ImageRedactionResult.Result(
@@ -356,12 +363,13 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 )
 
         return ImageRedactionResult(
+            rule_name=self.config.name,
             run_metrics={
                 "total_images_to_analyse": total_images_to_analyse,
                 "total_image_text_analysis_time": round(time() - start_time, 2),
                 "total_image_ocr_time": round(total_ocr_time, 2),
                 "total_image_number_plate_detection_time": round(total_number_plate_detection_time, 2),
-                "total_image_text_analysis_time": round(total_text_analysis_time, 2)
+                "total_image_text_bounding_box_matching_time": round(total_bounding_box_time, 2)
             },
             redaction_results=tuple(results)
         )
@@ -390,7 +398,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         start_time = time()
         total_ocr_time = 0.0
         total_llm_analysis_time = 0.0
-        total_text_analysis_time = 0.0
+        total_bounding_box_time = 0.0
         all_text_redaction_metrics = []
 
         for image_to_redact in self.config.images:
@@ -428,7 +436,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                             redaction_string,
                         )
                     )
-                total_text_analysis_time += (time() - text_analysis_start_time)
+                total_bounding_box_time += (time() - text_analysis_start_time)
                 
 
                 results.append(
@@ -448,12 +456,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         combined_text_redaction_metrics = MetricUtil.combine_run_metrics(all_text_redaction_metrics)
 
         return ImageRedactionResult(
+            rule_name=self.config.name,
             run_metrics={
                 "total_images_to_analyse": total_images_to_analyse,
                 "total_image_text_analysis_time": round(time() - start_time, 2),
                 "total_image_ocr_time": round(total_ocr_time, 2),
                 "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
-                "total_image_text_analysis_time": round(total_text_analysis_time, 2)
+                "total_image_text_bounding_box_matching_time": round(total_bounding_box_time, 2)
             } | combined_text_redaction_metrics,
             redaction_results=tuple(results)
         )

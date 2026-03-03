@@ -1081,8 +1081,8 @@ class PDFProcessor(FileProcessor):
             ) as e:
                 LoggingUtil().log_exception(e)
                 raise e
-        all_result_metrics = [x.run_metrics for x in redaction_results]
-        combined_metrics = self.combine_run_metrics(all_result_metrics)
+        all_result_metrics = {x.rule_name: x.run_metrics for x in redaction_results}
+        combined_metrics = self.combine_run_metrics([x.run_metrics for x in redaction_results])
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
         text_redaction_apply_time_start = time()
