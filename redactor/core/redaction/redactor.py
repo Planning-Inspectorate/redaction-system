@@ -30,6 +30,7 @@ from core.redaction.exceptions import (
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
+from time import time
 
 
 class Redactor(ABC):
@@ -168,7 +169,8 @@ class ImageRedactor(Redactor):  # pragma: no cover
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
         results: List[ImageRedactionResult.Result] = []
-
+        total_images_to_analyse = len(self.config.images)
+        start_time = time()
         for image_to_redact in self.config.images:
             vision_util = AzureVisionUtil()
             faces_detected = vision_util.detect_faces(
@@ -183,8 +185,16 @@ class ImageRedactor(Redactor):  # pragma: no cover
                     redaction_boxes=faces_detected,
                 )
             )
+        end_time = time()
+        total_time = end_time - start_time
 
-        return ImageRedactionResult(redaction_results=tuple(results))
+        return ImageRedactionResult(
+            run_metrics={
+                "total_image_analysis_time": round(total_time, 2),
+                "total_images_to_analyse": total_images_to_analyse
+            },
+            redaction_results=tuple(results),
+        )
 
 
 class ImageTextRedactor(ImageRedactor, TextRedactor):
@@ -294,20 +304,30 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         # Initialisation
         self.config: ImageRedactionConfig
         results = []
-
+        total_images_to_analyse = len(self.config.images)
+        start_time = time()
+        total_ocr_time = 0.0
+        total_number_plate_detection_time = 0.0
+        total_text_analysis_time = 0.0
         for image_to_redact in self.config.images:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
 
             try:
                 vision_util = AzureVisionUtil()
+                ocr_start_time = time()
                 text_rect_map = vision_util.detect_text(image_to_redact)
+                ocr_time = time() - ocr_start_time
+                total_ocr_time += ocr_time
                 text_content = " ".join([x[0] for x in text_rect_map])
 
                 # Detect number plates using regex
+                number_plate_detection_start_time = time()
                 redaction_strings = self.detect_number_plates(text_content)
+                total_number_plate_detection_time += (time() - number_plate_detection_start_time)
 
                 # Identify text rectangles to redact based on redaction strings
+                text_analysis_start_time = time()
                 text_rects_to_redact = []
                 for redaction_string in redaction_strings:
                     for translation in self.OCR_TRANSLATIONS:
@@ -317,6 +337,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                                 redaction_string.translate(translation),
                             )
                         )
+                total_text_analysis_time += (time() - text_analysis_start_time)
 
                 results.append(
                     ImageRedactionResult.Result(
@@ -333,7 +354,16 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                     f"Error analysing image for text redaction:", e
                 )
 
-        return ImageRedactionResult(redaction_results=tuple(results))
+        return ImageRedactionResult(
+            run_metrics={
+                "total_images_to_analyse": total_images_to_analyse,
+                "total_image_text_analysis_time": round(time() - start_time, 2),
+                "total_ocr_time": round(total_ocr_time, 2),
+                "total_number_plate_detection_time": round(total_number_plate_detection_time, 2),
+                "total_text_analysis_time": round(total_text_analysis_time, 2)
+            },
+            redaction_results=tuple(results)
+        )
 
 
 class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
@@ -355,6 +385,11 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         # Initialisation
         self.config: ImageLLMTextRedactionConfig
         results = []
+        total_images_to_analyse = len(self.config.images)
+        start_time = time()
+        total_ocr_time = 0.0
+        total_llm_analysis_time = 0.0
+        total_text_analysis_time = 0.0
 
         for image_to_redact in self.config.images:
             # Detect and analyse text in the image
@@ -362,7 +397,9 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
             try:
                 vision_util = AzureVisionUtil()
+                ocr_start_time = time()
                 text_rect_map = vision_util.detect_text(image_to_redact)
+                total_ocr_time += (time() - ocr_start_time)
                 LoggingUtil().log_info(
                     f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
                 )
@@ -372,9 +409,12 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 )
 
                 # Analyse detected text with LLM
+                llm_analysis_time_start = time()
                 redaction_strings = self._analyse_text(text_content).redaction_strings
+                total_llm_analysis_time += (time() - llm_analysis_time_start)
 
                 # Identify text rectangles to redact based on redaction strings
+                text_analysis_start_time = time()
                 text_rects_to_redact = []
                 for redaction_string in redaction_strings:
                     text_rects_to_redact.extend(
@@ -383,6 +423,8 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                             redaction_string,
                         )
                     )
+                total_text_analysis_time += (time() - text_analysis_start_time)
+                
 
                 results.append(
                     ImageRedactionResult.Result(
@@ -399,7 +441,16 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     f"Error analysing image for text redaction:", e
                 )
 
-        return ImageRedactionResult(redaction_results=tuple(results))
+        return ImageRedactionResult(
+            run_metrics={
+                "total_images_to_analyse": total_images_to_analyse,
+                "total_image_text_analysis_time": round(time() - start_time, 2),
+                "total_ocr_time": round(total_ocr_time, 2),
+                "total_llm_analysis_time": round(total_llm_analysis_time, 2),
+                "total_text_analysis_time": round(total_text_analysis_time, 2)
+            },
+            redaction_results=tuple(results)
+        )
 
 
 class RedactorFactory:
