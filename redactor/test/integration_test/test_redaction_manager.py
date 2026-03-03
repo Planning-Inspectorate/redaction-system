@@ -277,8 +277,6 @@ class TestIntegrationRedactionManager(TestCase):
         assert metric_blob_client.exists(), (
             f"Expected {guid}/ANALYSE_metrics.txt to be in the redactiondata container, but was missing"
         )
-        print(f"run id: {guid}")
-        assert False
 
     def test__redaction_manager__try_redact__failure(self):
         """
