@@ -184,6 +184,24 @@ class RedactionManager:
             )
             LoggingUtil().log_info("Redaction process complete")
 
+            # Store the proposed redactions in JSON format for analytics
+            proposed_redactions_df = file_processor_inst.get_proposed_redactions(
+                proposed_redaction_file_data
+            )
+            LoggingUtil().log_info(
+                "Saving a copy of the proposed redactions in JSON format for analytics"
+            )
+            redaction_storage_io_inst.write(
+                proposed_redactions_df.to_json(
+                    orient="records",
+                    date_format="iso",
+                    force_ascii=False,
+                    indent=4,
+                ).encode("utf-8"),
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/proposed_redactions.json",
+            )
+
         # Store a copy of the proposed redactions in redaction storage
         LoggingUtil().log_info("Saving a copy of the proposed redactions")
         redaction_storage_io_inst.write(

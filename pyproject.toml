@@ -40,6 +40,7 @@ dependencies = [
     "ruff==0.14.7",
     "unidecode==1.4.0",
     "strenum==0.4.15",
+    "pandas>=3.0.1",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.13",

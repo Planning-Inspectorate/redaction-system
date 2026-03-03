@@ -1,5 +1,7 @@
 import json
 import pymupdf
+import dataclasses
+import pandas as pd
 
 from typing import Set, Type, List, Any, Dict, Tuple
 from abc import ABC, abstractmethod
@@ -30,7 +32,6 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
-import dataclasses
 
 
 class FileProcessor(ABC):
@@ -78,6 +79,16 @@ class FileProcessor(ABC):
         Return the redactors that are allowed to be applied to the FileProcessor
 
         :return Set[type[Redactor]]: The redactors that can be applied
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_proposed_redactions(cls) -> Set[Type[Redactor]]:
+        """
+        Return the provisional redactions.
+
+        :return Tuple[type[Redactor]]: The redactors that can be applied
         """
         pass
 
@@ -255,22 +266,22 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _extract_pdf_annotations(
         cls, file_bytes: BytesIO, annotation_class: Any = None
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[Dict[str, Any]]:
         """
         Extract the annotations from the given PDF as a list of dictionaries containing the annotation details
 
         :param BytesIO file_bytes: Bytes stream for the PDF
         :param annotation_class: The class of annotations to extract
-        :return List[Dict[str, Any]]: The list of annotations with their details
+        :return Tuple[Dict[int, Any]]: The list of annotations with their details
         """
         pdf = pymupdf.open(stream=file_bytes)
         annotations = []
         for page in pdf:
-            page_annot_info = {"page_number": page.number, "annotations": []}
+            page_annotations = []
             for annot in page.annots(annotation_class):
                 annot_info = annot.info
-                annot_type, _ = annot.type
-                if annot_type in (8, 12):  # Highlight or redact annotation
+                type_num, type_str = annot.type
+                if type_num in (8, 12):  # Highlight or redact annotation
                     vertices = annot.vertices
                     # The rect of the annotation is not always the same as the bounding box
                     # of annotation vertices, which should match the annotation if
@@ -280,15 +291,52 @@ class PDFProcessor(FileProcessor):
                     )
                     annot_info.update(
                         {
-                            "type": annot.type,
+                            "type": type_str,
                             "rect": rect,
                         }
                     )
-                    if annot_type == 8:  # Highlighted text
+                    if type_num == 8:  # Highlighted text
                         annot_info.update({"text": page.get_text(clip=rect).strip()})
-                page_annot_info["annotations"].append(annot_info)
-            annotations.append(page_annot_info)
-        return annotations
+                page_annotations.append(annot_info)
+            annotations.append(
+                {"page_number": page.number, "annotations": page_annotations}
+            )
+        return tuple(annotations)
+
+    @classmethod
+    def get_proposed_redactions(cls, file_bytes: BytesIO) -> str:
+        annotations = cls._extract_pdf_annotations(file_bytes)
+        annot_df = pd.json_normalize(annotations, "annotations", ["page_number"])
+        annot_df["creationDate"] = pd.to_datetime(
+            annot_df["creationDate"].apply(lambda x: x[2:-7]), format="%Y%m%d%H%M%S"
+        )
+        annot_df["isRedactionCandidate"] = annot_df["title"] == "REDACTION CANDIDATE"
+        annot_df.drop(
+            ["name", "title", "modDate", "subject", "id"], axis=1, inplace=True
+        )
+
+        annot_df["rect"] = annot_df["rect"].apply(lambda x: tuple(x))
+        annot_df.rename(
+            columns={
+                "content": "redaction",
+                "text": "annotatedText",
+                "type": "annotationType",
+                "page_number": "pageNumber",
+            },
+            inplace=True,
+        )
+        annot_df = annot_df[
+            [
+                "pageNumber",
+                "annotationType",
+                "redaction",
+                "annotatedText",
+                "rect",
+                "creationDate",
+                "isRedactionCandidate",
+            ]
+        ]
+        return annot_df
 
     @classmethod
     def _find_first_word_to_redact(
@@ -485,8 +533,8 @@ class PDFProcessor(FileProcessor):
         highlight_annotation = page.add_highlight_annot(rect)
         highlight_annotation.set_info(
             {
-                "content": "REDACTION CANDIDATE",
-                "title": name,
+                "title": "REDACTION CANDIDATE",
+                "content": name,
                 "creationDate": pymupdf.get_pdf_now(),
                 "subject": str([rect.x0, rect.y0, rect.x1, rect.y1]),
             }

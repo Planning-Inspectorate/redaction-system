@@ -96,11 +96,11 @@ def test__pdf_processor__extract_pdf_annotations():
     mock_document.append(pymupdf.Page)
     mock_document[0].number = 0
     mock_annotations = [Mock(spec=pymupdf.Annot) for _ in range(3)]
-    vertices = [
+    vertices = (
         [(0, 0), (0, 1), (1, 0), (1, 1)],
         [(2, 2), (2, 3), (3, 2), (3, 3)],
         [(4, 4), (4, 5), (5, 4), (5, 5)],
-    ]
+    )
     types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
     for i, mock_annotation in enumerate(mock_annotations):
         mock_annotation.info = {
@@ -114,10 +114,10 @@ def test__pdf_processor__extract_pdf_annotations():
         patch("pymupdf.Page.annots", return_value=mock_annotations),
         patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
     ):
-        expected_annotations = [
+        expected_annotations = (
             {
                 "page_number": 0,
-                "annotations": [
+                "annotations": (
                     {
                         "content": "Annotation 0",
                         "type": (8, "Highlight"),
@@ -135,9 +135,9 @@ def test__pdf_processor__extract_pdf_annotations():
                         "type": (12, "Redact"),
                         "rect": pymupdf.Rect(4, 4, 5, 5),
                     },
-                ],
+                ),
             },
-        ]
+        )
         actual_annotations = PDFProcessor()._extract_pdf_annotations(BytesIO())
 
     assert expected_annotations == actual_annotations
