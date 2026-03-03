@@ -178,9 +178,10 @@ class ImageRedactor(Redactor):  # pragma: no cover
                 continue
             results.append(
                 ImageRedactionResult.Result(
-                    source_image=image_to_redact,
                     image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
                     redaction_boxes=faces_detected,
+                    names=tuple(["Face Detected" for _ in faces_detected]),
                 )
             )
 
@@ -289,6 +290,25 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
         return text_rects_to_redact
 
+    @classmethod
+    def _create_redaction_result(
+        cls, text_rects_to_redact, image_to_redact
+    ) -> ImageRedactionResult.Result:
+        # Remove any duplicates
+        text_rects_to_redact = list(dict.fromkeys(text_rects_to_redact))
+
+        return ImageRedactionResult.Result(
+            image_dimensions=(
+                image_to_redact.width,
+                image_to_redact.height,
+            ),
+            source_image=image_to_redact,
+            redaction_boxes=tuple(rect for rect, _ in text_rects_to_redact),
+            names=tuple(
+                redaction_string for _, redaction_string in text_rects_to_redact
+            ),
+        )
+
     @log_to_appins
     def redact(self) -> ImageRedactionResult:
         # Initialisation
@@ -311,23 +331,27 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 text_rects_to_redact = []
                 for redaction_string in redaction_strings:
                     for translation in self.OCR_TRANSLATIONS:
-                        text_rects_to_redact.extend(
-                            self.examine_redaction_boxes(
-                                text_rect_map,
-                                redaction_string.translate(translation),
-                            )
+                        translated_redaction = redaction_string.translate(translation)
+                        rects_found = self.examine_redaction_boxes(
+                            text_rect_map,
+                            translated_redaction,
                         )
+                        if rects_found:
+                            LoggingUtil().log_info(
+                                f"Identified the following text rectangles to redact"
+                                f" for redaction string '{redaction_string}' (after "
+                                f"translation): {rects_found}"
+                            )
+                            text_rects_to_redact.extend(
+                                tuple(
+                                    (rect, translated_redaction) for rect in rects_found
+                                )
+                            )
 
                 results.append(
-                    ImageRedactionResult.Result(
-                        redaction_boxes=tuple(set(text_rects_to_redact)),
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                    )
+                    self._create_redaction_result(text_rects_to_redact, image_to_redact)
                 )
+
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
                     f"Error analysing image for text redaction: {e}"
@@ -377,23 +401,24 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 # Identify text rectangles to redact based on redaction strings
                 text_rects_to_redact = []
                 for redaction_string in redaction_strings:
-                    text_rects_to_redact.extend(
-                        self.examine_redaction_boxes(
-                            text_rect_map,
-                            redaction_string,
-                        )
+                    rects_found = self.examine_redaction_boxes(
+                        text_rect_map,
+                        redaction_string,
                     )
 
+                    if len(rects_found) > 0:
+                        LoggingUtil().log_info(
+                            f"Identified the following text rectangles to redact"
+                            f" for redaction string '{redaction_string}': {rects_found}"
+                        )
+                        text_rects_to_redact.extend(
+                            tuple((rect, redaction_string) for rect in rects_found)
+                        )
+
                 results.append(
-                    ImageRedactionResult.Result(
-                        redaction_boxes=tuple(set(text_rects_to_redact)),
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                    )
+                    self._create_redaction_result(text_rects_to_redact, image_to_redact)
                 )
+
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
                     f"Error analysing image for text redaction: {e}"

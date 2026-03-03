@@ -41,6 +41,7 @@ def test__image_redactor__redact():
                 source_image=config.images[i],
                 image_dimensions=(config.images[i].width, config.images[i].height),
                 redaction_boxes=faces_detected,
+                names=tuple("Face Detected" for _ in faces_detected),
             )
             for i, faces_detected in enumerate(detect_faces_side_effects)
         )

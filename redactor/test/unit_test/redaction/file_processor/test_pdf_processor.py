@@ -91,6 +91,58 @@ def test__pdf_processor__extract_pdf_images():
     assert isinstance(actual_image, Image.Image)
 
 
+def test__pdf_processor__extract_pdf_annotations():
+    mock_document = []
+    mock_document.append(pymupdf.Page)
+    mock_document[0].number = 0
+    mock_annotations = [Mock(spec=pymupdf.Annot) for _ in range(3)]
+    vertices = [
+        [(0, 0), (0, 1), (1, 0), (1, 1)],
+        [(2, 2), (2, 3), (3, 2), (3, 3)],
+        [(4, 4), (4, 5), (5, 4), (5, 5)],
+    ]
+    types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
+    for i, mock_annotation in enumerate(mock_annotations):
+        mock_annotation.info = {
+            "content": f"Annotation {i}",
+        }
+        mock_annotation.type = types[i]
+        mock_annotation.vertices = vertices[i]
+
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch("pymupdf.Page.annots", return_value=mock_annotations),
+        patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
+    ):
+        expected_annotations = [
+            {
+                "page_number": 0,
+                "annotations": [
+                    {
+                        "content": "Annotation 0",
+                        "type": (8, "Highlight"),
+                        "rect": pymupdf.Rect(0, 0, 1, 1),
+                        "text": "hello",
+                    },
+                    {
+                        "content": "Annotation 1",
+                        "type": (8, "Highlight"),
+                        "rect": pymupdf.Rect(2, 2, 3, 3),
+                        "text": "world",
+                    },
+                    {
+                        "content": "Annotation 2",
+                        "type": (12, "Redact"),
+                        "rect": pymupdf.Rect(4, 4, 5, 5),
+                    },
+                ],
+            },
+        ]
+        actual_annotations = PDFProcessor()._extract_pdf_annotations(BytesIO())
+
+    assert expected_annotations == actual_annotations
+
+
 def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
     """
     - Given I have an image of size 100x100, and a bounding box within that image
@@ -881,6 +933,7 @@ def test__pdf_processor__apply_provisional_image_redactions():
                     image_dimensions=(100, 100),
                     source_image=source_image,
                     redaction_boxes=((0, 0, 100, 100),),
+                    names=("test_redaction",),
                 ),
             )
         )

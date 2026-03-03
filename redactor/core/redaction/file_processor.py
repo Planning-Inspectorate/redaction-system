@@ -149,8 +149,8 @@ class PDFProcessor(FileProcessor):
         :param pymupdf.Page page: The PDF page to extract text from
 
         :return PDFPageMetadata: The metadata for the text content of the page,
-        including for each line the list of words and bounding box coordinates as
-        a PDFLineMetadata object.
+            including for each line the list of words and bounding box coordinates as
+            a PDFLineMetadata object.
         """
         page_text = page.get_text("words", sort=True)
         lines = []
@@ -253,6 +253,44 @@ class PDFProcessor(FileProcessor):
         return [x[0] for x in seen_images]
 
     @classmethod
+    def _extract_pdf_annotations(
+        cls, file_bytes: BytesIO, annotation_class: Any = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract the annotations from the given PDF as a list of dictionaries containing the annotation details
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :param annotation_class: The class of annotations to extract
+        :return List[Dict[str, Any]]: The list of annotations with their details
+        """
+        pdf = pymupdf.open(stream=file_bytes)
+        annotations = []
+        for page in pdf:
+            page_annot_info = {"page_number": page.number, "annotations": []}
+            for annot in page.annots(annotation_class):
+                annot_info = annot.info
+                annot_type, _ = annot.type
+                if annot_type in (8, 12):  # Highlight or redact annotation
+                    vertices = annot.vertices
+                    # The rect of the annotation is not always the same as the bounding box
+                    # of annotation vertices, which should match the annotation if
+                    # _apply_provisional_text_redactions was used
+                    rect = pymupdf.Rect(
+                        vertices[0][0], vertices[0][1], vertices[-1][0], vertices[-1][1]
+                    )
+                    annot_info.update(
+                        {
+                            "type": annot.type,
+                            "rect": rect,
+                        }
+                    )
+                    if annot_type == 8:  # Highlighted text
+                        annot_info.update({"text": page.get_text(clip=rect).strip()})
+                page_annot_info["annotations"].append(annot_info)
+            annotations.append(page_annot_info)
+        return annotations
+
+    @classmethod
     def _find_first_word_to_redact(
         cls, normalised_words_to_redact: List[str], line_to_check: PDFLineMetadata
     ) -> List[int]:
@@ -286,7 +324,7 @@ class PDFProcessor(FileProcessor):
         :param int index: The index of the first word to redact in the line
 
         :return List[str], int: The list of words in the line that match the words to redact,
-        and the index of the last word matched. If a full match was not found, the index will be -1.
+            and the index of the last word matched. If a full match was not found, the index will be -1.
         """
         candidate_words = []
         words_to_redact = normalised_words_to_redact.copy()
@@ -317,8 +355,8 @@ class PDFProcessor(FileProcessor):
         :param List[str] normalised_words_to_redact: The list of normalised words to redact
         :param PDFLineMetadata line_to_check: The line metadata to check
         :return List[Tuple[str, int, int]]: A list of potential partial matches found,
-        where each match is represented as a tuple containing the text found, and the start
-        and end index of the match in the line
+            where each match is represented as a tuple containing the text found, and the start
+            and end index of the match in the line
         """
         matches = []
         words_to_redact = normalised_words_to_redact.copy()
@@ -356,7 +394,7 @@ class PDFProcessor(FileProcessor):
         :param str term_to_redact: The redaction text candidate
         :param PDFLineMetadata line_to_check: The line metadata to check
         :return List[Tuple[str, int, int]]: A list of matches found. Each tuple
-        contains the text found, and the start and end index of the match in the line.
+            contains the text found, and the start and end index of the match in the line.
         """
         # Find first word in line that matches the first word in the term to redact
         normalised_words_to_redact = get_normalised_words(term_to_redact)
@@ -409,7 +447,7 @@ class PDFProcessor(FileProcessor):
     ) -> pymupdf.Rect:
         """
         Construct the bounding box for the words in the line between the start and
-        and indices.
+        end indices.
 
         :param PDFLineMetadata line: The line metadata containing the words to redact
         :param int start_index: The index of the first word
@@ -425,7 +463,16 @@ class PDFProcessor(FileProcessor):
         )
 
     @classmethod
-    def _add_provisional_redaction(cls, page: pymupdf.Page, rect: pymupdf.Rect):
+    def _add_provisional_redaction(
+        cls, page: pymupdf.Page, rect: pymupdf.Rect, name: str = None
+    ):
+        """
+        Add an annotation to the PDF page as a provisional redaction.
+
+        :param pymupdf.Page page: The PDF page to add the annotation to
+        :param pymupdf.Rect rect: The bounding box for the annotation
+        :param str name: A name to include in the annotation info
+        """
         if rect.is_empty:
             # If the rect is invalid, then normalise it
             initial_rect = str(rect)
@@ -439,6 +486,8 @@ class PDFProcessor(FileProcessor):
         highlight_annotation.set_info(
             {
                 "content": "REDACTION CANDIDATE",
+                "title": name,
+                "creationDate": pymupdf.get_pdf_now(),
                 "subject": str([rect.x0, rect.y0, rect.x1, rect.y1]),
             }
         )
@@ -463,8 +512,8 @@ class PDFProcessor(FileProcessor):
         :param PDFPageMetadata next_page_metadata: The next page containing the next redaction instance
 
         :return Tuple[int, PDFLineMetadata, int]: If a partial redaction across line
-        breaks is found, return a tuple containing the page number, line metadata,
-        and end index of the redaction instance on the next line. Otherwise, return None.
+            breaks is found, return a tuple containing the page number, line metadata,
+            and end index of the redaction instance on the next line. Otherwise, return None.
         """
         words_to_redact = normalised_words_to_redact.copy()
         term_to_redact = " ".join(words_to_redact)
@@ -538,8 +587,8 @@ class PDFProcessor(FileProcessor):
         :param int start_index: The start index of the redaction instance on the first line
 
         :return List[Tuple[int, pymupdf.Rect, str]]: A list containing the provisional redaction instances
-        containing the page number, bounding box, and redaction text for both the first and second part of
-        the redaction across line break instance
+            containing the page number, bounding box, and redaction text for both the first and second part of
+            the redaction across line break instance
         """
         if result:
             next_page_number, next_line, next_line_end_index = result
@@ -588,8 +637,7 @@ class PDFProcessor(FileProcessor):
         :param BytesIO file_bytes: Bytes stream for the PDF
         :param List[str] text_to_redact: The text strings to redact in the
         document
-        :return BytesIO: Bytes stream for the PDF with provisional text
-        redactions applied
+        :return BytesIO: Bytes stream for the PDF with provisional text redactions applied
         """
         self.redaction_candidates: List[List[Tuple[pymupdf.Rect, str]]] = []
         pdf = pymupdf.open(stream=file_bytes)
@@ -660,7 +708,7 @@ class PDFProcessor(FileProcessor):
 
         n_highlights = 0
         for page_to_redact, rect, term in redaction_instances:
-            self._add_provisional_redaction(pdf[page_to_redact], rect)
+            self._add_provisional_redaction(pdf[page_to_redact], rect, name=term)
             LoggingUtil().log_info(
                 f"    Applied provisional redaction for term '{term}'"
                 f" at location '{rect}' on page {page_to_redact}."
@@ -693,9 +741,9 @@ class PDFProcessor(FileProcessor):
         :param int candidates_on_page: The list of provisional redaction candidates
         on the page
         :return List[Tuple[PDFPageMetadata, pymupdf.Rect, str]]: The list of valid
-        redaction instances to apply on the page. Each tuple contains the page metadata
-        (which may be the following page for partial redactions across line breaks),
-        the bounding box to redact, and the full term being redacted.
+            redaction instances to apply on the page. Each tuple contains the page metadata
+            (which may be the following page for partial redactions across line breaks),
+            the bounding box to redact, and the full term being redacted.
         """
         redaction_instances = []
         for rect, term_to_redact in candidates_on_page:
@@ -729,10 +777,10 @@ class PDFProcessor(FileProcessor):
         to examine, in case of a line break on the next page
 
         :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid redaction
-        candidates to apply. Each tuple contains the page number, the bounding box
-        to redact, and the full term being redacted. Will be a single entry list for
-        full matches, a two entry list for partial redactions across line breaks, or
-        an empty list if no valid redaction is found.
+            candidates to apply. Each tuple contains the page number, the bounding box
+            to redact, and the full term being redacted. Will be a single entry list for
+            full matches, a two entry list for partial redactions across line breaks, or
+            an empty list if no valid redaction is found.
         """
         LoggingUtil().log_info(
             f"    Examining redaction candidate for term '{term_to_redact}'"
@@ -847,8 +895,7 @@ class PDFProcessor(FileProcessor):
 
         :param BytesIO file_bytes: Bytes stream for the PDF
         :param List[ImageRedactionResult] redactions: The results of the image redaction analysis
-        :return BytesIO: Bytes stream for the PDF with provisional image
-        redactions applied
+        :return BytesIO: Bytes stream for the PDF with provisional image redactions applied
         """
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
@@ -870,40 +917,51 @@ class PDFProcessor(FileProcessor):
                 ]
 
                 if relevant_image_metadata:
-                    bounding_boxes = relevant_image_metadata[0].redaction_boxes
+                    for metadata in relevant_image_metadata:
+                        bounding_boxes = metadata.redaction_boxes
+                        redaction_names = metadata.names
 
-                    for bounding_box in bounding_boxes:
-                        untransformed_bounding_box = pymupdf.Rect(
-                            x0=bounding_box[0],
-                            y0=bounding_box[1],
-                            x1=bounding_box[2],
-                            y1=bounding_box[3],
-                        )
-                        rect_in_global_space = (
-                            self._transform_bounding_box_to_global_space(
-                                untransformed_bounding_box,
-                                pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
-                                pymupdf.Matrix(image_transform),
+                        for bounding_box, redaction_name in zip(
+                            bounding_boxes, redaction_names
+                        ):
+                            untransformed_bounding_box = pymupdf.Rect(
+                                x0=bounding_box[0],
+                                y0=bounding_box[1],
+                                x1=bounding_box[2],
+                                y1=bounding_box[3],
                             )
-                        )
-                        LoggingUtil().log_info(
-                            f"Transformed the rect {untransformed_bounding_box} in image-space "
-                            f"for an image with dimensions {(pdf_image.width, pdf_image.height)} "
-                            f"to the new rect {rect_in_global_space} in page-space, using the transform {image_transform}"
-                        )
-                        try:
-                            self._add_provisional_redaction(page, rect_in_global_space)
+                            rect_in_global_space = (
+                                self._transform_bounding_box_to_global_space(
+                                    untransformed_bounding_box,
+                                    pymupdf.Point(
+                                        x=pdf_image.width, y=pdf_image.height
+                                    ),
+                                    pymupdf.Matrix(image_transform),
+                                )
+                            )
                             LoggingUtil().log_info(
-                                f"Applied image redaction highlight for rect {rect_in_global_space} on page {page.number}"
+                                f"Transformed the rect {untransformed_bounding_box} in image-space "
+                                f"for an image with dimensions {(pdf_image.width, pdf_image.height)} "
+                                f"to the new rect {rect_in_global_space} in page-space, using the "
+                                f"transform {image_transform}"
                             )
-                        except Exception as e:
-                            LoggingUtil().log_exception_with_message(
-                                (
-                                    f"Failed to apply image redaction highlight for rect '{rect_in_global_space}' on page "
-                                    f"'{page.number}' with dimensions '{page.rect}'"
-                                ),
-                                e,
-                            )
+                            try:
+                                self._add_provisional_redaction(
+                                    page, rect_in_global_space, name=redaction_name
+                                )
+                                LoggingUtil().log_info(
+                                    f"Applied image redaction highlight for rect {rect_in_global_space} "
+                                    f"on page {page.number}"
+                                )
+                            except Exception as e:
+                                LoggingUtil().log_exception_with_message(
+                                    (
+                                        f"Failed to apply image redaction highlight for rect "
+                                        f"'{rect_in_global_space}' on page '{page.number}' with "
+                                        f"dimensions '{page.rect}'"
+                                    ),
+                                    e,
+                                )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
@@ -1140,11 +1198,11 @@ class FileProcessorFactory:
         :param str processor_type: The FileProcessor type name (which aligns
         with the get_name method of the FileProcessor)
         :return Type[FileProcessor]: The file processor class identified by the
-        provided processor_type
+            provided processor_type
         :raises FileProcessorNameNotFoundException: If the given processor_type
-        is not found
+            is not found
         :raises DuplicateFileProcessorNameException: If there is a problem with
-        the underlying config defined in FileProcessorFactory.PROCESSORS
+            the underlying config defined in FileProcessorFactory.PROCESSORS
         """
         if not isinstance(processor_type, str):
             raise ValueError(
