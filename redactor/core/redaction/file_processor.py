@@ -87,6 +87,33 @@ class FileProcessor(ABC):
         """
         pass
 
+    @classmethod
+    def combine_run_metrics(cls, run_metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Aggregate numeric metrics together to across a list of run metrics.
+        Non-numeric metrics are dropped
+        """
+        combined = {
+            "total_redaction_results": len(run_metrics)
+        }
+        all_available_metrics = [
+            metric
+            for dictionary in run_metrics
+            for metric in dictionary.keys()
+        ]
+        for metric in all_available_metrics:
+            running_total = None
+            for dictionary in run_metrics:
+                new_value = dictionary.get(metric, None)
+                if isinstance(new_value, int) or isinstance(new_value, float):
+                    if running_total is None:
+                        running_total = new_value
+                    else:
+                        running_total += new_value
+            if running_total is not None:
+                combined[metric] = running_total
+        return combined
+
 
 class PDFImageMetadata(BaseModel):
     source_image_resolution: Tuple[float, float]
@@ -1069,6 +1096,8 @@ class PDFProcessor(FileProcessor):
             ) as e:
                 LoggingUtil().log_exception(e)
                 raise e
+        all_result_metrics = [x.run_metrics for x in redaction_results]
+        combined_metrics = self.combine_run_metrics(all_result_metrics)
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
         text_redaction_apply_time_start = time()
@@ -1092,7 +1121,9 @@ class PDFProcessor(FileProcessor):
             "image_analysis_total_time": image_analysis_total_time,
             "analysis_total_time": text_analysis_total_time + image_analysis_total_time,
             "text_redaction_apply_time": text_redaction_apply_time,
-            "image_redaction_apply_time": image_redaction_apply_time
+            "image_redaction_apply_time": image_redaction_apply_time,
+            "result_metrics": all_result_metrics,
+            "aggregate_result_metrics": combined_metrics
         }
 
         return new_file_bytes
