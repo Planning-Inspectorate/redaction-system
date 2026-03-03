@@ -1,3 +1,5 @@
+name: Redaction CI
+
 # This is the main CI/CD pipeline of the the redaction system
 parameters:
 # User-specified environment to deploy to
@@ -10,13 +12,16 @@ parameters:
 
 # Run when Pull Request raised to the main branch
 pr:
-- main
+  autoCancel: true
+  branches:
+    include:
+      - main
 
 # Run when merged into main
 trigger:
- branches:
-  include:
-    - main
+  branches:
+    include:
+      - main
 
 resources:
   repositories:
