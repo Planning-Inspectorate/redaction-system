@@ -315,6 +315,20 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
         )
 
+    def save_metrics(self, metrics: Dict[str, Any]):
+        """
+        Save the given metrics to blob storage
+        """
+        metric_bytes = json.dumps(metrics, indent=4, default=str).encode()
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=metric_bytes,
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/metrics.txt",
+        )
+
     def send_service_bus_completion_message(
         self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
     ):
@@ -381,6 +395,13 @@ class RedactionManager:
             non_fatal_errors.append(
                 f"Failed to write logs with the following error: {e}"
             )
+        if run_metrics:
+            try:
+                self.save_metrics(run_metrics)
+            except Exception as e:
+                non_fatal_errors.append(
+                    f"Failed to write metrics with the following error: {e}"
+                )
         try:
             self.save_exception_log(stage)
         except Exception as e:

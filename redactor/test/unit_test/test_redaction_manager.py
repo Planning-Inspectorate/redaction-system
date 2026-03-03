@@ -15,6 +15,9 @@ class MockRedactor:
     def __init__(self, **kwargs):
         pass
 
+    def get_run_metrics(self):
+        pass
+
     def redact(self):
         pass
 
@@ -466,6 +469,8 @@ def check__try_redact__successful_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -477,6 +482,7 @@ def check__try_redact__successful_output(
         "message": "Redaction process complete",
     }
     execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
     assert execution_time_seconds is not None
 
@@ -490,6 +496,8 @@ def check__try_redact__failed_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -501,6 +509,7 @@ def check__try_redact__failed_output(
         "message": f"Redaction process failed with the following error: {exception}",
     }
     execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
     assert execution_time_seconds is not None
 
@@ -514,6 +523,8 @@ def check__try_redact__validate_redact_json_payload__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -529,6 +540,8 @@ def check__try_redact__validate_redact_json_payload__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -544,6 +557,8 @@ def check__try_redact__redact__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -559,6 +574,8 @@ def check__try_redact__redact__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -574,6 +591,8 @@ def check__try_redact__log_exception__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -589,6 +608,8 @@ def check__try_redact__log_exception__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -606,6 +627,8 @@ def check__try_redact__log_exception__not_called(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -617,6 +640,8 @@ def test__try_redact__successful(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -636,6 +661,8 @@ def test__try_redact__successful(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -652,6 +679,8 @@ def test__try_redact__successful(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -663,6 +692,8 @@ def test__try_redact__param_validation_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -684,6 +715,8 @@ def test__try_redact__param_validation_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -700,6 +733,8 @@ def test__try_redact__param_validation_failure(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -711,6 +746,8 @@ def test__try_redact__redaction_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -732,6 +769,8 @@ def test__try_redact__redaction_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -745,6 +784,8 @@ def test__try_redact__redaction_failure(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -760,6 +801,8 @@ def test__try_redact__success_with_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -787,6 +830,7 @@ def test__try_redact__success_with_non_fatal_error(
         ),
     }
     response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -798,6 +842,8 @@ def test__try_redact__success_with_non_fatal_error(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -813,6 +859,8 @@ def test__try_redact__fail_with_extra_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -843,6 +891,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
         ),
     }
     response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -874,6 +923,8 @@ def check__try_apply__successful_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -885,6 +936,7 @@ def check__try_apply__successful_output(
         "message": "Redaction process complete",
     }
     execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
     assert execution_time_seconds is not None
 
@@ -898,6 +950,8 @@ def check__try_apply__failed_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -909,6 +963,7 @@ def check__try_apply__failed_output(
         "message": f"Redaction process failed with the following error: {exception}",
     }
     execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
     assert execution_time_seconds is not None
 
@@ -922,6 +977,8 @@ def check__try_apply__validate_apply_json_payload__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -937,6 +994,8 @@ def check__try_apply__validate_redact_json_payload__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -952,6 +1011,8 @@ def check__try_apply__apply__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -967,6 +1028,8 @@ def check__try_apply__redact__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -982,6 +1045,8 @@ def check__try_apply__log_exception__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -997,6 +1062,8 @@ def check__try_apply__log_exception__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1014,6 +1081,8 @@ def check__try_apply__log_exception__not_called(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1025,6 +1094,8 @@ def test__try_apply__successful(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1044,6 +1115,8 @@ def test__try_apply__successful(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1060,6 +1133,8 @@ def test__try_apply__successful(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1071,6 +1146,8 @@ def test__try_apply__param_validation_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1092,6 +1169,8 @@ def test__try_apply__param_validation_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1108,6 +1187,8 @@ def test__try_apply__param_validation_failure(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1119,6 +1200,8 @@ def test__try_apply__apply_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1140,6 +1223,8 @@ def test__try_apply__apply_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1153,6 +1238,8 @@ def test__try_apply__apply_failure(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -1168,6 +1255,8 @@ def test__try_apply__success_with_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1195,6 +1284,7 @@ def test__try_apply__success_with_non_fatal_error(
         ),
     }
     response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -1206,6 +1296,8 @@ def test__try_apply__success_with_non_fatal_error(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -1221,6 +1313,8 @@ def test__try_apply__fail_with_extra_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1251,6 +1345,7 @@ def test__try_apply__fail_with_extra_non_fatal_error(
         ),
     }
     response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
