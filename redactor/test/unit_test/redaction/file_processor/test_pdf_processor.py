@@ -876,6 +876,8 @@ def test__pdf_processor__apply_provisional_image_redactions():
     ][0]
     redactions = [
         ImageRedactionResult(
+            rule_name="test__pdf_processor__apply_provisional_image_redactions",
+            run_metrics=dict(),
             redaction_results=(
                 ImageRedactionResult.Result(
                     image_dimensions=(100, 100),
