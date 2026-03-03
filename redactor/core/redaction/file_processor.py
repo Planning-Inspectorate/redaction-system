@@ -39,6 +39,8 @@ class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
     """
+    def __int__(self):
+        self.run_metrics = None
 
     def __init__(self):
         self.run_metrics = None
