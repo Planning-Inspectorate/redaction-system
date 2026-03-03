@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 @dataclass(frozen=True)
 class RedactionResult:
+    rule_name: str
+    """The name of the redaction rule that generated the result"""
     run_metrics: Dict[str, Union[int, str]]
     """Any analytical metrics for the result"""
 

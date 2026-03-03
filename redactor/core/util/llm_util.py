@@ -370,6 +370,7 @@ class LLMUtil:
 
         # Collect metrics
         result = LLMTextRedactionResult(
+            rule_name="",
             run_metrics={
                 "llm_analysis_time": round(time.time() - start_time, 2),
                 "llm_character_count": character_count,
