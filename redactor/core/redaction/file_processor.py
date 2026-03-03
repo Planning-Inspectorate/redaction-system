@@ -31,12 +31,15 @@ from core.util.text_util import is_english_text, get_normalised_words, normalise
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
 import dataclasses
+from time import time
 
 
 class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
     """
+    def __int__(self):
+        self.run_metrics = None
 
     @classmethod
     @abstractmethod
@@ -46,6 +49,9 @@ class FileProcessor(ABC):
         This should correspond to a subtype of a mime type returned by libmagic
         """
         pass
+
+    def get_run_metrics(self) -> Dict[str, Any]:
+        return self.run_metrics
 
     @abstractmethod
     def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
@@ -975,7 +981,10 @@ class PDFProcessor(FileProcessor):
         :return: The redacted PDF file bytes.
         """
         # Extract text from PDF
+        pdf_text_extraction_time_start = time()
         pdf_text = self._extract_pdf_text(file_bytes)
+        pdf_text_extraction_time_end = time()
+        pdf_text_extraction_time = pdf_text_extraction_time_end - pdf_text_extraction_time_start
         LoggingUtil().log_info(
             f"The following text was extracted from the PDF:\n'{pdf_text}'"
         )
@@ -986,7 +995,10 @@ class PDFProcessor(FileProcessor):
             )
             LoggingUtil().log_exception(exception)
             raise exception
+        image_extraction_time_start = time()
         pdf_images = self._extract_pdf_images(file_bytes)
+        image_extraction_time_end = time()
+        image_extraction_time = image_extraction_time_end - image_extraction_time_start
 
         # Generate list of redaction rules from config
         redaction_rules: List[RedactionConfig] = redaction_config.get(
@@ -1008,11 +1020,20 @@ class PDFProcessor(FileProcessor):
         # Generate redactions
         # TODO convert back to a set
         redaction_results: List[RedactionResult] = []
+        text_analysis_total_time = 0.0
+        image_analysis_total_time = 0.0
         # Apply each redaction rule
         LoggingUtil().log_info("Analysing PDF to identify redactions")
         for rule_to_apply in redaction_rules_to_apply:
             LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
+            redaction_time_start = time()
             redaction_result = rule_to_apply.redact()
+            redaction_time_end = time()
+            redaction_time = redaction_time_end - redaction_time_start
+            if issubclass(redaction_result.__class__, TextRedactionResult):
+                text_analysis_total_time += redaction_time
+            elif issubclass(redaction_result.__class__, ImageRedactionResult):
+                image_analysis_total_time += redaction_time
             LoggingUtil().log_info(
                 f"The redactor {rule_to_apply} yielded the following result: "
                 f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
@@ -1050,14 +1071,29 @@ class PDFProcessor(FileProcessor):
                 raise e
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
+        text_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions
         )
+        text_redaction_apply_time_end = time()
+        text_redaction_apply_time = text_redaction_apply_time_end - text_redaction_apply_time_start
 
         # Apply image redactions
+        image_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_image_redactions(
             new_file_bytes, image_redaction_results
         )
+        image_redaction_apply_time_end = time()
+        image_redaction_apply_time = image_redaction_apply_time_end - image_redaction_apply_time_start
+        self.run_metrics = {
+            "pdf_text_extraction_time": pdf_text_extraction_time,
+            "pdf_image_extraction_time": image_extraction_time,
+            "text_analysis_total_time": text_analysis_total_time,
+            "image_analysis_total_time": image_analysis_total_time,
+            "analysis_total_time": text_analysis_total_time + image_analysis_total_time,
+            "text_redaction_apply_time": text_redaction_apply_time,
+            "image_redaction_apply_time": image_redaction_apply_time
+        }
 
         return new_file_bytes
 
@@ -1074,6 +1110,7 @@ class PDFProcessor(FileProcessor):
 
         pdf = pymupdf.open(stream=file_bytes)
         redaction_highlight_count = 0
+        redaction_time_start = time()
         for page in pdf:
             page_annotations = list(page.annots())
             redaction_highlight_count += len(page_annotations)
@@ -1093,10 +1130,13 @@ class PDFProcessor(FileProcessor):
                 page.delete_annot(annotation)
                 page.clean_contents(True)
             page.apply_redactions()
+        redaction_time_end = time()
+        redaction_time = redaction_time_end - redaction_time_start
         if redaction_highlight_count == 0:
             raise NothingToRedactException(
                 "No annotations were found in the PDF - please confirm that this is correct"
             )
+        scrub_time_start = time()
         pdf.scrub(
             attached_files=True,
             clean_pages=True,
@@ -1112,9 +1152,15 @@ class PDFProcessor(FileProcessor):
             thumbnails=True,
             xml_metadata=True,
         )
+        scrub_time_end = time()
+        scrub_time = scrub_time_end - scrub_time_start
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
+        self.run_metrics = {
+            "redaction_time": redaction_time,
+            "scrub_time": scrub_time
+        }
         return new_file_bytes
 
     @classmethod
