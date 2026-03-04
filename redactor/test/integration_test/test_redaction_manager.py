@@ -180,7 +180,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert pdf_bytes == blob_bytes
         self.validate_service_bus_message_sent(guid)
         log_container_client = blob_service_client.get_container_client("redactiondata")
-        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        log_blob_client = log_container_client.get_blob_client(
+            f"{guid}/ANALYSE_log.txt"
+        )
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
@@ -253,7 +255,9 @@ class TestIntegrationRedactionManager(TestCase):
         )
         self.validate_service_bus_message_sent(guid)
         log_container_client = blob_service_client.get_container_client("redactiondata")
-        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        log_blob_client = log_container_client.get_blob_client(
+            f"{guid}/ANALYSE_log.txt"
+        )
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
@@ -291,10 +295,10 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "FAIL"
         container_client = blob_service_client.get_container_client("redactiondata")
         exception_blob_client = container_client.get_blob_client(
-            f"{guid}/exceptions.txt"
+            f"{guid}/ANALYSE_exceptions.txt"
         )
         assert exception_blob_client.exists()
-        log_blob_client = container_client.get_blob_client(f"{guid}/log.txt")
+        log_blob_client = container_client.get_blob_client(f"{guid}/ANALYSE_log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
@@ -361,7 +365,7 @@ class TestIntegrationRedactionManager(TestCase):
         )
         self.validate_service_bus_message_sent(guid)
         log_container_client = blob_service_client.get_container_client("redactiondata")
-        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        log_blob_client = log_container_client.get_blob_client(f"{guid}/REDACT_log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )

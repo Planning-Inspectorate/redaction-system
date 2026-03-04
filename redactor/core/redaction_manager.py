@@ -267,7 +267,7 @@ class RedactionManager:
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
 
-    def save_logs(self):
+    def save_logs(self, stage_name: str):
         """
         Write a log file locally and in Azure
         """
@@ -278,7 +278,7 @@ class RedactionManager:
         ).write(
             data_bytes=log_bytes,
             container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/log.txt",
+            blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
         )
 
     def log_exception(self, exception: Exception):
@@ -291,7 +291,7 @@ class RedactionManager:
         )
         self.runtime_errors.append(error_trace)
 
-    def save_exception_log(self):
+    def save_exception_log(self, stage_name: str):
         """
         Save any logged exceptions to the redaction storage account. If there are no exceptions, then nothing is written
         Note: This should only be called once - overwrites are not permitted
@@ -306,7 +306,7 @@ class RedactionManager:
         blob_io.write(
             data_bytes=data_to_write.encode(text_encoding),
             container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/exceptions.txt",
+            blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
         )
 
     def send_service_bus_completion_message(
@@ -338,6 +338,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
+        stage = base_response["stage"]
         fatal_error = None
         non_fatal_errors = []
         status = "SUCCESS"
@@ -359,14 +360,14 @@ class RedactionManager:
                 f"Failed to submit a service bus message with the following error: {e}"
             )
         try:
-            self.save_logs()
+            self.save_logs(stage)
         except Exception as e:
             self.log_exception(e)
             non_fatal_errors.append(
                 f"Failed to write logs with the following error: {e}"
             )
         try:
-            self.save_exception_log()
+            self.save_exception_log(stage)
         except Exception as e:
             non_fatal_errors.append(
                 f"Failed to write an exception log with the following error: {e}"
