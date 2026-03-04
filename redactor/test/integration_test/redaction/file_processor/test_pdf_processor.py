@@ -25,7 +25,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[180.76254272460938, 145.0911865234375, 241.24356079101562, 157.3802490234375]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         180.76254272460938,
                         145.0911865234375,
@@ -37,7 +37,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[244.29502868652344, 145.0911865234375, 267.51654052734375, 157.3802490234375]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         244.29502868652344,
                         145.0911865234375,
@@ -49,7 +49,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[72.0, 101.452392578125, 97.65274810791016, 113.741455078125]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         72.0, 101.452392578125, 97.65274810791016, 113.741455078125
                     ),
@@ -58,7 +58,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[164.2420654296875, 101.452392578125, 199.68487548828125, 113.741455078125]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         164.2420654296875,
                         101.452392578125,
@@ -70,7 +70,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[194.0673065185547, 72.35986328125, 215.45306396484375, 84.64892578125]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         194.0673065185547,
                         72.35986328125,
@@ -82,7 +82,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[470.42864990234375, 101.452392578125, 492.6402282714844, 113.741455078125]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         470.42864990234375,
                         101.452392578125,
@@ -94,7 +94,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[273.0046081542969, 217.822509765625, 295.2162170410156, 230.111572265625]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         273.0046081542969,
                         217.822509765625,
@@ -106,7 +106,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625
                     ),
@@ -115,7 +115,7 @@ def test__pdf_processor__extract_pdf_annotations():
                 {
                     "content": "REDACTION CANDIDATE",
                     "subject": "[298.2676696777344, 217.822509765625, 334.3221740722656, 230.111572265625]",
-                    "type": (8, "Highlight"),
+                    "type": "Highlight",
                     "rect": pymupdf.Rect(
                         298.2676696777344,
                         217.822509765625,
@@ -158,7 +158,7 @@ def test__pdf_processor__add_provisional_redaction():
     assert info["title"] == "Hello"
     assert info["creationDate"] is not None
     assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
-    assert annot.type == (8, "Highlight")
+    assert annot.type == "Highlight"
 
 
 def test__pdf_processor__examine_provisional_text_redaction():

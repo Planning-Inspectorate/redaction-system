@@ -199,13 +199,13 @@ class TestIntegrationRedactionManager(TestCase):
                 ManagedIdentityCredential(), AzureCliCredential()
             ),
         )
-        container_client = blob_service_client.get_container_client("test")
+        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        container_client.upload_blob(
+        test_container_client.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
             pdf_bytes,
             overwrite=True,
@@ -242,16 +242,10 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
-        blob_client = container_client.get_blob_client(
+        blob_client = test_container_client.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
-        json_blob_client = container_client.get_blob_client(
-            f"{guid}/proposed_redactions.json"
-        )
-        assert json_blob_client.exists(), (
-            "Expected proposed_redactions.json to be in the test container, but was missing"
-        )
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert redacted_pdf_highlights, (
@@ -259,6 +253,12 @@ class TestIntegrationRedactionManager(TestCase):
         )
         self.validate_service_bus_message_sent(guid)
         log_container_client = blob_service_client.get_container_client("redactiondata")
+        json_blob_client = log_container_client.get_blob_client(
+            f"{guid}/proposed_redactions.json"
+        )
+        assert json_blob_client.exists(), (
+            "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
+        )
         log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
@@ -278,13 +278,13 @@ class TestIntegrationRedactionManager(TestCase):
                 ManagedIdentityCredential(), AzureCliCredential()
             ),
         )
-        container_client = blob_service_client.get_container_client("test")
+        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        container_client.upload_blob(
+        test_container_client.upload_blob(
             f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
             pdf_bytes,
             overwrite=True,
@@ -295,12 +295,12 @@ class TestIntegrationRedactionManager(TestCase):
         params = {"an example bad payload": None}
         response = manager.try_redact(params)
         assert response["status"] == "FAIL"
-        container_client = blob_service_client.get_container_client("redactiondata")
-        exception_blob_client = container_client.get_blob_client(
+        log_container_client = blob_service_client.get_container_client("redactiondata")
+        exception_blob_client = log_container_client.get_blob_client(
             f"{guid}/exceptions.txt"
         )
         assert exception_blob_client.exists()
-        log_blob_client = container_client.get_blob_client(f"{guid}/log.txt")
+        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
@@ -314,7 +314,7 @@ class TestIntegrationRedactionManager(TestCase):
                 ManagedIdentityCredential(), AzureCliCredential()
             ),
         )
-        container_client = blob_service_client.get_container_client("test")
+        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join(
                 "test", "resources", "pdf", "test__pdf_processor__proposed.pdf"
@@ -322,7 +322,7 @@ class TestIntegrationRedactionManager(TestCase):
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        container_client.upload_blob(
+        test_container_client.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
             pdf_bytes,
             overwrite=True,
@@ -356,16 +356,10 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
-        blob_client = container_client.get_blob_client(
+        blob_client = test_container_client.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
         )
         assert blob_client.exists()
-        json_blob_client = container_client.get_blob_client(
-            f"{guid}/final_redactions.json"
-        )
-        assert json_blob_client.exists(), (
-            "Expected final_redactions.json to be in the test container, but was missing"
-        )
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert not redacted_pdf_highlights, (
@@ -373,6 +367,12 @@ class TestIntegrationRedactionManager(TestCase):
         )
         self.validate_service_bus_message_sent(guid)
         log_container_client = blob_service_client.get_container_client("redactiondata")
+        json_blob_client = log_container_client.get_blob_client(
+            f"{guid}/final_redactions.json"
+        )
+        assert json_blob_client.exists(), (
+            "Expected final_redactions.json to be in the redactiondata container, but was missing"
+        )
         log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"

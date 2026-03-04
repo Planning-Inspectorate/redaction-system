@@ -226,11 +226,10 @@ class RedactionManager:
             LoggingUtil().log_info("Redaction process complete")
 
             # Store the proposed redactions in JSON format for analytics
-            proposed_redactions_dict = file_processor_inst.get_proposed_redactions(
-                proposed_redaction_file_data
-            )
             self.save_redaction_dict_to_blob_json(
-                proposed_redactions_dict,
+                file_processor_inst.get_proposed_redactions(
+                    proposed_redaction_file_data
+                ),
                 redaction_storage_io_inst,
                 json_file_name="proposed_redactions",
             )
@@ -307,9 +306,8 @@ class RedactionManager:
         file_processor_inst = file_processor_class()
 
         # Store the final redactions in JSON format for analytics
-        final_redactions_dict = file_processor_inst.get_final_redactions(file_data)
         self.save_redaction_dict_to_blob_json(
-            final_redactions_dict,
+            file_processor_inst.get_final_redactions(file_data),
             redaction_storage_io_inst,
             json_file_name="final_redactions",
         )
