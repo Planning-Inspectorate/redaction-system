@@ -279,7 +279,7 @@ class PDFProcessor(FileProcessor):
         page: pymupdf.Page,
         annotation_class: Any = None,
         return_annot: bool = False,
-    ) -> Generator[Dict[str, Any]]:
+    ) -> Generator[Dict[str, Any], None, None]:
         """
         Extract the annotations from a PDF page. If annotation_class is provided, only
         annotations of that class will be extracted.
@@ -398,7 +398,9 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
-        annotations = cls._extract_pdf_annotations(file_bytes)
+        annotations = cls._extract_pdf_annotations(
+            file_bytes, annotation_class=pymupdf.PDF_ANNOT_REDACT
+        )
         annot_df = cls._normalise_annotations_to_dataframe(annotations)
         return annot_df.to_dict(orient="records")
 

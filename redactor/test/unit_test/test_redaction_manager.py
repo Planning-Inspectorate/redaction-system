@@ -198,12 +198,12 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-@mock.patch.object(AzureBlobIO, "write", return_value=None)
-@mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
 @mock.patch.object(
     MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
 )
-@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
+@mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
@@ -211,10 +211,10 @@ def test__redaction_manager__redact(
     mock_load_config,
     mock_validate_filter_config,
     mock_convert_kwargs,
-    mock_save_redaction_dict_to_blob_json,
-    mock_get_proposed_redactions,
     mock_redact,
     mock_blob_write,
+    mock_get_proposed_redactions,
+    mock_save_redaction_dict_to_blob_json,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,
@@ -310,6 +310,10 @@ def test__redaction_manager__redact(
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
+@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
+@mock.patch.object(
+    MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
+)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
@@ -321,6 +325,8 @@ def test__redaction_manager__apply(
     mock_convert_kwargs,
     mock_redact,
     mock_blob_write,
+    mock_get_final_redactions,
+    mock_save_redaction_dict_to_blob_json,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,

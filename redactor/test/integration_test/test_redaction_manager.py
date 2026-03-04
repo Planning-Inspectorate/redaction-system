@@ -249,7 +249,9 @@ class TestIntegrationRedactionManager(TestCase):
         json_blob_client = container_client.get_blob_client(
             f"{RUN_ID}/proposed_redactions.json"
         )
-        assert json_blob_client.exists()
+        assert json_blob_client.exists(), (
+            "Expected proposed_redactions.json to be in the test container, but was missing"
+        )
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert redacted_pdf_highlights, (
@@ -358,6 +360,12 @@ class TestIntegrationRedactionManager(TestCase):
             f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
         )
         assert blob_client.exists()
+        json_blob_client = container_client.get_blob_client(
+            f"{RUN_ID}/final_redactions.json"
+        )
+        assert json_blob_client.exists(), (
+            "Expected final_redactions.json to be in the test container, but was missing"
+        )
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert not redacted_pdf_highlights, (

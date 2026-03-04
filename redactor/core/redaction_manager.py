@@ -317,6 +317,19 @@ class RedactionManager:
         )
         proposed_redaction_file_data.seek(0)
 
+        # Store the final redactions in JSON format for analytics
+        final_redactions_dict = file_processor_inst.get_final_redactions(
+            proposed_redaction_file_data
+        )
+        self.save_redaction_dict_to_blob_json(
+            final_redactions_dict,
+            redaction_storage_io_inst,
+            json_file_name="final_redactions",
+        )
+        LoggingUtil().log_info(
+            "Saving a copy of the final redactions in JSON format for analytics"
+        )
+
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
