@@ -225,8 +225,10 @@ def test__pdf_processor__extract_pdf_annotations__highlight_only():
 
 
 def test__pdf_processor__get_proposed_redactions():
-    creation_date = pymupdf.get_pdf_now()
-    creation_date_str = pd.to_datetime(creation_date[2:15], format="%Y%m%d%H%M%S")
+    creation_date = "D:20260103123456+01'00'"
+    creation_timestamp = pd.Timestamp(
+        year=2026, month=1, day=3, hour=12, minute=34, second=56
+    )
     annotations = (
         {
             "page_number": 0,
@@ -269,7 +271,7 @@ def test__pdf_processor__get_proposed_redactions():
             "proposedRedaction": "Redact this",
             "annotatedText": "Redact this",
             "rect": (0.0, 0.0, 1.0, 1.0),
-            "creationDate": creation_date_str,
+            "creationDate": creation_timestamp,
             "isRedactionCandidate": True,
             "modDate": pd.NaT,
         },
@@ -279,7 +281,7 @@ def test__pdf_processor__get_proposed_redactions():
             "proposedRedaction": "Redact this too",
             "annotatedText": "Redact this",
             "rect": (2.0, 2.0, 3.0, 3.0),
-            "creationDate": creation_date_str,
+            "creationDate": creation_timestamp,
             "isRedactionCandidate": True,
             "modDate": pd.NaT,
         },
@@ -289,7 +291,7 @@ def test__pdf_processor__get_proposed_redactions():
             "proposedRedaction": "Redact this too",
             "annotatedText": "too.",
             "rect": (0.0, 2.0, 1.0, 3.0),
-            "creationDate": creation_date_str,
+            "creationDate": creation_timestamp,
             "isRedactionCandidate": True,
             "modDate": pd.NaT,
         },
