@@ -304,24 +304,30 @@ class PDFProcessor(FileProcessor):
         return tuple(annotations)
 
     @classmethod
-    def get_proposed_redactions(cls, file_bytes: BytesIO) -> str:
+    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+        """
+        Get the proposed redactions from the given PDF as a list of dictionaries containing
+        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
+        have the annotation title "REDACTION CANDIDATE".
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+
+        :return List[Dict[str, Any]]: The list of proposed redactions with their details
+        """
         annotations = cls._extract_pdf_annotations(file_bytes)
         annot_df = pd.json_normalize(annotations, "annotations", ["page_number"])
+        annot_df["pageNumber"] = annot_df["page_number"].astype(int)
         annot_df["creationDate"] = pd.to_datetime(
             annot_df["creationDate"].apply(lambda x: x[2:-7]), format="%Y%m%d%H%M%S"
         )
         annot_df["isRedactionCandidate"] = annot_df["title"] == "REDACTION CANDIDATE"
-        annot_df.drop(
-            ["name", "title", "modDate", "subject", "id"], axis=1, inplace=True
-        )
 
         annot_df["rect"] = annot_df["rect"].apply(lambda x: tuple(x))
         annot_df.rename(
             columns={
-                "content": "redaction",
+                "content": "proposedRedaction",
                 "text": "annotatedText",
                 "type": "annotationType",
-                "page_number": "pageNumber",
             },
             inplace=True,
         )
@@ -329,14 +335,14 @@ class PDFProcessor(FileProcessor):
             [
                 "pageNumber",
                 "annotationType",
-                "redaction",
+                "proposedRedaction",
                 "annotatedText",
                 "rect",
                 "creationDate",
                 "isRedactionCandidate",
             ]
         ]
-        return annot_df
+        return annot_df.to_dict(orient="records")
 
     @classmethod
     def _find_first_word_to_redact(

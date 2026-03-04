@@ -1,5 +1,7 @@
 import pymupdf
 import pytest
+import pandas as pd
+import numpy as np
 
 from PIL import Image
 from io import BytesIO
@@ -117,30 +119,116 @@ def test__pdf_processor__extract_pdf_annotations():
         expected_annotations = (
             {
                 "page_number": 0,
-                "annotations": (
+                "annotations": [
                     {
                         "content": "Annotation 0",
-                        "type": (8, "Highlight"),
+                        "type": "Highlight",
                         "rect": pymupdf.Rect(0, 0, 1, 1),
                         "text": "hello",
                     },
                     {
                         "content": "Annotation 1",
-                        "type": (8, "Highlight"),
+                        "type": "Highlight",
                         "rect": pymupdf.Rect(2, 2, 3, 3),
                         "text": "world",
                     },
                     {
                         "content": "Annotation 2",
-                        "type": (12, "Redact"),
+                        "type": "Redact",
                         "rect": pymupdf.Rect(4, 4, 5, 5),
                     },
-                ),
+                ],
             },
         )
         actual_annotations = PDFProcessor()._extract_pdf_annotations(BytesIO())
 
     assert expected_annotations == actual_annotations
+
+
+def test__pdf_processor__get_proposed_redactions():
+    creation_date = pymupdf.get_pdf_now()
+    creation_date_str = pd.to_datetime(creation_date[2:-7], format="%Y%m%d%H%M%S")
+    annotations = (
+        {
+            "page_number": 0,
+            "annotations": [
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(0, 0, 1, 1),
+                    "text": "Redact this",
+                    "creationDate": creation_date,
+                },
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this too",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(2, 2, 3, 3),
+                    "text": "Redact this",
+                    "creationDate": creation_date,
+                },
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this too",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(0, 2, 1, 3),
+                    "text": "too.",
+                    "creationDate": creation_date,
+                },
+                {
+                    "content": "",
+                    "type": "Redact",
+                    "rect": pymupdf.Rect(4, 4, 5, 5),
+                    "creationDate": creation_date,
+                },
+            ],
+        },
+    )
+    document_bytes = BytesIO()
+    expected_dict = [
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this",
+            "annotatedText": "Redact this",
+            "rect": (0.0, 0.0, 1.0, 1.0),
+            "creationDate": creation_date_str,
+            "isRedactionCandidate": True,
+        },
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this too",
+            "annotatedText": "Redact this",
+            "rect": (2.0, 2.0, 3.0, 3.0),
+            "creationDate": creation_date_str,
+            "isRedactionCandidate": True,
+        },
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this too",
+            "annotatedText": "too.",
+            "rect": (0.0, 2.0, 1.0, 3.0),
+            "creationDate": creation_date_str,
+            "isRedactionCandidate": True,
+        },
+        {
+            "pageNumber": 0,
+            "annotationType": "Redact",
+            "proposedRedaction": "",
+            "annotatedText": np.nan,
+            "rect": (4.0, 4.0, 5.0, 5.0),
+            "creationDate": creation_date_str,
+            "isRedactionCandidate": False,
+        },
+    ]
+    with patch.object(
+        PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+    ):
+        actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
+    assert expected_dict == actual_dict
 
 
 def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
