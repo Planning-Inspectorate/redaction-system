@@ -17,9 +17,7 @@ def test__pdf_processor__extract_pdf_annotations():
     with open("test/resources/pdf/test__pdf_processor__proposed.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     pdf_processor = PDFProcessor()
-    annotations = pdf_processor._extract_pdf_annotations(
-        document_bytes, pymupdf.PDF_ANNOT_HIGHLIGHT
-    )
+    annotations = pdf_processor._extract_pdf_annotations(document_bytes)
     expected_annotations = [
         {
             "page_number": 0,

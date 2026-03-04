@@ -247,7 +247,7 @@ class TestIntegrationRedactionManager(TestCase):
         )
         assert blob_client.exists()
         json_blob_client = container_client.get_blob_client(
-            f"{RUN_ID}/proposed_redactions.json"
+            f"{guid}/proposed_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected proposed_redactions.json to be in the test container, but was missing"
@@ -361,7 +361,7 @@ class TestIntegrationRedactionManager(TestCase):
         )
         assert blob_client.exists()
         json_blob_client = container_client.get_blob_client(
-            f"{RUN_ID}/final_redactions.json"
+            f"{guid}/final_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected final_redactions.json to be in the test container, but was missing"
