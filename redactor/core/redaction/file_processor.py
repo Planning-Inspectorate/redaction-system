@@ -3,7 +3,7 @@ import pymupdf
 import dataclasses
 import pandas as pd
 
-from typing import Set, Type, List, Any, Dict, Tuple
+from typing import Set, Type, List, Any, Dict, Tuple, Generator
 from abc import ABC, abstractmethod
 from io import BytesIO
 from PIL import Image
@@ -279,7 +279,7 @@ class PDFProcessor(FileProcessor):
         page: pymupdf.Page,
         annotation_class: Any = None,
         return_annot: bool = False,
-    ) -> Tuple[Dict[str, Any]]:
+    ) -> Generator[Dict[str, Any]]:
         """
         Extract the annotations from a PDF page. If annotation_class is provided, only
         annotations of that class will be extracted.
@@ -340,24 +340,22 @@ class PDFProcessor(FileProcessor):
         return tuple(annotations)
 
     @classmethod
-    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
-        """
-        Get the proposed redactions from the given PDF as a list of dictionaries containing
-        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
-        have the annotation title "REDACTION CANDIDATE".
+    def _convert_pdf_date(cls, series):
+        """Convert PDF date format to Timestamp."""
+        return pd.to_datetime(
+            series.apply(lambda x: x[2:-7] if x else None), format="%Y%m%d%H%M%S"
+        )
 
-        :param BytesIO file_bytes: Bytes stream for the PDF
-
-        :return List[Dict[str, Any]]: The list of proposed redactions with their details
-        """
-        annotations = cls._extract_pdf_annotations(file_bytes)
+    @classmethod
+    def _normalise_annotations_to_dataframe(
+        cls,
+        annotations: Tuple[Dict[str, Any]],
+    ) -> pd.DataFrame:
         annot_df = pd.json_normalize(annotations, "annotations", ["page_number"])
         annot_df["pageNumber"] = annot_df["page_number"].astype(int)
-        annot_df["creationDate"] = pd.to_datetime(
-            annot_df["creationDate"].apply(lambda x: x[2:-7]), format="%Y%m%d%H%M%S"
-        )
+        annot_df["creationDate"] = cls._convert_pdf_date(annot_df["creationDate"])
+        annot_df["modDate"] = cls._convert_pdf_date(annot_df["modDate"])
         annot_df["isRedactionCandidate"] = annot_df["title"] == "REDACTION CANDIDATE"
-
         annot_df["rect"] = annot_df["rect"].apply(lambda x: tuple(x))
         annot_df.rename(
             columns={
@@ -375,14 +373,34 @@ class PDFProcessor(FileProcessor):
                 "annotatedText",
                 "rect",
                 "creationDate",
+                "modDate",
                 "isRedactionCandidate",
             ]
         ]
+        return annot_df
+
+    @classmethod
+    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+        """
+        Get the proposed redactions from the given PDF as a list of dictionaries containing
+        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
+        have the annotation title "REDACTION CANDIDATE".
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+
+        :return List[Dict[str, Any]]: The list of proposed redactions with their details
+        """
+        annotations = cls._extract_pdf_annotations(
+            file_bytes, annotation_class=pymupdf.PDF_ANNOT_HIGHLIGHT
+        )
+        annot_df = cls._normalise_annotations_to_dataframe(annotations)
         return annot_df.to_dict(orient="records")
 
     @classmethod
     def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
-        pass
+        annotations = cls._extract_pdf_annotations(file_bytes)
+        annot_df = cls._normalise_annotations_to_dataframe(annotations)
+        return annot_df.to_dict(orient="records")
 
     @classmethod
     def _find_first_word_to_redact(
