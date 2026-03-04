@@ -246,6 +246,10 @@ class TestIntegrationRedactionManager(TestCase):
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
+        json_blob_client = container_client.get_blob_client(
+            f"{RUN_ID}/proposed_redactions.json"
+        )
+        assert json_blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert redacted_pdf_highlights, (

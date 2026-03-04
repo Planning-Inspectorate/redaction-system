@@ -1,3 +1,10 @@
+import mock
+import pytest
+import json
+
+from io import BytesIO
+from pandas import Timestamp
+
 from core.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
 from core.io.azure_blob_io import AzureBlobIO
@@ -6,9 +13,6 @@ from core.redaction.file_processor import FileProcessorFactory
 from core.redaction.config_processor import ConfigProcessor
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
-from io import BytesIO
-import mock
-import pytest
 
 
 class MockRedactor:
@@ -19,6 +23,9 @@ class MockRedactor:
         pass
 
     def apply(self):
+        pass
+
+    def get_proposed_redactions(self):
         pass
 
 
@@ -142,6 +149,41 @@ def test__redaction_manager__validate_apply_json_payload__valid(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__redaction_manager__save_redaction_dict_to_blob_json(mock_init):
+    redactions_dict = [
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "something",
+            "annotatedText": "something",
+            "rect": (0, 0, 1, 1),
+            "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+            "isRedactionCandidate": True,
+        }
+    ]
+    json_file_name = "proposed_redactions"
+    inst = RedactionManager("")
+    inst.env = "dev"
+    inst.folder_for_job = "some_folder"
+    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
+    inst.save_redaction_dict_to_blob_json(
+        redactions_dict,
+        mock_redaction_storage_io_inst,
+        json_file_name,
+    )
+    mock_redaction_storage_io_inst.write.assert_called_once_with(
+        json.dumps(
+            redactions_dict,
+            ensure_ascii=False,
+            indent=4,
+            default=inst.json_serialise_datetime_to_iso,
+        ).encode("utf-8"),
+        container_name="redactiondata",
+        blob_path=f"{inst.folder_for_job}/{json_file_name}.json",
+    )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
@@ -158,6 +200,10 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(
+    MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
+)
+@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
@@ -165,6 +211,8 @@ def test__redaction_manager__redact(
     mock_load_config,
     mock_validate_filter_config,
     mock_convert_kwargs,
+    mock_save_redaction_dict_to_blob_json,
+    mock_get_proposed_redactions,
     mock_redact,
     mock_blob_write,
     mock_file_processor_get,

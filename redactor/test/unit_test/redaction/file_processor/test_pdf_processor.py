@@ -115,24 +115,28 @@ def test__pdf_processor__extract_pdf_annotations():
         patch("pymupdf.open", return_value=mock_document),
         patch("pymupdf.Page.annots", return_value=mock_annotations),
         patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
+        patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_document[0]),
     ):
         expected_annotations = (
             {
                 "page_number": 0,
                 "annotations": [
                     {
+                        "annot": mock_annotations[0],
                         "content": "Annotation 0",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(0, 0, 1, 1),
                         "text": "hello",
                     },
                     {
+                        "annot": mock_annotations[1],
                         "content": "Annotation 1",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(2, 2, 3, 3),
                         "text": "world",
                     },
                     {
+                        "annot": mock_annotations[2],
                         "content": "Annotation 2",
                         "type": "Redact",
                         "rect": pymupdf.Rect(4, 4, 5, 5),
@@ -140,7 +144,9 @@ def test__pdf_processor__extract_pdf_annotations():
                 ],
             },
         )
-        actual_annotations = PDFProcessor()._extract_pdf_annotations(BytesIO())
+        actual_annotations = PDFProcessor()._extract_pdf_annotations(
+            BytesIO(), return_annot=True
+        )
 
     assert expected_annotations == actual_annotations
 

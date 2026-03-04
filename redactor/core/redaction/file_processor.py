@@ -84,11 +84,21 @@ class FileProcessor(ABC):
 
     @classmethod
     @abstractmethod
-    def get_proposed_redactions(cls) -> Set[Type[Redactor]]:
+    def get_proposed_redactions(cls) -> List[Dict[str, Any]]:
         """
-        Return the provisional redactions.
+        Return the proposed redactions.
 
-        :return Tuple[type[Redactor]]: The redactors that can be applied
+        :return List[Dict[str, Any]]: The proposed redactions
+        """
+        pass
+
+    @classmethod
+    @abstractmethod
+    def get_final_redactions(cls) -> List[Dict[str, Any]]:
+        """
+        Return the final redactions.
+
+        :return List[Dict[str, Any]]: The final redactions
         """
         pass
 
@@ -264,39 +274,65 @@ class PDFProcessor(FileProcessor):
         return [x[0] for x in seen_images]
 
     @classmethod
+    def _extract_page_annotations(
+        cls,
+        page: pymupdf.Page,
+        annotation_class: Any = None,
+        return_annot: bool = False,
+    ) -> Tuple[Dict[str, Any]]:
+        """
+        Extract the annotations from a PDF page. If annotation_class is provided, only
+        annotations of that class will be extracted.
+
+        :param annotation_class: The class of annotations to extract
+        :param return_annot: Whether to include the annotation object itself in the details returned.
+        This is required to apply redactions based on the annotation, but should be set to False to just
+        return the details of the annotation, for example when extracting proposed redactions.
+
+        :return: A generator of dictionaries containing the annotation details. If return_annot is True,
+        the dictionary will also include the annotation object itself under the key "annot".
+        """
+        for annot in page.annots(annotation_class):
+            if return_annot:
+                annot_info = {"annot": annot, **annot.info}
+            else:
+                annot_info = annot.info
+            type_num, type_str = annot.type
+            if type_num in (8, 12):  # Highlight or redact annotation
+                vertices = annot.vertices
+                # The rect of the annotation is not always the same as the bounding box
+                # of annotation vertices, which should match the annotation if
+                # _apply_provisional_text_redactions was used
+                rect = pymupdf.Rect(
+                    vertices[0][0], vertices[0][1], vertices[-1][0], vertices[-1][1]
+                )
+                annot_info.update(
+                    {
+                        "type": type_str,
+                        "rect": rect,
+                    }
+                )
+                if type_num == 8:  # Highlighted text
+                    annot_info.update({"text": page.get_text(clip=rect).strip()})
+            yield annot_info
+
+    @classmethod
     def _extract_pdf_annotations(
-        cls, file_bytes: BytesIO, annotation_class: Any = None
+        cls, file_bytes: BytesIO, **kwargs
     ) -> Tuple[Dict[str, Any]]:
         """
         Extract the annotations from the given PDF as a list of dictionaries containing the annotation details
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param annotation_class: The class of annotations to extract
+        :param kwargs: Additional arguments to pass to _extract_page_annotations
+
         :return Tuple[Dict[int, Any]]: The list of annotations with their details
         """
         pdf = pymupdf.open(stream=file_bytes)
         annotations = []
         for page in pdf:
             page_annotations = []
-            for annot in page.annots(annotation_class):
-                annot_info = annot.info
-                type_num, type_str = annot.type
-                if type_num in (8, 12):  # Highlight or redact annotation
-                    vertices = annot.vertices
-                    # The rect of the annotation is not always the same as the bounding box
-                    # of annotation vertices, which should match the annotation if
-                    # _apply_provisional_text_redactions was used
-                    rect = pymupdf.Rect(
-                        vertices[0][0], vertices[0][1], vertices[-1][0], vertices[-1][1]
-                    )
-                    annot_info.update(
-                        {
-                            "type": type_str,
-                            "rect": rect,
-                        }
-                    )
-                    if type_num == 8:  # Highlighted text
-                        annot_info.update({"text": page.get_text(clip=rect).strip()})
+            for annot_info in cls._extract_page_annotations(page, **kwargs):
                 page_annotations.append(annot_info)
             annotations.append(
                 {"page_number": page.number, "annotations": page_annotations}
@@ -343,6 +379,10 @@ class PDFProcessor(FileProcessor):
             ]
         ]
         return annot_df.to_dict(orient="records")
+
+    @classmethod
+    def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+        pass
 
     @classmethod
     def _find_first_word_to_redact(
@@ -534,15 +574,12 @@ class PDFProcessor(FileProcessor):
             LoggingUtil().log_info(
                 f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
             )
-        # Add the original rect in the subject, since highlight annotations may not have the same rect once created
-        # i.e. this is needed to ensure the final redactions are in the correct location
         highlight_annotation = page.add_highlight_annot(rect)
         highlight_annotation.set_info(
             {
                 "title": "REDACTION CANDIDATE",
                 "content": name,
                 "creationDate": pymupdf.get_pdf_now(),
-                "subject": str([rect.x0, rect.y0, rect.x1, rect.y1]),
             }
         )
 
@@ -1172,29 +1209,30 @@ class PDFProcessor(FileProcessor):
 
         pdf = pymupdf.open(stream=file_bytes)
         redaction_highlight_count = 0
+
         for page in pdf:
-            page_annotations = list(page.annots())
-            redaction_highlight_count += len(page_annotations)
-            for annotation in page_annotations:
-                annotation_rect = annotation.rect
-                if annotation.info["subject"]:
-                    try:
-                        subject_split = json.loads(annotation.info["subject"])
-                        if len(subject_split) == 4 and all(
-                            is_float(x) for x in subject_split
-                        ):
-                            subject_split_cleaned = [float(x) for x in subject_split]
-                            annotation_rect = pymupdf.Rect(subject_split_cleaned)
-                    except json.JSONDecodeError:
-                        pass
+            for annotation in self._extract_page_annotations(
+                page, annotation_class=pymupdf.PDF_ANNOT_HIGHLIGHT, return_annot=True
+            ):
+                redaction_highlight_count += 1
+                if annotation["rect"]:
+                    # Use the rect generated from the vertices if it exists, since
+                    # this will have preserved the position of the highlight applied more accurately
+                    annotation_rect = annotation["rect"]
+                else:
+                    # If the rect is not available, use the bounding box of the annotation vertices instead
+                    annotation_rect = annotation["annot"].rect
                 page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
-                page.delete_annot(annotation)
+                page.delete_annot(annotation["annot"])
                 page.clean_contents(True)
+
             page.apply_redactions()
+
         if redaction_highlight_count == 0:
             raise NothingToRedactException(
                 "No annotations were found in the PDF - please confirm that this is correct"
             )
+
         pdf.scrub(
             attached_files=True,
             clean_pages=True,

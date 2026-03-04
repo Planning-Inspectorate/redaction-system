@@ -1,8 +1,16 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
+import os
+import json
+import datetime
+import re
+import traceback
+
+from dotenv import load_dotenv
 from typing import Dict, Any, List, Optional, Callable
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
+
 from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
 from core.io.io_factory import IOFactory
@@ -10,11 +18,6 @@ from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
 from pydantic import BaseModel
-import re
-import traceback
-from dotenv import load_dotenv
-import os
-import json
 
 
 load_dotenv(verbose=True, override=True)
@@ -110,6 +113,44 @@ class RedactionManager:
         model_inst = ApplyJsonPayloadStructure(**payload)
         ApplyJsonPayloadStructure.model_validate(model_inst)
 
+    def json_serialise_datetime_to_iso(self, obj):
+        """
+        Convert a datetime object to an ISO format string for JSON serialisation
+
+        :param obj: The object to serialise
+        :return: The ISO format string if obj is a datetime, else the string representation of the object
+        """
+        if isinstance(obj, datetime.datetime):
+            return obj.isoformat()
+        else:
+            return str(obj)
+
+    def save_redaction_dict_to_blob_json(
+        self,
+        redactions_dict: Dict[str, Any],
+        redaction_storage_io_inst: AzureBlobIO,
+        json_file_name: str,
+        json_indent: int = 4,
+        json_encoding: str = "utf-8",
+    ):
+        """Save the redactions in JSON format to the redaction storage
+        :param Dict[str, Any] redactions_dict: The redactions to save, in dictionary format
+        :param AzureBlobIO redaction_storage_io_inst: The AzureBlobIO instance to use for saving the redactions
+        :param str json_file_name: The name of the JSON file to save the redactions in
+        :param int json_indent: The number of spaces to use as indentation in the JSON file (default: 4)
+        :param str json_encoding: The encoding to use for the JSON file (default: "utf-8")
+        """
+        redaction_storage_io_inst.write(
+            json.dumps(
+                redactions_dict,
+                ensure_ascii=False,
+                indent=json_indent,
+                default=self.json_serialise_datetime_to_iso,
+            ).encode(json_encoding),
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/{json_file_name}.json",
+        )
+
     def redact(self, params: Dict[str, Any]):
         """
         Perform a redaction using the supplied parameters
@@ -185,21 +226,16 @@ class RedactionManager:
             LoggingUtil().log_info("Redaction process complete")
 
             # Store the proposed redactions in JSON format for analytics
-            proposed_redactions_df = file_processor_inst.get_proposed_redactions(
+            proposed_redactions_dict = file_processor_inst.get_proposed_redactions(
                 proposed_redaction_file_data
+            )
+            self.save_redaction_dict_to_blob_json(
+                proposed_redactions_dict,
+                redaction_storage_io_inst,
+                json_file_name="proposed_redactions",
             )
             LoggingUtil().log_info(
                 "Saving a copy of the proposed redactions in JSON format for analytics"
-            )
-            redaction_storage_io_inst.write(
-                proposed_redactions_df.to_json(
-                    orient="records",
-                    date_format="iso",
-                    force_ascii=False,
-                    indent=4,
-                ).encode("utf-8"),
-                container_name="redactiondata",
-                blob_path=f"{self.folder_for_job}/proposed_redactions.json",
             )
 
         # Store a copy of the proposed redactions in redaction storage

@@ -51,7 +51,7 @@ class AzureBlobIO(StorageIO):
 
     def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
         LoggingUtil().log_info(
-            f"Writing blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
+            f"Writing blob '{blob_path}' to container '{container_name}' in storage account '{self.storage_endpoint}'"
         )
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
