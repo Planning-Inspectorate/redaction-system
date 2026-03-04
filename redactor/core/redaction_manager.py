@@ -315,7 +315,7 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
         )
 
-    def save_metrics(self, metrics: Dict[str, Any]):
+    def save_metrics(self, stage_name: str, metrics: Dict[str, Any]):
         """
         Save the given metrics to blob storage
         """
@@ -326,7 +326,7 @@ class RedactionManager:
         ).write(
             data_bytes=metric_bytes,
             container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/metrics.txt",
+            blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",
         )
 
     def send_service_bus_completion_message(
@@ -397,7 +397,7 @@ class RedactionManager:
             )
         if run_metrics:
             try:
-                self.save_metrics(run_metrics)
+                self.save_metrics(stage, run_metrics)
             except Exception as e:
                 non_fatal_errors.append(
                     f"Failed to write metrics with the following error: {e}"
