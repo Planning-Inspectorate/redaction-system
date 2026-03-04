@@ -343,7 +343,7 @@ class PDFProcessor(FileProcessor):
     def _convert_pdf_date(cls, series):
         """Convert PDF date format to Timestamp."""
         return pd.to_datetime(
-            series.apply(lambda x: x[2:-7] if x else None), format="%Y%m%d%H%M%S"
+            series.apply(lambda x: x[2:16] if x else None), format="%Y%m%d%H%M%S"
         )
 
     @classmethod
@@ -391,7 +391,7 @@ class PDFProcessor(FileProcessor):
         :return List[Dict[str, Any]]: The list of proposed redactions with their details
         """
         annotations = cls._extract_pdf_annotations(
-            file_bytes, annotation_class=pymupdf.PDF_ANNOT_HIGHLIGHT
+            file_bytes, annotation_class=[pymupdf.PDF_ANNOT_HIGHLIGHT]
         )
         annot_df = cls._normalise_annotations_to_dataframe(annotations)
         return annot_df.to_dict(orient="records")
@@ -399,7 +399,8 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
         annotations = cls._extract_pdf_annotations(
-            file_bytes, annotation_class=pymupdf.PDF_ANNOT_REDACT
+            file_bytes,
+            annotation_class=[pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_HIGHLIGHT],
         )
         annot_df = cls._normalise_annotations_to_dataframe(annotations)
         return annot_df.to_dict(orient="records")

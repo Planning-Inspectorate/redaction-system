@@ -226,7 +226,7 @@ def test__pdf_processor__extract_pdf_annotations__highlight_only():
 
 def test__pdf_processor__get_proposed_redactions():
     creation_date = pymupdf.get_pdf_now()
-    creation_date_str = pd.to_datetime(creation_date[2:-7], format="%Y%m%d%H%M%S")
+    creation_date_str = pd.to_datetime(creation_date[2:15], format="%Y%m%d%H%M%S")
     annotations = (
         {
             "page_number": 0,

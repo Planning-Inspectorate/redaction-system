@@ -28,6 +28,9 @@ class MockRedactor:
     def get_proposed_redactions(self):
         pass
 
+    def get_final_redactions(self):
+        pass
+
 
 class MockIO:
     def __init__(self, **kwargs):

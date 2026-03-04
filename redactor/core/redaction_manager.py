@@ -305,22 +305,9 @@ class RedactionManager:
 
         # Process the data
         file_processor_inst = file_processor_class()
-        proposed_redaction_file_data = file_processor_inst.apply(
-            file_data, config_cleaned
-        )
-
-        # Store a copy of the proposed redactions in redaction storage
-        redaction_storage_io_inst.write(
-            proposed_redaction_file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/redacted.{extension}",
-        )
-        proposed_redaction_file_data.seek(0)
 
         # Store the final redactions in JSON format for analytics
-        final_redactions_dict = file_processor_inst.get_final_redactions(
-            proposed_redaction_file_data
-        )
+        final_redactions_dict = file_processor_inst.get_final_redactions(file_data)
         self.save_redaction_dict_to_blob_json(
             final_redactions_dict,
             redaction_storage_io_inst,
@@ -329,6 +316,18 @@ class RedactionManager:
         LoggingUtil().log_info(
             "Saving a copy of the final redactions in JSON format for analytics"
         )
+
+        proposed_redaction_file_data = file_processor_inst.apply(
+            file_data, config_cleaned
+        )
+
+        # Store a copy of the final redactions in redaction storage
+        redaction_storage_io_inst.write(
+            proposed_redaction_file_data,
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/redacted.{extension}",
+        )
+        proposed_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
