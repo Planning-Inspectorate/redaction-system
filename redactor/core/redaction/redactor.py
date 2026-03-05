@@ -178,13 +178,12 @@ class ImageRedactor(Redactor):  # pragma: no cover
         results: List[ImageRedactionResult.Result] = []
         total_images_to_analyse = len(self.config.images)
         start_time = time()
-        for image_to_redact in self.config.images:
-            vision_util = AzureVisionUtil()
-            faces_detected = vision_util.detect_faces(
-                image_to_redact, confidence_threshold=self.config.confidence_threshold
-            )
-            if not faces_detected:  # Error detecting faces in image, skip to next image
-                continue
+        face_detection_results = AzureVisionUtil().detect_faces_in_images(
+            self.config.images, self.config.confidence_threshold
+        )
+        for face_detection_result in face_detection_results:
+            image_to_redact = face_detection_result[0]
+            faces_detected = face_detection_result[1]
             results.append(
                 ImageRedactionResult.Result(
                     image_dimensions=(image_to_redact.width, image_to_redact.height),

@@ -1,6 +1,5 @@
 import os
 from typing import List, Dict, Tuple
-
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
@@ -14,6 +13,8 @@ from azure.identity import (
     ManagedIdentityCredential,
     AzureCliCredential,
 )
+from core.util.multiprocessing_util import TokenSemaphore
+from concurrent.futures import ThreadPoolExecutor
 
 
 load_dotenv(verbose=True)
@@ -34,6 +35,28 @@ class AzureVisionUtil:
         self.vision_client = ImageAnalysisClient(
             endpoint=self.azure_endpoint, credential=credential
         )
+        self.request_semaphor = TokenSemaphore()
+
+    @log_to_appins
+    def detect_faces_in_images(
+        self, images: List[Image.Image], confidence_threshold: float = 0.5
+    ):
+        responses: List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int], ...]]] = []
+        with ThreadPoolExecutor() as tpe:
+            ai_vision_responses = tpe.map(
+                self.detect_faces, images, [confidence_threshold] * len(images)
+            )
+            for thread_response, i in enumerate(ai_vision_responses):
+                image = images[i]
+                try:
+                    if thread_response:
+                        responses.append((image, thread_response))
+                except Exception as e:
+                    LoggingUtil().log_exception_with_message(
+                        "Azure AI vision request failed with the following exception: ",
+                        e,
+                    )
+        return responses
 
     @log_to_appins
     def detect_faces(
