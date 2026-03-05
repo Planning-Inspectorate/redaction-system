@@ -325,6 +325,43 @@ def test__llm_util___analyse_text_chunk(mock_num_tokens_consumed):
 
 
 @patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
+def test__llm_util___analyse_text_chunk__length_truncation_retries_with_higher_max_tokens(
+    mock_num_tokens_consumed,
+):
+    class LengthFinishReasonError(Exception):
+        pass
+
+    mock_chat_completion = create_mock_chat_completion()
+
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.request_semaphore = Mock()
+    llm_util.token_semaphore = Mock()
+
+    with patch.object(
+        LLMUtil,
+        "invoke_chain",
+        side_effect=[
+            LengthFinishReasonError("Response truncated"),
+            mock_chat_completion,
+        ],
+    ) as mock_invoke_chain:
+        actual_result = llm_util._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+    assert actual_result == (
+        mock_chat_completion,
+        mock_chat_completion.choices[0].message.parsed.redaction_strings,
+    )
+    assert mock_invoke_chain.call_count == 2
+    assert mock_invoke_chain.call_args_list[0].kwargs["max_tokens"] == 1000
+    assert mock_invoke_chain.call_args_list[1].kwargs["max_tokens"] == 2000
+
+
+@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
 def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
     mock_num_tokens_consumed,
 ):

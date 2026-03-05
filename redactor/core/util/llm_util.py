@@ -66,6 +66,8 @@ class LLMUtil:
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
+    LENGTH_ERROR_RETRY_MULTIPLIER = 2
+    LENGTH_ERROR_RETRY_FALLBACK_MAX_TOKENS = 2000
 
     def __init__(
         self,
@@ -194,15 +196,25 @@ class LLMUtil:
             {"role": "user", "content": user_prompt},
         ]
 
-    def invoke_chain(self, api_messages: str, response_format: BaseModel):
+    def invoke_chain(
+        self,
+        api_messages: str,
+        response_format: BaseModel,
+        max_tokens: int | None = None,
+    ):
+        max_tokens_to_use = self.config.max_tokens if max_tokens is None else max_tokens
         response = self.llm.chat.completions.parse(
             model=self.config.model,
             messages=api_messages,
             temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
+            max_tokens=max_tokens_to_use,
             response_format=response_format,
         )
         return response
+
+    @staticmethod
+    def _is_length_finish_reason_error(exception: Exception) -> bool:
+        return exception.__class__.__name__ == "LengthFinishReasonError"
 
     @log_to_appins
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
@@ -251,7 +263,31 @@ class LLMUtil:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
-                response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
+                max_tokens_to_use = self.config.max_tokens
+                try:
+                    response = self.invoke_chain(
+                        api_messages,
+                        LLMRedactionResultFormat,
+                        max_tokens=max_tokens_to_use,
+                    )
+                except Exception as e:
+                    if not self._is_length_finish_reason_error(e):
+                        raise e
+
+                    retry_max_tokens = (
+                        self.LENGTH_ERROR_RETRY_FALLBACK_MAX_TOKENS
+                        if max_tokens_to_use is None
+                        else max_tokens_to_use * self.LENGTH_ERROR_RETRY_MULTIPLIER
+                    )
+                    LoggingUtil().log_info(
+                        f"{chunk_hash_string} Response hit token length limit. "
+                        f"Retrying once with max_tokens={retry_max_tokens}."
+                    )
+                    response = self.invoke_chain(
+                        api_messages,
+                        LLMRedactionResultFormat,
+                        max_tokens=retry_max_tokens,
+                    )
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
                 )

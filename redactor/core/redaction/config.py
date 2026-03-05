@@ -50,7 +50,7 @@ class LLMTextRedactionConfigBase(RedactionConfig, LLMUtilConfig):
     output_format: str = (
         "<OutputFormat> You respond in JSON format. You return the "
         "successfully extracted terms from the text in JSON list named "
-        '"terms". List them as they appear in the text. '
+        '"redaction_strings". List them as they appear in the text. '
         "</OutputFormat>"
     )
 
