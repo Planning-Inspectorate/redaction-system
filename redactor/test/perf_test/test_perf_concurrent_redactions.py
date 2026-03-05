@@ -75,6 +75,9 @@ PERF_EXISTS_SAMPLE_EVERY = _int_env("PERF_EXISTS_SAMPLE_EVERY", 5)
 # as orchestration polling, unless explicitly overridden.
 PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", float(PERF_TIMEOUT_S))
 PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 5.0)
+# In exception-recovery mode (e.g. transient poll errors), use a shorter grace
+# period so runs do not appear stuck in repeated blob-exists checks.
+PERF_RECOVERY_EXISTS_WAIT_S = _float_env("PERF_RECOVERY_EXISTS_WAIT_S", 60.0)
 
 # If > 0, download sampled outputs locally when they exist (proof of "written to file")
 PERF_DOWNLOAD_SAMPLE_EVERY = _int_env("PERF_DOWNLOAD_SAMPLE_EVERY", 1)
@@ -576,7 +579,7 @@ async def _run_one(
                     storage_account=storage_account,
                     container_name=container_name,
                     blob_name=out_blob,
-                    timeout_s=PERF_EXISTS_WAIT_S,
+                    timeout_s=PERF_RECOVERY_EXISTS_WAIT_S,
                     poll_s=PERF_EXISTS_WAIT_POLL_S,
                 )
                 if out_exists is True:
@@ -748,6 +751,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(
         f"exists_wait_s={PERF_EXISTS_WAIT_S} exists_wait_poll_s={PERF_EXISTS_WAIT_POLL_S}"
     )
+    print(f"recovery_exists_wait_s={PERF_RECOVERY_EXISTS_WAIT_S}")
     print(
         f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
     )
