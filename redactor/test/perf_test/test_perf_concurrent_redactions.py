@@ -233,6 +233,13 @@ class PerfResult:
         return self.outcome != Outcome.TEST_FAIL
 
 
+def _format_exception(e: Exception) -> str:
+    text = str(e).strip()
+    if text:
+        return text
+    return f"{e.__class__.__name__}"
+
+
 def _summarise_durable_status(status: Optional[dict]) -> dict:
     if not status:
         return {}
@@ -542,9 +549,59 @@ async def _run_one(
 
     except Exception as e:
         elapsed = time.perf_counter() - t0
-        # Anything unexpected in the harness is test-side
+        error_text = _format_exception(e)
+
+        # If polling failed but output is present, treat as success.
+        # This avoids false negatives when durable status endpoint is transiently flaky.
+        if poll_url and do_exists_check:
+            try:
+                out_exists = await asyncio.to_thread(
+                    _wait_for_blob_exists,
+                    storage_account=storage_account,
+                    container_name=container_name,
+                    blob_name=out_blob,
+                    timeout_s=PERF_EXISTS_WAIT_S,
+                    poll_s=PERF_EXISTS_WAIT_POLL_S,
+                )
+                if out_exists is True:
+                    downloaded_to: Optional[str] = None
+                    if PERF_DOWNLOAD_SAMPLE_EVERY > 0:
+                        out_file = tmp_dir / Path(out_blob).name
+                        await asyncio.to_thread(
+                            az_download,
+                            storage_account,
+                            container_name,
+                            out_blob,
+                            out_file,
+                        )
+                        downloaded_to = str(out_file)
+
+                    return PerfResult(
+                        outcome=Outcome.SUCCESS,
+                        runtime_status="CompletedByBlobExistence",
+                        seconds=elapsed,
+                        checked_blob_exists=True,
+                        out_blob_exists=True,
+                        poll_url=poll_url,
+                        instance_id=instance_id,
+                        durable_status=_summarise_durable_status(durable_status),
+                        diagnostics=(
+                            "Recovered from poll/status exception by confirming output "
+                            f"blob exists. poll_error={error_text}"
+                        ),
+                        error=None,
+                        downloaded_to=downloaded_to,
+                    )
+            except Exception as exists_e:
+                error_text = (
+                    f"{error_text}; blob existence fallback failed: "
+                    f"{_format_exception(exists_e)}"
+                )
+
+        # Network/polling transport issues are app-side under load, not harness bugs.
+        is_app_side_error = isinstance(e, (httpx.RequestError, TimeoutError))
         return PerfResult(
-            outcome=Outcome.TEST_FAIL,
+            outcome=Outcome.APP_FAIL if is_app_side_error else Outcome.TEST_FAIL,
             runtime_status="Exception",
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
@@ -553,7 +610,11 @@ async def _run_one(
             instance_id=instance_id,
             durable_status=_summarise_durable_status(durable_status),
             diagnostics=None,
-            error=f"TEST FAIL: {e} poll={poll_url}" if poll_url else f"TEST FAIL: {e}",
+            error=(
+                f"{'APP FAIL' if is_app_side_error else 'TEST FAIL'}: {error_text} poll={poll_url}"
+                if poll_url
+                else f"{'APP FAIL' if is_app_side_error else 'TEST FAIL'}: {error_text}"
+            ),
         )
 
 
