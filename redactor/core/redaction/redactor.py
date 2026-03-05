@@ -163,7 +163,6 @@ class LLMTextRedactor(TextRedactor):
         self.LLMTextRedactionResult.redaction_strings = self._remove_stopwords_(self.LLMTextRedactionResult.redaction_strings)
         return self._analyse_text(self.config.text)
 
-
 class ImageRedactor(Redactor):  # pragma: no cover
     """
     Class that performs image redaction
