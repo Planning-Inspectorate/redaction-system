@@ -1,7 +1,8 @@
 import os
 import time
 
-from typing import List
+from collections import deque
+from typing import Deque, Dict, List, Tuple
 from tenacity.retry import retry_if_exception_type
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from pydantic import BaseModel
@@ -16,7 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import AzureOpenAI, RateLimitError
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from tiktoken import get_encoding
-from threading import Semaphore
+from threading import Condition, Lock, Semaphore
 
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import (
@@ -38,6 +39,96 @@ def handle_last_retry_error(retry_state):
         "Returning None for this chunk."
     )
     return None
+
+
+class _GlobalRateLimiter:
+    """Thread-safe sliding-window limiter shared across all LLMUtil instances."""
+
+    WINDOW_SECONDS = 60.0
+
+    def __init__(self, request_rate_limit: int, token_rate_limit: int):
+        self.request_rate_limit = max(1, int(request_rate_limit))
+        self.token_rate_limit = max(1, int(token_rate_limit))
+
+        self._condition = Condition(Lock())
+        self._request_timestamps: Deque[float] = deque()
+        self._token_events: Deque[Tuple[float, int]] = deque()
+        self._tokens_in_window = 0
+
+    def update_limits(self, request_rate_limit: int, token_rate_limit: int):
+        """Keep the strictest observed limits to avoid process-wide oversubscription."""
+        with self._condition:
+            self.request_rate_limit = min(
+                self.request_rate_limit, max(1, int(request_rate_limit))
+            )
+            self.token_rate_limit = min(
+                self.token_rate_limit, max(1, int(token_rate_limit))
+            )
+            self._condition.notify_all()
+
+    def _evict_expired(self, now: float):
+        while (
+            self._request_timestamps
+            and now - self._request_timestamps[0] >= self.WINDOW_SECONDS
+        ):
+            self._request_timestamps.popleft()
+
+        while self._token_events and now - self._token_events[0][0] >= self.WINDOW_SECONDS:
+            _, tokens = self._token_events.popleft()
+            self._tokens_in_window -= tokens
+
+    def _next_wait_seconds(self, now: float, token_cost: int) -> float:
+        waits = []
+        if (
+            len(self._request_timestamps) >= self.request_rate_limit
+            and self._request_timestamps
+        ):
+            waits.append(
+                self.WINDOW_SECONDS - (now - self._request_timestamps[0])
+            )
+
+        if self._tokens_in_window + token_cost > self.token_rate_limit:
+            tokens_remaining = self._tokens_in_window
+            for ts, used_tokens in self._token_events:
+                tokens_remaining -= used_tokens
+                if tokens_remaining + token_cost <= self.token_rate_limit:
+                    waits.append(self.WINDOW_SECONDS - (now - ts))
+                    break
+
+        if not waits:
+            return 0.01
+        return max(0.01, min(waits))
+
+    def acquire(self, token_cost: int, timeout_s: float):
+        deadline = time.monotonic() + max(0.0, timeout_s)
+        with self._condition:
+            while True:
+                now = time.monotonic()
+                self._evict_expired(now)
+
+                # If a single request estimate exceeds the minute budget, treat it
+                # as consuming the full minute budget rather than waiting forever.
+                effective_tokens = min(max(0, int(token_cost)), self.token_rate_limit)
+
+                has_request_capacity = len(self._request_timestamps) < self.request_rate_limit
+                has_token_capacity = (
+                    self._tokens_in_window + effective_tokens <= self.token_rate_limit
+                )
+
+                if has_request_capacity and has_token_capacity:
+                    self._request_timestamps.append(now)
+                    self._token_events.append((now, effective_tokens))
+                    self._tokens_in_window += effective_tokens
+                    return
+
+                remaining = deadline - now
+                if remaining <= 0:
+                    raise TimeoutError(
+                        "Timeout while waiting for global rate limiter capacity."
+                    )
+
+                wait_s = min(self._next_wait_seconds(now, effective_tokens), remaining)
+                self._condition.wait(timeout=wait_s)
 
 
 class LLMUtil:
@@ -66,6 +157,8 @@ class LLMUtil:
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
+    _GLOBAL_LIMITERS: Dict[str, _GlobalRateLimiter] = {}
+    _GLOBAL_LIMITERS_LOCK = Lock()
 
     def __init__(
         self,
@@ -92,6 +185,11 @@ class LLMUtil:
 
         # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
+        self.global_rate_limiter = self._get_global_rate_limiter(
+            self.config.model,
+            self.config.request_rate_limit,
+            self.config.token_rate_limit,
+        )
 
         # Validate and set max concurrent requests
         self._set_workers(self.config.max_concurrent_requests)
@@ -104,6 +202,19 @@ class LLMUtil:
         self.input_token_count = 0
         self.output_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
+
+    @classmethod
+    def _get_global_rate_limiter(
+        cls, model: str, request_rate_limit: int, token_rate_limit: int
+    ) -> _GlobalRateLimiter:
+        with cls._GLOBAL_LIMITERS_LOCK:
+            limiter = cls._GLOBAL_LIMITERS.get(model)
+            if limiter is None:
+                limiter = _GlobalRateLimiter(request_rate_limit, token_rate_limit)
+                cls._GLOBAL_LIMITERS[model] = limiter
+            else:
+                limiter.update_limits(request_rate_limit, token_rate_limit)
+        return limiter
 
     @log_to_appins
     def _set_model_details(self):
@@ -238,6 +349,24 @@ class LLMUtil:
             raise TimeoutError
 
         try:
+            # Acquire process-wide rate limiter capacity so total RPM/TPM is bounded
+            # across all worker threads and concurrent jobs.
+            limiter_timeout = max(
+                float(self.config.request_timeout or 0.0),
+                float(self.config.token_timeout or 0.0),
+                60.0,
+            )
+            try:
+                self.global_rate_limiter.acquire(
+                    token_cost=estimated_tokens, timeout_s=limiter_timeout
+                )
+            except TimeoutError as te:
+                LoggingUtil().log_exception_with_message(
+                    f"{chunk_hash_string} Timeout while waiting for global rate limiter capacity:",
+                    te,
+                )
+                raise te
+
             # Acquire token semaphore
             try:
                 self.token_semaphore.acquire(estimated_tokens)
@@ -279,7 +408,6 @@ class LLMUtil:
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(60 / self.config.request_rate_limit)  # Rate limiting delay
 
     def _compute_costs(self, response: ParsedChatCompletion):
         prompt_tokens = response.usage.prompt_tokens
