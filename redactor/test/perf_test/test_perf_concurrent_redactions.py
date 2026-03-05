@@ -71,8 +71,9 @@ PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
 
 PERF_EXISTS_SAMPLE_EVERY = _int_env("PERF_EXISTS_SAMPLE_EVERY", 5)
 
-# IMPORTANT: default bumped to 180s to reduce false failures under load
-PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", 180.0)
+# By default, allow blob appearance checks to wait up to the same overall timeout
+# as orchestration polling, unless explicitly overridden.
+PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", float(PERF_TIMEOUT_S))
 PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 5.0)
 
 # If > 0, download sampled outputs locally when they exist (proof of "written to file")
@@ -300,8 +301,19 @@ async def _poll_until_done(
 ) -> dict:
     deadline = time.time() + timeout_s
     last_status: Optional[dict] = None
+    transient_poll_errors = 0
+    last_poll_error: Optional[str] = None
     while time.time() < deadline:
-        r = await client.get(poll_url, timeout=60)
+        try:
+            r = await client.get(poll_url, timeout=60)
+            last_poll_error = None
+        except (httpx.TimeoutException, httpx.RequestError) as e:
+            # Transient transport errors under load are retried until the
+            # overall orchestration timeout elapses.
+            transient_poll_errors += 1
+            last_poll_error = _format_exception(e)
+            await asyncio.sleep(poll_s)
+            continue
 
         # durable polling endpoint returning 5xx/429 is considered app-side acceptable failure
         if _classify_http_as_app_fail(r.status_code):
@@ -326,7 +338,11 @@ async def _poll_until_done(
         await asyncio.sleep(poll_s)
 
     raise TimeoutError(
-        f"Timed out waiting for orchestration. pollEndpoint={poll_url} last={last_status}"
+        "Timed out waiting for orchestration. "
+        f"pollEndpoint={poll_url} "
+        f"transient_poll_errors={transient_poll_errors} "
+        f"last_poll_error={last_poll_error} "
+        f"last={last_status}"
     )
 
 
