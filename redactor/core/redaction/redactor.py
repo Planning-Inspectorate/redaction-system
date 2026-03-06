@@ -336,16 +336,15 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         total_ocr_time = 0.0
         total_number_plate_detection_time = 0.0
         total_bounding_box_time = 0.0
-        for image_to_redact in self.config.images:
+        ocr_start_time = time()
+        vision_util = AzureVisionUtil()
+        image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
+        ocr_time = time() - ocr_start_time
+        total_ocr_time += ocr_time
+        for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
-
             try:
-                vision_util = AzureVisionUtil()
-                ocr_start_time = time()
-                text_rect_map = vision_util.detect_text(image_to_redact)
-                ocr_time = time() - ocr_start_time
-                total_ocr_time += ocr_time
                 text_content = " ".join([x[0] for x in text_rect_map])
 
                 # Detect number plates using regex
@@ -425,20 +424,18 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         results = []
         total_images_to_analyse = len(self.config.images)
         start_time = time()
-        total_ocr_time = 0.0
         total_llm_analysis_time = 0.0
         total_bounding_box_time = 0.0
         all_text_redaction_metrics = []
+        vision_util = AzureVisionUtil()
+        ocr_start_time = time()
+        image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
+        total_ocr_time = time() - ocr_start_time
 
-        for image_to_redact in self.config.images:
+        for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
-
             try:
-                vision_util = AzureVisionUtil()
-                ocr_start_time = time()
-                text_rect_map = vision_util.detect_text(image_to_redact)
-                total_ocr_time += time() - ocr_start_time
                 LoggingUtil().log_info(
                     f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
                 )
