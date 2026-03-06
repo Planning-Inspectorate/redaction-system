@@ -4,6 +4,7 @@ import json
 
 from io import BytesIO
 from pandas import Timestamp
+from azure.storage.blob import ContainerClient, BlobClient
 
 from core.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
@@ -152,7 +153,7 @@ def test__redaction_manager__validate_apply_json_payload__valid(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__redaction_manager__save_redaction_dict_to_blob_json(mock_init):
+def test__redaction_manager__save_dict_to_blob_json(mock_init):
     redactions_dict = [
         {
             "pageNumber": 0,
@@ -164,15 +165,13 @@ def test__redaction_manager__save_redaction_dict_to_blob_json(mock_init):
             "isRedactionCandidate": True,
         }
     ]
-    json_file_name = "proposed_redactions"
     inst = RedactionManager("")
     inst.env = "dev"
-    inst.folder_for_job = "some_folder"
     mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    inst.save_redaction_dict_to_blob_json(
+    inst.save_dict_to_blob_json(
         redactions_dict,
         mock_redaction_storage_io_inst,
-        json_file_name,
+        "blob_path.json",
     )
     mock_redaction_storage_io_inst.write.assert_called_once_with(
         json.dumps(
@@ -182,7 +181,7 @@ def test__redaction_manager__save_redaction_dict_to_blob_json(mock_init):
             default=inst.json_serialise_datetime_to_iso,
         ).encode("utf-8"),
         container_name="redactiondata",
-        blob_path=f"{inst.folder_for_job}/{json_file_name}.json",
+        blob_path="blob_path.json",
     )
 
 
@@ -201,7 +200,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
 @mock.patch.object(
     MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
 )
@@ -217,7 +216,7 @@ def test__redaction_manager__redact(
     mock_redact,
     mock_blob_write,
     mock_get_proposed_redactions,
-    mock_save_redaction_dict_to_blob_json,
+    mock_save_dict_to_blob_json,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,
@@ -308,12 +307,70 @@ def test__redaction_manager__redact(
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
+def test__redaction_manager__compare_and_save_redactions(
+    mock_save_dict_to_blob_json, mock_init
+):
+    mock_container_client = mock.MagicMock(spec=ContainerClient)
+    mock_blob_client = mock.MagicMock(spec=BlobClient)
+
+    mock_container_client.get_blob_client.return_value = mock_blob_client
+    mock_blob_client.exists.side_effect = [True, False]
+
+    storage_io_inst = AzureBlobIO(storage_name="somestorage")
+    final_redactions_dict = {"final": "redactions"}
+    proposed_redactions_dict = {"proposed": "redactions"}
+    comparison_output = {"some": "output"}
+
+    with (
+        mock.patch.object(
+            RedactionManager,
+            "_get_base_job_id_and_version",
+            return_value=("job_id", 3),
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_container_client", return_value=mock_container_client
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_blob_client", return_value=mock_blob_client
+        ),
+        mock.patch.object(
+            AzureBlobIO,
+            "read",
+            return_value=BytesIO(json.dumps(proposed_redactions_dict).encode("utf-8")),
+        ),
+        mock.patch.object(
+            RedactionManager, "_compare_redactions", return_value=comparison_output
+        ) as mock_compare_redactions,
+    ):
+        inst = RedactionManager()
+        inst.job_id = "job_id"
+        inst.compare_and_save_redactions(
+            final_redactions_dict,
+            storage_io_inst,
+        )
+        mock_compare_redactions.assert_called_once_with(
+            proposed_redactions_dict, final_redactions_dict
+        )
+        mock_container_client.get_blob_client.assert_called_once_with(
+            "job_id-1/proposed_redactions.json"
+        )
+        mock_save_dict_to_blob_json.assert_called_once_with(
+            comparison_output,
+            storage_io_inst,
+            "job_id.json",
+            container_name="analytics",
+        )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(IOFactory, "get", return_value=MockIO)
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-@mock.patch.object(RedactionManager, "save_redaction_dict_to_blob_json")
+@mock.patch.object(RedactionManager, "compare_and_save_redactions")
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
 @mock.patch.object(
     MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
 )
@@ -326,10 +383,11 @@ def test__redaction_manager__apply(
     mock_load_config,
     mock_validate_filter_config,
     mock_convert_kwargs,
-    mock_redact,
+    mock_apply,
     mock_blob_write,
     mock_get_final_redactions,
-    mock_save_redaction_dict_to_blob_json,
+    mock_save_dict_to_blob_json,
+    mock_compare_and_save_redactions,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,

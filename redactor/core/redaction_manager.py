@@ -5,11 +5,13 @@ import datetime
 import re
 import traceback
 
+from pydantic import BaseModel
 from dotenv import load_dotenv
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Tuple
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
+from azure.core.exceptions import ResourceExistsError
 
 from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
@@ -17,7 +19,6 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
-from pydantic import BaseModel
 
 
 load_dotenv(verbose=True, override=True)
@@ -79,6 +80,15 @@ class RedactionManager:
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
 
+    def _clean_job_id(self, job_id: str) -> str:
+        # Remove special unicode characters from the string
+        cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
+        # Replace any illegal characters that are not compatible with blob storage
+        cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
+        # Remove any leading/trailing full stops
+        cleaned = cleaned.strip(".")
+        return cleaned
+
     def _convert_job_id_to_storage_folder_name(self, job_id: str) -> str:
         if job_id is None:
             raise ValueError("Job id cannot be None")
@@ -88,13 +98,36 @@ class RedactionManager:
             raise ValueError(
                 f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
-        # Remove special unicode characters from the string
-        cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
-        # Replace any illegal characters that are not compatible with blob storage
-        cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
-        # Remove any leading/trailing full stops
-        cleaned = cleaned.strip(".")
-        return cleaned
+        return self._clean_job_id(job_id)
+
+    def _get_base_job_id_and_version(self, job_id: str) -> Tuple[str, str]:
+        """
+        Get the base job ID and version number from the job ID submitted.
+
+        :param str job_id: The job ID submitted, which may contain a version number appended with a ":"
+
+        :return Tuple[str, Optional[int]]: A tuple containing the base job ID (without any version number)
+            and the version number as an integer (or None if no version number is present or if the format is invalid)
+        """
+        if ":" in job_id:
+            job_id_parts = job_id.split(":")
+            if len(job_id_parts) != 2:
+                LoggingUtil().log_info(
+                    f"Job id '{job_id}' contains a ':', but does not split into exactly 2 parts."
+                    " Ignoring versioning."
+                )
+                return self._clean_job_id(job_id), None
+
+            if not job_id_parts[1].isdigit():
+                LoggingUtil().log_info(
+                    f"Job id '{job_id}' contains a ':', but the part after the ':' is not an integer. "
+                    " Ignoring versioning."
+                )
+                return self._clean_job_id(job_id), None
+
+            return self._clean_job_id(job_id_parts[0]), int(job_id_parts[1])
+
+        return self._clean_job_id(job_id), None
 
     def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
         """
@@ -125,30 +158,33 @@ class RedactionManager:
         else:
             return str(obj)
 
-    def save_redaction_dict_to_blob_json(
+    def save_dict_to_blob_json(
         self,
-        redactions_dict: Dict[str, Any],
-        redaction_storage_io_inst: AzureBlobIO,
-        json_file_name: str,
-        json_indent: int = 4,
-        json_encoding: str = "utf-8",
+        dict_to_save: Dict[str, Any],
+        storage_io: AzureBlobIO,
+        blob_path: str,
+        container_name: Optional[str] = "redactiondata",
+        json_indent: Optional[int] = 4,
+        json_encoding: Optional[str] = "utf-8",
     ):
-        """Save the redactions in JSON format to the redaction storage
-        :param Dict[str, Any] redactions_dict: The redactions to save, in dictionary format
-        :param AzureBlobIO redaction_storage_io_inst: The AzureBlobIO instance to use for saving the redactions
-        :param str json_file_name: The name of the JSON file to save the redactions in
-        :param int json_indent: The number of spaces to use as indentation in the JSON file (default: 4)
-        :param str json_encoding: The encoding to use for the JSON file (default: "utf-8")
+        """Save a dictionary in JSON format to the redaction storage
+
+        :param Dict[str, Any] dict_to_save: The dictionary to save
+        :param AzureBlobIO storage_io: The AzureBlobIO instance to use for saving the dictionary
+        :param str blob_path: The path to save the JSON file in the blob storage
+        :param Optional[str] container_name: The name of the container to save the file in (default: "redactiondata")
+        :param Optional[int] json_indent: The number of spaces to use as indentation in the JSON file (default: 4)
+        :param Optional[str] json_encoding: The encoding to use for the JSON file (default: "utf-8")
         """
-        redaction_storage_io_inst.write(
+        storage_io.write(
             json.dumps(
-                redactions_dict,
+                dict_to_save,
                 ensure_ascii=False,
                 indent=json_indent,
                 default=self.json_serialise_datetime_to_iso,
             ).encode(json_encoding),
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/{json_file_name}.json",
+            container_name=container_name,
+            blob_path=blob_path,
         )
 
     def redact(self, params: Dict[str, Any]):
@@ -226,12 +262,12 @@ class RedactionManager:
             LoggingUtil().log_info("Redaction process complete")
 
             # Store the proposed redactions in JSON format for analytics
-            self.save_redaction_dict_to_blob_json(
+            self.save_dict_to_blob_json(
                 file_processor_inst.get_proposed_redactions(
-                    proposed_redaction_file_data
+                    proposed_redaction_file_data,
                 ),
                 redaction_storage_io_inst,
-                json_file_name="proposed_redactions",
+                blob_path=f"{self.folder_for_job}/proposed_redactions.json",
             )
             LoggingUtil().log_info(
                 "Saving a copy of the proposed redactions in JSON format for analytics"
@@ -252,6 +288,69 @@ class RedactionManager:
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+
+    def _compare_redactions(
+        self, proposed_redactions: Dict[str, Any], final_redactions: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        pass
+
+    def compare_and_save_redactions(
+        self,
+        final_redactions_dict: Dict[str, Any],
+        redaction_storage_io_inst: AzureBlobIO,
+    ):
+        """
+        Find most recent proposed redactions file and compare with final redactions, saving
+        the analytics to blob storage
+
+        :param final_redactions_dict: The final redactions to compare against
+        :param redaction_storage_io_inst: The AzureBlobIO instance to use for accessing blob storage
+        """
+        base_job_id, version = self._get_base_job_id_and_version(self.job_id)
+
+        # Current version will be the most recent file uploaded
+        # Job ID for proposed redactions will be at most version-2
+        proposed_version = version - 2 if version and version > 2 else None
+        container_client = redaction_storage_io_inst._get_container_client(
+            "redactiondata"
+        )
+        if not proposed_version:
+            return
+
+        # Check all possible versions from version-2 to 1
+        while proposed_version > 0:
+            blob_path = f"{self.job_id}-{proposed_version}/proposed_redactions.json"
+            blob_client = container_client.get_blob_client(blob_path)
+
+            # Read from most recent version if it exists
+            if blob_client.exists():
+                proposed_redactions_json = redaction_storage_io_inst.read(
+                    container_name="redactiondata",
+                    blob_path=blob_path,
+                )
+                proposed_redactions_dict = json.load(proposed_redactions_json)
+                # Compare proposed redactions with final redactions and log differences
+                redaction_analytics = self._compare_redactions(
+                    proposed_redactions_dict, final_redactions_dict
+                )
+
+                # Save to analytics container
+                try:
+                    self.save_dict_to_blob_json(
+                        redaction_analytics,
+                        redaction_storage_io_inst,
+                        f"{base_job_id}.json",
+                        container_name="analytics",
+                    )
+                except ResourceExistsError as e:
+                    # TODO Refine logic: should be saved, but what should the name be?
+                    LoggingUtil().log_exception_with_message(
+                        f"An analytics file for job id '{base_job_id}' already exists",
+                        e,
+                    )
+                return
+
+            proposed_version -= 1
 
     def apply(self, params: Dict[str, Any]):
         """
@@ -306,15 +405,23 @@ class RedactionManager:
         file_processor_inst = file_processor_class()
 
         # Store the final redactions in JSON format for analytics
-        self.save_redaction_dict_to_blob_json(
-            file_processor_inst.get_final_redactions(file_data),
+        final_redactions_dict = (file_processor_inst.get_final_redactions(file_data),)
+        self.save_dict_to_blob_json(
+            final_redactions_dict,
             redaction_storage_io_inst,
-            json_file_name="final_redactions",
+            blob_path=f"{self.folder_for_job}/final_redactions.json",
         )
         LoggingUtil().log_info(
             "Saving a copy of the final redactions in JSON format for analytics"
         )
 
+        # Compare proposed redactions with final redactions and save analytics
+        self.compare_and_save_redactions(
+            final_redactions_dict,
+            redaction_storage_io_inst,
+        )
+
+        # Apply the redactions to the file
         proposed_redaction_file_data = file_processor_inst.apply(
             file_data, config_cleaned
         )
