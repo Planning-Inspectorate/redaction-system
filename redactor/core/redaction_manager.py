@@ -376,7 +376,7 @@ class RedactionManager:
 
         # Check all possible versions from version-2 to 1
         while proposed_version > 0:
-            blob_path = f"{self.job_id}-{proposed_version}/proposed_redactions.json"
+            blob_path = f"{base_job_id}-{proposed_version}/proposed_redactions.json"
             blob_client = container_client.get_blob_client(blob_path)
 
             # Read from most recent version if it exists
@@ -413,6 +413,10 @@ class RedactionManager:
                         e,
                     )
                 return
+            else:
+                LoggingUtil().log_info(
+                    f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
+                )
 
             proposed_version -= 1
 
