@@ -165,6 +165,7 @@ class RedactionManager:
             file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/raw.{extension}",
+            idempotency_key=self.job_id,
         )
 
         # Process the data
@@ -193,6 +194,7 @@ class RedactionManager:
             proposed_redaction_file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/proposed.{extension}",
+            idempotency_key=self.job_id,
         )
         proposed_redaction_file_data.seek(0)
 
@@ -201,7 +203,10 @@ class RedactionManager:
             "Sending a copy of the proposed redactions to the caller"
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
-        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        write_io_inst.write(
+            proposed_redaction_file_data,
+            **(write_storage_properties | {"idempotency_key": self.job_id}),
+        )
         return run_metrics
 
     def apply(self, params: Dict[str, Any]):
@@ -251,6 +256,7 @@ class RedactionManager:
             file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/curated.{extension}",
+            idempotency_key=self.job_id,
         )
 
         # Process the data
@@ -265,12 +271,16 @@ class RedactionManager:
             proposed_redaction_file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/redacted.{extension}",
+            idempotency_key=self.job_id,
         )
         proposed_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
-        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        write_io_inst.write(
+            proposed_redaction_file_data,
+            **(write_storage_properties | {"idempotency_key": self.job_id}),
+        )
         return run_metrics
 
     def save_logs(self, stage_name: str):
