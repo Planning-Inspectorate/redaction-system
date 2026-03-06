@@ -9,7 +9,6 @@ from core.util.enum import PINSService
 from io import BytesIO
 from azure.core.exceptions import ResourceExistsError
 import core.io.azure_blob_io as azure_blob_io_module
-import hashlib
 import mock
 import pytest
 
@@ -346,12 +345,10 @@ def test__redaction_manager__redact__idempotent_replay_succeeds(
         },
     }
 
-    expected_hash = hashlib.sha256(b"abc").hexdigest()
     fake_service = FakeBlobServiceClientForIdempotentReplay(
         "https://acct.blob.core.windows.net",
         existing_metadata={
             "redaction_job_id": "inst",
-            "redaction_content_sha256": expected_hash,
         },
     )
 

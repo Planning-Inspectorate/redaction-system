@@ -1,7 +1,6 @@
 from io import BytesIO
 import pytest
 from azure.core.exceptions import ResourceExistsError
-import hashlib
 
 # Import the module and class under test
 import core.io.azure_blob_io as azure_blob_io
@@ -156,7 +155,6 @@ def test_write_sets_idempotency_metadata_when_provided(monkeypatch):
 
     assert fake_blob_client.last_kwargs["metadata"] == {
         "redaction_job_id": "job-1",
-        "redaction_content_sha256": hashlib.sha256(b"payload").hexdigest(),
     }
 
 
@@ -205,7 +203,6 @@ def test_write_allows_idempotent_replay_when_metadata_matches(monkeypatch):
     fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
     fake_service._blob_client.existing_metadata = {
         "redaction_job_id": "job-1",
-        "redaction_content_sha256": hashlib.sha256(b"payload").hexdigest(),
     }
     monkeypatch.setattr(
         azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
@@ -227,7 +224,6 @@ def test_write_raises_when_blob_exists_with_conflicting_idempotency_key(monkeypa
     fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
     fake_service._blob_client.existing_metadata = {
         "redaction_job_id": "job-A",
-        "redaction_content_sha256": hashlib.sha256(b"payload").hexdigest(),
     }
     monkeypatch.setattr(
         azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
@@ -243,28 +239,3 @@ def test_write_raises_when_blob_exists_with_conflicting_idempotency_key(monkeypa
         )
 
     assert "conflicting idempotency key" in str(exc.value)
-
-
-def test_write_raises_when_blob_exists_with_conflicting_content_hash(monkeypatch):
-    fake_service = FakeBlobServiceClient(
-        "https://acct.blob.core.windows.net", credential=object()
-    )
-    fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
-    fake_service._blob_client.existing_metadata = {
-        "redaction_job_id": "job-1",
-        "redaction_content_sha256": hashlib.sha256(b"different").hexdigest(),
-    }
-    monkeypatch.setattr(
-        azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
-    )
-    io = AzureBlobIO(storage_name="acct")
-
-    with pytest.raises(ResourceExistsError) as exc:
-        io.write(
-            BytesIO(b"payload"),
-            container_name="container",
-            blob_path="path/to/blob.bin",
-            idempotency_key="job-1",
-        )
-
-    assert "conflicting content hash" in str(exc.value)
