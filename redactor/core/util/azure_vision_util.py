@@ -3,7 +3,8 @@ from typing import List, Dict, Tuple
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
-
+from tenacity.retry import retry_if_exception_type, retry_if_exception
+from tenacity import retry, wait_random_exponential, stop_after_attempt
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from core.util.logging_util import LoggingUtil, log_to_appins
@@ -13,11 +14,20 @@ from azure.identity import (
     ManagedIdentityCredential,
     AzureCliCredential,
 )
-from core.util.multiprocessing_util import TokenSemaphore
+from azure.core.exceptions import HttpResponseError
 from concurrent.futures import ThreadPoolExecutor
 
 
 load_dotenv(verbose=True)
+
+
+@log_to_appins
+def handle_last_retry_error(retry_state):
+    LoggingUtil().log_info(
+        f"All retry attempts failed: {retry_state.outcome.exception()}\n"
+        "Returning None for this image."
+    )
+    return None
 
 
 class AzureVisionUtil:
@@ -35,15 +45,13 @@ class AzureVisionUtil:
         self.vision_client = ImageAnalysisClient(
             endpoint=self.azure_endpoint, credential=credential
         )
-        self.api_rate_limit = 20  # Per minute
-        self.request_semaphor = TokenSemaphore(self.api_rate_limit)
 
     @log_to_appins
     def detect_faces_in_images(
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ):
         responses: List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int], ...]]] = []
-        with ThreadPoolExecutor() as tpe:
+        with ThreadPoolExecutor(100) as tpe:
             ai_vision_responses = tpe.map(
                 self.detect_faces, images, [confidence_threshold] * len(images)
             )
@@ -54,12 +62,19 @@ class AzureVisionUtil:
                         responses.append((image, thread_response))
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        "Azure AI vision request failed with the following exception: ",
+                        "Azure AI vision Face request failed with the following exception: ",
                         e,
                     )
         return responses
 
     @log_to_appins
+    @retry(
+        retry=retry_if_exception(lambda exception: isinstance(exception, HttpResponseError) and exception.status_code in [429]),
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(10),
+        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
+        retry_error_callback=handle_last_retry_error,
+    )
     def detect_faces(
         self, image: Image.Image, confidence_threshold: float = 0.5
     ) -> Tuple[Tuple[int, int, int, int], ...]:
@@ -85,15 +100,10 @@ class AzureVisionUtil:
             image.save(byte_stream, format="PNG")
             image_bytes = byte_stream.getvalue()
 
-            try:
-                result = self.vision_client.analyze(
-                    image_bytes,
-                    [VisualFeatures.PEOPLE],
-                )
-            except Exception as e:
-                LoggingUtil().log_info("Error analysing image for faces")
-                LoggingUtil().log_exception(e)
-                return None
+            result = self.vision_client.analyze(
+                image_bytes,
+                [VisualFeatures.PEOPLE],
+            )
 
             faces_detected = tuple(
                 {
@@ -117,7 +127,6 @@ class AzureVisionUtil:
             if person["confidence"] >= confidence_threshold
         )
 
-    @log_to_appins
     def detect_text(
         self, image: Image.Image
     ) -> Tuple[Tuple[str, Tuple[int, int, int, int]], ...]:
