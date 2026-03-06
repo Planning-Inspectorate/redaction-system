@@ -268,7 +268,7 @@ class TestIntegrationRedactionManager(TestCase):
         assert json_blob_client.exists(), (
             "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
         )
-        proposed_redactions_dict = json.load(
+        proposed_redactions_dict = json.loads(
             json_blob_client.download_blob().read().decode("utf-8")
         )
         assert proposed_redactions_dict.keys() >= {
@@ -402,7 +402,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert json_blob_client.exists(), (
             "Expected final_redactions.json to be in the redactiondata container, but was missing"
         )
-        final_redactions_dict = json.load(json_blob_client.download_blob().read())
+        final_redactions_dict = json.loads(
+            json_blob_client.download_blob().read().decode("utf-8")
+        )
         assert final_redactions_dict.keys() >= {"jobID", "date", "finalRedactions"}, (
             "final_redactions.json should contain at least the keys 'jobID', 'date', and 'finalRedactions'"
         )
@@ -416,7 +418,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert analytics_blob_client.exists(), (
             f"Expected {RUN_ID}.json to be in the analytics container, but was missing"
         )
-        analytics_dict = json.load(analytics_blob_client.download_blob().read())
+        analytics_dict = json.loads(
+            analytics_blob_client.download_blob().read().decode("utf-8")
+        )
         assert analytics_dict.keys() >= {
             "applyDate",
             "redactDate",
