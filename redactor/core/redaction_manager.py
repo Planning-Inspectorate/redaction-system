@@ -385,7 +385,9 @@ class RedactionManager:
                     container_name="redactiondata",
                     blob_path=blob_path,
                 )
-                proposed_redactions_dict = json.load(proposed_redactions_json)
+                proposed_redactions_dict = json.loads(
+                    proposed_redactions_json.decode("utf-8")
+                )
                 if not proposed_redactions_dict:
                     LoggingUtil().log_info(
                         f"Proposed redactions file at '{blob_path}' is empty."
