@@ -386,7 +386,7 @@ class RedactionManager:
                     blob_path=blob_path,
                 )
                 proposed_redactions_dict = json.loads(
-                    proposed_redactions_json.decode("utf-8")
+                    proposed_redactions_json.read().decode("utf-8")
                 )
                 if not proposed_redactions_dict:
                     LoggingUtil().log_info(
