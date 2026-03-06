@@ -49,10 +49,17 @@ class AzureBlobIO(StorageIO):
         blob_data.readinto(byte_stream)
         return byte_stream
 
-    def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
+    def write(
+        self,
+        data_bytes: BytesIO,
+        container_name: str,
+        blob_path: str,
+        **kwargs,
+    ):
         LoggingUtil().log_info(
             f"Writing blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
         )
+        ignore_if_exists = kwargs.get("ignore_if_exists", False)
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
@@ -62,6 +69,11 @@ class AzureBlobIO(StorageIO):
         try:
             blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
         except ResourceExistsError:
+            if ignore_if_exists:
+                LoggingUtil().log_info(
+                    f"Blob '{blob_path}' already exists in container '{container_name}'. Skipping upload."
+                )
+                return
             # Improve the base Azure error, which does not include helpful info
             raise ResourceExistsError(
                 f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists"

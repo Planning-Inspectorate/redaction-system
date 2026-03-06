@@ -201,7 +201,10 @@ class RedactionManager:
             "Sending a copy of the proposed redactions to the caller"
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
-        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        write_io_inst.write(
+            proposed_redaction_file_data,
+            **(write_storage_properties | {"ignore_if_exists": True}),
+        )
         return run_metrics
 
     def apply(self, params: Dict[str, Any]):
@@ -270,7 +273,10 @@ class RedactionManager:
 
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
-        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        write_io_inst.write(
+            proposed_redaction_file_data,
+            **(write_storage_properties | {"ignore_if_exists": True}),
+        )
         return run_metrics
 
     def save_logs(self, stage_name: str):

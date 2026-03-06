@@ -1,5 +1,6 @@
 from io import BytesIO
 import pytest
+from azure.core.exceptions import ResourceExistsError
 
 # Import the module and class under test
 import core.io.azure_blob_io as azure_blob_io
@@ -40,8 +41,11 @@ class FakeBlobClient:
     def __init__(self):
         self.last_args = None
         self.last_kwargs = None
+        self.error_to_raise = None
 
     def upload_blob(self, *args, **kwargs):
+        if self.error_to_raise:
+            raise self.error_to_raise
         self.last_args = args
         self.last_kwargs = kwargs
         # No return needed for the test
@@ -137,3 +141,44 @@ def test_init_raises_when_both_name_and_endpoint_provided():
             storage_endpoint="https://acct.blob.core.windows.net",
         )
     assert "Expected only one of 'storage_name' or 'storage_endpoint'" in str(exc.value)
+
+
+def test_write_raises_when_blob_already_exists(monkeypatch):
+    fake_service = FakeBlobServiceClient(
+        "https://acct.blob.core.windows.net", credential=object()
+    )
+    fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
+    monkeypatch.setattr(
+        azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
+    )
+    io = AzureBlobIO(storage_name="acct")
+
+    with pytest.raises(ResourceExistsError) as exc:
+        io.write(
+            BytesIO(b"payload"),
+            container_name="container",
+            blob_path="path/to/blob.bin",
+        )
+
+    assert (
+        str(exc.value)
+        == "The specified blob https://acct.blob.core.windows.net/container/path/to/blob.bin already exists"
+    )
+
+
+def test_write_ignores_blob_exists_when_configured(monkeypatch):
+    fake_service = FakeBlobServiceClient(
+        "https://acct.blob.core.windows.net", credential=object()
+    )
+    fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
+    monkeypatch.setattr(
+        azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
+    )
+    io = AzureBlobIO(storage_name="acct")
+
+    io.write(
+        BytesIO(b"payload"),
+        container_name="container",
+        blob_path="path/to/blob.bin",
+        ignore_if_exists=True,
+    )
