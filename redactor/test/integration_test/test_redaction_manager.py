@@ -1,3 +1,11 @@
+import os
+import json
+import pymupdf
+
+from time import sleep
+from azure.storage.blob import BlobServiceClient, ContainerClient
+from dotenv import load_dotenv
+
 from core.redaction_manager import RedactionManager
 from test.util.util import ServiceBusUtil
 from test.util.test_case import TestCase
@@ -6,11 +14,6 @@ from azure.identity import (
     ManagedIdentityCredential,
     ChainedTokenCredential,
 )
-from azure.storage.blob import BlobServiceClient, ContainerClient
-from dotenv import load_dotenv
-import os
-import pymupdf
-from time import sleep
 
 
 load_dotenv(verbose=True)
@@ -238,27 +241,43 @@ class TestIntegrationRedactionManager(TestCase):
                 },
             },
         }
+
         response = manager.try_redact(params)
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
+
         blob_client = test_container_client.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
+
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert redacted_pdf_highlights, (
             "The uploaded PDF should have some of its content marked for redaction"
         )
+
         self.validate_service_bus_message_sent(guid)
+
         log_container_client = blob_service_client.get_container_client("redactiondata")
+
         json_blob_client = log_container_client.get_blob_client(
             f"{guid}/proposed_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
         )
+        proposed_redactions_dict = json.load(json_blob_client.download_blob().read())
+        assert proposed_redactions_dict.keys() >= {
+            "jobID",
+            "date",
+            "fileName",
+            "proposedRedactions",
+        }, (
+            "proposed_redactions.json should contain at least the keys 'jobID', 'date', 'fileName', and 'proposedRedactions'"
+        )
+
         log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
@@ -352,28 +371,64 @@ class TestIntegrationRedactionManager(TestCase):
                 },
             },
         }
+
         response = manager.try_apply(params)
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
+
         blob_client = test_container_client.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
         )
         assert blob_client.exists()
+
         blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert not redacted_pdf_highlights, (
             f"There should be no remaining highlights in the PDF after redacting, but there were {len(redacted_pdf_highlights)}"
         )
+
         self.validate_service_bus_message_sent(guid)
-        log_container_client = blob_service_client.get_container_client("redactiondata")
-        json_blob_client = log_container_client.get_blob_client(
+
+        redaction_container_client = blob_service_client.get_container_client(
+            "redactiondata"
+        )
+
+        json_blob_client = redaction_container_client.get_blob_client(
             f"{guid}/final_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected final_redactions.json to be in the redactiondata container, but was missing"
         )
-        log_blob_client = log_container_client.get_blob_client(f"{guid}/log.txt")
+        final_redactions_dict = json.load(json_blob_client.download_blob().read())
+        assert final_redactions_dict.keys() >= {"jobID", "date", "finalRedactions"}, (
+            "final_redactions.json should contain at least the keys 'jobID', 'date', and 'finalRedactions'"
+        )
+
+        analytics_container_client = blob_service_client.get_container_client(
+            "analytics"
+        )
+        analytics_blob_client = analytics_container_client.get_blob_client(
+            f"{RUN_ID}.json"
+        )
+        assert analytics_blob_client.exists(), (
+            f"Expected {RUN_ID}.json to be in the analytics container, but was missing"
+        )
+        analytics_dict = json.load(analytics_blob_client.download_blob().read())
+        assert analytics_dict.keys() >= {
+            "applyDate",
+            "redactDate",
+            "applyJobID",
+            "redactJobID",
+            "truePositives",
+            "falsePositives",
+            "falseNegatives",
+        }, (
+            "The analytics JSON should contain at least the keys 'applyDate', 'redactDate', 'applyJobID',"
+            " 'redactJobID', 'truePositives', 'falsePositives', and 'falseNegatives'"
+        )
+
+        log_blob_client = redaction_container_client.get_blob_client(f"{guid}/log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )

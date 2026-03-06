@@ -5,6 +5,7 @@ import json
 from io import BytesIO
 from pandas import Timestamp
 from azure.storage.blob import ContainerClient, BlobClient
+from datetime import datetime
 
 from core.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
@@ -200,6 +201,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
+@mock.patch("core.redaction_manager.datetime")
 @mock.patch.object(RedactionManager, "save_dict_to_blob_json")
 @mock.patch.object(
     MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
@@ -217,6 +219,7 @@ def test__redaction_manager__redact(
     mock_blob_write,
     mock_get_proposed_redactions,
     mock_save_dict_to_blob_json,
+    mock_datetime,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,
@@ -253,6 +256,7 @@ def test__redaction_manager__redact(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
+    mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.redact(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -299,11 +303,110 @@ def test__redaction_manager__redact(
         MockIO.read.return_value,
         ConfigProcessor.validate_and_filter_config.return_value,
     )
+    # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
+    MockRedactor.get_proposed_redactions.assert_called_once_with(
+        MockRedactor.redact.return_value
+    )
+    calls = RedactionManager.save_dict_to_blob_json.call_args_list
+    assert len(calls) == 1
+    assert calls[0].args[0] == {
+        "jobID": inst.job_id,
+        "date": datetime(2024, 1, 1).date().isoformat(),
+        "fileName": "",
+        "proposedRedactions": MockRedactor.get_proposed_redactions.return_value,
+    }
+    assert (
+        calls[0].kwargs["blob_path"]
+        == f"{inst.folder_for_job}/proposed_redactions.json"
+    )
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
         MockRedactor.redact.return_value,
         property_example_b="value",
     )
+
+
+def test__redaction_manager__compare_redactions():
+    proposed_redactions_dict = {
+        "jobID": "job_id:1",
+        "date": "2024-01-01",
+        "fileName": "somefile.pdf",
+        "proposedRedactions": [
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [0, 0, 1, 1],
+                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                "isRedactionCandidate": True,
+            },
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [2, 2, 3, 3],
+                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                "isRedactionCandidate": True,
+            },
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [4, 4, 5, 5],
+                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                "isRedactionCandidate": False,
+            },
+        ],
+    }
+    final_redactions_dict = {
+        "jobID": "job_id:3",
+        "date": "2024-01-02",
+        "fileName": "somefile-1.pdf",
+        "finalRedactions": [
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [0, 0, 1, 1],
+                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+            },
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [4, 4, 5, 5],
+                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+            },
+            {
+                "pageNumber": 0,
+                "annotationType": "Highlight",
+                "proposedRedaction": "something",
+                "annotatedText": "something",
+                "rect": [7, 7, 8, 8],
+                "creationDate": Timestamp("2024-01-02T00:00:00Z"),
+            },
+        ],
+    }
+    expected_output = {
+        "applyDate": proposed_redactions_dict["date"],
+        "redactDate": final_redactions_dict["date"],
+        "applyJobID": proposed_redactions_dict["jobID"],
+        "redactJobID": final_redactions_dict["jobID"],
+        "fileName": proposed_redactions_dict["fileName"],
+        "truePositives": 1,
+        "falsePositives": 1,
+        "falseNegatives": 2,
+    }
+    inst = RedactionManager("")
+    actual_output = inst._compare_redactions(
+        proposed_redactions_dict, final_redactions_dict
+    )
+    assert actual_output == expected_output
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -371,6 +474,7 @@ def test__redaction_manager__compare_and_save_redactions(
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
 @mock.patch.object(RedactionManager, "compare_and_save_redactions")
 @mock.patch.object(RedactionManager, "save_dict_to_blob_json")
+@mock.patch("core.redaction_manager.datetime")
 @mock.patch.object(
     MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
 )
@@ -386,6 +490,7 @@ def test__redaction_manager__apply(
     mock_apply,
     mock_blob_write,
     mock_get_final_redactions,
+    mock_datetime,
     mock_save_dict_to_blob_json,
     mock_compare_and_save_redactions,
     mock_file_processor_get,
@@ -421,6 +526,7 @@ def test__redaction_manager__apply(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
+    mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.apply(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -461,6 +567,21 @@ def test__redaction_manager__apply(
         MockIO.read.return_value,
         ConfigProcessor.validate_and_filter_config.return_value,
     )
+    # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
+    MockRedactor.get_final_redactions.assert_called_once_with(MockIO.read.return_value)
+    calls = RedactionManager.save_dict_to_blob_json.call_args_list
+    assert len(calls) == 1
+    assert calls[0].args[0] == {
+        "jobID": inst.job_id,
+        "date": datetime(2024, 1, 1).date().isoformat(),
+        "fileName": "",
+        "finalRedactions": mock_get_final_redactions.return_value,
+    }
+    assert (
+        calls[0].kwargs["blob_path"] == f"{inst.folder_for_job}/final_redactions.json"
+    )
+    # Compare and save redactions should be called once with the final redactions
+    mock_compare_and_save_redactions.assert_called_once()
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
         MockRedactor.apply.return_value,

@@ -380,13 +380,17 @@ class PDFProcessor(FileProcessor):
         return annot_df
 
     @classmethod
-    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+    def get_proposed_redactions(
+        cls, file_bytes: BytesIO, orient="records", **kwargs
+    ) -> List[Dict[str, Any]]:
         """
         Get the proposed redactions from the given PDF as a list of dictionaries containing
         the annotation details. Redactions proposed by _apply_provisional_text_redactions will
         have the annotation title "REDACTION CANDIDATE".
 
         :param BytesIO file_bytes: Bytes stream for the PDF
+        :param str orient: The orientation for the output list of dictionaries
+        :param kwargs: Additional arguments to pass to _extract_pdf_annotations
 
         :return List[Dict[str, Any]]: The list of proposed redactions with their details
         """
@@ -394,16 +398,29 @@ class PDFProcessor(FileProcessor):
             file_bytes, annotation_class=[pymupdf.PDF_ANNOT_HIGHLIGHT]
         )
         annot_df = cls._normalise_annotations_to_dataframe(annotations)
-        return annot_df.to_dict(orient="records")
+        return annot_df.to_dict(orient=orient, **kwargs)
 
     @classmethod
-    def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+    def get_final_redactions(
+        cls, file_bytes: BytesIO, orient="records", **kwargs
+    ) -> List[Dict[str, Any]]:
+        """
+        Get the final redactions from the given PDF as a list of dictionaries containing
+        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
+        have the annotation title "REDACTION CANDIDATE".
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :param str orient: The orientation for the output list of dictionaries
+        :param kwargs: Additional arguments to pass to _extract_pdf_annotations
+
+        :return List[Dict[str, Any]]: The list of final redactions with their details
+        """
         annotations = cls._extract_pdf_annotations(
             file_bytes,
             annotation_class=[pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_HIGHLIGHT],
         )
         annot_df = cls._normalise_annotations_to_dataframe(annotations)
-        return annot_df.to_dict(orient="records")
+        return annot_df.to_dict(orient=orient, **kwargs)
 
     @classmethod
     def _find_first_word_to_redact(

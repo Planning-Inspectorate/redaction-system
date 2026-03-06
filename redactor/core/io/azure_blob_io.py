@@ -95,7 +95,6 @@ class AzureBlobIO(StorageIO):
 
         :param str container_name: Name of the container
         :param str blob_path: Path to the blob within the container
-        :param Any **kwargs: Additional arguments to pass to the Azure SDK download_blob method
 
         :return BytesIO: Blob data as a byte stream
         """
@@ -104,7 +103,7 @@ class AzureBlobIO(StorageIO):
         )
         byte_stream = BytesIO()
         container_client = self._get_container_client(container_name)
-        blob_data = container_client.download_blob(blob_path, **kwargs)
+        blob_data = container_client.download_blob(blob_path)
         blob_data.readinto(byte_stream)
         return byte_stream
 
@@ -114,7 +113,6 @@ class AzureBlobIO(StorageIO):
         :param BytesIO data_bytes: Blob data as a byte stream
         :param str container_name: Name of the container
         :param str blob_path: Path to the blob within the container
-        :param Any **kwargs: Additional arguments to pass to the Azure SDK upload_blob method
 
         :raises ResourceExistsError: If a blob already exists at the specified path
         """
@@ -123,7 +121,7 @@ class AzureBlobIO(StorageIO):
         )
         try:
             blob_client = self._get_blob_client(container_name, blob_path)
-            blob_client.upload_blob(data_bytes, blob_type="BlockBlob", **kwargs)
+            blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
         except ResourceExistsError:
             # Improve the base Azure error, which does not include helpful info
             raise ResourceExistsError(
