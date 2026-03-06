@@ -47,7 +47,7 @@ class AzureVisionUtil:
             ai_vision_responses = tpe.map(
                 self.detect_faces, images, [confidence_threshold] * len(images)
             )
-            for thread_response, i in enumerate(ai_vision_responses):
+            for i, thread_response in enumerate(ai_vision_responses):
                 image = images[i]
                 try:
                     if thread_response:
