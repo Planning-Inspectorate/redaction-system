@@ -165,6 +165,7 @@ class RedactionManager:
             file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/raw.{extension}",
+            idempotency_key=self.job_id,
         )
 
         # Process the data
@@ -193,6 +194,7 @@ class RedactionManager:
             proposed_redaction_file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/proposed.{extension}",
+            idempotency_key=self.job_id,
         )
         proposed_redaction_file_data.seek(0)
 
@@ -254,6 +256,7 @@ class RedactionManager:
             file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/curated.{extension}",
+            idempotency_key=self.job_id,
         )
 
         # Process the data
@@ -268,6 +271,7 @@ class RedactionManager:
             proposed_redaction_file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/redacted.{extension}",
+            idempotency_key=self.job_id,
         )
         proposed_redaction_file_data.seek(0)
 

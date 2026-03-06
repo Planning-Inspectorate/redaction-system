@@ -7,6 +7,9 @@ from core.redaction.config_processor import ConfigProcessor
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
 from io import BytesIO
+from azure.core.exceptions import ResourceExistsError
+import core.io.azure_blob_io as azure_blob_io_module
+import hashlib
 import mock
 import pytest
 
@@ -34,6 +37,54 @@ class MockIO:
 
     def write(self, data, **kwargs):
         pass
+
+
+class DummyManagedIdentityCredential:
+    pass
+
+
+class DummyAzureCliCredential:
+    pass
+
+
+class DummyChainedTokenCredential:
+    def __init__(self, *args, **kwargs):
+        pass
+
+
+class FakeBlobClientForIdempotentReplay:
+    def __init__(self, existing_metadata):
+        self.existing_metadata = existing_metadata
+        self.upload_attempts = 0
+
+    def upload_blob(self, *args, **kwargs):
+        self.upload_attempts += 1
+        raise ResourceExistsError("exists")
+
+    def get_blob_properties(self):
+        class _BlobProperties:
+            def __init__(self, metadata):
+                self.metadata = metadata
+
+        return _BlobProperties(self.existing_metadata)
+
+
+class FakeBlobServiceClientForIdempotentReplay:
+    def __init__(self, account_url: str, credential=None, existing_metadata=None):
+        self.account_url = account_url
+        self.credential = credential
+        self._blob_client = FakeBlobClientForIdempotentReplay(existing_metadata or {})
+
+    def get_blob_client(self, container: str, blob: str):
+        return self._blob_client
+
+
+class FakeInternalRedactionStorageIO:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def write(self, *args, **kwargs):
+        return None
 
 
 def test__redaction_manager__init():
@@ -239,11 +290,13 @@ def test__redaction_manager__redact(
                 MockIO.read.return_value,
                 container_name="redactiondata",
                 blob_path=f"{inst.folder_for_job}/raw.pdf",
+                idempotency_key=inst.job_id,
             ),
             mock.call(
                 MockRedactor.redact.return_value,
                 container_name="redactiondata",
                 blob_path=f"{inst.folder_for_job}/proposed.pdf",
+                idempotency_key=inst.job_id,
             ),
         ]
     )
@@ -258,6 +311,73 @@ def test__redaction_manager__redact(
         property_example_b="value",
         idempotency_key=inst.job_id,
     )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
+@mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(ConfigProcessor, "validate_and_filter_config", return_value={})
+@mock.patch.object(ConfigProcessor, "load_config", return_value={"rules": {}})
+def test__redaction_manager__redact__idempotent_replay_succeeds(
+    mock_load_config,
+    mock_validate_filter_config,
+    mock_redact,
+    mock_file_processor_get,
+    mock_init,
+):
+    payload = {
+        "tryApplyProvisionalRedactions": True,
+        "skipRedaction": False,
+        "configName": "myconfig",
+        "fileKind": "pdf",
+        "readDetails": {
+            "storageKind": "readStorageKind",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {"propertyExampleA": "value"},
+        },
+        "writeDetails": {
+            "storageKind": "writeStorageKind",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "storageName": "acct",
+                "containerName": "container",
+                "blobPath": "path/to/blob.bin",
+            },
+        },
+    }
+
+    expected_hash = hashlib.sha256(b"abc").hexdigest()
+    fake_service = FakeBlobServiceClientForIdempotentReplay(
+        "https://acct.blob.core.windows.net",
+        existing_metadata={
+            "redaction_job_id": "inst",
+            "redaction_content_sha256": expected_hash,
+        },
+    )
+
+    def _io_factory_get(kind):
+        if kind == "readStorageKind":
+            return MockIO
+        if kind == "writeStorageKind":
+            return AzureBlobIO
+        raise AssertionError(f"Unexpected storage kind: {kind}")
+
+    with (
+        mock.patch.object(IOFactory, "get", side_effect=_io_factory_get),
+        mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz")),
+        mock.patch.object(azure_blob_io_module, "ManagedIdentityCredential", DummyManagedIdentityCredential),
+        mock.patch.object(azure_blob_io_module, "AzureCliCredential", DummyAzureCliCredential),
+        mock.patch.object(azure_blob_io_module, "ChainedTokenCredential", DummyChainedTokenCredential),
+        mock.patch.object(azure_blob_io_module, "BlobServiceClient", lambda *a, **k: fake_service),
+        mock.patch("core.redaction_manager.AzureBlobIO", FakeInternalRedactionStorageIO),
+    ):
+        inst = RedactionManager("job_id")
+        inst.job_id = "inst"
+        inst.folder_for_job = "instfolder"
+        inst.env = "dev"
+        inst.redact(payload)
+
+    assert fake_service._blob_client.upload_attempts == 1
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -337,11 +457,13 @@ def test__redaction_manager__apply(
                 MockIO.read.return_value,
                 container_name="redactiondata",
                 blob_path=f"{inst.folder_for_job}/curated.pdf",
+                idempotency_key=inst.job_id,
             ),
             mock.call(
                 MockRedactor.apply.return_value,
                 container_name="redactiondata",
                 blob_path=f"{inst.folder_for_job}/redacted.pdf",
+                idempotency_key=inst.job_id,
             ),
         ]
     )

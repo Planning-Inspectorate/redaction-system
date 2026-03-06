@@ -4,10 +4,11 @@ from azure.identity import (
     ChainedTokenCredential,
 )
 from azure.storage.blob import BlobServiceClient
-from azure.core.exceptions import ResourceExistsError
+from azure.core.exceptions import ResourceExistsError, AzureError
 from core.util.logging_util import LoggingUtil
 from io import BytesIO
 from typing import Any
+import hashlib
 from .storage_io import StorageIO
 
 
@@ -49,6 +50,36 @@ class AzureBlobIO(StorageIO):
         blob_data.readinto(byte_stream)
         return byte_stream
 
+    @staticmethod
+    def _calculate_sha256(data_bytes: Any) -> str:
+        """
+        Calculate a stable SHA-256 digest of the bytes that will be uploaded.
+        """
+        hasher = hashlib.sha256()
+        if isinstance(data_bytes, (bytes, bytearray)):
+            hasher.update(bytes(data_bytes))
+            return hasher.hexdigest()
+
+        if (
+            hasattr(data_bytes, "read")
+            and hasattr(data_bytes, "seek")
+            and hasattr(data_bytes, "tell")
+        ):
+            initial_position = data_bytes.tell()
+            while True:
+                chunk = data_bytes.read(1024 * 1024)
+                if not chunk:
+                    break
+                if isinstance(chunk, str):
+                    chunk = chunk.encode("utf-8")
+                hasher.update(chunk)
+            data_bytes.seek(initial_position)
+            return hasher.hexdigest()
+
+        raise TypeError(
+            "Could not calculate content hash for idempotency. Expected bytes or a seekable file-like object."
+        )
+
     def write(
         self,
         data_bytes: BytesIO,
@@ -61,6 +92,10 @@ class AzureBlobIO(StorageIO):
         )
         idempotency_key = kwargs.get("idempotency_key")
         idempotency_key_name = kwargs.get("idempotency_key_name", "redaction_job_id")
+        idempotency_content_hash_name = kwargs.get(
+            "idempotency_content_hash_name", "redaction_content_sha256"
+        )
+        idempotency_content_hash = kwargs.get("idempotency_content_hash")
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
@@ -69,37 +104,54 @@ class AzureBlobIO(StorageIO):
         )
         upload_kwargs = {"blob_type": "BlockBlob"}
         if idempotency_key:
-            upload_kwargs["metadata"] = {idempotency_key_name: str(idempotency_key)}
+            if not idempotency_content_hash:
+                idempotency_content_hash = self._calculate_sha256(data_bytes)
+            upload_kwargs["metadata"] = {
+                idempotency_key_name: str(idempotency_key),
+                idempotency_content_hash_name: str(idempotency_content_hash),
+            }
         try:
             blob_client.upload_blob(data_bytes, **upload_kwargs)
         except ResourceExistsError:
             if idempotency_key:
                 try:
                     properties = blob_client.get_blob_properties()
-                    metadata = properties.metadata or {}
-                    metadata_key_name_normalized = idempotency_key_name.lower()
-                    metadata_normalized = {k.lower(): v for k, v in metadata.items()}
-                    existing_key = metadata_normalized.get(
-                        metadata_key_name_normalized
+                except AzureError as e:
+                    raise ResourceExistsError(
+                        f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists "
+                        "and idempotency verification failed while fetching blob properties "
+                        f"({type(e).__name__}: {e})"
                     )
-                    if existing_key == str(idempotency_key):
-                        LoggingUtil().log_info(
-                            f"Blob '{blob_path}' already exists with matching idempotency key "
-                            f"'{idempotency_key_name}={idempotency_key}'. Treating as successful replay."
-                        )
-                        return
+                metadata = properties.metadata or {}
+                metadata_key_name_normalized = idempotency_key_name.lower()
+                metadata_content_hash_name_normalized = (
+                    idempotency_content_hash_name.lower()
+                )
+                metadata_normalized = {k.lower(): v for k, v in metadata.items()}
+                existing_key = metadata_normalized.get(metadata_key_name_normalized)
+                existing_content_hash = metadata_normalized.get(
+                    metadata_content_hash_name_normalized
+                )
+                if existing_key != str(idempotency_key):
                     raise ResourceExistsError(
                         f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists "
                         f"with conflicting idempotency key. Existing '{idempotency_key_name}={existing_key}', "
                         f"current '{idempotency_key_name}={idempotency_key}'."
                     )
-                except ResourceExistsError:
-                    raise
-                except Exception as e:
+                if existing_content_hash != str(idempotency_content_hash):
                     raise ResourceExistsError(
                         f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists "
-                        f"and idempotency verification failed with error: {e}"
+                        f"with conflicting content hash. Existing "
+                        f"'{idempotency_content_hash_name}={existing_content_hash}', current "
+                        f"'{idempotency_content_hash_name}={idempotency_content_hash}'."
                     )
+                LoggingUtil().log_info(
+                    f"Blob '{self.storage_endpoint}/{container_name}/{blob_path}' already exists with matching "
+                    f"idempotency key '{idempotency_key_name}={idempotency_key}' and matching "
+                    f"content hash '{idempotency_content_hash_name}={idempotency_content_hash}'. "
+                    "Treating as successful replay."
+                )
+                return
             # Improve the base Azure error, which does not include helpful info
             raise ResourceExistsError(
                 f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists"
