@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
-from tenacity.retry import retry_if_exception_type, retry_if_exception
+from tenacity.retry import retry_if_exception
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
@@ -69,7 +69,10 @@ class AzureVisionUtil:
 
     @log_to_appins
     @retry(
-        retry=retry_if_exception(lambda exception: isinstance(exception, HttpResponseError) and exception.status_code in [429]),
+        retry=retry_if_exception(
+            lambda exception: isinstance(exception, HttpResponseError)
+            and exception.status_code in [429]
+        ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
@@ -129,7 +132,9 @@ class AzureVisionUtil:
 
     @log_to_appins
     def detect_text_in_images(self, images: List[Image.Image]):
-        responses: List[Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]] = []
+        responses: List[
+            Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
+        ] = []
         with ThreadPoolExecutor(100) as tpe:
             ai_vision_responses = tpe.map(self.detect_text, images)
             for i, thread_response in enumerate(ai_vision_responses):
@@ -146,7 +151,10 @@ class AzureVisionUtil:
 
     @log_to_appins
     @retry(
-        retry=retry_if_exception(lambda exception: isinstance(exception, HttpResponseError) and exception.status_code in [429]),
+        retry=retry_if_exception(
+            lambda exception: isinstance(exception, HttpResponseError)
+            and exception.status_code in [429]
+        ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
