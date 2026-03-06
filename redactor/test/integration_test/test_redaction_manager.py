@@ -268,7 +268,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert json_blob_client.exists(), (
             "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
         )
-        proposed_redactions_dict = json.load(json_blob_client.download_blob().read())
+        proposed_redactions_dict = json.load(
+            json_blob_client.download_blob().read().decode("utf-8")
+        )
         assert proposed_redactions_dict.keys() >= {
             "jobID",
             "date",

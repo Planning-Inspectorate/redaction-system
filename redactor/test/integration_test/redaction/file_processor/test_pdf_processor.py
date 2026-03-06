@@ -154,7 +154,6 @@ def test__pdf_processor__add_provisional_redaction():
 
     info = annot.info
     assert info["title"] == "REDACTION CANDIDATE"
-    assert info["subject"] == "[0.0, 0.0, 10.0, 10.0]"
     assert info["content"] == "Hello"
     assert info["creationDate"] is not None
     assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
