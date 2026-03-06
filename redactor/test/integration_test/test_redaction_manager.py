@@ -409,6 +409,95 @@ class TestIntegrationRedactionManager(TestCase):
             "final_redactions.json should contain at least the keys 'jobID', 'date', and 'finalRedactions'"
         )
 
+        log_blob_client = redaction_container_client.get_blob_client(f"{guid}/log.txt")
+        assert log_blob_client.exists(), (
+            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )
+
+    def test__redaction_manager__try_apply__with_analytics(self):
+        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
+        blob_service_client = BlobServiceClient(
+            storage_endpoint,
+            credential=ChainedTokenCredential(
+                ManagedIdentityCredential(), AzureCliCredential()
+            ),
+        )
+        test_container_client = blob_service_client.get_container_client("test")
+        with open(
+            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
+            "rb",
+        ) as f:
+            pdf_bytes = f.read()
+        test_container_client.upload_blob(
+            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
+            pdf_bytes,
+            overwrite=True,
+        )
+        # Run test
+        redact_guid = f"{RUN_ID}:1"
+        manager = RedactionManager(redact_guid)
+        params = {
+            "tryApplyProvisionalRedactions": True,
+            "pinsService": "REDACTION_SYSTEM",
+            "skipRedaction": False,
+            "configName": "default",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+        }
+
+        response = manager.try_redact(params)
+        assert response["status"] == "SUCCESS", (
+            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+        )
+
+        # Apply redaction and check analytics
+        apply_guid = f"{RUN_ID}:3"
+        manager = RedactionManager(apply_guid)
+        params = {
+            "pinsService": "REDACTION_SYSTEM",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+        }
+
+        response = manager.try_apply(params)
+        assert response["status"] == "SUCCESS", (
+            f"RedactionManager.try_apply was unsuccessful and returned message '{response['message']}'"
+        )
+
         analytics_container_client = blob_service_client.get_container_client(
             "analytics"
         )
@@ -432,9 +521,4 @@ class TestIntegrationRedactionManager(TestCase):
         }, (
             "The analytics JSON should contain at least the keys 'applyDate', 'redactDate', 'applyJobID',"
             " 'redactJobID', 'truePositives', 'falsePositives', and 'falseNegatives'"
-        )
-
-        log_blob_client = redaction_container_client.get_blob_client(f"{guid}/log.txt")
-        assert log_blob_client.exists(), (
-            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
         )
