@@ -127,9 +127,34 @@ class AzureVisionUtil:
             if person["confidence"] >= confidence_threshold
         )
 
+    @log_to_appins
+    def detect_text_in_images(self, images: List[Image.Image]):
+        responses: List[Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]] = []
+        with ThreadPoolExecutor(100) as tpe:
+            ai_vision_responses = tpe.map(self.detect_text, images)
+            for i, thread_response in enumerate(ai_vision_responses):
+                image = images[i]
+                try:
+                    if thread_response:
+                        responses.append((image, thread_response))
+                except Exception as e:
+                    LoggingUtil().log_exception_with_message(
+                        "Azure AI vision OCR request failed with the following exception: ",
+                        e,
+                    )
+        return responses
+
+    @log_to_appins
+    @retry(
+        retry=retry_if_exception(lambda exception: isinstance(exception, HttpResponseError) and exception.status_code in [429]),
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(10),
+        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
+        retry_error_callback=handle_last_retry_error,
+    )
     def detect_text(
         self, image: Image.Image
-    ) -> Tuple[Tuple[str, Tuple[int, int, int, int]], ...]:
+    ) -> Tuple[Tuple[str, Tuple[int, int, int, int]]]:
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
 
