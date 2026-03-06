@@ -550,8 +550,7 @@ async def _run_one(
                         blob_name=out_blob,
                     )
                     diagnostics = (
-                        "APP_FAIL produced output blob. "
-                        f"content_length={blob_size}"
+                        f"APP_FAIL produced output blob. content_length={blob_size}"
                     )
 
             failure_reason = _extract_failure_reason(durable_status)
@@ -568,7 +567,9 @@ async def _run_one(
                 error=(
                     f"APP FAIL: {failure_reason}"
                     if failure_reason
-                    else json.dumps(_summarise_durable_status(durable_status), default=str)
+                    else json.dumps(
+                        _summarise_durable_status(durable_status), default=str
+                    )
                 ),
             )
 
