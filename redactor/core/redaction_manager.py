@@ -203,7 +203,7 @@ class RedactionManager:
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(
             proposed_redaction_file_data,
-            **(write_storage_properties | {"ignore_if_exists": True}),
+            **(write_storage_properties | {"idempotency_key": self.job_id}),
         )
         return run_metrics
 
@@ -275,7 +275,7 @@ class RedactionManager:
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(
             proposed_redaction_file_data,
-            **(write_storage_properties | {"ignore_if_exists": True}),
+            **(write_storage_properties | {"idempotency_key": self.job_id}),
         )
         return run_metrics
 

@@ -59,21 +59,47 @@ class AzureBlobIO(StorageIO):
         LoggingUtil().log_info(
             f"Writing blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
         )
-        ignore_if_exists = kwargs.get("ignore_if_exists", False)
+        idempotency_key = kwargs.get("idempotency_key")
+        idempotency_key_name = kwargs.get("idempotency_key_name", "redaction_job_id")
         blob_service_client = BlobServiceClient(
             self.storage_endpoint, credential=self.credential
         )
         blob_client = blob_service_client.get_blob_client(
             container=container_name, blob=blob_path
         )
+        upload_kwargs = {"blob_type": "BlockBlob"}
+        if idempotency_key:
+            upload_kwargs["metadata"] = {idempotency_key_name: str(idempotency_key)}
         try:
-            blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
+            blob_client.upload_blob(data_bytes, **upload_kwargs)
         except ResourceExistsError:
-            if ignore_if_exists:
-                LoggingUtil().log_info(
-                    f"Blob '{blob_path}' already exists in container '{container_name}'. Skipping upload."
-                )
-                return
+            if idempotency_key:
+                try:
+                    properties = blob_client.get_blob_properties()
+                    metadata = properties.metadata or {}
+                    metadata_key_name_normalized = idempotency_key_name.lower()
+                    metadata_normalized = {k.lower(): v for k, v in metadata.items()}
+                    existing_key = metadata_normalized.get(
+                        metadata_key_name_normalized
+                    )
+                    if existing_key == str(idempotency_key):
+                        LoggingUtil().log_info(
+                            f"Blob '{blob_path}' already exists with matching idempotency key "
+                            f"'{idempotency_key_name}={idempotency_key}'. Treating as successful replay."
+                        )
+                        return
+                    raise ResourceExistsError(
+                        f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists "
+                        f"with conflicting idempotency key. Existing '{idempotency_key_name}={existing_key}', "
+                        f"current '{idempotency_key_name}={idempotency_key}'."
+                    )
+                except ResourceExistsError:
+                    raise
+                except Exception as e:
+                    raise ResourceExistsError(
+                        f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists "
+                        f"and idempotency verification failed with error: {e}"
+                    )
             # Improve the base Azure error, which does not include helpful info
             raise ResourceExistsError(
                 f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists"

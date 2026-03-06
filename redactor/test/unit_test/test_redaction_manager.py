@@ -256,7 +256,7 @@ def test__redaction_manager__redact(
     MockIO.write.assert_called_once_with(
         MockRedactor.redact.return_value,
         property_example_b="value",
-        ignore_if_exists=True,
+        idempotency_key=inst.job_id,
     )
 
 
@@ -354,7 +354,7 @@ def test__redaction_manager__apply(
     MockIO.write.assert_called_once_with(
         MockRedactor.apply.return_value,
         property_example_b="value",
-        ignore_if_exists=True,
+        idempotency_key=inst.job_id,
     )
 
 

@@ -42,6 +42,7 @@ class FakeBlobClient:
         self.last_args = None
         self.last_kwargs = None
         self.error_to_raise = None
+        self.existing_metadata = {}
 
     def upload_blob(self, *args, **kwargs):
         if self.error_to_raise:
@@ -49,6 +50,13 @@ class FakeBlobClient:
         self.last_args = args
         self.last_kwargs = kwargs
         # No return needed for the test
+
+    def get_blob_properties(self):
+        class _BlobProperties:
+            def __init__(self, metadata):
+                self.metadata = metadata
+
+        return _BlobProperties(self.existing_metadata)
 
 
 class FakeBlobServiceClient:
@@ -128,6 +136,26 @@ def test_write_passes_stream_and_blockblob(monkeypatch):
     assert isinstance(arg0, (BytesIO, bytes, bytearray))
 
 
+def test_write_sets_idempotency_metadata_when_provided(monkeypatch):
+    fake_service = FakeBlobServiceClient(
+        "https://acct.blob.core.windows.net", credential=object()
+    )
+    fake_blob_client = fake_service._blob_client
+    monkeypatch.setattr(
+        azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
+    )
+    io = AzureBlobIO(storage_name="acct")
+
+    io.write(
+        BytesIO(b"payload"),
+        container_name="container",
+        blob_path="path/to/blob.bin",
+        idempotency_key="job-1",
+    )
+
+    assert fake_blob_client.last_kwargs["metadata"] == {"redaction_job_id": "job-1"}
+
+
 def test_init_raises_when_neither_name_nor_endpoint_provided():
     with pytest.raises(ValueError) as exc:
         AzureBlobIO()
@@ -166,11 +194,12 @@ def test_write_raises_when_blob_already_exists(monkeypatch):
     )
 
 
-def test_write_ignores_blob_exists_when_configured(monkeypatch):
+def test_write_allows_idempotent_replay_when_metadata_matches(monkeypatch):
     fake_service = FakeBlobServiceClient(
         "https://acct.blob.core.windows.net", credential=object()
     )
     fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
+    fake_service._blob_client.existing_metadata = {"redaction_job_id": "job-1"}
     monkeypatch.setattr(
         azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
     )
@@ -180,5 +209,27 @@ def test_write_ignores_blob_exists_when_configured(monkeypatch):
         BytesIO(b"payload"),
         container_name="container",
         blob_path="path/to/blob.bin",
-        ignore_if_exists=True,
+        idempotency_key="job-1",
     )
+
+
+def test_write_raises_when_blob_exists_with_conflicting_idempotency_key(monkeypatch):
+    fake_service = FakeBlobServiceClient(
+        "https://acct.blob.core.windows.net", credential=object()
+    )
+    fake_service._blob_client.error_to_raise = ResourceExistsError("exists")
+    fake_service._blob_client.existing_metadata = {"redaction_job_id": "job-A"}
+    monkeypatch.setattr(
+        azure_blob_io, "BlobServiceClient", lambda *a, **k: fake_service
+    )
+    io = AzureBlobIO(storage_name="acct")
+
+    with pytest.raises(ResourceExistsError) as exc:
+        io.write(
+            BytesIO(b"payload"),
+            container_name="container",
+            blob_path="path/to/blob.bin",
+            idempotency_key="job-B",
+        )
+
+    assert "conflicting idempotency key" in str(exc.value)
