@@ -35,7 +35,8 @@ class AzureVisionUtil:
         self.vision_client = ImageAnalysisClient(
             endpoint=self.azure_endpoint, credential=credential
         )
-        self.request_semaphor = TokenSemaphore()
+        self.api_rate_limit = 20  # Per minute
+        self.request_semaphor = TokenSemaphore(self.api_rate_limit)
 
     @log_to_appins
     def detect_faces_in_images(
