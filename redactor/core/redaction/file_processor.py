@@ -353,8 +353,16 @@ class PDFProcessor(FileProcessor):
     ) -> pd.DataFrame:
         annot_df = pd.json_normalize(annotations, "annotations", ["page_number"])
         annot_df["pageNumber"] = annot_df["page_number"].astype(int)
-        annot_df["creationDate"] = cls._convert_pdf_date(annot_df["creationDate"])
-        annot_df["modDate"] = cls._convert_pdf_date(annot_df["modDate"])
+        annot_df["creationDate"] = (
+            cls._convert_pdf_date(annot_df["creationDate"])
+            if "creationDate" in annot_df
+            else None
+        )
+        annot_df["modDate"] = (
+            cls._convert_pdf_date(annot_df["modDate"])
+            if "modDate" in annot_df
+            else None
+        )
         annot_df["isRedactionCandidate"] = annot_df["title"] == "REDACTION CANDIDATE"
         annot_df["rect"] = annot_df["rect"].apply(lambda x: tuple(x))
         annot_df.rename(

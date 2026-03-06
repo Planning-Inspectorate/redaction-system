@@ -53,34 +53,22 @@ class TestIntegrationRedactionManager(TestCase):
             ),
         )
         callback_container_client = blob_service_client.get_container_client("test")
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
-        )
+        files_to_delete = [
+            "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_apply__REDACTED.pdf",
+            "test__redaction__manager__try_redact__raw.pdf",
+            "test__redaction__manager__try_redact__skip_redaction__raw.pdf"
+            "test__redaction_manager__try_redact__failure.pdf",
+            "test__redaction__manager__try_apply__curated.pdf",
+            "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
+        ]
+        for file_name in files_to_delete:
+            self.try_delete_blob(
+                callback_container_client,
+                f"{RUN_ID}/{file_name}",
+            )
+
         try:
             ServiceBusUtil().receive_service_bus_complete_messages()
         except Exception:
@@ -439,7 +427,7 @@ class TestIntegrationRedactionManager(TestCase):
         params = {
             "tryApplyProvisionalRedactions": True,
             "pinsService": "REDACTION_SYSTEM",
-            "skipRedaction": True,
+            "skipRedaction": False,
             "configName": "default",
             "fileKind": "pdf",
             "readDetails": {
