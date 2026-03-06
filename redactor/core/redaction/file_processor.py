@@ -43,9 +43,6 @@ class FileProcessor(ABC):
     def __init__(self):
         self.run_metrics = None
 
-    def __init__(self):
-        self.run_metrics = None
-
     @classmethod
     @abstractmethod
     def get_name(cls) -> str:
