@@ -46,7 +46,6 @@ class AzureVisionUtil:
             endpoint=self.azure_endpoint, credential=credential
         )
 
-    @log_to_appins
     def detect_faces_in_images(
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ):
@@ -57,17 +56,10 @@ class AzureVisionUtil:
             )
             for i, thread_response in enumerate(ai_vision_responses):
                 image = images[i]
-                try:
-                    if thread_response:
-                        responses.append((image, thread_response))
-                except Exception as e:
-                    LoggingUtil().log_exception_with_message(
-                        "Azure AI vision Face request failed with the following exception: ",
-                        e,
-                    )
+                # detect_faces does not raise any exceptions, so this is safe
+                responses.append((image, thread_response))
         return responses
 
-    @log_to_appins
     @retry(
         retry=retry_if_exception(
             lambda exception: isinstance(exception, HttpResponseError)
@@ -103,10 +95,17 @@ class AzureVisionUtil:
             image.save(byte_stream, format="PNG")
             image_bytes = byte_stream.getvalue()
 
-            result = self.vision_client.analyze(
-                image_bytes,
-                [VisualFeatures.PEOPLE],
-            )
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.PEOPLE],
+                )
+            except HttpResponseError as e:
+                raise e
+            except Exception as e:
+                LoggingUtil().log_info("Error analysing image for faces")
+                LoggingUtil().log_exception(e)
+                return None
 
             faces_detected = tuple(
                 {
@@ -139,14 +138,7 @@ class AzureVisionUtil:
             ai_vision_responses = tpe.map(self.detect_text, images)
             for i, thread_response in enumerate(ai_vision_responses):
                 image = images[i]
-                try:
-                    if thread_response:
-                        responses.append((image, thread_response))
-                except Exception as e:
-                    LoggingUtil().log_exception_with_message(
-                        "Azure AI vision OCR request failed with the following exception: ",
-                        e,
-                    )
+                responses.append((image, thread_response))
         return responses
 
     @log_to_appins
@@ -183,10 +175,17 @@ class AzureVisionUtil:
             image.save(byte_stream, format="PNG")
             image_bytes = byte_stream.getvalue()
 
-            result = self.vision_client.analyze(
-                image_bytes,
-                [VisualFeatures.READ],
-            )
+            try:
+                result = self.vision_client.analyze(
+                    image_bytes,
+                    [VisualFeatures.READ],
+                )
+            except HttpResponseError as e:
+                raise e
+            except Exception as e:
+                LoggingUtil().log_info("Error analysing image for text")
+                LoggingUtil().log_exception(e)
+                return None
 
             text_detected = tuple(
                 (
