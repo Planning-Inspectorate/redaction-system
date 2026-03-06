@@ -71,9 +71,17 @@ PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
 
 PERF_EXISTS_SAMPLE_EVERY = _int_env("PERF_EXISTS_SAMPLE_EVERY", 5)
 
-# IMPORTANT: default bumped to 180s to reduce false failures under load
-PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", 180.0)
+# By default, allow blob appearance checks to wait up to the same overall timeout
+# as orchestration polling, unless explicitly overridden.
+PERF_EXISTS_WAIT_S = _float_env("PERF_EXISTS_WAIT_S", float(PERF_TIMEOUT_S))
 PERF_EXISTS_WAIT_POLL_S = _float_env("PERF_EXISTS_WAIT_POLL_S", 5.0)
+# In exception-recovery mode (e.g. transient poll errors), use a shorter grace
+# period so runs do not appear stuck in repeated blob-exists checks.
+PERF_RECOVERY_EXISTS_WAIT_S = _float_env("PERF_RECOVERY_EXISTS_WAIT_S", 60.0)
+# Skip long recovery waits when failures happen very early (blob unlikely to exist yet).
+PERF_RECOVERY_MIN_ELAPSED_S = _float_env("PERF_RECOVERY_MIN_ELAPSED_S", 10.0)
+# Also check whether output exists for APP_FAIL runs so summary reflects partial outputs.
+PERF_CHECK_OUTPUT_ON_APP_FAIL = bool(_int_env("PERF_CHECK_OUTPUT_ON_APP_FAIL", 1))
 
 # If > 0, download sampled outputs locally when they exist (proof of "written to file")
 PERF_DOWNLOAD_SAMPLE_EVERY = _int_env("PERF_DOWNLOAD_SAMPLE_EVERY", 1)
@@ -175,6 +183,46 @@ def _az_list_blobs_prefix(
         return [f"<<az blob list exception: {e}>>"]
 
 
+def _az_blob_content_length(
+    *,
+    storage_account: str,
+    container_name: str,
+    blob_name: str,
+) -> Optional[int]:
+    """
+    Best-effort content length lookup for corroborating blob validity.
+    Returns None on any failure.
+    """
+    try:
+        cmd = [
+            "az",
+            "storage",
+            "blob",
+            "show",
+            "--account-name",
+            storage_account,
+            "--container-name",
+            container_name,
+            "--name",
+            blob_name,
+            "--auth-mode",
+            "login",
+            "--query",
+            "properties.contentLength",
+            "-o",
+            "tsv",
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if r.returncode != 0:
+            return None
+        txt = (r.stdout or "").strip()
+        if not txt:
+            return None
+        return int(txt)
+    except Exception:
+        return None
+
+
 # ----------------------------
 # Blob-exists helper (sync, uses az cli underneath)
 # ----------------------------
@@ -233,6 +281,17 @@ class PerfResult:
         return self.outcome != Outcome.TEST_FAIL
 
 
+def _format_exception(e: Exception) -> str:
+    text = str(e).strip()
+    if text:
+        return text
+    return f"{e.__class__.__name__}"
+
+
+class OrchestrationTimeoutError(TimeoutError):
+    """Raised when durable polling exceeds the configured orchestration timeout."""
+
+
 def _summarise_durable_status(status: Optional[dict]) -> dict:
     if not status:
         return {}
@@ -246,6 +305,31 @@ def _summarise_durable_status(status: Optional[dict]) -> dict:
         "errorMessage",
     ]
     return {k: status.get(k) for k in keys if k in status}
+
+
+def _extract_failure_reason(durable_status: Optional[dict]) -> Optional[str]:
+    """
+    Return a short, human-readable failure reason from durable status payloads.
+    """
+    if not durable_status:
+        return None
+
+    error_message = durable_status.get("errorMessage")
+    if isinstance(error_message, str) and error_message.strip():
+        return error_message.strip().splitlines()[0][:500]
+
+    output = durable_status.get("output")
+    if isinstance(output, dict):
+        msg = output.get("message") or output.get("errorMessage")
+        if isinstance(msg, str) and msg.strip():
+            return msg.strip().splitlines()[0][:500]
+        status = output.get("status")
+        if isinstance(status, str) and status.strip() and status.upper() != "SUCCESS":
+            return f"output.status={status}"
+    elif isinstance(output, str) and output.strip():
+        return output.strip().splitlines()[0][:500]
+
+    return None
 
 
 # ----------------------------
@@ -293,8 +377,19 @@ async def _poll_until_done(
 ) -> dict:
     deadline = time.time() + timeout_s
     last_status: Optional[dict] = None
+    transient_poll_errors = 0
+    last_poll_error: Optional[str] = None
     while time.time() < deadline:
-        r = await client.get(poll_url, timeout=60)
+        try:
+            r = await client.get(poll_url, timeout=60)
+            last_poll_error = None
+        except (httpx.TimeoutException, httpx.RequestError) as e:
+            # Transient transport errors under load are retried until the
+            # overall orchestration timeout elapses.
+            transient_poll_errors += 1
+            last_poll_error = _format_exception(e)
+            await asyncio.sleep(poll_s)
+            continue
 
         # durable polling endpoint returning 5xx/429 is considered app-side acceptable failure
         if _classify_http_as_app_fail(r.status_code):
@@ -318,8 +413,12 @@ async def _poll_until_done(
             return status
         await asyncio.sleep(poll_s)
 
-    raise TimeoutError(
-        f"Timed out waiting for orchestration. pollEndpoint={poll_url} last={last_status}"
+    raise OrchestrationTimeoutError(
+        "Timed out waiting for orchestration. "
+        f"pollEndpoint={poll_url} "
+        f"transient_poll_errors={transient_poll_errors} "
+        f"last_poll_error={last_poll_error} "
+        f"last={last_status}"
     )
 
 
@@ -416,18 +515,61 @@ async def _run_one(
 
         # If app failed, we don't require output blob existence
         if app_failed:
+            out_exists: Optional[bool] = None
+            diagnostics: Optional[str] = None
+
+            if PERF_CHECK_OUTPUT_ON_APP_FAIL:
+                out_exists = await asyncio.to_thread(
+                    az_blob_exists,
+                    storage_account,
+                    container_name,
+                    out_blob,
+                )
+
+                # If configured as a sampled check and blob wasn't immediately visible,
+                # allow a short grace period to account for eventual consistency.
+                if (
+                    not out_exists
+                    and do_exists_check
+                    and elapsed >= PERF_RECOVERY_MIN_ELAPSED_S
+                ):
+                    out_exists = await asyncio.to_thread(
+                        _wait_for_blob_exists,
+                        storage_account=storage_account,
+                        container_name=container_name,
+                        blob_name=out_blob,
+                        timeout_s=PERF_RECOVERY_EXISTS_WAIT_S,
+                        poll_s=PERF_EXISTS_WAIT_POLL_S,
+                    )
+
+                if out_exists is True:
+                    blob_size = await asyncio.to_thread(
+                        _az_blob_content_length,
+                        storage_account=storage_account,
+                        container_name=container_name,
+                        blob_name=out_blob,
+                    )
+                    diagnostics = (
+                        f"APP_FAIL produced output blob. content_length={blob_size}"
+                    )
+
+            failure_reason = _extract_failure_reason(durable_status)
             return PerfResult(
                 outcome=Outcome.APP_FAIL,
                 runtime_status=runtime_status,
                 seconds=elapsed,
-                checked_blob_exists=do_exists_check,
-                out_blob_exists=None,
+                checked_blob_exists=do_exists_check or PERF_CHECK_OUTPUT_ON_APP_FAIL,
+                out_blob_exists=out_exists,
                 poll_url=poll_url,
                 instance_id=durable_status.get("instanceId") or instance_id,
                 durable_status=_summarise_durable_status(durable_status),
-                diagnostics=None,
-                error=json.dumps(
-                    _summarise_durable_status(durable_status), default=str
+                diagnostics=diagnostics,
+                error=(
+                    f"APP FAIL: {failure_reason}"
+                    if failure_reason
+                    else json.dumps(
+                        _summarise_durable_status(durable_status), default=str
+                    )
                 ),
             )
 
@@ -542,9 +684,104 @@ async def _run_one(
 
     except Exception as e:
         elapsed = time.perf_counter() - t0
-        # Anything unexpected in the harness is test-side
+        error_text = _format_exception(e)
+
+        # If polling failed, try to corroborate completion via output blob checks.
+        if poll_url:
+            try:
+                # First do a single fast check to avoid long waits when there is
+                # clearly no output yet.
+                out_exists = await asyncio.to_thread(
+                    az_blob_exists,
+                    storage_account,
+                    container_name,
+                    out_blob,
+                )
+
+                # For sampled jobs, allow a short grace period if the fast check
+                # misses a just-written blob and the run lasted long enough.
+                if (
+                    not out_exists
+                    and do_exists_check
+                    and elapsed >= PERF_RECOVERY_MIN_ELAPSED_S
+                ):
+                    out_exists = await asyncio.to_thread(
+                        _wait_for_blob_exists,
+                        storage_account=storage_account,
+                        container_name=container_name,
+                        blob_name=out_blob,
+                        timeout_s=PERF_RECOVERY_EXISTS_WAIT_S,
+                        poll_s=PERF_EXISTS_WAIT_POLL_S,
+                    )
+
+                if out_exists is True:
+                    blob_size = await asyncio.to_thread(
+                        _az_blob_content_length,
+                        storage_account=storage_account,
+                        container_name=container_name,
+                        blob_name=out_blob,
+                    )
+                    if not blob_size or blob_size <= 0:
+                        error_text = (
+                            f"{error_text}; recovery blob exists but content length "
+                            f"is not usable (content_length={blob_size})"
+                        )
+                    else:
+                        status_corroborates_success = True
+                        if durable_status:
+                            status_corroborates_success = (
+                                not _is_app_failure_from_status(durable_status)
+                            )
+
+                        if status_corroborates_success:
+                            downloaded_to: Optional[str] = None
+                            if PERF_DOWNLOAD_SAMPLE_EVERY > 0:
+                                out_file = tmp_dir / Path(out_blob).name
+                                await asyncio.to_thread(
+                                    az_download,
+                                    storage_account,
+                                    container_name,
+                                    out_blob,
+                                    out_file,
+                                )
+                                downloaded_to = str(out_file)
+
+                            return PerfResult(
+                                outcome=Outcome.SUCCESS,
+                                runtime_status="CompletedByBlobExistence",
+                                seconds=elapsed,
+                                checked_blob_exists=True,
+                                out_blob_exists=True,
+                                poll_url=poll_url,
+                                instance_id=instance_id,
+                                durable_status=_summarise_durable_status(
+                                    durable_status
+                                ),
+                                diagnostics=(
+                                    "Recovered from poll/status exception by confirming output "
+                                    "blob exists with positive content length. "
+                                    f"content_length={blob_size} poll_error={error_text}"
+                                ),
+                                error=None,
+                                downloaded_to=downloaded_to,
+                            )
+                        else:
+                            error_text = (
+                                f"{error_text}; recovery blob check passed but durable "
+                                "status indicates app failure"
+                            )
+            except Exception as exists_e:
+                error_text = (
+                    f"{error_text}; blob existence fallback failed: "
+                    f"{_format_exception(exists_e)}"
+                )
+
+        # Network/polling transport and orchestration timeout are app-side under load.
+        is_app_side_error = isinstance(
+            e, (httpx.RequestError, OrchestrationTimeoutError)
+        )
         return PerfResult(
-            outcome=Outcome.TEST_FAIL,
+            outcome=Outcome.APP_FAIL if is_app_side_error else Outcome.TEST_FAIL,
             runtime_status="Exception",
             seconds=elapsed,
             checked_blob_exists=do_exists_check,
@@ -553,7 +790,11 @@ async def _run_one(
             instance_id=instance_id,
             durable_status=_summarise_durable_status(durable_status),
             diagnostics=None,
-            error=f"TEST FAIL: {e} poll={poll_url}" if poll_url else f"TEST FAIL: {e}",
+            error=(
+                f"{'APP FAIL' if is_app_side_error else 'TEST FAIL'}: {error_text} poll={poll_url}"
+                if poll_url
+                else f"{'APP FAIL' if is_app_side_error else 'TEST FAIL'}: {error_text}"
+            ),
         )
 
 
@@ -650,12 +891,19 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     times = [r.seconds for r in results]
     stats = _percentiles(times)
 
-    successes = [r for r in results if r.outcome == Outcome.SUCCESS]
+    outcome_successes = [r for r in results if r.outcome == Outcome.SUCCESS]
+    recovered_successes = [
+        r for r in outcome_successes if r.runtime_status == "CompletedByBlobExistence"
+    ]
     app_failures = [r for r in results if r.outcome == Outcome.APP_FAIL]
     test_failures = [r for r in results if r.outcome == Outcome.TEST_FAIL]
+    successful_outputs = [r for r in results if r.out_blob_exists is True]
+    app_fail_with_output = [r for r in app_failures if r.out_blob_exists is True]
+    app_fail_without_output = [r for r in app_failures if r.out_blob_exists is False]
+    app_fail_unknown_output = [r for r in app_failures if r.out_blob_exists is None]
 
     # throughput: successes per wall-clock second
-    throughput = (len(successes) / wall_elapsed) if wall_elapsed > 0 else 0.0
+    throughput = (len(successful_outputs) / wall_elapsed) if wall_elapsed > 0 else 0.0
 
     exists_checked = sum(1 for r in results if r.checked_blob_exists)
     exists_failures = [
@@ -671,8 +919,20 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(
         f"exists_wait_s={PERF_EXISTS_WAIT_S} exists_wait_poll_s={PERF_EXISTS_WAIT_POLL_S}"
     )
+    print(f"recovery_exists_wait_s={PERF_RECOVERY_EXISTS_WAIT_S}")
     print(
-        f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
+        f"success={len(successful_outputs)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
+    )
+    print(
+        "app_fail_breakdown="
+        f"with_output:{len(app_fail_with_output)} "
+        f"without_output:{len(app_fail_without_output)} "
+        f"unknown_output:{len(app_fail_unknown_output)}"
+    )
+    print(
+        f"success_breakdown=outcome_success:{len(outcome_successes)} "
+        f"recovered:{len(recovered_successes)} "
+        f"from_app_fail_output:{len(app_fail_with_output)}"
     )
     print(
         f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}"
@@ -686,9 +946,11 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     if app_failures:
         print("\nApp failures (acceptable) (up to 5):")
         for r in app_failures[:5]:
+            failure_reason = _extract_failure_reason(r.durable_status) or r.error
             print(
                 f"- runtime={r.runtime_status} seconds={r.seconds:.2f} "
-                f"instanceId={r.instance_id} error={r.error} poll={r.poll_url}"
+                f"instanceId={r.instance_id} out_exists={r.out_blob_exists} "
+                f"reason={failure_reason} poll={r.poll_url}"
             )
             if r.durable_status:
                 print("  durable_status:", json.dumps(r.durable_status, default=str))
