@@ -439,7 +439,7 @@ class TestIntegrationRedactionManager(TestCase):
         params = {
             "tryApplyProvisionalRedactions": True,
             "pinsService": "REDACTION_SYSTEM",
-            "skipRedaction": False,
+            "skipRedaction": True,
             "configName": "default",
             "fileKind": "pdf",
             "readDetails": {
@@ -486,7 +486,7 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__with_analytics_REDACTED.pdf",
                     "storageName": f"pinsstredaction{ENV}uks",
                     "containerName": "test",
                 },
