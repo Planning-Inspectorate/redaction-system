@@ -365,11 +365,23 @@ def test__redaction_manager__redact__idempotent_replay_succeeds(
     with (
         mock.patch.object(IOFactory, "get", side_effect=_io_factory_get),
         mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz")),
-        mock.patch.object(azure_blob_io_module, "ManagedIdentityCredential", DummyManagedIdentityCredential),
-        mock.patch.object(azure_blob_io_module, "AzureCliCredential", DummyAzureCliCredential),
-        mock.patch.object(azure_blob_io_module, "ChainedTokenCredential", DummyChainedTokenCredential),
-        mock.patch.object(azure_blob_io_module, "BlobServiceClient", lambda *a, **k: fake_service),
-        mock.patch("core.redaction_manager.AzureBlobIO", FakeInternalRedactionStorageIO),
+        mock.patch.object(
+            azure_blob_io_module,
+            "ManagedIdentityCredential",
+            DummyManagedIdentityCredential,
+        ),
+        mock.patch.object(
+            azure_blob_io_module, "AzureCliCredential", DummyAzureCliCredential
+        ),
+        mock.patch.object(
+            azure_blob_io_module, "ChainedTokenCredential", DummyChainedTokenCredential
+        ),
+        mock.patch.object(
+            azure_blob_io_module, "BlobServiceClient", lambda *a, **k: fake_service
+        ),
+        mock.patch(
+            "core.redaction_manager.AzureBlobIO", FakeInternalRedactionStorageIO
+        ),
     ):
         inst = RedactionManager("job_id")
         inst.job_id = "inst"
