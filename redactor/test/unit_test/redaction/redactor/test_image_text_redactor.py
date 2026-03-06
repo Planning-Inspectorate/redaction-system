@@ -10,6 +10,7 @@ from core.redaction.result import (
 )
 from PIL import Image
 import mock
+import dataclasses
 
 
 def test__image_text_redactor__get_name():
@@ -95,13 +96,15 @@ def test__image_text_redactor__redact():
     )
     text_rect_map = (("AB12", (5, 5, 20, 10)), ("CDE", (25, 5, 35, 10)))
     expected_results = ImageRedactionResult(
+        rule_name="config name",
+        run_metrics="",
         redaction_results=(
             ImageRedactionResult.Result(
                 image_dimensions=(500, 1000),
                 source_image=config.images[0],
                 redaction_boxes=tuple(x[1] for x in text_rect_map),
             ),
-        )
+        ),
     )
     with (
         mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
@@ -116,4 +119,8 @@ def test__image_text_redactor__redact():
         inst = ImageTextRedactor()
         inst.config = config
         actual_results = inst.redact()
-        assert expected_results == actual_results
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        assert cleaned_expected_results == cleaned_actual_results

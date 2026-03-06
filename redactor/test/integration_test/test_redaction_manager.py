@@ -184,7 +184,13 @@ class TestIntegrationRedactionManager(TestCase):
             f"{guid}/ANALYSE_log.txt"
         )
         assert log_blob_client.exists(), (
-            f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+            f"Expected {guid}/ANALYSE_log.txt to be in the redactiondata container, but was missing"
+        )
+        metric_blob_client = log_container_client.get_blob_client(
+            f"{guid}/ANALYSE_metrics.txt"
+        )
+        assert not metric_blob_client.exists(), (
+            f"Expected {guid}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
         )
 
     def test__redaction__manager__try_redact(self):
@@ -260,6 +266,12 @@ class TestIntegrationRedactionManager(TestCase):
         )
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )
+        metric_blob_client = log_container_client.get_blob_client(
+            f"{guid}/ANALYSE_metrics.txt"
+        )
+        assert metric_blob_client.exists(), (
+            f"Expected {guid}/ANALYSE_metrics.txt to be in the redactiondata container, but was missing"
         )
 
     def test__redaction_manager__try_redact__failure(self):
@@ -368,4 +380,10 @@ class TestIntegrationRedactionManager(TestCase):
         log_blob_client = log_container_client.get_blob_client(f"{guid}/REDACT_log.txt")
         assert log_blob_client.exists(), (
             f"Expected {guid}/log.txt to be in the redactiondata container, but was missing"
+        )
+        metric_blob_client = log_container_client.get_blob_client(
+            f"{guid}/REDACT_metrics.txt"
+        )
+        assert metric_blob_client.exists(), (
+            f"Expected {guid}/REDACT_metrics.txt to be in the redactiondata container, but was missing"
         )

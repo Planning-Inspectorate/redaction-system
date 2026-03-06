@@ -107,6 +107,7 @@ class LLMUtil:
 
     @log_to_appins
     def _set_model_details(self):
+        instance_quota_allocation = 0.5
         try:
             # Get specified model
             model_details = self.OPENAI_MODELS[self.config.model]
@@ -116,7 +117,9 @@ class LLMUtil:
             self.output_token_cost = model_details["output_cost"] * 0.000001
 
             # Validate and set token rate limit per minute
-            default_token_rate_limit = int(model_details["token_rate_limit"] * 0.2)
+            default_token_rate_limit = int(
+                model_details["token_rate_limit"] * instance_quota_allocation
+            )
 
             token_limit = self.config.token_rate_limit
             if token_limit is not None:
@@ -131,7 +134,9 @@ class LLMUtil:
             else:  # default to 20% of max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
-            default_request_rate_limit = int(model_details["request_rate_limit"] * 0.2)
+            default_request_rate_limit = int(
+                model_details["request_rate_limit"] * instance_quota_allocation
+            )
 
             # Validate and set request rate limit per minute
             req_limit = self.config.request_rate_limit
@@ -303,6 +308,12 @@ class LLMUtil:
 
         Based on https://github.com/mahmoudhage21/Parallel-LLM-API-Requester/blob/main/src/Parallel_LLM_API_Requester.py
         """
+        chunk_count = len(text_chunks)
+        character_count = sum(len(chunk) for chunk in text_chunks)
+        word_count = sum(
+            len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
+        )
+        start_time = time.time()
         chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
         LoggingUtil().log_info(
             f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
@@ -365,6 +376,19 @@ class LLMUtil:
 
         # Collect metrics
         result = LLMTextRedactionResult(
+            rule_name="",
+            run_metrics={
+                "llm_analysis_time": round(time.time() - start_time, 2),
+                "llm_character_count": character_count,
+                "llm_approx_text_word_count": word_count,
+                "llm_text_chunk_count": chunk_count,
+                "llm_request_count": request_counter,
+                "llm_input_token_count": self.input_token_count,
+                "llm_output_token_count": self.output_token_count,
+                "llm_total_token_count": self.input_token_count
+                + self.output_token_count,
+                "llm_total_cost": self.total_cost,
+            },
             redaction_strings=text_to_redact_cleaned,
             metadata=LLMTextRedactionResult.LLMResultMetadata(
                 request_count=request_counter,

@@ -7,6 +7,7 @@ from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from core.util.llm_util import LLMUtil
+from core.redaction.result import LLMTextRedactionResult
 
 
 def test__llm_text_redactor__get_name():
@@ -43,10 +44,22 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
             "rule C",
         ],
     )
+    mock_llm_result = LLMTextRedactionResult(
+        rule_name="",
+        run_metrics=dict(),
+        redaction_strings=[],
+        metadata=LLMTextRedactionResult.LLMResultMetadata(
+            request_count=0,
+            input_token_count=0,
+            output_token_count=0,
+            total_token_count=0,
+            total_cost=0,
+        ),
+    )
 
     with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
         with patch.object(
-            LLMUtil, "analyse_text", return_value=None
+            LLMUtil, "analyse_text", return_value=mock_llm_result
         ) as mock_analyse_text:
             LLMTextRedactor.config = config
             LLMTextRedactor()._analyse_text("some text to analyse")

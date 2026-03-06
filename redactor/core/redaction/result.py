@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Union
 from dataclasses import dataclass, field
 from PIL.Image import Image
 from pydantic import BaseModel
@@ -6,7 +6,10 @@ from pydantic import BaseModel
 
 @dataclass(frozen=True)
 class RedactionResult:
-    pass
+    rule_name: str
+    """The name of the redaction rule that generated the result"""
+    run_metrics: Dict[str, Union[int, float, str]]
+    """Any analytical metrics for the result"""
 
 
 @dataclass(frozen=True)

@@ -15,6 +15,7 @@ import traceback
 from dotenv import load_dotenv
 import os
 import json
+from time import time
 
 
 load_dotenv(verbose=True, override=True)
@@ -167,6 +168,7 @@ class RedactionManager:
         )
 
         # Process the data
+        run_metrics = None
         if skip_redaction:
             LoggingUtil().log_info(
                 "skip_redaction=True, so the redaction process is being skipped"
@@ -183,6 +185,7 @@ class RedactionManager:
                 file_data, config_cleaned
             )
             LoggingUtil().log_info("Redaction process complete")
+            run_metrics = file_processor_inst.get_run_metrics()
 
         # Store a copy of the proposed redactions in redaction storage
         LoggingUtil().log_info("Saving a copy of the proposed redactions")
@@ -199,6 +202,7 @@ class RedactionManager:
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        return run_metrics
 
     def apply(self, params: Dict[str, Any]):
         """
@@ -254,6 +258,7 @@ class RedactionManager:
         proposed_redaction_file_data = file_processor_inst.apply(
             file_data, config_cleaned
         )
+        run_metrics = file_processor_inst.get_run_metrics()
 
         # Store a copy of the proposed redactions in redaction storage
         redaction_storage_io_inst.write(
@@ -266,6 +271,7 @@ class RedactionManager:
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        return run_metrics
 
     def save_logs(self, stage_name: str):
         """
@@ -309,6 +315,20 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
         )
 
+    def save_metrics(self, stage_name: str, metrics: Dict[str, Any]):
+        """
+        Save the given metrics to blob storage
+        """
+        metric_bytes = json.dumps(metrics, indent=4, default=str).encode()
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=metric_bytes,
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",
+        )
+
     def send_service_bus_completion_message(
         self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
     ):
@@ -339,19 +359,28 @@ class RedactionManager:
         :param Callable redaction_function: Redaction process function to run
         """
         stage = base_response["stage"]
+        start_time = time()
         fatal_error = None
         non_fatal_errors = []
         status = "SUCCESS"
         message = "Redaction process complete"
+        run_metrics = None
         try:
             payload_validator(params)
-            redaction_function(params)
+            run_metrics = redaction_function(params)
         except Exception as e:
             self.log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
             fatal_error = message
-        final_output = base_response | {"status": status, "message": message}
+        end_time = time()
+        total_execution_time = end_time - start_time
+        final_output = base_response | {
+            "status": status,
+            "message": message,
+            "execution_time_seconds": total_execution_time,
+            "run_metrics": run_metrics,
+        }
         try:
             self.send_service_bus_completion_message(params, final_output)
         except Exception as e:
@@ -366,6 +395,13 @@ class RedactionManager:
             non_fatal_errors.append(
                 f"Failed to write logs with the following error: {e}"
             )
+        if run_metrics:
+            try:
+                self.save_metrics(stage, run_metrics)
+            except Exception as e:
+                non_fatal_errors.append(
+                    f"Failed to write metrics with the following error: {e}"
+                )
         try:
             self.save_exception_log(stage)
         except Exception as e:
@@ -385,7 +421,12 @@ class RedactionManager:
                     "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
-        final_output = base_response | {"status": status, "message": message}
+        final_output = base_response | {
+            "status": status,
+            "message": message,
+            "execution_time_seconds": total_execution_time,
+            "run_metrics": run_metrics,
+        }
         return final_output
 
     def try_redact(self, params: Dict[str, Any]):
