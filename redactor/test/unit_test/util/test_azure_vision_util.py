@@ -1,4 +1,4 @@
-from mock import patch, Mock, call
+from mock import patch, Mock
 from typing import List
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from core.util.azure_vision_util import AzureVisionUtil
@@ -14,10 +14,8 @@ def MockImageAnalysisClientResult(people):
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
-    images = [
-        Image.new("RGB", (51, 51), i)
-        for i in range(0, 5)
-    ]
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
     def mock_detect_faces(inst, image, confidence):
         if image == images[0]:
             return "a"
@@ -29,6 +27,7 @@ def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
             return "d"
         if image == images[4]:
             return "e"
+
     with patch.object(AzureVisionUtil, "detect_faces", mock_detect_faces):
         actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
         expected_results = [
@@ -36,7 +35,7 @@ def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
             (images[1], "b"),
             (images[2], "c"),
             (images[3], "d"),
-            (images[4], "e")
+            (images[4], "e"),
         ]
         assert actual_results == expected_results
 
@@ -154,10 +153,8 @@ def MockTextAnalysisClientResult():
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
-    images = [
-        Image.new("RGB", (51, 51), i)
-        for i in range(0, 5)
-    ]
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
     def mock_detect_text(inst, image):
         if image == images[0]:
             return "a"
@@ -169,6 +166,7 @@ def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
             return "d"
         if image == images[4]:
             return "e"
+
     with patch.object(AzureVisionUtil, "detect_text", mock_detect_text):
         actual_results = AzureVisionUtil().detect_text_in_images(images)
         expected_results = [
@@ -176,7 +174,7 @@ def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
             (images[1], "b"),
             (images[2], "c"),
             (images[3], "d"),
-            (images[4], "e")
+            (images[4], "e"),
         ]
         assert actual_results == expected_results
 
