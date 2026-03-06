@@ -92,12 +92,12 @@ class RedactionManager:
 
     def _convert_job_id_to_storage_folder_name(self, job_id: str) -> str:
         if job_id is None:
-            raise ValueError("Job id cannot be None")
+            raise ValueError("Job ID cannot be None")
         if not isinstance(job_id, str):
-            raise ValueError(f"Job id must be a string, but was a {type(job_id)}")
+            raise ValueError(f"Job ID must be a string, but was a {type(job_id)}")
         if len(job_id) > 40:
             raise ValueError(
-                f"Job id must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
+                f"Job ID must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
         return self._clean_job_id(job_id)
 
@@ -114,14 +114,14 @@ class RedactionManager:
             job_id_parts = job_id.split(":")
             if len(job_id_parts) != 2:
                 LoggingUtil().log_info(
-                    f"Job id '{job_id}' contains a ':', but does not split into exactly 2 parts."
+                    f"Job ID '{job_id}' contains a ':', but does not split into exactly 2 parts."
                     " Ignoring versioning."
                 )
                 return self._clean_job_id(job_id), None
 
             if not job_id_parts[1].isdigit():
                 LoggingUtil().log_info(
-                    f"Job id '{job_id}' contains a ':', but the part after the ':' is not an integer. "
+                    f"Job ID '{job_id}' contains a ':', but the part after the ':' is not an integer. "
                     " Ignoring versioning."
                 )
                 return self._clean_job_id(job_id), None
@@ -355,6 +355,10 @@ class RedactionManager:
         :param redaction_storage_io_inst: The AzureBlobIO instance to use for accessing blob storage
         """
         base_job_id, version = self._get_base_job_id_and_version(self.job_id)
+        LoggingUtil().log_info(
+            f"Comparing proposed redactions with final redactions for job ID '{self.job_id}'"
+            f" (base job ID '{base_job_id}' and version '{version}')'"
+        )
 
         # Current version will be the most recent file uploaded
         # Job ID for proposed redactions will be at most version-2
@@ -363,6 +367,11 @@ class RedactionManager:
             "redactiondata"
         )
         if not proposed_version:
+            LoggingUtil().log_info(
+                f"Job ID '{self.job_id}' does not correspond to a versioned file name,"
+                f" so the proposed redactions file cannot be identified for comparison."
+                " Skipping analytics for this file."
+            )
             return
 
         # Check all possible versions from version-2 to 1
@@ -379,9 +388,8 @@ class RedactionManager:
                 proposed_redactions_dict = json.load(proposed_redactions_json)
                 if not proposed_redactions_dict:
                     LoggingUtil().log_info(
-                        f"Proposed redactions file at '{blob_path}' is empty, so skipping analytics for this file"
+                        f"Proposed redactions file at '{blob_path}' is empty."
                     )
-                    return
                 # Compare proposed redactions with final redactions and log differences
                 redaction_analytics = self._compare_redactions(
                     proposed_redactions_dict, final_redactions_dict
@@ -389,6 +397,9 @@ class RedactionManager:
 
                 # Save to analytics container
                 try:
+                    LoggingUtil().log_info(
+                        f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+                    )
                     self.save_dict_to_blob_json(
                         redaction_analytics,
                         redaction_storage_io_inst,
@@ -398,12 +409,17 @@ class RedactionManager:
                 except ResourceExistsError as e:
                     # TODO Refine logic: should be saved, but what should the name be?
                     LoggingUtil().log_exception_with_message(
-                        f"An analytics file for job id '{base_job_id}' already exists",
+                        f"An analytics file for job ID '{base_job_id}' already exists",
                         e,
                     )
                 return
 
             proposed_version -= 1
+
+        LoggingUtil().log_info(
+            f"No proposed redactions file found for job ID '{self.job_id}' with base job ID '{base_job_id}'"
+            f" and versions up to '{proposed_version}'. Skipping analytics for this file."
+        )
 
     def apply(self, params: Dict[str, Any]):
         """
