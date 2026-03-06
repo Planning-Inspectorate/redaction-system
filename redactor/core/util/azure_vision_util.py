@@ -175,15 +175,10 @@ class AzureVisionUtil:
             image.save(byte_stream, format="PNG")
             image_bytes = byte_stream.getvalue()
 
-            try:
-                result = self.vision_client.analyze(
-                    image_bytes,
-                    [VisualFeatures.READ],
-                )
-            except Exception as e:
-                LoggingUtil().log_info("Error analysing image for text")
-                LoggingUtil().log_exception(e)
-                return None
+            result = self.vision_client.analyze(
+                image_bytes,
+                [VisualFeatures.READ],
+            )
 
             text_detected = tuple(
                 (
