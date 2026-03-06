@@ -521,9 +521,9 @@ async def _run_one(
             if PERF_CHECK_OUTPUT_ON_APP_FAIL:
                 out_exists = await asyncio.to_thread(
                     az_blob_exists,
-                    storage_account=storage_account,
-                    container_name=container_name,
-                    blob_name=out_blob,
+                    storage_account,
+                    container_name,
+                    out_blob,
                 )
 
                 # If configured as a sampled check and blob wasn't immediately visible,
@@ -693,9 +693,9 @@ async def _run_one(
                 # clearly no output yet.
                 out_exists = await asyncio.to_thread(
                     az_blob_exists,
-                    storage_account=storage_account,
-                    container_name=container_name,
-                    blob_name=out_blob,
+                    storage_account,
+                    container_name,
+                    out_blob,
                 )
 
                 # For sampled jobs, allow a short grace period if the fast check
@@ -891,19 +891,19 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     times = [r.seconds for r in results]
     stats = _percentiles(times)
 
-    successes = [r for r in results if r.outcome == Outcome.SUCCESS]
+    outcome_successes = [r for r in results if r.outcome == Outcome.SUCCESS]
     recovered_successes = [
-        r for r in successes if r.runtime_status == "CompletedByBlobExistence"
+        r for r in outcome_successes if r.runtime_status == "CompletedByBlobExistence"
     ]
     app_failures = [r for r in results if r.outcome == Outcome.APP_FAIL]
     test_failures = [r for r in results if r.outcome == Outcome.TEST_FAIL]
+    successful_outputs = [r for r in results if r.out_blob_exists is True]
     app_fail_with_output = [r for r in app_failures if r.out_blob_exists is True]
     app_fail_without_output = [r for r in app_failures if r.out_blob_exists is False]
     app_fail_unknown_output = [r for r in app_failures if r.out_blob_exists is None]
 
     # throughput: successes per wall-clock second
-    throughput = (len(successes) / wall_elapsed) if wall_elapsed > 0 else 0.0
-    effective_output_success = len(successes) + len(app_fail_with_output)
+    throughput = (len(successful_outputs) / wall_elapsed) if wall_elapsed > 0 else 0.0
 
     exists_checked = sum(1 for r in results if r.checked_blob_exists)
     exists_failures = [
@@ -921,7 +921,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     )
     print(f"recovery_exists_wait_s={PERF_RECOVERY_EXISTS_WAIT_S}")
     print(
-        f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
+        f"success={len(successful_outputs)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
     )
     print(
         "app_fail_breakdown="
@@ -930,10 +930,10 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         f"unknown_output:{len(app_fail_unknown_output)}"
     )
     print(
-        f"success_breakdown=normal:{len(successes) - len(recovered_successes)} "
-        f"recovered:{len(recovered_successes)}"
+        f"success_breakdown=outcome_success:{len(outcome_successes)} "
+        f"recovered:{len(recovered_successes)} "
+        f"from_app_fail_output:{len(app_fail_with_output)}"
     )
-    print(f"effective_output_success={effective_output_success}/{len(results)}")
     print(
         f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}"
     )
