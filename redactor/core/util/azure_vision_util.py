@@ -15,7 +15,7 @@ from azure.identity import (
     AzureCliCredential,
 )
 from azure.core.exceptions import HttpResponseError
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 load_dotenv(verbose=True)
@@ -51,13 +51,20 @@ class AzureVisionUtil:
     ):
         responses: List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int], ...]]] = []
         with ThreadPoolExecutor(100) as tpe:
-            ai_vision_responses = tpe.map(
-                self.detect_faces, images, [confidence_threshold] * len(images)
-            )
-            for i, thread_response in enumerate(ai_vision_responses):
-                image = images[i]
-                # detect_faces does not raise any exceptions, so this is safe
-                responses.append((image, thread_response))
+            ai_vision_responses_future_map = {
+                tpe.submit(self.detect_faces, image, confidence_threshold): image
+                for image in images
+            }
+            for future in as_completed(ai_vision_responses_future_map):
+                try:
+                    image = ai_vision_responses_future_map[future]
+                    faces = future.result()
+                    responses.append((image, faces))
+                except Exception as e:
+                    LoggingUtil().log_exception_with_message(
+                        "Image face detection failed with the following excepetion: ",
+                        e,
+                    )
         return responses
 
     @retry(
@@ -135,10 +142,23 @@ class AzureVisionUtil:
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
         with ThreadPoolExecutor(100) as tpe:
-            ai_vision_responses = tpe.map(self.detect_text, images)
-            for i, thread_response in enumerate(ai_vision_responses):
-                image = images[i]
-                responses.append((image, thread_response))
+            ai_vision_responses_future_map = {
+                tpe.submit(
+                    self.detect_text,
+                    image,
+                ): image
+                for image in images
+            }
+            for future in as_completed(ai_vision_responses_future_map):
+                try:
+                    image = ai_vision_responses_future_map[future]
+                    text = future.result()
+                    responses.append((image, text))
+                except Exception as e:
+                    LoggingUtil().log_exception_with_message(
+                        "Image text detection failed with the following excepetion: ",
+                        e,
+                    )
         return responses
 
     @log_to_appins
