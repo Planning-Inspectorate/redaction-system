@@ -44,19 +44,25 @@ def test__image_llm_text_redactor__redact():
             "rule C",
         ],
     )
-    detect_text_side_effects = (
+    detect_text_in_images_return_value = (
         (
-            ("Klingon", (10, 10, 50, 50)),
-            ("Romulan", (100, 100, 50, 50)),
-            ("Jem'Hadar", (1, 2, 3, 4)),
+            config.images[0],
+            (
+                ("Klingon", (10, 10, 50, 50)),
+                ("Romulan", (100, 100, 50, 50)),
+                ("Jem'Hadar", (1, 2, 3, 4)),
+            ),
         ),
         (
-            ("Cardassian", (30, 30, 50, 50)),
-            ("Vulcan", (4, 8, 12, 16)),
+            config.images[1],
+            (("Cardassian", (30, 30, 50, 50)), ("Vulcan", (4, 8, 12, 16))),
         ),
         (
-            ("Klingon", (10, 10, 50, 50)),  # Two entries for the same word
-            ("Klingon", (100, 100, 50, 50)),
+            config.images[2],
+            (
+                ("Klingon", (10, 10, 50, 50)),  # Two entries for the same word
+                ("Klingon", (100, 100, 50, 50)),
+            ),
         ),
     )
     expected_results = ImageRedactionResult(
@@ -100,7 +106,9 @@ def test__image_llm_text_redactor__redact():
     with (
         mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
         mock.patch.object(
-            AzureVisionUtil, "detect_text", side_effect=detect_text_side_effects
+            AzureVisionUtil,
+            "detect_text_in_images",
+            return_value=detect_text_in_images_return_value,
         ),
         mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
         mock.patch.object(
