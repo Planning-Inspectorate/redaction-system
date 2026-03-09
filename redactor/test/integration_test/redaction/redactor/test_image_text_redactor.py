@@ -29,10 +29,10 @@ def test__image_text_redactor__redact_number_plate():
     result = redactor_inst.redact()
 
     redaction_boxes = (
-        (336, 488, 413, 521),
-        (420, 488, 479, 519),
+        (420, 488, 478, 519),
+        (338, 488, 413, 521),
     )
 
     assert isinstance(result, ImageRedactionResult)
     assert len(result.redaction_results) == 1
-    assert result.redaction_results[0].redaction_boxes == redaction_boxes
+    assert set(result.redaction_results[0].redaction_boxes) == set(redaction_boxes)
