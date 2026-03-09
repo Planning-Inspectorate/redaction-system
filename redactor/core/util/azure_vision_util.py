@@ -16,6 +16,7 @@ from azure.identity import (
 )
 from azure.core.exceptions import HttpResponseError
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 
 
 load_dotenv(verbose=True)
@@ -33,6 +34,7 @@ def handle_last_retry_error(retry_state):
 class AzureVisionUtil:
     _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
     _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
+    CACHE_LOCK = Lock()
 
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
@@ -92,11 +94,12 @@ class AzureVisionUtil:
         """
         try:
             # Check cache
-            faces_detected = next(
-                item["faces"]
-                for item in self._IMAGE_FACE_CACHE
-                if item["image"] == image
-            )
+            with self.CACHE_LOCK:
+                faces_detected = next(
+                    item["faces"]
+                    for item in self._IMAGE_FACE_CACHE
+                    if item["image"] == image
+                )
             LoggingUtil().log_info("Using cached face detection result.")
         except StopIteration:
             # Not in cache, analyse image
@@ -188,11 +191,12 @@ class AzureVisionUtil:
         """
         try:
             # Check cache
-            text_detected = next(
-                item["text"]
-                for item in self._IMAGE_TEXT_CACHE
-                if item["image"] == image
-            )
+            with self.CACHE_LOCK:
+                text_detected = next(
+                    item["text"]
+                    for item in self._IMAGE_TEXT_CACHE
+                    if item["image"] == image
+                )
             LoggingUtil().log_info("Using cached text detection result.")
         except StopIteration:
             byte_stream = BytesIO()
