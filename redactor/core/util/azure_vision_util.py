@@ -74,7 +74,9 @@ class AzureVisionUtil:
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
-        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying image face detection..."),
+        before_sleep=lambda retry_state: LoggingUtil().log_info(
+            "Retrying image face detection..."
+        ),
         retry_error_callback=handle_last_retry_error,
     )
     def detect_faces(
@@ -99,7 +101,7 @@ class AzureVisionUtil:
         except StopIteration:
             # Not in cache, analyse image
             byte_stream = BytesIO()
-            image.save(byte_stream, format="PNG")
+            image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
 
             try:
@@ -169,7 +171,9 @@ class AzureVisionUtil:
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
-        before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying image text detection..."),
+        before_sleep=lambda retry_state: LoggingUtil().log_info(
+            "Retrying image text detection..."
+        ),
         retry_error_callback=handle_last_retry_error,
     )
     def detect_text(
@@ -192,7 +196,7 @@ class AzureVisionUtil:
             LoggingUtil().log_info("Using cached text detection result.")
         except StopIteration:
             byte_stream = BytesIO()
-            image.save(byte_stream, format="PNG")
+            image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
 
             try:
