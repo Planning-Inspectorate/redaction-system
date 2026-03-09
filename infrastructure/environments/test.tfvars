@@ -5,5 +5,6 @@ functionapp_cidr_block      = "10.36.5.0/24"
 function_app_python_version = 3.13
 storage_containers = [
   "redactiondata",
-  "test"
+  "test",
+  "analytics"
 ]

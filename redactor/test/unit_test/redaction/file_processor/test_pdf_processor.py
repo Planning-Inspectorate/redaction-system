@@ -1,9 +1,10 @@
 import pymupdf
 import pytest
+import pandas as pd
 
 from PIL import Image
 from io import BytesIO
-from mock import patch, Mock
+from mock import patch, Mock, MagicMock
 
 from core.redaction.file_processor import (
     PDFProcessor,
@@ -89,6 +90,217 @@ def test__pdf_processor__extract_pdf_images():
     assert expected_as_dict == actual_as_dict
     # Comparing images is not possible due to lossy compression in the PDF, so just check an image is returned
     assert isinstance(actual_image, Image.Image)
+
+
+def test__pdf_processor__extract_pdf_annotations():
+    mock_document = pymupdf.open()
+    mock_page = mock_document.new_page()
+
+    mock_annotations = [MagicMock(spec=pymupdf.Annot) for _ in range(3)]
+    mock_types = [
+        pymupdf.PDF_ANNOT_HIGHLIGHT,
+        pymupdf.PDF_ANNOT_HIGHLIGHT,
+        pymupdf.PDF_ANNOT_REDACT,
+    ]
+    vertices = (
+        [(0, 0), (0, 1), (1, 0), (1, 1)],
+        [(2, 2), (2, 3), (3, 2), (3, 3)],
+        [(4, 4), (4, 5), (5, 4), (5, 5)],
+    )
+    types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
+    for i, mock_annotation in enumerate(mock_annotations):
+        mock_annotation.info = {
+            "content": f"Annotation {i}",
+        }
+        mock_annotation.type = types[i]
+        mock_annotation.vertices = vertices[i]
+        mock_annotation._yielded = False
+
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch(
+            "pymupdf.Page.annot_xrefs", return_value=zip(mock_annotations, mock_types)
+        ),
+        patch(
+            "pymupdf.Page.load_annot",
+            side_effect=mock_annotations,
+        ),
+        patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
+        patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_page),
+    ):
+        expected_annotations = (
+            {
+                "page_number": 0,
+                "annotations": [
+                    {
+                        "annot": mock_annotations[0],
+                        "content": "Annotation 0",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(0, 0, 1, 1),
+                        "text": "hello",
+                    },
+                    {
+                        "annot": mock_annotations[1],
+                        "content": "Annotation 1",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(2, 2, 3, 3),
+                        "text": "world",
+                    },
+                    {
+                        "annot": mock_annotations[2],
+                        "content": "Annotation 2",
+                        "type": "Redact",
+                        "rect": pymupdf.Rect(4, 4, 5, 5),
+                    },
+                ],
+            },
+        )
+        actual_annotations = PDFProcessor()._extract_pdf_annotations(
+            BytesIO(), return_annot=True
+        )
+
+    assert expected_annotations == actual_annotations
+
+
+def test__pdf_processor__extract_pdf_annotations__highlight_only():
+    mock_document = pymupdf.open()
+    mock_page = mock_document.new_page()
+
+    mock_annotations = [MagicMock(spec=pymupdf.Annot) for _ in range(3)]
+    mock_types = [
+        pymupdf.PDF_ANNOT_HIGHLIGHT,
+        pymupdf.PDF_ANNOT_HIGHLIGHT,
+        pymupdf.PDF_ANNOT_REDACT,
+    ]
+    vertices = (
+        [(0, 0), (0, 1), (1, 0), (1, 1)],
+        [(2, 2), (2, 3), (3, 2), (3, 3)],
+        [(4, 4), (4, 5), (5, 4), (5, 5)],
+    )
+    types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
+    for i, mock_annotation in enumerate(mock_annotations):
+        mock_annotation.info = {
+            "content": f"Annotation {i}",
+        }
+        mock_annotation.type = types[i]
+        mock_annotation.vertices = vertices[i]
+        mock_annotation._yielded = False
+
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch(
+            "pymupdf.Page.annot_xrefs", return_value=zip(mock_annotations, mock_types)
+        ),
+        patch(
+            "pymupdf.Page.load_annot",
+            side_effect=mock_annotations,
+        ),
+        patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
+        patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_page),
+    ):
+        expected_annotations = (
+            {
+                "page_number": 0,
+                "annotations": [
+                    {
+                        "content": "Annotation 0",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(0, 0, 1, 1),
+                        "text": "hello",
+                    },
+                    {
+                        "content": "Annotation 1",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(2, 2, 3, 3),
+                        "text": "world",
+                    },
+                ],
+            },
+        )
+        actual_annotations = PDFProcessor()._extract_pdf_annotations(
+            BytesIO(), annotation_class=[pymupdf.PDF_ANNOT_HIGHLIGHT]
+        )
+
+    assert expected_annotations == actual_annotations
+
+
+def test__pdf_processor__get_proposed_redactions():
+    creation_date = "D:20260103123456+01'00'"
+    creation_timestamp = pd.Timestamp(
+        year=2026, month=1, day=3, hour=12, minute=34, second=56
+    )
+    annotations = (
+        {
+            "page_number": 0,
+            "annotations": [
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(0, 0, 1, 1),
+                    "text": "Redact this",
+                    "creationDate": creation_date,
+                    "modDate": "",
+                },
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this too",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(2, 2, 3, 3),
+                    "text": "Redact this",
+                    "creationDate": creation_date,
+                    "modDate": "",
+                },
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this too",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(0, 2, 1, 3),
+                    "text": "too.",
+                    "creationDate": creation_date,
+                    "modDate": "",
+                },
+            ],
+        },
+    )
+    document_bytes = BytesIO()
+    expected_dict = [
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this",
+            "annotatedText": "Redact this",
+            "rect": (0.0, 0.0, 1.0, 1.0),
+            "creationDate": creation_timestamp,
+            "isRedactionCandidate": True,
+            "modDate": pd.NaT,
+        },
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this too",
+            "annotatedText": "Redact this",
+            "rect": (2.0, 2.0, 3.0, 3.0),
+            "creationDate": creation_timestamp,
+            "isRedactionCandidate": True,
+            "modDate": pd.NaT,
+        },
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "Redact this too",
+            "annotatedText": "too.",
+            "rect": (0.0, 2.0, 1.0, 3.0),
+            "creationDate": creation_timestamp,
+            "isRedactionCandidate": True,
+            "modDate": pd.NaT,
+        },
+    ]
+    with patch.object(
+        PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+    ):
+        actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
+    assert expected_dict == actual_dict
 
 
 def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
@@ -883,6 +1095,7 @@ def test__pdf_processor__apply_provisional_image_redactions():
                     image_dimensions=(100, 100),
                     source_image=source_image,
                     redaction_boxes=((0, 0, 100, 100),),
+                    names=("test_redaction",),
                 ),
             ),
         )

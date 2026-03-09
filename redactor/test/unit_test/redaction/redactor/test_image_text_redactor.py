@@ -103,6 +103,7 @@ def test__image_text_redactor__redact():
                 image_dimensions=(500, 1000),
                 source_image=config.images[0],
                 redaction_boxes=tuple(x[1] for x in text_rect_map),
+                names=tuple("AB12 CDE" for _ in text_rect_map),
             ),
         ),
     )

@@ -67,19 +67,25 @@ def test__image_llm_text_redactor__redact():
                 image_dimensions=(1000, 1000),
                 source_image=config.images[0],
                 redaction_boxes=(
-                    (100, 100, 50, 50),
                     (10, 10, 50, 50),
+                    (100, 100, 50, 50),
                 ),
+                names=("Klingon", "Romulan"),
             ),
             ImageRedactionResult.Result(
                 image_dimensions=(200, 100),
                 source_image=config.images[1],
                 redaction_boxes=((4, 8, 12, 16),),
+                names=("Vulcan",),
             ),
             ImageRedactionResult.Result(
                 image_dimensions=(1000, 1000),
                 source_image=config.images[2],
-                redaction_boxes=((100, 100, 50, 50), (10, 10, 50, 50)),
+                redaction_boxes=(
+                    (10, 10, 50, 50),
+                    (100, 100, 50, 50),
+                ),
+                names=("Klingon", "Klingon"),
             ),
         ),
     )

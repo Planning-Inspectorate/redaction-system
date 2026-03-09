@@ -73,7 +73,7 @@ class LLMUtil:
     ):
         self.config: LLMUtilConfig = config
 
-        # Initialize OpenAI client for Azure
+        # Initialise OpenAI client for Azure
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
