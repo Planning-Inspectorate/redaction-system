@@ -1,5 +1,6 @@
 import pymupdf
 import pytest
+import pandas as pd
 
 from PIL import Image
 from io import BytesIO
