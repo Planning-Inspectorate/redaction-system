@@ -5,7 +5,7 @@ import time
 import os
 
 
-class MemoryProfiler():
+class MemoryProfiler:
     def __init__(self, trace_delay: int = 30):
         self.trace_delay = trace_delay
         tracemalloc.start()
