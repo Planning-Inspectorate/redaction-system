@@ -32,6 +32,7 @@ from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
 from core.util.metric_util import MetricUtil
 from time import time
+from PIL.Image import Image
 
 
 class Redactor(ABC):
@@ -184,6 +185,11 @@ class ImageRedactor(Redactor):  # pragma: no cover
         for face_detection_result in face_detection_results:
             image_to_redact = face_detection_result[0]
             faces_detected = face_detection_result[1]
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if faces_detected is None:
+                faces_detected = (
+                    (0, 0, image_to_redact.width, image_to_redact.height),
+                )
             results.append(
                 ImageRedactionResult.Result(
                     image_dimensions=(image_to_redact.width, image_to_redact.height),
@@ -333,7 +339,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
     @classmethod
     def _create_redaction_result(
-        cls, text_rects_to_redact, image_to_redact
+        cls, text_rects_to_redact, image_to_redact: Image
     ) -> ImageRedactionResult.Result:
         # Remove any duplicates
         text_rects_to_redact = list(dict.fromkeys(text_rects_to_redact))
@@ -348,6 +354,23 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             names=tuple(
                 redaction_string for _, redaction_string in text_rects_to_redact
             ),
+        )
+
+    @classmethod
+    def _create_failed_redaction_result(
+        cls, image_to_redact: Image
+    ) -> ImageRedactionResult.Result:
+        """
+        Create a redaction result that covers the entire image, for cases where analysis against the image raised an exception
+        """
+        return ImageRedactionResult.Result(
+            image_dimensions=(
+                image_to_redact.width,
+                image_to_redact.height,
+            ),
+            source_image=image_to_redact,
+            redaction_boxes=((0, 0, image_to_redact.width, image_to_redact.height),),
+            names=(None,),
         )
 
     @log_to_appins
@@ -368,6 +391,10 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if text_rect_map is None:
+                results.append(self._create_failed_redaction_result(image_to_redact))
+                continue
             try:
                 text_content = " ".join([x[0] for x in text_rect_map])
 
@@ -459,6 +486,10 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if text_rect_map is None:
+                results.append(self._create_failed_redaction_result(image_to_redact))
+                continue
             try:
                 LoggingUtil().log_info(
                     f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
@@ -476,6 +507,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 all_text_redaction_metrics.append(text_redaction_metrics)
                 total_llm_analysis_time += time() - llm_analysis_time_start
 
+                # If all of the content was identified for redaction, then this means that the text could not be analysed,
+                # or the image is full of PII
+                if redaction_strings == text_content:
+                    results.append(
+                        self._create_failed_redaction_result(image_to_redact)
+                    )
+                    continue
                 # Identify text rectangles to redact based on redaction strings
                 text_analysis_start_time = time()
                 text_rects_to_redact = []

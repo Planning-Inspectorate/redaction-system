@@ -8,6 +8,7 @@ from core.redaction.config import (
 from core.redaction.result import (
     ImageRedactionResult,
 )
+from test.util.util import compare_unashable_lists
 from PIL import Image
 import mock
 import dataclasses
@@ -125,3 +126,56 @@ def test__image_text_redactor__redact():
         cleaned_actual_results = dataclasses.asdict(actual_results)
         cleaned_actual_results.pop("run_metrics")
         assert cleaned_expected_results == cleaned_actual_results
+
+
+def test__image_text_redactor__redact__with_analysis_failure():
+    """
+    - Given I have two images which we imagine contains some text
+    - When I call redact and one of the images raises an exception during analysis
+    - Then only the bounding boxes for the sensitive names should be returned,
+    alongside metadata for the corresponding image
+    """
+    config = ImageRedactionConfig(
+        name="config name",
+        redactor_type="ImageTextRedaction",
+        images=[
+            Image.new("RGB", (500, 1000)),
+        ],
+    )
+    expected_results = ImageRedactionResult(
+        rule_name="config name",
+        run_metrics="",
+        redaction_results=(
+            ImageRedactionResult.Result(
+                image_dimensions=(500, 1000),
+                source_image=config.images[0],
+                redaction_boxes=(
+                    (0, 0, config.images[0].width, config.images[0].height),
+                ),
+                names=(None,),
+            ),
+        ),
+    )
+    with (
+        mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(
+            AzureVisionUtil, "detect_text", side_effect=Exception("Some exception")
+        ),
+        mock.patch.object(
+            ImageTextRedactor,
+            "detect_number_plates",
+            return_value=tuple(["AB12 CDE"]),
+        ),
+    ):
+        inst = ImageTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        expected_redaction_boxes = cleaned_expected_results.pop("redaction_results")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        actual_redaction_boxes = cleaned_actual_results.pop("redaction_results")
+        assert cleaned_expected_results == cleaned_actual_results
+        compare_unashable_lists(expected_redaction_boxes, actual_redaction_boxes)

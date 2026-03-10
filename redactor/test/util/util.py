@@ -7,6 +7,7 @@ from azure.identity.aio import (
     ChainedTokenCredential,
 )
 import asyncio
+import json
 
 
 class ServiceBusUtil:
@@ -96,3 +97,25 @@ class ServiceBusUtil:
                 "redaction-process-complete", "redaction-system"
             )
         )
+
+
+def compare_unashable_lists(expected_results, actual_results):
+    """
+    Compare two lists. This is used for comparing unhashable elements when you do not care about the order
+    """
+    matches = [val in actual_results for val in expected_results]
+    in_expected_but_not_actual = [
+        val for val in expected_results if val not in actual_results
+    ]
+    in_actual_but_not_expected = [
+        val for val in actual_results if val not in expected_results
+    ]
+    message = (
+        "The following values were expected but could not be found:"
+        f" {json.dumps(in_expected_but_not_actual, indent=4, default=str)}. The "
+        f"following values were found but were not expected {json.dumps(in_actual_but_not_expected, indent=4, default=str)}\n"
+        f"Expected value: {json.dumps(expected_results, indent=4, default=str)}\n"
+        f"Actual value: {json.dumps(actual_results, indent=4, default=str)}\n"
+    )
+    assert len(expected_results) == len(actual_results), message
+    assert all(matches), message

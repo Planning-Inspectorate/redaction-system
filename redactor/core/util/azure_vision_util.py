@@ -1,5 +1,5 @@
 import os
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Union
 from PIL import Image
 from io import BytesIO
 from dotenv import load_dotenv
@@ -51,22 +51,25 @@ class AzureVisionUtil:
     def detect_faces_in_images(
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ):
-        responses: List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int], ...]]] = []
+        responses: List[
+            Tuple[Image.Image, Union[None, Tuple[Tuple[int, int, int, int], ...]]]
+        ] = []
         with ThreadPoolExecutor(100) as tpe:
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
             }
             for future in as_completed(ai_vision_responses_future_map):
+                image = ai_vision_responses_future_map[future]
+                faces = None
                 try:
-                    image = ai_vision_responses_future_map[future]
                     faces = future.result()
-                    responses.append((image, faces))
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
                         "Image face detection failed with the following excepetion: ",
                         e,
                     )
+                responses.append((image, faces))
         return responses
 
     @retry(
@@ -107,17 +110,10 @@ class AzureVisionUtil:
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
 
-            try:
-                result = self.vision_client.analyze(
-                    image_bytes,
-                    [VisualFeatures.PEOPLE],
-                )
-            except HttpResponseError as e:
-                raise e
-            except Exception as e:
-                LoggingUtil().log_info("Error analysing image for faces")
-                LoggingUtil().log_exception(e)
-                return None
+            result = self.vision_client.analyze(
+                image_bytes,
+                [VisualFeatures.PEOPLE],
+            )
 
             faces_detected = tuple(
                 {
@@ -144,7 +140,9 @@ class AzureVisionUtil:
     @log_to_appins
     def detect_text_in_images(self, images: List[Image.Image]):
         responses: List[
-            Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
+            Tuple[
+                Image.Image, Union[None, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
+            ]
         ] = []
         with ThreadPoolExecutor(100) as tpe:
             ai_vision_responses_future_map = {
@@ -155,15 +153,16 @@ class AzureVisionUtil:
                 for image in images
             }
             for future in as_completed(ai_vision_responses_future_map):
+                image = ai_vision_responses_future_map[future]
+                text = None
                 try:
-                    image = ai_vision_responses_future_map[future]
                     text = future.result()
-                    responses.append((image, text))
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
                         "Image text detection failed with the following excepetion: ",
                         e,
                     )
+                responses.append((image, text))
         return responses
 
     @log_to_appins
@@ -203,17 +202,10 @@ class AzureVisionUtil:
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
 
-            try:
-                result = self.vision_client.analyze(
-                    image_bytes,
-                    [VisualFeatures.READ],
-                )
-            except HttpResponseError as e:
-                raise e
-            except Exception as e:
-                LoggingUtil().log_info("Error analysing image for text")
-                LoggingUtil().log_exception(e)
-                return None
+            result = self.vision_client.analyze(
+                image_bytes,
+                [VisualFeatures.READ],
+            )
 
             text_detected = tuple(
                 (

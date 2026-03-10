@@ -324,7 +324,6 @@ class LLMUtil:
         # Initialise LLM interface
         request_counter = 0
         text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
@@ -356,14 +355,14 @@ class LLMUtil:
 
                 try:
                     # Get redaction result for chunk and append to overall results
-                    response, redaction_strings = future.result()
-                    responses.append(response)
-                    text_to_redact.extend(redaction_strings)
+                    redaction_strings = future.result()[1]
                 except Exception as e:
+                    redaction_strings = [chunk]
                     LoggingUtil().log_exception_with_message(
                         f"Function call with chunk ID ({hash(chunk)}) generated an exception:",
                         e,
                     )
+                text_to_redact.extend(redaction_strings)
 
                 # Check budget after each request
                 if self.config.budget and self.total_cost >= self.config.budget:

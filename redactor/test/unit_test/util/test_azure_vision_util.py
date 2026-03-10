@@ -3,6 +3,7 @@ from typing import List
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from core.util.azure_vision_util import AzureVisionUtil
 from core.util.logging_util import LoggingUtil
+from test.util.util import compare_unashable_lists
 from PIL import Image
 
 
@@ -37,9 +38,7 @@ def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
             (images[3], "d"),
             (images[4], "e"),
         ]
-        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
-            expected_results, key=lambda x: x[1]
-        )
+        compare_unashable_lists(expected_results, actual_results)
 
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
@@ -63,13 +62,12 @@ def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_v
         actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
         expected_results = [
             (images[0], "a"),
+            (images[1], None),
             (images[2], "c"),
             (images[3], "d"),
             (images[4], "e"),
         ]
-        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
-            expected_results, key=lambda x: x[1]
-        )
+        compare_unashable_lists(expected_results, actual_results)
 
 
 @patch("core.util.azure_vision_util.BytesIO", autospec=True)
@@ -208,9 +206,7 @@ def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
             (images[3], "d"),
             (images[4], "e"),
         ]
-        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
-            expected_results, key=lambda x: x[1]
-        )
+        compare_unashable_lists(expected_results, actual_results)
 
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
@@ -235,12 +231,11 @@ def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vi
         expected_results = [
             (images[0], "a"),
             (images[1], "b"),
+            (images[2], None),
             (images[3], "d"),
             (images[4], "e"),
         ]
-        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
-            expected_results, key=lambda x: x[1]
-        )
+        compare_unashable_lists(expected_results, actual_results)
 
 
 @patch("core.util.azure_vision_util.BytesIO", autospec=True)
