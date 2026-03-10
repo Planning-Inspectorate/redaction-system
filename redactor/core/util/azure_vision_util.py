@@ -50,7 +50,7 @@ class AzureVisionUtil:
 
     def detect_faces_in_images(
         self, images: list[Image.Image], confidence_threshold: float = 0.5
-    ) -> list[tuple[Image.Image, tuple[tuple[int, int, int, int]]]]:
+    ) -> list[tuple[Image.Image, None | tuple[tuple[int, int, int, int]]]]:
         responses = []
         max_workers = get_max_workers()
         LoggingUtil().log_info(
@@ -63,8 +63,9 @@ class AzureVisionUtil:
                 for image in images
             }
             for future in as_completed(ai_vision_responses_future_map):
+                image = ai_vision_responses_future_map[future]
+                faces = None
                 try:
-                    image = ai_vision_responses_future_map[future]
                     faces = future.result()
                     responses.append((image, faces))
                     finished_futures += 1
@@ -189,8 +190,9 @@ class AzureVisionUtil:
                 for image in images
             }
             for future in as_completed(ai_vision_responses_future_map):
+                image = ai_vision_responses_future_map[future]
+                text = None
                 try:
-                    image = ai_vision_responses_future_map[future]
                     text = future.result()
                     responses.append((image, text))
                     finished_futures += 1
