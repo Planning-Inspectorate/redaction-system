@@ -6,6 +6,7 @@ from time import time
 from typing import Any, ClassVar
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from PIL import Image
 
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
@@ -190,18 +191,19 @@ class ImageRedactor(Redactor):  # pragma: no cover
             self.config.images, self.config.confidence_threshold
         )
         for image_to_redact, faces_detected in face_detection_results:
-            if faces_detected:
-                results.append(
-                    ImageRedactionResult.Result(
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                        redaction_boxes=faces_detected,
-                        names=tuple(["Face Detected" for _ in faces_detected]),
-                    )
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if faces_detected is None:
+                faces_detected = (
+                    (0, 0, image_to_redact.width, image_to_redact.height),
                 )
+            results.append(
+                ImageRedactionResult.Result(
+                    image_dimensions=(image_to_redact.width, image_to_redact.height),
+                    source_image=image_to_redact,
+                    redaction_boxes=faces_detected,
+                    names=tuple(["Face Detected" for _ in faces_detected]),
+                )
+            )
         end_time = time()
         total_time = end_time - start_time
 
@@ -327,7 +329,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
     @classmethod
     def _create_redaction_result(
-        cls, text_rects_to_redact, image_to_redact
+        cls,
+        text_rects_to_redact: list[tuple[tuple[int, int, int, int], str]],
+        image_to_redact: Image,
     ) -> ImageRedactionResult.Result | None:
         # Remove any duplicates
         text_rects_to_redact = list(dict.fromkeys(text_rects_to_redact))
@@ -386,6 +390,23 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             bbox_time,
         )
 
+    @classmethod
+    def _create_failed_redaction_result(
+        cls, image_to_redact: Image
+    ) -> ImageRedactionResult.Result:
+        """
+        Create a redaction result that covers the entire image, for cases where analysis against the image raised an exception
+        """
+        return ImageRedactionResult.Result(
+            image_dimensions=(
+                image_to_redact.width,
+                image_to_redact.height,
+            ),
+            source_image=image_to_redact,
+            redaction_boxes=((0, 0, image_to_redact.width, image_to_redact.height),),
+            names=(None,),
+        )
+
     @log_to_appins
     def redact(self) -> ImageRedactionResult:
         # Initialisation
@@ -414,7 +435,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         total_bounding_box_time = 0.0
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
-            LoggingUtil().log_info(f"Image: {image_to_redact}")
+            LoggingUtil().log_info(f"image: {image_to_redact}")
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if text_rect_map is None:
+                results.append(self._create_failed_redaction_result(image_to_redact))
+                continue
             try:
                 text_content = " ".join([x[0] for x in text_rect_map])
                 if not text_content:
@@ -582,14 +607,27 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         total_bounding_box_time = 0.0
         for image_result in image_text_redaction_results:
             # Detect and analyse text in the image
+            image_to_redact = image_result["image"]
             redaction_strings = image_result["redaction_strings"]
+            text_rect_map = image_result["text_rect_map"]
+            text_content = image_result["text_content"]
 
+            # If the image couldn't be analysed, mark the whole image for redaction
+            if text_rect_map is None:
+                results.append(self._create_failed_redaction_result(image_to_redact))
+                continue
+
+            # If all of the content was identified for redaction, either the text
+            # could not be analysed or the image is full of PII
+            if redaction_strings == text_content:
+                results.append(self._create_failed_redaction_result(image_to_redact))
+                continue
             # Identify text rectangles to redact based on redaction strings
             text_analysis_start_time = time()
             text_rects_to_redact = []
             for redaction_string in redaction_strings:
                 rects_found = self.examine_redaction_boxes(
-                    image_result["text_rect_map"],
+                    text_rect_map,
                     redaction_string,
                 )
 
