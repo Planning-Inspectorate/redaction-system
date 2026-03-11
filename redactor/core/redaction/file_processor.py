@@ -1,7 +1,6 @@
 import json
 import pymupdf
 import dataclasses
-import pandas as pd
 
 from typing import Set, Type, List, Any, Dict, Tuple, Generator
 from abc import ABC, abstractmethod
@@ -10,6 +9,7 @@ from PIL import Image
 from pydantic import BaseModel
 from itertools import chain
 from time import time
+from datetime import datetime
 
 from core.redaction.redactor import (
     Redactor,
@@ -356,52 +356,43 @@ class PDFProcessor(FileProcessor):
         return tuple(annotations)
 
     @classmethod
-    def _convert_pdf_date(cls, series):
+    def _convert_pdf_date(cls, datetime_str: str):
         """Convert PDF date format to Timestamp."""
-        return pd.to_datetime(
-            series.apply(lambda x: x[2:16] if x else None), format="%Y%m%d%H%M%S"
+        return (
+            datetime.strptime(datetime_str[2:16], "%Y%m%d%H%M%S")
+            if datetime_str
+            else None
         )
 
     @classmethod
-    def _normalise_annotations_to_dataframe(
+    def _normalise_annotations(
         cls,
         annotations: Tuple[Dict[str, Any]],
-    ) -> pd.DataFrame:
-        annot_df = pd.json_normalize(annotations, "annotations", ["page_number"])
-        annot_df["pageNumber"] = annot_df["page_number"].astype(int)
-        annot_df["creationDate"] = (
-            cls._convert_pdf_date(annot_df["creationDate"])
-            if "creationDate" in annot_df
-            else None
-        )
-        annot_df["modDate"] = (
-            cls._convert_pdf_date(annot_df["modDate"])
-            if "modDate" in annot_df
-            else None
-        )
-        annot_df["isRedactionCandidate"] = annot_df["title"] == "REDACTION CANDIDATE"
-        annot_df["rect"] = annot_df["rect"].apply(lambda x: tuple(x))
-        annot_df.rename(
-            columns={
-                "content": "proposedRedaction",
-                "text": "annotatedText",
-                "type": "annotationType",
-            },
-            inplace=True,
-        )
-        annot_df = annot_df[
-            [
-                "pageNumber",
-                "annotationType",
-                "proposedRedaction",
-                "annotatedText",
-                "rect",
-                "creationDate",
-                "modDate",
-                "isRedactionCandidate",
-            ]
-        ]
-        return annot_df
+    ) -> List[Dict[str, Any]]:
+        annotations_list = []
+        for page in annotations:
+            page_dict = {
+                "pageNumber": int(page.pop("page_number", 0)),
+                "annotations": [],
+            }
+            for annot in page.get("annotations", []):
+                annot.update(
+                    {
+                        "creationDate": cls._convert_pdf_date(
+                            annot.get("creationDate", None)
+                        ),
+                        "modDate": cls._convert_pdf_date(annot.get("modDate", None)),
+                        "isRedactionCandidate": annot.pop("title", "")
+                        == "REDACTION CANDIDATE",
+                        "rect": tuple(annot.get("rect", ())),
+                        "annotationType": annot.pop("type", None),
+                        "annotatedText": annot.pop("text", None),
+                        "proposedRedaction": annot.pop("content", None),
+                    }
+                )
+                page_dict["annotations"].append(annot)
+            annotations_list.append(page_dict)
+        return annotations_list
 
     @classmethod
     def get_proposed_redactions(
@@ -421,8 +412,7 @@ class PDFProcessor(FileProcessor):
         annotations = cls._extract_pdf_annotations(
             file_bytes, annotation_class=[pymupdf.PDF_ANNOT_HIGHLIGHT]
         )
-        annot_df = cls._normalise_annotations_to_dataframe(annotations)
-        return annot_df.to_dict(orient=orient, **kwargs)
+        return cls._normalise_annotations(annotations)
 
     @classmethod
     def get_final_redactions(
@@ -443,8 +433,7 @@ class PDFProcessor(FileProcessor):
             file_bytes,
             annotation_class=[pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_HIGHLIGHT],
         )
-        annot_df = cls._normalise_annotations_to_dataframe(annotations)
-        return annot_df.to_dict(orient=orient, **kwargs)
+        return cls._normalise_annotations(annotations)
 
     @classmethod
     def _find_first_word_to_redact(

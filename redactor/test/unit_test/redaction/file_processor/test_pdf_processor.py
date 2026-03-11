@@ -1,10 +1,10 @@
 import pymupdf
 import pytest
-import pandas as pd
 
 from PIL import Image
 from io import BytesIO
 from mock import patch, Mock, MagicMock
+from datetime import datetime
 
 from core.redaction.file_processor import (
     PDFProcessor,
@@ -226,12 +226,12 @@ def test__pdf_processor__extract_pdf_annotations__highlight_only():
 
 def test__pdf_processor__get_proposed_redactions():
     creation_date = "D:20260103123456+01'00'"
-    creation_timestamp = pd.Timestamp(
+    creation_timestamp = datetime(
         year=2026, month=1, day=3, hour=12, minute=34, second=56
     )
     annotations = (
         {
-            "page_number": 0,
+            "page_number": "0",
             "annotations": [
                 {
                     "title": "REDACTION CANDIDATE",
@@ -267,34 +267,36 @@ def test__pdf_processor__get_proposed_redactions():
     expected_dict = [
         {
             "pageNumber": 0,
-            "annotationType": "Highlight",
-            "proposedRedaction": "Redact this",
-            "annotatedText": "Redact this",
-            "rect": (0.0, 0.0, 1.0, 1.0),
-            "creationDate": creation_timestamp,
-            "isRedactionCandidate": True,
-            "modDate": pd.NaT,
-        },
-        {
-            "pageNumber": 0,
-            "annotationType": "Highlight",
-            "proposedRedaction": "Redact this too",
-            "annotatedText": "Redact this",
-            "rect": (2.0, 2.0, 3.0, 3.0),
-            "creationDate": creation_timestamp,
-            "isRedactionCandidate": True,
-            "modDate": pd.NaT,
-        },
-        {
-            "pageNumber": 0,
-            "annotationType": "Highlight",
-            "proposedRedaction": "Redact this too",
-            "annotatedText": "too.",
-            "rect": (0.0, 2.0, 1.0, 3.0),
-            "creationDate": creation_timestamp,
-            "isRedactionCandidate": True,
-            "modDate": pd.NaT,
-        },
+            "annotations": [
+                {
+                    "annotationType": "Highlight",
+                    "proposedRedaction": "Redact this",
+                    "annotatedText": "Redact this",
+                    "rect": (0.0, 0.0, 1.0, 1.0),
+                    "creationDate": creation_timestamp,
+                    "isRedactionCandidate": True,
+                    "modDate": None,
+                },
+                {
+                    "annotationType": "Highlight",
+                    "proposedRedaction": "Redact this too",
+                    "annotatedText": "Redact this",
+                    "rect": (2.0, 2.0, 3.0, 3.0),
+                    "creationDate": creation_timestamp,
+                    "isRedactionCandidate": True,
+                    "modDate": None,
+                },
+                {
+                    "annotationType": "Highlight",
+                    "proposedRedaction": "Redact this too",
+                    "annotatedText": "too.",
+                    "rect": (0.0, 2.0, 1.0, 3.0),
+                    "creationDate": creation_timestamp,
+                    "isRedactionCandidate": True,
+                    "modDate": None,
+                },
+            ],
+        }
     ]
     with patch.object(
         PDFProcessor, "_extract_pdf_annotations", return_value=annotations

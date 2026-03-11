@@ -337,31 +337,33 @@ def test__redaction_manager__compare_redactions():
         "proposedRedactions": [
             {
                 "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [0, 0, 1, 1],
-                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
-                "isRedactionCandidate": True,
-            },
-            {
-                "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [2, 2, 3, 3],
-                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
-                "isRedactionCandidate": True,
-            },
-            {
-                "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [4, 4, 5, 5],
-                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
-                "isRedactionCandidate": False,
-            },
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [0, 0, 1, 1],
+                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [2, 2, 3, 3],
+                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [4, 4, 5, 5],
+                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "isRedactionCandidate": False,
+                    },
+                ],
+            }
         ],
     }
     final_redactions_dict = {
@@ -371,27 +373,29 @@ def test__redaction_manager__compare_redactions():
         "finalRedactions": [
             {
                 "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [0, 0, 1, 1],
-                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
-            },
-            {
-                "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [4, 4, 5, 5],
-                "creationDate": Timestamp("2024-01-01T00:00:00Z"),
-            },
-            {
-                "pageNumber": 0,
-                "annotationType": "Highlight",
-                "proposedRedaction": "something",
-                "annotatedText": "something",
-                "rect": [7, 7, 8, 8],
-                "creationDate": Timestamp("2024-01-02T00:00:00Z"),
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [0, 0, 1, 1],
+                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [4, 4, 5, 5],
+                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "something",
+                        "annotatedText": "something",
+                        "rect": [7, 7, 8, 8],
+                        "creationDate": Timestamp("2024-01-02T00:00:00Z"),
+                    },
+                ],
             },
         ],
     }
