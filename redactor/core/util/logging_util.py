@@ -104,7 +104,7 @@ class LoggingUtil(metaclass=Singleton):
         Log an information message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"INFO: {message}\n")
+        #self.raw_logs.append(f"INFO: {message}\n")
         self.logger.info(message)
 
     def log_exception(self, ex: Exception):
@@ -113,7 +113,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        #self.raw_logs.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_exception_with_message(self, message: str, ex: Exception):
@@ -122,7 +122,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        #self.raw_logs.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_warning(self, msg: str):
@@ -130,7 +130,7 @@ class LoggingUtil(metaclass=Singleton):
         Log a warning message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"WARNING: {message}\n")
+        #self.raw_logs.append(f"WARNING: {message}\n")
         self.logger.warning(message)
 
     def get_log_bytes(self) -> bytes:
