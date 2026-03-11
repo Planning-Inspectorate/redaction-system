@@ -226,6 +226,22 @@ def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
+def test_log_to_appins__no_log_args(mock_init, mock_log_info):
+    class MyClass:
+        @log_to_appins(log_args=False)
+        def my_function(self):
+            return "Hello world"
+
+    inst = MyClass()
+    resp = inst.my_function()
+    LoggingUtil.log_info.assert_called_once_with("Function my_function called")
+
+    assert resp == "Hello world"
+
+
+@pytest.mark.nologgerfixt
+@patch.object(LoggingUtil, "__init__", return_value=None)
+@patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins__with_class_method(mock_init, mock_log_info):
     class MyClass:
         @classmethod
