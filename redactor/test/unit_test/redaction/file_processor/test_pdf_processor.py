@@ -1,5 +1,7 @@
+import os
 import pymupdf
 import pytest
+import numpy as np
 
 from PIL import Image
 from io import BytesIO
@@ -17,7 +19,6 @@ from core.redaction.result import (
 )
 from core.util.text_util import is_english_text, get_normalised_words
 from core.redaction.exceptions import NonEnglishContentException
-import os
 
 
 def test__pdf_processor__get_name():
@@ -458,7 +459,7 @@ def test__pdf_processor__create_line_metadata():
     """
     expected_line_metadata = PDFLineMetadata(
         line_number=0,
-        words=("hello", "world"),
+        words=np.array(["hello", "world"], dtype=str),
         y0=0,
         y1=10,
         x0=(0, 15),
@@ -499,7 +500,7 @@ def test__pdf_processor__extract_page_text():
         lines=[
             PDFLineMetadata(
                 line_number=0,
-                words=("hello", "world"),
+                words=np.array(["hello", "world"], dtype=str),
                 y0=0,
                 y1=10,
                 x0=(0, 5),
@@ -507,7 +508,7 @@ def test__pdf_processor__extract_page_text():
             ),
             PDFLineMetadata(
                 line_number=1,
-                words=("hey", "there"),
+                words=np.array(["hey", "there"], dtype=str),
                 y0=10,
                 y1=20,
                 x0=(0, 5),
@@ -529,7 +530,7 @@ def create_mock_page_metadata(
             line_metadata.append(
                 PDFLineMetadata(
                     line_number=i,
-                    words=tuple(get_normalised_words(line)),
+                    words=np.array(get_normalised_words(line), dtype=str),
                     y0=y0[i],
                     y1=y1[i],
                     x0=tuple(x0[i]),
@@ -616,7 +617,6 @@ def test__pdf_processor__examine_provisional_text_redaction():
         ):
             result = PDFProcessor()._examine_provisional_text_redaction(
                 "Hello",
-                rect,
                 page_metadata,
             )
 
@@ -636,14 +636,11 @@ def test__pdf_processor__examine_provisional_text_redaction__no_matches(
         x1=[[10, 11]],
     )
     term = "test"
-    rect = pymupdf.Rect(0, 0, 10, 10)
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
         pdf_processor = PDFProcessor()
-        pdf_processor.redaction_candidates = [[(rect, term)]]
         result = pdf_processor._examine_provisional_text_redaction(
             term,
-            rect,
             page_metadata,
         )
 
@@ -662,7 +659,6 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
     term = "Hello World"
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
-    candidates_on_page = [(rect, term), (next_rect, term)]
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with (
@@ -674,14 +670,12 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
             patch.object(
                 PDFProcessor,
                 "_find_potential_matches_in_line",
-                side_effect=[[("hello", 0, 0)], [("world", 0, 0)]],
+                side_effect=[[("hello", 0, 0)], []],
             ),
         ):
             pdf_processor = PDFProcessor()
-            pdf_processor.redaction_candidates = [candidates_on_page]
             result = pdf_processor._examine_provisional_text_redaction(
                 term,
-                rect,
                 page_metadata,
             )
 
@@ -703,7 +697,6 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
     term = "Something-Else"
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
-    candidates_on_page = [(rect, term), (next_rect, term)]
 
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with (
@@ -715,14 +708,12 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
             patch.object(
                 PDFProcessor,
                 "_find_potential_matches_in_line",
-                side_effect=[[("something", 0, 0)], [("else", 0, 0)]],
+                side_effect=[[("something", 0, 0)], []],
             ),
         ):
             pdf_processor = PDFProcessor()
-            pdf_processor.redaction_candidates = [candidates_on_page]
             result = pdf_processor._examine_provisional_text_redaction(
                 term,
-                rect,
                 page_metadata,
             )
 
@@ -799,51 +790,39 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
     assert result == expected_result
 
 
-def test__pdf_processor__find_first_word_to_redact():
-    term = "Hello World"
-    line_to_check = PDFLineMetadata(
-        line_number=0, words=("hello", "world"), y0=0, y1=10, x0=(0, 5), x1=(10, 15)
-    )
-    result = PDFProcessor._find_first_word_to_redact(
-        get_normalised_words(term), line_to_check
-    )
-    # Should return the index of the first word to redact, which is "hello" at index 0
+def test__pdf_processor__match_word_to_redact_in_line():
+    words_to_check = np.array(["hello", "world"], dtype=str)
+    result = PDFProcessor._match_word_to_redact_in_line("hello", words_to_check)
     assert result == [0]
 
 
 def test__pdf_processor__check_subsequent_words():
     term = "Hello World"
-    line_to_check = PDFLineMetadata(
-        line_number=0, words=("hello", "world"), y0=0, y1=10, x0=(0, 5), x1=(10, 15)
-    )
+    words_to_check = np.array(["hello", "world"], dtype=str)
     index = 0
     expected_result = (["hello", "world"], 1)
     result = PDFProcessor._check_subsequent_words(
-        get_normalised_words(term), line_to_check, index
+        get_normalised_words(term), words_to_check, index
     )
     assert result == expected_result
 
 
 def test__pdf_processor__check_partial_match_before_hyphen():
     term_to_redact = "Something-else"
-    line_to_check = PDFLineMetadata(
-        line_number=0, words=("something",), y0=0, y1=10, x0=(0,), x1=(9,)
-    )
-    expected_result = [("something", 0, 0)]
+    words_to_check = np.array(["something"], dtype=str)
+    expected_result = ("something", 0, 0)
     result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), line_to_check
+        get_normalised_words(term_to_redact), words_to_check
     )
     assert result == expected_result
 
 
 def test__pdf_processor__check_partial_match_before_hyphen__preceding_words():
     term_to_redact = "Mary Hugh-Williams"
-    line_to_check = PDFLineMetadata(
-        line_number=0, words=("mary", "hugh"), y0=0, y1=10, x0=(0, 10), x1=(9, 19)
-    )
-    expected_result = [("mary hugh", 0, 1)]
+    words_to_check = np.array(["mary", "hugh"], dtype=str)
+    expected_result = ("mary hugh", 0, 1)
     result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), line_to_check
+        get_normalised_words(term_to_redact), words_to_check
     )
     assert result == expected_result
 
@@ -926,16 +905,11 @@ def test__pdf_processor__find_potential_matches_in_line(test_case):
     rect.width = 100  # Dummy value
     rect.__add__ = Mock(return_value=rect)
 
-    line_to_check = PDFLineMetadata(
-        line_number=0,
-        words=tuple(get_normalised_words(actual_text_at_rect)),
-        y0=0,
-        y1=10,
-        x0=(0,) * len(actual_text_at_rect),
-        x1=tuple(range(1, len(actual_text_at_rect) + 1)),
-    )
+    words_to_check = np.array(get_normalised_words(actual_text_at_rect), dtype=str)
 
-    result = PDFProcessor._find_potential_matches_in_line(text_to_redact, line_to_check)
+    result = PDFProcessor._find_potential_matches_in_line(
+        get_normalised_words(text_to_redact), words_to_check
+    )
 
     if truth:
         expected_result = (

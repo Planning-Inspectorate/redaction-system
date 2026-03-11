@@ -137,7 +137,7 @@ class LoggingUtil(metaclass=Singleton):
         return "".join(self.raw_logs).encode("utf-8")
 
 
-def log_to_appins(_func=None, *args, **kwargs):
+def log_to_appins(_func=None, log_args: bool = True, *args, **kwargs):
     """
     Decorator that adds extra logging to function calls
 
@@ -165,9 +165,14 @@ def log_to_appins(_func=None, *args, **kwargs):
 
             args_repr = [repr(a) for a in args]
             kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
-            signature = f"{', '.join(args_repr + kwargs_repr)}"
 
-            logger.log_info(f"Function {func.__name__} called with args: {signature}")
+            if log_args:
+                signature = f"{', '.join(args_repr + kwargs_repr)}"
+                logger.log_info(
+                    f"Function {func.__name__} called with args: {signature}"
+                )
+            else:
+                logger.log_info(f"Function {func.__name__} called")
 
             try:
                 return func(*args, **kwargs)
