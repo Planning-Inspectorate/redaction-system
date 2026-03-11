@@ -561,16 +561,26 @@ class PDFProcessor(FileProcessor):
 
         if split_word:
             # Check that the preceding words are in the line
-            preceding_words = normalised_words_to_redact[: i - 2]
-            if np.all(
-                preceding_words
-                == words_to_check[len(words_to_check) - 2 - len(preceding_words) : -1]
-            ):
+            if i == 0:
+                # Part matched is the first word to redact, nothing to check
                 return (
-                    " ".join(preceding_words + [last_word_on_line]),
-                    len(words_to_check) - len(preceding_words) - 1,
+                    last_word_on_line,
+                    len(words_to_check) - 1,
                     len(words_to_check) - 1,
                 )
+            else:
+                preceding_words = normalised_words_to_redact[: i - 2]
+                if np.all(
+                    preceding_words
+                    == words_to_check[
+                        len(words_to_check) - 2 - len(preceding_words) : -1
+                    ]
+                ):
+                    return (
+                        " ".join(preceding_words + [last_word_on_line]),
+                        len(words_to_check) - len(preceding_words) - 1,
+                        len(words_to_check) - 1,
+                    )
 
         return None
 
