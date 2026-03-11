@@ -847,6 +847,16 @@ def test__pdf_processor__check_partial_match_before_hyphen__first_word():
     assert result == expected_result
 
 
+def test__pdf_processor__check_partial_match_before_hyphen__not_line_broken():
+    term_to_redact = "check-this"
+    words_to_check = np.array(["now", "check-this"], dtype=str)
+    expected_result = None
+    result = PDFProcessor._check_partial_match_before_hyphen(
+        get_normalised_words(term_to_redact), words_to_check
+    )
+    assert result == expected_result
+
+
 @pytest.mark.parametrize(
     "test_case",
     [

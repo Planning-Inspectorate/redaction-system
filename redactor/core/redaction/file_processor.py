@@ -569,18 +569,21 @@ class PDFProcessor(FileProcessor):
                     len(words_to_check) - 1,
                 )
             else:
-                preceding_words = normalised_words_to_redact[: i - 2]
-                if np.all(
-                    preceding_words
-                    == words_to_check[
-                        len(words_to_check) - 2 - len(preceding_words) : -1
-                    ]
-                ):
-                    return (
-                        " ".join(preceding_words + [last_word_on_line]),
-                        len(words_to_check) - len(preceding_words) - 1,
-                        len(words_to_check) - 1,
-                    )
+                try:
+                    preceding_words = normalised_words_to_redact[: i - 2]
+                    if np.all(
+                        preceding_words
+                        == words_to_check[
+                            len(words_to_check) - 2 - len(preceding_words) : -1
+                        ]
+                    ):
+                        return (
+                            " ".join(preceding_words + [last_word_on_line]),
+                            len(words_to_check) - len(preceding_words) - 1,
+                            len(words_to_check) - 1,
+                        )
+                except ValueError:
+                    return None
 
         return None
 
