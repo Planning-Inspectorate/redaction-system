@@ -275,26 +275,12 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         """
         text_rects_to_redact = []
         words_to_redact = get_normalised_words(redaction_string)
-        LoggingUtil().log_info(
-            (
-                f"Analysing the text content of an image. The redaction string {redaction_string} has been "
-                f"normalised into the individual words {words_to_redact}"
-            )
-        )
 
         if len(words_to_redact) == 1:
             for text_at_box, bounding_box in text_rect_map:
-                normalised_words = get_normalised_words(text_at_box)
-                LoggingUtil().log_info(
-                    (
-                        "There is only 1 redaction word to redact in the image. "
-                        f"The text at box {text_at_box} has been split into the words {normalised_words}"
-                    )
-                )
-                if normalised_words:
-                    normalised_text = normalised_words[0]
-                    if words_to_redact[0] == normalised_text:
-                        text_rects_to_redact.append(bounding_box)
+                normalised_text = get_normalised_words(text_at_box)[0]
+                if words_to_redact[0] == normalised_text:
+                    text_rects_to_redact.append(bounding_box)
         else:
             # Multiple words to redact; need to match sequence
             for i, (text_at_box, bounding_box) in enumerate(text_rect_map):
@@ -302,32 +288,22 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 first_word = words_to_redact_copy.pop(0)
 
                 # Proceed only if the first word matches
-                normalised_words = get_normalised_words(text_at_box)
-                LoggingUtil().log_info(
-                    (
-                        "Multiple redaction words to redact in the image. "
-                        f"The text at box {text_at_box} has been split into the words {normalised_words}"
-                    )
-                )
-                if normalised_words:
-                    if first_word == normalised_words[0]:
-                        boxes = [bounding_box]
-                        i_copy = i
-                        # Check subsequent words
-                        while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
-                            word = words_to_redact_copy.pop(0)
-                            next_text, next_bounding_box = text_rect_map[i_copy + 1]
-                            text_normalised_words = get_normalised_words(next_text)
-                            if text_normalised_words:
-                                text_normalised = text_normalised_words[0]
-                                if word == text_normalised:
-                                    boxes.append(next_bounding_box)
-                                    if not words_to_redact_copy:
-                                        # All words matched
-                                        text_rects_to_redact.extend(boxes)
-                                    i_copy += 1
-                                else:
-                                    continue
+                if first_word == get_normalised_words(text_at_box)[0]:
+                    boxes = [bounding_box]
+                    i_copy = i
+                    # Check subsequent words
+                    while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
+                        word = words_to_redact_copy.pop(0)
+                        next_text, next_bounding_box = text_rect_map[i_copy + 1]
+                        text_normalised = get_normalised_words(next_text)[0]
+                        if word == text_normalised:
+                            boxes.append(next_bounding_box)
+                            if not words_to_redact_copy:
+                                # All words matched
+                                text_rects_to_redact.extend(boxes)
+                            i_copy += 1
+                        else:
+                            continue
 
         return text_rects_to_redact
 
@@ -367,7 +343,6 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         total_ocr_time += ocr_time
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
-            LoggingUtil().log_info(f"image: {image_to_redact}")
             try:
                 text_content = " ".join([x[0] for x in text_rect_map])
 
@@ -459,6 +434,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
+
             try:
                 LoggingUtil().log_info(
                     f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
