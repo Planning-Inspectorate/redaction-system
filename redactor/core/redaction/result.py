@@ -24,6 +24,8 @@ class ImageRedactionResult(RedactionResult):
             default_factory=lambda: ()
         )
         """The list redaction boxes to draw on the image, in the image's local space. This is of the form (top left corner x, top left corner y, width, height)"""
+        names: Tuple[str] = field(default_factory=lambda: ())
+        """The list of names associated with the redaction boxes"""
 
     redaction_results: Tuple[Result]
     """A list of ImageRedactionResult.Result objects"""

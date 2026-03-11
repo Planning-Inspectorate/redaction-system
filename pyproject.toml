@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "redactor"
+version = "0.0.1"
+description = "Redaction System"
+readme = "readme.md"
+requires-python = ">=3.13"
+dependencies = [
+    "azure-ai-vision-imageanalysis==1.0.0",
+    "azure-functions==1.24.0",
+    "azure-identity==1.25.1",
+    "azure-monitor-opentelemetry==1.8.3",
+    "azure-storage-blob==12.23.1",
+    "langdetect==1.0.9",
+    "langchain==1.1.0",
+    "langchain-text-splitters==1.0.0",
+    "openai==2.8.1",
+    "pydantic==2.12.5",
+    "pillow==12.0.0",
+    "pyyaml==6.0.3",
+    "python-magic-bin==0.4.14 ; sys_platform == 'win32'",
+    "python-magic==0.4.27 ; sys_platform != 'win32'",
+    "pypdf>=4.0.0",
+    "tiktoken==0.12.0",
+    "pytest==9.0.1",
+    "azure-functions-durable==1.4.0",
+    "azure-servicebus==7.14.3",
+    "coverage==7.12.0",
+    "filelock==3.20.3",
+    "mock==5.2.0",
+    "pre-commit==4.5.1",
+    "python-dotenv==1.2.1",
+    "pymupdf==1.26.6",
+    "pytest-xdist==3.8.0",
+    "pytest-cov==7.0.0",
+    "pytest-rerunfailures==16.1",
+    "ruff==0.14.7",
+    "unidecode==1.4.0",
+    "strenum==0.4.15",
+    "pandas>=3.0.1",
+]
+classifiers = [
+    "Programming Language :: Python :: 3.13",
+]
+license = "MIT"
+license-files = ["LICENSE"]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",
+    "mock",
+    "myst-parser",
+    "pre-commit",
+    "pytest",
+    "pytest-xdist",
+    "pytest-cov",
+    "ruff",
+    "toml",
+    "unidecode",
+]
+
+[tool.setuptools.packages.find]
+where = ["redactor"]
+
+# `coverage` configurations
+[tool.coverage.run]
+source = [
+    "./"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "if __name__ == .__main__.:"
+]
+
+# `isort` configurations
+[tool.isort]
+profile = "black"
+
+# `bandit' configurations
+[tool.bandit]
+exclude_dirs = ["redactor/test"]
+skips = []
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]
+    
