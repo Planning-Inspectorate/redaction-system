@@ -183,9 +183,6 @@ class TestIntegrationRedactionManager(TestCase):
         assert not metric_blob_client.exists(), (
             f"Expected {guid}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
         )
-        assert not metric_blob_client.exists(), (
-            f"Expected {guid}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
-        )
 
     def test__redaction__manager__try_redact(self):
         """
