@@ -8,7 +8,7 @@ from tenacity import retry, wait_random_exponential, stop_after_attempt
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
 from core.util.logging_util import LoggingUtil, log_to_appins
-
+from core.util.multiprocessing_util import get_max_workers
 from azure.identity import (
     ChainedTokenCredential,
     ManagedIdentityCredential,
@@ -50,9 +50,9 @@ class AzureVisionUtil:
 
     def detect_faces_in_images(
         self, images: List[Image.Image], confidence_threshold: float = 0.5
-    ):
-        responses: List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int], ...]]] = []
-        with ThreadPoolExecutor(100) as tpe:
+    ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
+        responses = []
+        with ThreadPoolExecutor(get_max_workers()) as tpe:
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
@@ -146,7 +146,7 @@ class AzureVisionUtil:
         responses: List[
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
-        with ThreadPoolExecutor(100) as tpe:
+        with ThreadPoolExecutor(get_max_workers()) as tpe:
             ai_vision_responses_future_map = {
                 tpe.submit(
                     self.detect_text,
