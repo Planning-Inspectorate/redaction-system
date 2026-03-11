@@ -546,6 +546,7 @@ class PDFProcessor(FileProcessor):
         last_word_on_line = str(words_to_check[-1])
 
         for i, word in enumerate(normalised_words_to_redact):
+            split_word = None
             if "-" in word and last_word_on_line in word:
                 # Get the part of the word before the hyphen
                 split_word = word.split("-")[:-1]
