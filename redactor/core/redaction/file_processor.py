@@ -1,5 +1,6 @@
 import json
 import pymupdf
+import os
 
 from typing import Set, Type, List, Any, Dict, Tuple
 from abc import ABC, abstractmethod
@@ -7,6 +8,7 @@ from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
 from itertools import chain
+from yaml import safe_load
 
 from core.redaction.redactor import (
     Redactor,
@@ -31,6 +33,7 @@ from core.util.text_util import is_english_text, get_normalised_words, normalise
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
 import dataclasses
+import xray
 
 
 class FileProcessor(ABC):
@@ -194,6 +197,28 @@ class PDFProcessor(FileProcessor):
         if all(page == "" for page in pages):  # No text found on any page
             return None
         return "\n".join(page for page in pages)
+
+    def _find_bad_redactions(self, file_bytes: BytesIO):
+        """
+        Return a list of bad redactions in the give PDF
+
+        :param BytesIO file_bytes: Bytes stream for the PDF
+        :return List[]: the bad redaction strings
+        """
+        pdf = pymupdf.open(stream=file_bytes)
+        bad_redactions = xray.inspect(pdf)
+        bad_redactions_list = [item["text"] for items in bad_redactions.values() for item in items]
+        return bad_redactions_list
+    
+    def _load_stopwords(self): 
+        """
+        Check the text_to_redact list against the list in the stopwords yaml
+
+        :return List[]: the bad redaction strings
+        """
+        stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
+        stopword_list = stopwords["stopwords"]
+        return stopword_list
 
     def _extract_pdf_images(self, file_bytes: BytesIO):
         """
@@ -1014,6 +1039,16 @@ class PDFProcessor(FileProcessor):
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
+        # Add bad redactions to the text redaction list
+        pdf = pymupdf.open(stream=file_bytes)
+        bad_redactions = xray.inspect(pdf)
+        bad_redactions_list = [item["text"] for items in bad_redactions.values() for item in items]
+        text_redactions = text_redactions + bad_redactions_list
+        # Remove stopwords from text redaction list
+        stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
+        stopword_list = stopwords["stopwords"]
+        text_redactions = text_redactions - stopword_list
+
         image_redaction_results: List[ImageRedactionResult] = [
             x
             for x in redaction_results
