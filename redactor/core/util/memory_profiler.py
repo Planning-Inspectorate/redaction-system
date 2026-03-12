@@ -9,11 +9,12 @@ import os
 class MemoryProfiler:
     def __init__(self, trace_delay: int = 30):
         self.trace_delay = trace_delay
-        #tracemalloc.start()
+        tracemalloc.start()
         #if not os.path.exists(os.path.join("memoryProfile")):
         #    os.mkdir(os.path.join("memoryProfile"))
         self.min_memory = None
         self.peak_memory_usage = None
+        self.memory_snapshot = None
         self.running = True
         self.pid = os.getpid()
         self.python_process = psutil.Process(self.pid)
@@ -22,7 +23,8 @@ class MemoryProfiler:
 
     def deactivate(self):
         self.running = False
-        return self.peak_memory_usage, self.min_memory
+        self.memory_snapshot = tracemalloc.take_snapshot()
+        return self.peak_memory_usage, self.min_memory, self.memory_snapshot
 
     def _profile_memory(self):
         while self.running:
@@ -33,10 +35,9 @@ class MemoryProfiler:
             if self.peak_memory_usage is None or memory_use > self.peak_memory_usage:
                 self.peak_memory_usage = memory_use
             print(f"Memory usage: {memory_use:.2f} MiB")
-            #snapshot = tracemalloc.take_snapshot()
             #snapshot.dump(os.path.join("memoryProfile", f"{now}.snapshot"))
             for i in range(0, self.trace_delay):
                 time.sleep(1)
                 if not self.running:
                     break
-        #tracemalloc.stop()
+        tracemalloc.stop()

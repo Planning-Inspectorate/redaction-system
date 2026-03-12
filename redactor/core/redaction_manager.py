@@ -21,6 +21,8 @@ from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
 from core.util.memory_profiler import MemoryProfiler
+import tracemalloc
+from io import BytesIO
 
 
 load_dotenv(verbose=True, override=True)
@@ -622,6 +624,29 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",
         )
 
+    def save_memory_trace(self, snapshot: tracemalloc.Snapshot):
+        """
+        Save the given memory snapshot to blob storage
+        """
+        top_stats = snapshot.statistics("lineno")
+        # Sort by 'count' to find the most frequent allocations
+        top_by_count = sorted(top_stats, key=lambda s: s.count, reverse=True)
+        trace_data = []
+
+        for stat in top_by_count:
+            trace_data.append(f"{stat.count} blocks: {stat.size / 1024:.1f} KiB")
+            for line in stat.traceback.format():
+                trace_data.append(line)
+        trace = "\n".join(trace_data).encode()
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=trace,
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/memory.snapshot",
+        )
+
     def send_service_bus_completion_message(
         self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
     ):
@@ -715,7 +740,8 @@ class RedactionManager:
                     "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
-        peak_memory, min_memory = profiler.deactivate()
+        peak_memory, min_memory, snapshot = profiler.deactivate()
+        self.save_memory_trace(snapshot)
         final_output = base_response | {
             "status": status,
             "message": message,
