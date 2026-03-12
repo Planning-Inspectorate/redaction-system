@@ -20,6 +20,7 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
+from core.util.memory_profiler import MemoryProfiler
 
 
 load_dotenv(verbose=True, override=True)
@@ -650,6 +651,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
+        profiler = MemoryProfiler()
         stage = base_response["stage"]
         start_time = time()
         fatal_error = None
@@ -713,11 +715,13 @@ class RedactionManager:
                     "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
+        peak_memory = profiler.deactivate()
         final_output = base_response | {
             "status": status,
             "message": message,
             "execution_time_seconds": total_execution_time,
             "run_metrics": run_metrics,
+            "peak_memory": f"{peak_memory:.2f} MiB"
         }
         return final_output
 
