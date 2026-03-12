@@ -555,8 +555,8 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with patch.object(
             PDFProcessor,
-            "_find_potential_matches_in_line",
-            side_effect=[([("hello", 0, 0)]), [("world", 0, 0)]],
+            "_check_subsequent_words",
+            return_value=(["world"], 0),
         ):
             match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
                 normalised_words_to_redact,
@@ -564,7 +564,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
                 page_metadata.lines[0],
                 page_metadata,
             )
-    expected_result = (0, page_metadata.lines[1], 0)
+    expected_result = [(0, page_metadata.lines[1], 0)]
 
     assert match_result == expected_result
 
@@ -584,8 +584,8 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
     with patch.object(PDFProcessor, "__init__", return_value=None):
         with patch.object(
             PDFProcessor,
-            "_find_potential_matches_in_line",
-            side_effect=[([("hello", 0, 0)]), []],
+            "_check_subsequent_words",
+            side_effect=[(["hello"], 0), ([], -1)],
         ):
             result = PDFProcessor()._check_partial_redaction_across_line_breaks(
                 normalised_words_to_redact,
@@ -594,7 +594,35 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
                 page_metadata,
             )
 
-    assert result is None
+    assert result == []
+
+
+def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks():
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        lines=["This", "is line-", "broken"],
+        y0=[0, 20, 40],
+        y1=[10, 30, 50],
+        x0=[[0], [0, 15], [0]],
+        x1=[[10], [10, 25], [10]],
+    )
+    term = "This is line broken"
+    normalised_words_to_redact = get_normalised_words(term)
+
+    with patch.object(PDFProcessor, "__init__", return_value=None):
+        with patch.object(
+            PDFProcessor,
+            "_find_potential_matches_in_line",
+            side_effect=[([("this", 0, 0)]), [("is", 0, 0)], []],
+        ):
+            result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+                normalised_words_to_redact,
+                "this",
+                page_metadata.lines[0],
+                page_metadata,
+            )
+
+    assert result == [(0, page_metadata.lines[1], 0), (0, page_metadata.lines[2], 0)]
 
 
 def test__pdf_processor__examine_provisional_text_redaction():
@@ -665,7 +693,7 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
             patch.object(
                 PDFProcessor,
                 "_check_partial_redaction_across_line_breaks",
-                return_value=(0, page_metadata.lines[1], 0),
+                return_value=[(0, page_metadata.lines[1], 0)],
             ),
             patch.object(
                 PDFProcessor,
@@ -703,7 +731,7 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
             patch.object(
                 PDFProcessor,
                 "_check_partial_redaction_across_line_breaks",
-                return_value=(0, page_metadata.lines[1], 0),
+                return_value=[(0, page_metadata.lines[1], 0)],
             ),
             patch.object(
                 PDFProcessor,
