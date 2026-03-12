@@ -715,13 +715,14 @@ class RedactionManager:
                     "Redaction process completed successfully, but had some non-fatal errors:\n"
                     + "\n".join(non_fatal_errors)
                 )
-        peak_memory = profiler.deactivate()
+        peak_memory, min_memory = profiler.deactivate()
         final_output = base_response | {
             "status": status,
             "message": message,
             "execution_time_seconds": total_execution_time,
             "run_metrics": run_metrics,
-            "peak_memory": f"{peak_memory:.2f} MiB"
+            "peak_memory": f"{peak_memory:.2f} MiB",
+            "min_memory": f"{min_memory:.2f} MiB",
         }
         return final_output
 

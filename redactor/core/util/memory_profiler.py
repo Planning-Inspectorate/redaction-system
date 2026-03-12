@@ -12,6 +12,7 @@ class MemoryProfiler:
         #tracemalloc.start()
         #if not os.path.exists(os.path.join("memoryProfile")):
         #    os.mkdir(os.path.join("memoryProfile"))
+        self.min_memory = None
         self.peak_memory_usage = None
         self.running = True
         self.pid = os.getpid()
@@ -21,12 +22,14 @@ class MemoryProfiler:
 
     def deactivate(self):
         self.running = False
-        return self.peak_memory_usage
+        return self.peak_memory_usage, self.min_memory
 
     def _profile_memory(self):
         while self.running:
             #now = datetime.now().replace(microsecond=0).isoformat()
             memory_use = self.python_process.memory_info().rss / 1024**2
+            if self.min_memory is None:
+                self.min_memory = memory_use
             if self.peak_memory_usage is None or memory_use > self.peak_memory_usage:
                 self.peak_memory_usage = memory_use
             print(f"Memory usage: {memory_use:.2f} MiB")
