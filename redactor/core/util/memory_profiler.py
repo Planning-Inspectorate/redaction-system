@@ -10,8 +10,8 @@ class MemoryProfiler:
     def __init__(self, trace_delay: int = 30):
         self.trace_delay = trace_delay
         #tracemalloc.start()
-        if not os.path.exists(os.path.join("memoryProfile")):
-            os.mkdir(os.path.join("memoryProfile"))
+        #if not os.path.exists(os.path.join("memoryProfile")):
+        #    os.mkdir(os.path.join("memoryProfile"))
         self.peak_memory_usage = None
         self.running = True
         self.pid = os.getpid()
