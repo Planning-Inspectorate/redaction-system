@@ -1040,13 +1040,10 @@ class PDFProcessor(FileProcessor):
             for redaction_string in result.redaction_strings
         ]
         # Add bad redactions to the text redaction list
-        pdf = pymupdf.open(stream=file_bytes)
-        bad_redactions = xray.inspect(pdf)
-        bad_redactions_list = [item["text"] for items in bad_redactions.values() for item in items]
+        bad_redactions_list = self._find_bad_redactions(file_bytes)
         text_redactions = text_redactions + bad_redactions_list
         # Remove stopwords from text redaction list
-        stopwords = safe_load(open(os.path.join("config", "stopwords.yaml"), "r"))
-        stopword_list = stopwords["stopwords"]
+        stopword_list = self._load_stopwords()
         text_redactions = text_redactions - stopword_list
 
         image_redaction_results: List[ImageRedactionResult] = [
