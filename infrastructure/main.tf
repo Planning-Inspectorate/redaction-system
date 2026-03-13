@@ -109,7 +109,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     type = "SystemAssigned"
   }
   app_settings = {
-    #"WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
     "WEBSITE_CONTENTSHARE" : "${local.org}-func-${local.resource_suffix}"
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
     "OPENAI_ENDPOINT"                = azurerm_cognitive_account.open_ai.endpoint
