@@ -34,7 +34,7 @@ class MemoryProfiler:
             if self.peak_memory_usage is None or memory_use > self.peak_memory_usage:
                 self.peak_memory_usage = memory_use
                 self.memory_snapshot = tracemalloc.take_snapshot()
-            print(f"Memory usage: {memory_use:.2f} MiB")
+            #print(f"Memory usage: {memory_use:.2f} MiB")
             #snapshot.dump(os.path.join("memoryProfile", f"{now}.snapshot"))
             for i in range(0, self.trace_delay):
                 time.sleep(1)

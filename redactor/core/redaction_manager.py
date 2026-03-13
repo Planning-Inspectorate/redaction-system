@@ -20,6 +20,8 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
+from core.util.memory_profiler import MemoryProfiler
+import tracemalloc
 
 
 load_dotenv(verbose=True, override=True)
@@ -621,6 +623,25 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",
         )
 
+    def save_memory_snapshot(self, snapshot: tracemalloc.Snapshot):
+        top_stats = snapshot.statistics("lineno")
+        top_by_count = sorted(top_stats, key=lambda s: s.count, reverse=True)
+        trace = []
+
+        for stat in top_by_count:
+            trace.append(f"{stat.count} blocks: {stat.size / 1024:.1f} KiB")
+            for line in stat.traceback.format():
+                trace.append(line)
+        trace_bytes = "\n".join(trace).encode()
+        # Dump in Azure
+        AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        ).write(
+            data_bytes=trace_bytes,
+            container_name="redactiondata",
+            blob_path=f"{self.folder_for_job}/memory.snapshot",
+        )
+
     def send_service_bus_completion_message(
         self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
     ):
@@ -650,6 +671,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
+        profiler = MemoryProfiler()
         stage = base_response["stage"]
         start_time = time()
         fatal_error = None
@@ -665,6 +687,14 @@ class RedactionManager:
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
             fatal_error = message
+        peak_memory, min_memory, snapshot = profiler.deactivate()
+        try:
+            self.save_memory_snapshot(snapshot)
+        except Exception as e:
+            self.log_exception(e)
+            non_fatal_errors.append(
+                f"Failed to write logs with the following error: {e}"
+            )
         end_time = time()
         total_execution_time = end_time - start_time
         final_output = base_response | {
@@ -672,6 +702,8 @@ class RedactionManager:
             "message": message,
             "execution_time_seconds": total_execution_time,
             "run_metrics": run_metrics,
+            "peak_memory": peak_memory,
+            "min_memory": min_memory
         }
         try:
             self.send_service_bus_completion_message(params, final_output)
@@ -718,6 +750,8 @@ class RedactionManager:
             "message": message,
             "execution_time_seconds": total_execution_time,
             "run_metrics": run_metrics,
+            "peak_memory": peak_memory,
+            "min_memory": min_memory
         }
         return final_output
 
