@@ -104,6 +104,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     cors {
       allowed_origins = ["https://portal.azure.com"]
     }
+    always_on = true
   }
   identity {
     type = "SystemAssigned"
