@@ -3,7 +3,6 @@ import pytest
 import json
 
 from io import BytesIO
-from pandas import Timestamp
 from azure.storage.blob import ContainerClient, BlobClient
 from datetime import datetime
 
@@ -165,7 +164,7 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
             "proposedRedaction": "something",
             "annotatedText": "something",
             "rect": (0, 0, 1, 1),
-            "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+            "creationDate": datetime(2024, 1, 1).date().isoformat(),
             "isRedactionCandidate": True,
         }
     ]
@@ -339,27 +338,35 @@ def test__redaction_manager__compare_redactions():
                 "pageNumber": 0,
                 "annotations": [
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "redact me",
+                        "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                         "isRedactionCandidate": True,
                     },
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "something else",
+                        "annotatedText": "something else",
+                        "rect": [6, 6, 7, 7],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",  # False positive
+                        "proposedRedaction": "do not redact",
+                        "annotatedText": "do not redact!",
                         "rect": [2, 2, 3, 3],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                         "isRedactionCandidate": True,
                     },
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
-                        "rect": [4, 4, 5, 5],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "please redact",
+                        "annotatedText": "please redact",
+                        "rect": [7, 7, 8, 8],
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
                         "isRedactionCandidate": False,
                     },
                 ],
@@ -375,37 +382,44 @@ def test__redaction_manager__compare_redactions():
                 "pageNumber": 0,
                 "annotations": [
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "redact me",
+                        "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                     },
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
-                        "rect": [4, 4, 5, 5],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "something else",
+                        "annotatedText": "something else",
+                        "rect": [6, 6, 7, 7],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                     },
                     {
-                        "annotationType": "Highlight",
-                        "proposedRedaction": "something",
-                        "annotatedText": "something",
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "please redact",
+                        "annotatedText": "please redact",
                         "rect": [7, 7, 8, 8],
-                        "creationDate": Timestamp("2024-01-02T00:00:00Z"),
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
+                    },
+                    {
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "another redaction",
+                        "annotatedText": "another redaction",
+                        "rect": [9, 9, 10, 10],
+                        "creationDate": datetime(2024, 1, 2).date().isoformat(),
                     },
                 ],
             },
         ],
     }
     expected_output = {
-        "applyDate": proposed_redactions_dict["date"],
-        "redactDate": final_redactions_dict["date"],
-        "applyJobID": proposed_redactions_dict["jobID"],
-        "redactJobID": final_redactions_dict["jobID"],
+        "redactDate": proposed_redactions_dict["date"],
+        "applyDate": final_redactions_dict["date"],
+        "redactJobID": proposed_redactions_dict["jobID"],
+        "applyJobID": final_redactions_dict["jobID"],
         "fileName": proposed_redactions_dict["fileName"],
-        "truePositives": 1,
+        "truePositives": 2,
         "falsePositives": 1,
         "falseNegatives": 2,
     }
