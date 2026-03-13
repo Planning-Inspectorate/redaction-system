@@ -305,10 +305,10 @@ class RedactionManager:
         final_redactions_dict: Dict[str, Any],
     ) -> Dict[str, Any]:
         output_dict = {
-            "applyDate": proposed_redactions_dict.get("date", None),
-            "redactDate": final_redactions_dict.get("date", None),
-            "applyJobID": proposed_redactions_dict.get("jobID", None),
-            "redactJobID": final_redactions_dict.get("jobID", None),
+            "redactDate": proposed_redactions_dict.get("date", None),
+            "applyDate": final_redactions_dict.get("date", None),
+            "redactJobID": proposed_redactions_dict.get("jobID", None),
+            "applyJobID": final_redactions_dict.get("jobID", None),
             "fileName": proposed_redactions_dict.get("fileName", None),
         }
 
@@ -350,7 +350,7 @@ class RedactionManager:
             proposed_candidates = [
                 {k: v for k, v in ann.items() if k in columns_to_compare}
                 for ann in proposed_annots_on_page
-                if ann.get("isRedactionCandidate", False)
+                if ann.get("isRedactionCandidate", True)
             ]
 
             # Extract comparison fields from final redactions
