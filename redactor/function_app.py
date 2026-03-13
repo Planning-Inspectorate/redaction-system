@@ -75,10 +75,7 @@ def redact_task(params: Dict[str, Any]):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from core.redaction_manager import RedactionManager  # noqa: F402
-
-    job_id = params.pop("job_id")
-    return RedactionManager(job_id).try_redact(params)
+    return {"done": "done"}
 
 
 # An HTTP-triggered function with a Durable Functions client binding
@@ -139,10 +136,7 @@ def apply_task(params: Dict[str, Any]):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from core.redaction_manager import RedactionManager  # noqa: F402
-
-    job_id = params.pop("job_id")
-    return RedactionManager(job_id).try_apply(params)
+    return {"done": "done"}
 
 
 # Functions just for smoke testing connections
