@@ -3,7 +3,6 @@ import pytest
 import json
 
 from io import BytesIO
-from pandas import Timestamp
 from azure.storage.blob import ContainerClient, BlobClient
 from datetime import datetime
 
@@ -165,7 +164,7 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
             "proposedRedaction": "something",
             "annotatedText": "something",
             "rect": (0, 0, 1, 1),
-            "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+            "creationDate": datetime(2024, 1, 1).date().isoformat(),
             "isRedactionCandidate": True,
         }
     ]
@@ -343,7 +342,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "redact me",
                         "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                         "isRedactionCandidate": True,
                     },
                     {
@@ -351,7 +350,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "something else",
                         "annotatedText": "something else",
                         "rect": [6, 6, 7, 7],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                         "isRedactionCandidate": True,
                     },
                     {
@@ -359,7 +358,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "do not redact",
                         "annotatedText": "do not redact!",
                         "rect": [2, 2, 3, 3],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                         "isRedactionCandidate": True,
                     },
                     {
@@ -367,7 +366,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "please redact",
                         "annotatedText": "please redact",
                         "rect": [7, 7, 8, 8],
-                        "creationDate": Timestamp("2023-12-31T00:00:00Z"),
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
                         "isRedactionCandidate": False,
                     },
                 ],
@@ -387,28 +386,28 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "redact me",
                         "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                     },
                     {
                         "annotationType": "Highlight",  # True positive
                         "proposedRedaction": "something else",
                         "annotatedText": "something else",
                         "rect": [6, 6, 7, 7],
-                        "creationDate": Timestamp("2024-01-01T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
                     },
                     {
                         "annotationType": "Highlight",  # False negative
                         "proposedRedaction": "please redact",
                         "annotatedText": "please redact",
                         "rect": [7, 7, 8, 8],
-                        "creationDate": Timestamp("2023-12-31T00:00:00Z"),
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
                     },
                     {
                         "annotationType": "Highlight",  # False negative
                         "proposedRedaction": "another redaction",
                         "annotatedText": "another redaction",
                         "rect": [9, 9, 10, 10],
-                        "creationDate": Timestamp("2024-01-02T00:00:00Z"),
+                        "creationDate": datetime(2024, 1, 2).date().isoformat(),
                     },
                 ],
             },
