@@ -5,15 +5,15 @@ from mock import patch, Mock
 from tiktoken import Encoding
 from tenacity import wait_none, stop_after_attempt
 from concurrent.futures import ThreadPoolExecutor
+from openai import RateLimitError, LengthFinishReasonError
 
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from core.util.llm_util import LLMUtil, handle_last_retry_error
+from core.util.llm_util import LLMUtil, handle_last_retry_error, update_max_tokens
 from core.util.logging_util import LoggingUtil
-from openai import RateLimitError
 
 
 class MockLLMChatCompletion:
@@ -59,6 +59,26 @@ def test__handle_last_retry_error():
         "All retry attempts failed: Test exception for last retry\n"
         "Returning None for this chunk."
     )
+
+
+def test__update_max_tokens():
+    retry_state = Mock()
+    retry_state.kwargs = {"max_completion_tokens": 1000}
+    update_max_tokens(retry_state)
+    LoggingUtil.log_info.assert_called_with(
+        "Updating max_completion_tokens to 2000 for next attempt."
+    )
+    assert retry_state.kwargs["max_completion_tokens"] == 2000
+
+
+def test__update_max_tokens__limit():
+    retry_state = Mock()
+    retry_state.kwargs = {"max_completion_tokens": 5000}
+    update_max_tokens(retry_state)
+    LoggingUtil.log_info.assert_called_with(
+        "Updating max_completion_tokens to 8000 for next attempt."
+    )
+    assert retry_state.kwargs["max_completion_tokens"] == 8000
 
 
 def test__llm_util____init__():
@@ -284,7 +304,7 @@ def test__llm_util___compute_costs():
         prompt_tokens=10, completion_tokens=15
     )
 
-    llm_util._compute_costs(mock_chat_completion)
+    llm_util._compute_costs(mock_chat_completion.usage)
 
     assert llm_util.input_token_count == 10
     assert llm_util.output_token_count == 15
@@ -383,11 +403,36 @@ def test__llm_util___analyse_text_chunk__exception(mock_invoke_chain):
         )
 
 
+def test__llm_util___analyse_text_chunk__length_finish_reason():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util = LLMUtil(llm_util_config)
+
+    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+    completion = create_mock_chat_completion()
+
+    with (
+        pytest.raises(Exception),
+        patch.object(
+            LLMUtil,
+            "invoke_chain",
+            side_effect=LengthFinishReasonError(completion=completion),
+        ),
+    ):
+        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+        LoggingUtil.log_exception.assert_called_with(
+            "An error occurred while processing the chunk: Could not parse content as"
+            f"the length limit was reached - {completion.usage}"
+        )
+
+
 @pytest.mark.parametrize(
     "exception",
     [
         RateLimitError("message", response=MockOpenAIAPIResponse(), body="body"),
         TimeoutError("Some LLM invocation error"),
+        LengthFinishReasonError(completion=create_mock_chat_completion()),
     ],
 )
 def test__llm_util___analyse_text_chunk__retry_on_exception(exception):
@@ -411,12 +456,16 @@ def test__llm_util___analyse_text_chunk__retry_on_exception(exception):
         llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(2)
 
         actual_result = llm_util._analyse_text_chunk(
-            system_prompt="system prompt", user_prompt=""
+            system_prompt="system prompt", user_prompt="", max_completion_tokens=1000
         )
 
         assert LLMUtil.invoke_chain.call_count == 2
         assert isinstance(actual_result[0], MockLLMChatCompletion)
         assert actual_result[1] == redaction_strings
+
+        if isinstance(exception, LengthFinishReasonError):
+            # Last call should have updated max_completion_tokens to 2000
+            assert LLMUtil.invoke_chain.call_args.args[-1] == 2000
 
 
 def test__llm_util__analyse_text():
