@@ -51,6 +51,57 @@ resource "azurerm_storage_account" "redaction_storage" {
   }
 }
 
+resource "azurerm_storage_management_policy" "redaction_storage" {
+  storage_account_id = azurerm_storage_account.redaction_storage.id
+
+  rule {
+    name    = "Data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["redactiondata", "analytics"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than = 7
+        delete_after_days_since_creation_greater_than              = 14
+      }
+    }
+  }
+
+  rule {
+    name    = "Test data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["test"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_creation_greater_than              = 1
+      }
+    }
+  }
+}
+
+resource "azurerm_storage_management_policy" "main" {
+  storage_account_id = azurerm_storage_account.redaction_storage.id
+
+  rule {
+    name    = "Test data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["test"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        delete_after_days_since_creation_greater_than              = 1
+      }
+    }
+  }
+}
+
 resource "azurerm_storage_container" "redaction_storage" {
   #checkov:skip=CKV2_AZURE_21: Not needed
   for_each = local.storage_containers
