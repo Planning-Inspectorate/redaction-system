@@ -63,7 +63,10 @@ def redaction_orchestrator(context: df.DurableOrchestrationContext):
     Orchestrator of the redaction process
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
-    result = yield context.call_activity("redact_task", input_params)
+    retry_options = df.RetryOptions(1, 1)
+    result = yield context.call_activity_with_retry(
+        "redact_task", retry_options, input_params
+    )
     return result
 
 
@@ -127,7 +130,10 @@ def apply_orchestrator(context: df.DurableOrchestrationContext):
     Orchestrator of the redaction application process
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
-    result = yield context.call_activity("apply_task", input_params)
+    retry_options = df.RetryOptions(1, 1)
+    result = yield context.call_activity_with_retry(
+        "apply_task", retry_options, input_params
+    )
     return result
 
 

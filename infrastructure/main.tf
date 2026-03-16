@@ -79,7 +79,7 @@ resource "azurerm_service_plan" "redaction_system" {
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   os_type             = "Linux"
-  sku_name            = "EP1"
+  sku_name            = "P2v3"
   #worker_count           = 2
   #zone_balancing_enabled = true
 }
@@ -104,12 +104,13 @@ resource "azurerm_linux_function_app" "redaction_system" {
     cors {
       allowed_origins = ["https://portal.azure.com"]
     }
+    always_on = true
   }
   identity {
     type = "SystemAssigned"
   }
   app_settings = {
-    #"WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
     "WEBSITE_CONTENTSHARE" : "${local.org}-func-${local.resource_suffix}"
     "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
     "OPENAI_ENDPOINT"                = azurerm_cognitive_account.open_ai.endpoint
