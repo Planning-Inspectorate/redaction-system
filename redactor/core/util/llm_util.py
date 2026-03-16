@@ -13,8 +13,9 @@ from azure.identity import (
 )
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import AzureOpenAI, RateLimitError
+from openai import AzureOpenAI, RateLimitError, LengthFinishReasonError
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
+from openai.types.chat.chat_completion import CompletionUsage
 from tiktoken import get_encoding
 from threading import Semaphore
 
@@ -38,6 +39,23 @@ def handle_last_retry_error(retry_state):
         "Returning None for this chunk."
     )
     return None
+
+
+@log_to_appins
+def update_max_tokens(retry_state):
+    # Double max completions for next retry attempt, up to max of 8000
+    # Only used when LengthFinishReasonError is raised
+    retry_state.kwargs.update(
+        {
+            "max_completion_tokens": min(
+                retry_state.kwargs.get("max_completion_tokens", 1000) * 2, 8000
+            )
+        }
+    )
+    LoggingUtil().log_info(
+        f"Updating max_completion_tokens to {retry_state.kwargs['max_completion_tokens']}"
+        " for next attempt."
+    )
 
 
 class LLMUtil:
@@ -199,12 +217,17 @@ class LLMUtil:
             {"role": "user", "content": user_prompt},
         ]
 
-    def invoke_chain(self, api_messages: str, response_format: BaseModel):
+    def invoke_chain(
+        self,
+        api_messages: str,
+        response_format: BaseModel,
+        max_completion_tokens: int = None,
+    ) -> ParsedChatCompletion:
         response = self.llm.chat.completions.parse(
             model=self.config.model,
             messages=api_messages,
             temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
+            max_tokens=max_completion_tokens,
             response_format=response_format,
         )
         return response
@@ -213,23 +236,36 @@ class LLMUtil:
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
     # Only retry if there is a rate limit exception. All other errors are logged and skipped
     @retry(
-        retry=retry_if_exception_type((RateLimitError, TimeoutError)),
+        retry=retry_if_exception_type(
+            (RateLimitError, TimeoutError, LengthFinishReasonError)
+        ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info("Retrying..."),
         retry_error_callback=handle_last_retry_error,
+        after=lambda retry_state: (
+            update_max_tokens(retry_state)
+            if isinstance(retry_state.outcome.exception(), LengthFinishReasonError)
+            else None
+        ),
     )
     def _analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
+        max_completion_tokens: int = None,
     ) -> tuple[ParsedChatCompletion, List[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
         chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
+
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
         estimated_tokens = self._num_tokens_consumed(api_messages)
+
+        # Set completion tokens
+        if max_completion_tokens is None:
+            max_completion_tokens = self.config.max_tokens
 
         # Acquire request semaphore
         thread_available = self.request_semaphore.acquire(
@@ -252,11 +288,16 @@ class LLMUtil:
                     te,
                 )
                 raise te
+
+            # Invoke LLM
             try:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
-                response = self.invoke_chain(api_messages, LLMRedactionResultFormat)
+                response = self.invoke_chain(
+                    api_messages, LLMRedactionResultFormat, max_completion_tokens
+                )
+                usage = response.usage
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
                 )
@@ -268,27 +309,42 @@ class LLMUtil:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following redaction_strings were generated"
                 )
-
-                # Update token counts and costs
-                self._compute_costs(response)
                 return response, redaction_strings
+            except LengthFinishReasonError as lfe:
+                LoggingUtil().log_exception_with_message(
+                    f"{chunk_hash_string} The LLM response was truncated due to length"
+                    f" (completion tokens: {self.config.max_tokens}):",
+                    lfe,
+                )
+                if lfe.completion and lfe.completion.usage:
+                    usage = lfe.completion.usage
+                else:
+                    usage = None
+                raise lfe
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
                     f"{chunk_hash_string} An error occurred while processing the chunk:",
                     e,
                 )
+                usage = None
                 raise e
             finally:
+                # Update token counts and costs
+                self._compute_costs(usage)
                 # Release token semaphore
                 self.token_semaphore.release(estimated_tokens)
+
         finally:
             # Release request semaphore
             self.request_semaphore.release()
             time.sleep(60 / self.config.request_rate_limit)  # Rate limiting delay
 
-    def _compute_costs(self, response: ParsedChatCompletion):
-        prompt_tokens = response.usage.prompt_tokens
-        completion_tokens = response.usage.completion_tokens
+    def _compute_costs(self, usage: CompletionUsage = None):
+        if usage is None:
+            return
+
+        prompt_tokens = usage.prompt_tokens
+        completion_tokens = usage.completion_tokens
 
         self.input_token_count += prompt_tokens
         self.output_token_count += completion_tokens
