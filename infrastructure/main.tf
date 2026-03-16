@@ -79,7 +79,7 @@ resource "azurerm_service_plan" "redaction_system" {
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   os_type             = "Linux"
-  sku_name            = "P2v3"
+  sku_name            = "EP1"
   #worker_count           = 2
   #zone_balancing_enabled = true
 }
@@ -92,7 +92,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
   storage_account_name          = azurerm_storage_account.redaction_storage.name
   storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id               = azurerm_service_plan.redaction_system.id
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   virtual_network_subnet_id     = azurerm_subnet.function_app.id
   https_only                    = true
 
