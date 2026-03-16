@@ -8,8 +8,156 @@ from core.redaction.config import (
 )
 
 
+def test__pdf_processor__extract_pdf_annotations():
+    """
+    Given I have a PDF document with annotations
+    When I call _extract_pdf_annotations with the PDF and annotation type
+    Then I should receive a list of all annotations of that type in the PDF, with page numbers included in the annotation info
+    """
+    with open("test/resources/pdf/test__pdf_processor__proposed.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    pdf_processor = PDFProcessor()
+    annotations = pdf_processor._extract_pdf_annotations(document_bytes)
+    expected_annotations = [
+        {
+            "page_number": 0,
+            "annotations": [
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[180.76254272460938, 145.0911865234375, 241.24356079101562, 157.3802490234375]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        180.76254272460938,
+                        145.0911865234375,
+                        241.24356079101562,
+                        157.3802490234375,
+                    ),
+                    "text": "Commander",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[244.29502868652344, 145.0911865234375, 267.51654052734375, 157.3802490234375]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        244.29502868652344,
+                        145.0911865234375,
+                        267.51654052734375,
+                        157.3802490234375,
+                    ),
+                    "text": "Data",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[72.0, 101.452392578125, 97.65274810791016, 113.741455078125]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        72.0, 101.452392578125, 97.65274810791016, 113.741455078125
+                    ),
+                    "text": "Riker",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[164.2420654296875, 101.452392578125, 199.68487548828125, 113.741455078125]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        164.2420654296875,
+                        101.452392578125,
+                        199.68487548828125,
+                        113.741455078125,
+                    ),
+                    "text": "Phillipa",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[194.0673065185547, 72.35986328125, 215.45306396484375, 84.64892578125]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        194.0673065185547,
+                        72.35986328125,
+                        215.45306396484375,
+                        84.64892578125,
+                    ),
+                    "text": "your",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[470.42864990234375, 101.452392578125, 492.6402282714844, 113.741455078125]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        470.42864990234375,
+                        101.452392578125,
+                        492.6402282714844,
+                        113.741455078125,
+                    ),
+                    "text": "Your",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[273.0046081542969, 217.822509765625, 295.2162170410156, 230.111572265625]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        273.0046081542969,
+                        217.822509765625,
+                        295.2162170410156,
+                        230.111572265625,
+                    ),
+                    "text": "Your",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625
+                    ),
+                    "text": "Honour",
+                },
+                {
+                    "content": "REDACTION CANDIDATE",
+                    "subject": "[298.2676696777344, 217.822509765625, 334.3221740722656, 230.111572265625]",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(
+                        298.2676696777344,
+                        217.822509765625,
+                        334.3221740722656,
+                        230.111572265625,
+                    ),
+                    "text": "Honour",
+                },
+            ],
+        }
+    ]
+    for expected, actual in zip(expected_annotations, annotations):
+        assert expected["page_number"] == actual["page_number"]
+        for expected_annot, actual_annot in zip(
+            expected["annotations"], actual["annotations"]
+        ):
+            assert expected_annot["content"] == actual_annot["content"]
+            assert expected_annot["subject"] == actual_annot["subject"]
+            assert expected_annot["type"] == actual_annot["type"]
+            assert expected_annot["rect"] == actual_annot["rect"]
+            assert expected_annot["text"] == actual_annot["text"]
+
+
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
     return [annotation for page in pdf for annotation in page.annots(annotation_class)]
+
+
+def test__pdf_processor__add_provisional_redaction():
+    page = pymupdf.open().new_page()
+    rect = pymupdf.Rect(0, 0, 10, 10)
+    term = "Hello"
+    PDFProcessor._add_provisional_redaction(page, rect, term)
+    annotations = list(page.annots())
+    assert len(annotations) == 1
+    annot = annotations[0]
+
+    info = annot.info
+    assert info["title"] == "REDACTION CANDIDATE"
+    assert info["content"] == "Hello"
+    assert info["creationDate"] is not None
+    assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
+    assert annot.type == (8, "Highlight")
 
 
 def test__pdf_processor__examine_provisional_text_redaction():

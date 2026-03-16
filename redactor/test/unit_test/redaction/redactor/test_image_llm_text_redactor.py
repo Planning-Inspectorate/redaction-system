@@ -8,6 +8,7 @@ from core.redaction.config import (
 from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
 from PIL import Image
 import mock
+import dataclasses
 
 
 def test__image_redactor__get_name():
@@ -59,28 +60,38 @@ def test__image_llm_text_redactor__redact():
         ),
     )
     expected_results = ImageRedactionResult(
+        rule_name="config name",
+        run_metrics=dict(),
         redaction_results=(
             ImageRedactionResult.Result(
                 image_dimensions=(1000, 1000),
                 source_image=config.images[0],
                 redaction_boxes=(
-                    (100, 100, 50, 50),
                     (10, 10, 50, 50),
+                    (100, 100, 50, 50),
                 ),
+                names=("Klingon", "Romulan"),
             ),
             ImageRedactionResult.Result(
                 image_dimensions=(200, 100),
                 source_image=config.images[1],
                 redaction_boxes=((4, 8, 12, 16),),
+                names=("Vulcan",),
             ),
             ImageRedactionResult.Result(
                 image_dimensions=(1000, 1000),
                 source_image=config.images[2],
-                redaction_boxes=((100, 100, 50, 50), (10, 10, 50, 50)),
+                redaction_boxes=(
+                    (10, 10, 50, 50),
+                    (100, 100, 50, 50),
+                ),
+                names=("Klingon", "Klingon"),
             ),
-        )
+        ),
     )
     mock_text_redaction_result = LLMTextRedactionResult(
+        rule_name="config name",
+        run_metrics=dict(),
         redaction_strings=("Klingon", "Romulan", "Vulcan"),
         metadata=LLMTextRedactionResult.LLMResultMetadata(
             input_token_count=80, output_token_count=20, total_token_count=100
@@ -101,4 +112,8 @@ def test__image_llm_text_redactor__redact():
         inst = ImageLLMTextRedactor()
         inst.config = config
         actual_results = inst.redact()
-        assert expected_results == actual_results
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        assert cleaned_expected_results == cleaned_actual_results

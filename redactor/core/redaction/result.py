@@ -1,4 +1,4 @@
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Union
 from dataclasses import dataclass, field
 from PIL.Image import Image
 from pydantic import BaseModel
@@ -6,7 +6,10 @@ from pydantic import BaseModel
 
 @dataclass(frozen=True)
 class RedactionResult:
-    pass
+    rule_name: str
+    """The name of the redaction rule that generated the result"""
+    run_metrics: Dict[str, Union[int, float, str]]
+    """Any analytical metrics for the result"""
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,8 @@ class ImageRedactionResult(RedactionResult):
             default_factory=lambda: ()
         )
         """The list redaction boxes to draw on the image, in the image's local space. This is of the form (top left corner x, top left corner y, width, height)"""
+        names: Tuple[str] = field(default_factory=lambda: ())
+        """The list of names associated with the redaction boxes"""
 
     redaction_results: Tuple[Result]
     """A list of ImageRedactionResult.Result objects"""

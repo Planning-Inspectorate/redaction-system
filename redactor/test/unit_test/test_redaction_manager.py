@@ -1,3 +1,11 @@
+import mock
+import pytest
+import json
+
+from io import BytesIO
+from azure.storage.blob import ContainerClient, BlobClient
+from datetime import datetime
+
 from core.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
 from core.io.azure_blob_io import AzureBlobIO
@@ -6,19 +14,25 @@ from core.redaction.file_processor import FileProcessorFactory
 from core.redaction.config_processor import ConfigProcessor
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
-from io import BytesIO
-import mock
-import pytest
 
 
 class MockRedactor:
     def __init__(self, **kwargs):
         pass
 
+    def get_run_metrics(self):
+        pass
+
     def redact(self):
         pass
 
     def apply(self):
+        pass
+
+    def get_proposed_redactions(self):
+        pass
+
+    def get_final_redactions(self):
         pass
 
 
@@ -142,6 +156,39 @@ def test__redaction_manager__validate_apply_json_payload__valid(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__redaction_manager__save_dict_to_blob_json(mock_init):
+    redactions_dict = [
+        {
+            "pageNumber": 0,
+            "annotationType": "Highlight",
+            "proposedRedaction": "something",
+            "annotatedText": "something",
+            "rect": (0, 0, 1, 1),
+            "creationDate": datetime(2024, 1, 1).date().isoformat(),
+            "isRedactionCandidate": True,
+        }
+    ]
+    inst = RedactionManager("")
+    inst.env = "dev"
+    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
+    inst.save_dict_to_blob_json(
+        redactions_dict,
+        mock_redaction_storage_io_inst,
+        "blob_path.json",
+    )
+    mock_redaction_storage_io_inst.write.assert_called_once_with(
+        json.dumps(
+            redactions_dict,
+            ensure_ascii=False,
+            indent=4,
+            default=inst.json_serialise_datetime_to_iso,
+        ).encode("utf-8"),
+        container_name="redactiondata",
+        blob_path="blob_path.json",
+    )
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
@@ -156,8 +203,13 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-@mock.patch.object(AzureBlobIO, "write", return_value=None)
+@mock.patch("core.redaction_manager.datetime")
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
+@mock.patch.object(
+    MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
+)
 @mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
@@ -167,6 +219,9 @@ def test__redaction_manager__redact(
     mock_convert_kwargs,
     mock_redact,
     mock_blob_write,
+    mock_get_proposed_redactions,
+    mock_save_dict_to_blob_json,
+    mock_datetime,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,
@@ -203,6 +258,7 @@ def test__redaction_manager__redact(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
+    mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.redact(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -249,11 +305,189 @@ def test__redaction_manager__redact(
         MockIO.read.return_value,
         ConfigProcessor.validate_and_filter_config.return_value,
     )
+    # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
+    MockRedactor.get_proposed_redactions.assert_called_once_with(
+        MockRedactor.redact.return_value
+    )
+    calls = RedactionManager.save_dict_to_blob_json.call_args_list
+    assert len(calls) == 1
+    assert calls[0].args[0] == {
+        "jobID": inst.job_id,
+        "date": datetime(2024, 1, 1).date().isoformat(),
+        "fileName": "",
+        "proposedRedactions": MockRedactor.get_proposed_redactions.return_value,
+    }
+    assert (
+        calls[0].kwargs["blob_path"]
+        == f"{inst.folder_for_job}/proposed_redactions.json"
+    )
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
         MockRedactor.redact.return_value,
         property_example_b="value",
     )
+
+
+def test__redaction_manager__compare_redactions():
+    proposed_redactions_dict = {
+        "jobID": "job_id:1",
+        "date": "2024-01-01",
+        "fileName": "somefile.pdf",
+        "proposedRedactions": [
+            {
+                "pageNumber": 0,
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "redact me",
+                        "annotatedText": "(redact me)",
+                        "rect": [0, 0, 1, 1],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "something else",
+                        "annotatedText": "something else",
+                        "rect": [6, 6, 7, 7],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",  # False positive
+                        "proposedRedaction": "do not redact",
+                        "annotatedText": "do not redact!",
+                        "rect": [2, 2, 3, 3],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                        "isRedactionCandidate": True,
+                    },
+                    {
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "please redact",
+                        "annotatedText": "please redact",
+                        "rect": [7, 7, 8, 8],
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
+                        "isRedactionCandidate": False,
+                    },
+                ],
+            }
+        ],
+    }
+    final_redactions_dict = {
+        "jobID": "job_id:3",
+        "date": "2024-01-02",
+        "fileName": "somefile-1.pdf",
+        "finalRedactions": [
+            {
+                "pageNumber": 0,
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "redact me",
+                        "annotatedText": "(redact me)",
+                        "rect": [0, 0, 1, 1],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                    },
+                    {
+                        "annotationType": "Highlight",  # True positive
+                        "proposedRedaction": "something else",
+                        "annotatedText": "something else",
+                        "rect": [6, 6, 7, 7],
+                        "creationDate": datetime(2024, 1, 1).date().isoformat(),
+                    },
+                    {
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "please redact",
+                        "annotatedText": "please redact",
+                        "rect": [7, 7, 8, 8],
+                        "creationDate": datetime(2023, 12, 31).date().isoformat(),
+                    },
+                    {
+                        "annotationType": "Highlight",  # False negative
+                        "proposedRedaction": "another redaction",
+                        "annotatedText": "another redaction",
+                        "rect": [9, 9, 10, 10],
+                        "creationDate": datetime(2024, 1, 2).date().isoformat(),
+                    },
+                ],
+            },
+        ],
+    }
+    expected_output = {
+        "redactDate": proposed_redactions_dict["date"],
+        "applyDate": final_redactions_dict["date"],
+        "redactJobID": proposed_redactions_dict["jobID"],
+        "applyJobID": final_redactions_dict["jobID"],
+        "fileName": proposed_redactions_dict["fileName"],
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 2,
+    }
+    inst = RedactionManager("")
+    actual_output = inst._compare_redactions(
+        proposed_redactions_dict, final_redactions_dict
+    )
+    assert actual_output == expected_output
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
+def test__redaction_manager__compare_and_save_redactions(
+    mock_save_dict_to_blob_json, mock_init
+):
+    mock_container_client = mock.MagicMock(spec=ContainerClient)
+    mock_blob_client = mock.MagicMock(spec=BlobClient)
+
+    mock_container_client.get_blob_client.return_value = mock_blob_client
+    mock_blob_client.exists.side_effect = [True, False]
+    mock_blob_client.download_blob.return_value = BytesIO(
+        json.dumps({"proposed": "redactions"}).encode("utf-8")
+    )
+
+    storage_io_inst = AzureBlobIO(storage_name="somestorage")
+    final_redactions_dict = {"final": "redactions"}
+    proposed_redactions_dict = {"proposed": "redactions"}
+    comparison_output = {"some": "output"}
+
+    with (
+        mock.patch.object(
+            RedactionManager,
+            "_get_base_job_id_and_version",
+            return_value=("job_id", 3),
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_container_client", return_value=mock_container_client
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_blob_client", return_value=mock_blob_client
+        ),
+        mock.patch.object(
+            AzureBlobIO,
+            "read",
+            return_value=BytesIO(json.dumps(proposed_redactions_dict).encode("utf-8")),
+        ),
+        mock.patch.object(
+            RedactionManager, "_compare_redactions", return_value=comparison_output
+        ) as mock_compare_redactions,
+    ):
+        inst = RedactionManager()
+        inst.job_id = "job_id"
+        inst.compare_and_save_redactions(
+            final_redactions_dict,
+            storage_io_inst,
+        )
+        mock_compare_redactions.assert_called_once_with(
+            proposed_redactions_dict, final_redactions_dict
+        )
+        mock_container_client.get_blob_client.assert_called_once_with(
+            "job_id-1/proposed_redactions.json"
+        )
+        mock_save_dict_to_blob_json.assert_called_once_with(
+            comparison_output,
+            storage_io_inst,
+            "job_id.json",
+            container_name="analytics",
+        )
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -262,6 +496,12 @@ def test__redaction_manager__redact(
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
+@mock.patch.object(RedactionManager, "compare_and_save_redactions")
+@mock.patch.object(RedactionManager, "save_dict_to_blob_json")
+@mock.patch("core.redaction_manager.datetime")
+@mock.patch.object(
+    MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
+)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
@@ -271,8 +511,12 @@ def test__redaction_manager__apply(
     mock_load_config,
     mock_validate_filter_config,
     mock_convert_kwargs,
-    mock_redact,
+    mock_apply,
     mock_blob_write,
+    mock_get_final_redactions,
+    mock_datetime,
+    mock_save_dict_to_blob_json,
+    mock_compare_and_save_redactions,
     mock_file_processor_get,
     mock_io_write,
     mock_io_read,
@@ -306,6 +550,7 @@ def test__redaction_manager__apply(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
+    mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.apply(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -346,6 +591,21 @@ def test__redaction_manager__apply(
         MockIO.read.return_value,
         ConfigProcessor.validate_and_filter_config.return_value,
     )
+    # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
+    MockRedactor.get_final_redactions.assert_called_once_with(MockIO.read.return_value)
+    calls = RedactionManager.save_dict_to_blob_json.call_args_list
+    assert len(calls) == 1
+    assert calls[0].args[0] == {
+        "jobID": inst.job_id,
+        "date": datetime(2024, 1, 1).date().isoformat(),
+        "fileName": "",
+        "finalRedactions": mock_get_final_redactions.return_value,
+    }
+    assert (
+        calls[0].kwargs["blob_path"] == f"{inst.folder_for_job}/final_redactions.json"
+    )
+    # Compare and save redactions should be called once with the final redactions
+    mock_compare_and_save_redactions.assert_called_once()
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
         MockRedactor.apply.return_value,
@@ -466,6 +726,8 @@ def check__try_redact__successful_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -476,7 +738,10 @@ def check__try_redact__successful_output(
         "status": "SUCCESS",
         "message": "Redaction process complete",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_redact__failed_output(
@@ -488,6 +753,8 @@ def check__try_redact__failed_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -498,7 +765,10 @@ def check__try_redact__failed_output(
         "status": "FAIL",
         "message": f"Redaction process failed with the following error: {exception}",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_redact__validate_redact_json_payload__called(
@@ -510,6 +780,8 @@ def check__try_redact__validate_redact_json_payload__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -525,6 +797,8 @@ def check__try_redact__validate_redact_json_payload__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -540,6 +814,8 @@ def check__try_redact__redact__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -555,6 +831,8 @@ def check__try_redact__redact__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -570,6 +848,8 @@ def check__try_redact__log_exception__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -585,6 +865,8 @@ def check__try_redact__log_exception__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -602,6 +884,8 @@ def check__try_redact__log_exception__not_called(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -613,6 +897,8 @@ def test__try_redact__successful(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -632,6 +918,8 @@ def test__try_redact__successful(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -648,6 +936,8 @@ def test__try_redact__successful(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -659,6 +949,8 @@ def test__try_redact__param_validation_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -680,6 +972,8 @@ def test__try_redact__param_validation_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -696,6 +990,8 @@ def test__try_redact__param_validation_failure(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_redact_json_payload")
@@ -707,6 +1003,8 @@ def test__try_redact__redaction_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -728,6 +1026,8 @@ def test__try_redact__redaction_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -741,6 +1041,8 @@ def test__try_redact__redaction_failure(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -756,6 +1058,8 @@ def test__try_redact__success_with_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -782,6 +1086,8 @@ def test__try_redact__success_with_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -793,6 +1099,8 @@ def test__try_redact__success_with_non_fatal_error(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -808,6 +1116,8 @@ def test__try_redact__fail_with_extra_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -837,6 +1147,8 @@ def test__try_redact__fail_with_extra_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -868,6 +1180,8 @@ def check__try_apply__successful_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -878,7 +1192,10 @@ def check__try_apply__successful_output(
         "status": "SUCCESS",
         "message": "Redaction process complete",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_apply__failed_output(
@@ -890,6 +1207,8 @@ def check__try_apply__failed_output(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -900,7 +1219,10 @@ def check__try_apply__failed_output(
         "status": "FAIL",
         "message": f"Redaction process failed with the following error: {exception}",
     }
+    execution_time_seconds = response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
+    assert execution_time_seconds is not None
 
 
 def check__try_apply__validate_apply_json_payload__called(
@@ -912,6 +1234,8 @@ def check__try_apply__validate_apply_json_payload__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -927,6 +1251,8 @@ def check__try_apply__validate_redact_json_payload__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -942,6 +1268,8 @@ def check__try_apply__apply__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -957,6 +1285,8 @@ def check__try_apply__redact__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -972,6 +1302,8 @@ def check__try_apply__log_exception__called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -987,6 +1319,8 @@ def check__try_apply__log_exception__not_called(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1004,6 +1338,8 @@ def check__try_apply__log_exception__not_called(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1015,6 +1351,8 @@ def test__try_apply__successful(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1034,6 +1372,8 @@ def test__try_apply__successful(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1050,6 +1390,8 @@ def test__try_apply__successful(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1061,6 +1403,8 @@ def test__try_apply__param_validation_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1082,6 +1426,8 @@ def test__try_apply__param_validation_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1098,6 +1444,8 @@ def test__try_apply__param_validation_failure(
 )
 @mock.patch.object(RedactionManager, "save_exception_log")
 @mock.patch.object(RedactionManager, "save_logs")
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(RedactionManager, "send_service_bus_completion_message")
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(RedactionManager, "validate_apply_json_payload")
@@ -1109,6 +1457,8 @@ def test__try_apply__apply_failure(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
     test_case,
@@ -1130,6 +1480,8 @@ def test__try_apply__apply_failure(
         mock_validate_json,
         mock_init,
         mock_send_service_bus_message,
+        mock_get_run_metrics,
+        mock_save_metrics,
         mock_save_logs,
         mock_save_exception,
     )
@@ -1143,6 +1495,8 @@ def test__try_apply__apply_failure(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -1158,6 +1512,8 @@ def test__try_apply__success_with_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1184,6 +1540,8 @@ def test__try_apply__success_with_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 
@@ -1195,6 +1553,8 @@ def test__try_apply__success_with_non_fatal_error(
 @mock.patch.object(
     RedactionManager, "save_logs", side_effect=Exception("save_logs exception")
 )
+@mock.patch.object(RedactionManager, "save_metrics")
+@mock.patch.object(MockRedactor, "get_run_metrics", return_value=None)
 @mock.patch.object(
     RedactionManager,
     "send_service_bus_completion_message",
@@ -1210,6 +1570,8 @@ def test__try_apply__fail_with_extra_non_fatal_error(
     mock_validate_json,
     mock_init,
     mock_send_service_bus_message,
+    mock_get_run_metrics,
+    mock_save_metrics,
     mock_save_logs,
     mock_save_exception,
 ):
@@ -1239,6 +1601,8 @@ def test__try_apply__fail_with_extra_non_fatal_error(
             "following error: save_exception_log exception"
         ),
     }
+    response.pop("execution_time_seconds", None)
+    response.pop("run_metrics", None)
     assert response == expected_response
 
 

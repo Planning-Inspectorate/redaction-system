@@ -10,6 +10,7 @@ from core.redaction.result import (
 )
 from PIL import Image
 import mock
+import dataclasses
 
 
 def test__image_redactor__get_name():
@@ -36,14 +37,17 @@ def test__image_redactor__redact():
         ((30, 30, 50, 50),),
     ]
     expected_results = ImageRedactionResult(
+        rule_name="some image redaction config",
+        run_metrics=dict(),
         redaction_results=tuple(
             ImageRedactionResult.Result(
                 source_image=config.images[i],
                 image_dimensions=(config.images[i].width, config.images[i].height),
                 redaction_boxes=faces_detected,
+                names=tuple("Face Detected" for _ in faces_detected),
             )
             for i, faces_detected in enumerate(detect_faces_side_effects)
-        )
+        ),
     )
     with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
         with mock.patch.object(
@@ -53,4 +57,8 @@ def test__image_redactor__redact():
                 inst = ImageRedactor()
                 inst.config = config
                 actual_results = inst.redact()
-                assert expected_results == actual_results
+                cleaned_expected_results = dataclasses.asdict(expected_results)
+                cleaned_expected_results.pop("run_metrics")
+                cleaned_actual_results = dataclasses.asdict(actual_results)
+                cleaned_actual_results.pop("run_metrics")
+                assert cleaned_expected_results == cleaned_actual_results
