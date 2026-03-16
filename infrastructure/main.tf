@@ -32,6 +32,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   tags                             = local.tags
 
   blob_properties {
+    last_access_time_enabled = true
     delete_retention_policy {
       days = var.storage_retention_days
     }
