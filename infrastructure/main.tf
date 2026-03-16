@@ -79,7 +79,7 @@ resource "azurerm_service_plan" "redaction_system" {
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   os_type             = "Linux"
-  sku_name            = "EP1"
+  sku_name            = "P2v3"
   #worker_count           = 2
   #zone_balancing_enabled = true
 }
