@@ -78,24 +78,7 @@ resource "azurerm_storage_management_policy" "redaction_storage" {
     }
     actions {
       base_blob {
-        delete_after_days_since_creation_greater_than              = 1
-      }
-    }
-  }
-}
-
-resource "azurerm_storage_management_policy" "main" {
-  storage_account_id = azurerm_storage_account.redaction_storage.id
-
-  rule {
-    name    = "Test data retention policy"
-    enabled = true
-    filters {
-      prefix_match = ["test"]
-      blob_types   = ["blockBlob"]
-    }
-    actions {
-      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than = 1
         delete_after_days_since_creation_greater_than              = 1
       }
     }
