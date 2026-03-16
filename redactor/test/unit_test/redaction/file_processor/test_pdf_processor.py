@@ -3,7 +3,8 @@ import pytest
 
 from PIL import Image
 from io import BytesIO
-from mock import patch, Mock
+import mock
+from mock import patch, Mock, MagicMock
 
 from core.redaction.file_processor import (
     PDFProcessor,
@@ -960,3 +961,41 @@ def test__pdf_processor__apply():
     assert expected_image == actual_image, (
         "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
     )
+
+def test_find_bad_redactions():
+    """
+    - Given i have a pdf file with some content
+    - When i call PDFProcessor._find_bad_redactions
+    - The content is returned as a list
+    """
+    file_bytes = BytesIO(b"fake pdf bytes")
+    mock_pdf = MagicMock()
+    mock_inspect_result = {
+        "page1": [{"text": "secret"}, {"text": "password"}],
+        "page2": [{"text": "token"}],
+    }
+    with patch("pymupdf.open", return_value=mock_pdf) as mock_open:
+        with patch("xray.inspect", return_value=mock_inspect_result) as mock_inspect:
+            obj = PDFProcessor()
+            result = obj._find_bad_redactions(file_bytes)
+
+    assert result == ["secret", "password", "token"]
+    mock_open.assert_called_once_with(stream=file_bytes)
+    mock_inspect.assert_called_once_with(mock_pdf)
+
+def test_load_stopwords():
+    """
+    - Given i have a yaml file with some content
+    - When i call PDFProcessor._load_stopwords
+    - The yaml content is returned as a list
+    """
+    mock_config_file_content = """
+    stopwords:
+    - the
+    - test
+    """
+    expected_output = ["the","test"]
+    with mock.patch(
+        "builtins.open", mock.mock_open(read_data=mock_config_file_content)
+    ):
+        assert PDFProcessor._load_stopwords("some_file") == expected_output
