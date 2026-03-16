@@ -51,7 +51,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   }
 }
 
-resource "azurerm_storage_management_policy" "redaction_storage" {
+resource "azurerm_storage_management_policy" "main" {
   storage_account_id = azurerm_storage_account.redaction_storage.id
 
   rule {
