@@ -133,7 +133,8 @@ class AzureVisionUtil:
             )
 
             # Cache result
-            self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
+            with self.CACHE_LOCK:
+                self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
 
         return tuple(
             person["box"]
@@ -231,6 +232,7 @@ class AzureVisionUtil:
             )
 
             # Cache result
-            self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
+            with self.CACHE_LOCK:
+                self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
 
         return text_detected
