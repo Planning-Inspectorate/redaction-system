@@ -168,52 +168,19 @@ def test__pdf_processor__examine_provisional_text_redaction():
     """
     with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
-    redaction_candidates = [
-        [
-            (  # Single word redaction
-                pymupdf.Rect(
-                    72.0, 101.452392578125, 101.31322479248047, 113.741455078125
-                ),
-                "Riker",
-            ),
-            (  # Multi-word redaction
-                pymupdf.Rect(
-                    180.76254272460938,
-                    145.0911865234375,
-                    270.5718994140625,
-                    157.3802490234375,
-                ),
-                "Commander Data",
-            ),
-            # Multi-word redaction across line break
-            (
-                pymupdf.Rect(
-                    470.42864990234375,
-                    101.452392578125,
-                    492.6402282714844,
-                    113.741455078125,
-                ),
-                "Your Honour",  # "Your" on first line
-            ),
-            (
-                pymupdf.Rect(
-                    72.0, 115.9986572265625, 110.5030746459961, 128.2877197265625
-                ),
-                "Your Honour",  # "Honour" on second line
-            ),
-        ]
+    terms_to_redact = [
+        "Riker",  # Single word redaction
+        "Commander Data",  # Multi-word redaction
+        "Your Honour",  # Multi-word redaction across line break
     ]
-
     pdf_processor = PDFProcessor()
-    pdf_processor.redaction_candidates = redaction_candidates
     pdf = pymupdf.open(stream=document_bytes)
 
     instances_to_redact = []
-    for i, (rect, term) in enumerate(redaction_candidates[0]):
+    for term in terms_to_redact:
         instances_to_redact.append(
             pdf_processor._examine_provisional_text_redaction(
                 term,
-                rect,
                 pdf_processor._extract_page_text(pdf[0]),
             )
         )
@@ -258,8 +225,17 @@ def test__pdf_processor__examine_provisional_text_redaction():
                 ),
                 "Your Honour",
             ),
+            (
+                0,
+                pymupdf.Rect(
+                    273.0046081542969,
+                    217.822509765625,
+                    336.770751953125,
+                    230.111572265625,
+                ),
+                "Your Honour",
+            ),
         ],
-        [],  # No match for last candidate
     ]
 
     assert instances_to_redact == expected_result
@@ -298,11 +274,10 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
         ),
     ]
     pdf_processor = PDFProcessor()
-    pdf_processor.redaction_candidates = [redaction_candidates]
     pdf = pymupdf.open(stream=document_bytes)
 
     instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
-        redaction_candidates,
+        [text for _, text in redaction_candidates],
         pdf_processor._extract_page_text(pdf[0]),
     )
     assert instances_to_redact == [
