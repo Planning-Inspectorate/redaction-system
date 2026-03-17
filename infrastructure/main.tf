@@ -59,13 +59,28 @@ resource "azurerm_storage_management_policy" "main" {
     name    = "Data retention policy"
     enabled = true
     filters {
-      prefix_match = ["redactiondata", "analytics"]
+      prefix_match = ["redactiondata"]
       blob_types   = ["blockBlob"]
     }
     actions {
       base_blob {
         tier_to_cold_after_days_since_last_access_time_greater_than = 7
         delete_after_days_since_creation_greater_than               = 7
+      }
+    }
+  }
+
+  rule {
+    name    = "Analytics data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["analytics"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than    = 7
+        tier_to_archive_after_days_since_last_tier_change_greater_than = 7
       }
     }
   }
