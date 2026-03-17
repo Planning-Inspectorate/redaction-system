@@ -179,6 +179,24 @@ class PDFProcessor(FileProcessor):
             x1=tuple(rect[2] for rect in line_rects),
         )
 
+    @staticmethod
+    def _summarise_redaction_result(redaction_result: RedactionResult) -> str:
+        if isinstance(redaction_result, TextRedactionResult):
+            return (
+                f"{redaction_result.__class__.__name__}"
+                f"(count={len(redaction_result.redaction_strings)})"
+            )
+        if isinstance(redaction_result, ImageRedactionResult):
+            box_count = sum(
+                len(result.redaction_boxes)
+                for result in redaction_result.redaction_results
+            )
+            return (
+                f"{redaction_result.__class__.__name__}"
+                f"(images={len(redaction_result.redaction_results)}, boxes={box_count})"
+            )
+        return redaction_result.__class__.__name__
+
     def _extract_page_text(self, page: pymupdf.Page) -> PDFPageMetadata:
         """
         Extract text content and metadata from a PDF page.
@@ -268,7 +286,9 @@ class PDFProcessor(FileProcessor):
                     ),
                 )
                 LoggingUtil().log_info(
-                    f"Loaded image with the following metadata {image_metadata}"
+                    "Loaded PDF image metadata "
+                    f"(page={page_number}, format={file_format}, "
+                    f"size={image.size}, source_resolution={image_metadata.source_image_resolution})"
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
@@ -1182,7 +1202,9 @@ class PDFProcessor(FileProcessor):
             pdf_text_extraction_time_end - pdf_text_extraction_time_start
         )
         LoggingUtil().log_info(
-            f"The following text was extracted from the PDF:\n'{pdf_text}'"
+            "Extracted PDF text "
+            f"(chars={len(pdf_text) if pdf_text else 0}, "
+            f"contains_text={pdf_text is not None})"
         )
         if pdf_text and not is_english_text(pdf_text):
             exception = NonEnglishContentException(
@@ -1231,8 +1253,7 @@ class PDFProcessor(FileProcessor):
             elif issubclass(redaction_result.__class__, ImageRedactionResult):
                 image_analysis_total_time += redaction_time
             LoggingUtil().log_info(
-                f"The redactor {rule_to_apply} yielded the following result: "
-                f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+                f"The redactor {rule_to_apply} yielded {self._summarise_redaction_result(redaction_result)}"
             )
             redaction_results.append(redaction_result)
         LoggingUtil().log_info("PDF analysis complete")

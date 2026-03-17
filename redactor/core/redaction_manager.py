@@ -20,6 +20,7 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
+from core.util.azure_vision_util import AzureVisionUtil
 
 
 load_dotenv(verbose=True, override=True)
@@ -75,8 +76,8 @@ class RedactionManager:
                 "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
         self.runtime_errors: List[str] = []
-        # Ensure the logger's job id is set to the job id
-        LoggingUtil(job_id=self.job_id)
+        # Reset process-scoped state so long-lived Azure workers do not retain it.
+        LoggingUtil().start_job(self.job_id, clear_logs=False)
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
@@ -570,14 +571,19 @@ class RedactionManager:
         Write a log file locally and in Azure
         """
         log_bytes = LoggingUtil().get_log_bytes()
+        if not log_bytes:
+            return
         # Dump in Azure
-        AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
-        ).write(
-            data_bytes=log_bytes,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
-        )
+        try:
+            AzureBlobIO(
+                storage_name=f"pinsstredaction{self.env}uks",
+            ).write(
+                data_bytes=log_bytes,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
+            )
+        finally:
+            LoggingUtil().clear_raw_logs()
 
     def log_exception(self, exception: Exception):
         """
@@ -658,68 +664,72 @@ class RedactionManager:
         message = "Redaction process complete"
         run_metrics = None
         try:
-            payload_validator(params)
-            run_metrics = redaction_function(params)
-        except Exception as e:
-            self.log_exception(e)
-            status = "FAIL"
-            message = f"Redaction process failed with the following error: {e}"
-            fatal_error = message
-        end_time = time()
-        total_execution_time = end_time - start_time
-        final_output = base_response | {
-            "status": status,
-            "message": message,
-            "execution_time_seconds": total_execution_time,
-            "run_metrics": run_metrics,
-        }
-        try:
-            self.send_service_bus_completion_message(params, final_output)
-        except Exception as e:
-            self.log_exception(e)
-            non_fatal_errors.append(
-                f"Failed to submit a service bus message with the following error: {e}"
-            )
-        try:
-            self.save_logs(stage)
-        except Exception as e:
-            self.log_exception(e)
-            non_fatal_errors.append(
-                f"Failed to write logs with the following error: {e}"
-            )
-        if run_metrics:
             try:
-                self.save_metrics(stage, run_metrics)
+                payload_validator(params)
+                run_metrics = redaction_function(params)
+            except Exception as e:
+                self.log_exception(e)
+                status = "FAIL"
+                message = f"Redaction process failed with the following error: {e}"
+                fatal_error = message
+            end_time = time()
+            total_execution_time = end_time - start_time
+            final_output = base_response | {
+                "status": status,
+                "message": message,
+                "execution_time_seconds": total_execution_time,
+                "run_metrics": run_metrics,
+            }
+            try:
+                self.send_service_bus_completion_message(params, final_output)
+            except Exception as e:
+                self.log_exception(e)
+                non_fatal_errors.append(
+                    f"Failed to submit a service bus message with the following error: {e}"
+                )
+            try:
+                self.save_logs(stage)
+            except Exception as e:
+                self.log_exception(e)
+                non_fatal_errors.append(
+                    f"Failed to write logs with the following error: {e}"
+                )
+            if run_metrics:
+                try:
+                    self.save_metrics(stage, run_metrics)
+                except Exception as e:
+                    non_fatal_errors.append(
+                        f"Failed to write metrics with the following error: {e}"
+                    )
+            try:
+                self.save_exception_log(stage)
             except Exception as e:
                 non_fatal_errors.append(
-                    f"Failed to write metrics with the following error: {e}"
+                    f"Failed to write an exception log with the following error: {e}"
                 )
-        try:
-            self.save_exception_log(stage)
-        except Exception as e:
-            non_fatal_errors.append(
-                f"Failed to write an exception log with the following error: {e}"
-            )
-        # Return any non-fatal errors to the caller
-        if non_fatal_errors:
-            if fatal_error:
-                message = (
-                    message
-                    + "\nAdditionally, the following non-fatal errors occurred:\n"
-                    + "\n".join(non_fatal_errors)
-                )
-            else:
-                message = (
-                    "Redaction process completed successfully, but had some non-fatal errors:\n"
-                    + "\n".join(non_fatal_errors)
-                )
-        final_output = base_response | {
-            "status": status,
-            "message": message,
-            "execution_time_seconds": total_execution_time,
-            "run_metrics": run_metrics,
-        }
-        return final_output
+            # Return any non-fatal errors to the caller
+            if non_fatal_errors:
+                if fatal_error:
+                    message = (
+                        message
+                        + "\nAdditionally, the following non-fatal errors occurred:\n"
+                        + "\n".join(non_fatal_errors)
+                    )
+                else:
+                    message = (
+                        "Redaction process completed successfully, but had some non-fatal errors:\n"
+                        + "\n".join(non_fatal_errors)
+                    )
+            final_output = base_response | {
+                "status": status,
+                "message": message,
+                "execution_time_seconds": total_execution_time,
+                "run_metrics": run_metrics,
+            }
+            return final_output
+        finally:
+            AzureVisionUtil.clear_caches()
+            LoggingUtil().clear_raw_logs()
 
     def try_redact(self, params: Dict[str, Any]):
         """

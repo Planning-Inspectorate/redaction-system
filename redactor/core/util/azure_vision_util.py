@@ -22,6 +22,18 @@ load_dotenv(verbose=True)
 class AzureVisionUtil:
     _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
     _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
+    _MAX_CACHE_ENTRIES = 32
+
+    @classmethod
+    def clear_caches(cls):
+        cls._IMAGE_TEXT_CACHE.clear()
+        cls._IMAGE_FACE_CACHE.clear()
+
+    @classmethod
+    def _append_to_cache(cls, cache: List[Dict], entry: Dict):
+        cache.append(entry)
+        if len(cache) > cls._MAX_CACHE_ENTRIES:
+            del cache[0]
 
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
@@ -85,7 +97,9 @@ class AzureVisionUtil:
             )
 
             # Cache result
-            self._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
+            self._append_to_cache(
+                self._IMAGE_FACE_CACHE, {"image": image, "faces": faces_detected}
+            )
 
         return tuple(
             person["box"]
@@ -143,6 +157,8 @@ class AzureVisionUtil:
             )
 
             # Cache result
-            self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
+            self._append_to_cache(
+                self._IMAGE_TEXT_CACHE, {"image": image, "text": text_detected}
+            )
 
         return text_detected

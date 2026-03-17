@@ -2,6 +2,7 @@ import os
 import logging
 import threading
 import functools
+from io import BytesIO
 
 from uuid import uuid4
 from dotenv import load_dotenv
@@ -133,8 +134,33 @@ class LoggingUtil(metaclass=Singleton):
         self.raw_logs.append(f"WARNING: {message}\n")
         self.logger.warning(message)
 
+    def start_job(self, job_id: str, clear_logs: bool = True):
+        """Update the active job context for a new redaction run."""
+        self.job_id = job_id
+        if not hasattr(self, "raw_logs"):
+            self.raw_logs = []
+        if clear_logs:
+            self.clear_raw_logs()
+
+    def clear_raw_logs(self):
+        if hasattr(self, "raw_logs"):
+            self.raw_logs.clear()
+
     def get_log_bytes(self) -> bytes:
-        return "".join(self.raw_logs).encode("utf-8")
+        return "".join(getattr(self, "raw_logs", [])).encode("utf-8")
+
+
+def _summarise_logged_value(value):
+    if isinstance(value, BytesIO):
+        return f"<BytesIO len={value.getbuffer().nbytes} pos={value.tell()}>"
+    if isinstance(value, (bytes, bytearray)):
+        return f"<{type(value).__name__} len={len(value)}>"
+    if hasattr(value, "mode") and hasattr(value, "size"):
+        return (
+            f"<{value.__class__.__name__} mode={getattr(value, 'mode', '?')}"
+            f" size={getattr(value, 'size', '?')}>"
+        )
+    return repr(value)
 
 
 def log_to_appins(_func=None, *args, **kwargs):
@@ -163,8 +189,10 @@ def log_to_appins(_func=None, *args, **kwargs):
         def wrapper(*args, **kwargs):
             logger = LoggingUtil()
 
-            args_repr = [repr(a) for a in args]
-            kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
+            args_repr = [_summarise_logged_value(a) for a in args]
+            kwargs_repr = [
+                f"{k}={_summarise_logged_value(v)}" for k, v in kwargs.items()
+            ]
             signature = f"{', '.join(args_repr + kwargs_repr)}"
 
             logger.log_info(f"Function {func.__name__} called with args: {signature}")

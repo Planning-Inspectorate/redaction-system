@@ -12,6 +12,16 @@ def MockImageAnalysisClientResult(people):
     return mock_result
 
 
+def test__azure_vision_util__clear_caches():
+    AzureVisionUtil._IMAGE_FACE_CACHE = [{"image": Mock(), "faces": ()}]
+    AzureVisionUtil._IMAGE_TEXT_CACHE = [{"image": Mock(), "text": ()}]
+
+    AzureVisionUtil.clear_caches()
+
+    assert AzureVisionUtil._IMAGE_FACE_CACHE == []
+    assert AzureVisionUtil._IMAGE_TEXT_CACHE == []
+
+
 @patch("core.util.azure_vision_util.BytesIO", autospec=True)
 def test__azure_vision_util__detect_faces(mock_bytes_io):
     azure_vision_util = AzureVisionUtil()

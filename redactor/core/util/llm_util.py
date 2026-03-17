@@ -292,14 +292,16 @@ class LLMUtil:
             # Invoke LLM
             try:
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
+                    f"{chunk_hash_string} Sending {len(api_messages)} messages to the LLM "
+                    f"(estimated_tokens={estimated_tokens}, user_prompt_chars={len(user_prompt)})."
                 )
                 response = self.invoke_chain(
                     api_messages, LLMRedactionResultFormat, max_completion_tokens
                 )
                 usage = response.usage
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
+                    f"{chunk_hash_string} Received LLM response "
+                    f"(prompt_tokens={response.usage.prompt_tokens}, completion_tokens={response.usage.completion_tokens})."
                 )
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
@@ -307,7 +309,7 @@ class LLMUtil:
                 ].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following redaction_strings were generated"
+                    f"{chunk_hash_string} Generated {len(redaction_strings)} redaction strings."
                 )
                 return response, redaction_strings
             except LengthFinishReasonError as lfe:
@@ -372,13 +374,13 @@ class LLMUtil:
         start_time = time.time()
         chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
         LoggingUtil().log_info(
-            f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
+            f"Prepared {len(text_chunks)} text chunks for LLM analysis: "
+            f"{json.dumps([{'hash': item['hash'], 'chars': len(item['chunk'])} for item in chunk_hashes], indent=4)}"
         )
 
         # Initialise LLM interface
         request_counter = 0
         text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
@@ -410,8 +412,7 @@ class LLMUtil:
 
                 try:
                     # Get redaction result for chunk and append to overall results
-                    response, redaction_strings = future.result()
-                    responses.append(response)
+                    _, redaction_strings = future.result()
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(

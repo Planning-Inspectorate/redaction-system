@@ -140,6 +140,23 @@ def test_logging_util__log_exception_with_message(mock_logger_exception):
 
 
 @pytest.mark.nologgerfixt
+@patch("os.environ.get", return_value="some_connection_string;blah;blah")
+@patch("core.util.logging_util.uuid4", return_value="some_guid")
+@patch("core.util.logging_util.configure_azure_monitor")
+def test_logging_util__start_job__clears_raw_logs(
+    mock_env_get, mock_uuid4, mock_configure_azure_monitor
+):
+    Singleton._INSTANCES = {}
+    logging_util_inst = LoggingUtil()
+    logging_util_inst.raw_logs = ["old log"]
+
+    logging_util_inst.start_job("new_job_id", clear_logs=True)
+
+    assert logging_util_inst.job_id == "new_job_id"
+    assert logging_util_inst.raw_logs == []
+
+
+@pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
 def test_log_to_appins(mock_init, mock_log_info):
