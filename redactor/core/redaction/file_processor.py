@@ -35,7 +35,6 @@ from core.redaction.result import (
 from core.util.text_util import is_english_text, get_normalised_words, normalise_text
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.types import PydanticImage
-import dataclasses
 import xray
 from core.util.metric_util import MetricUtil
 
