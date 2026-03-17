@@ -634,11 +634,9 @@ class PDFProcessor(FileProcessor):
         """
         if rect.is_empty:
             # If the rect is invalid, then normalise it
-            initial_rect = str(rect)
             rect = rect.normalize()
-            LoggingUtil().log_info(
-                f"The rect {initial_rect} was empty according to pymupdf - it has been normalised to {rect}"
-            )
+        # Add the original rect in the subject, since highlight annotations may not have the same rect once created
+        # i.e. this is needed to ensure the final redactions are in the correct location
         highlight_annotation = page.add_highlight_annot(rect)
         highlight_annotation.set_info(
             {
@@ -719,9 +717,6 @@ class PDFProcessor(FileProcessor):
                     else:
                         break
                 if not remaining_words_to_redact:
-                    LoggingUtil().log_info(
-                        f"Partial redaction found across line break for term '{term_to_redact}'."
-                    )
                     return page_number, next_line, end_index - 1
         return None
 
@@ -801,48 +796,21 @@ class PDFProcessor(FileProcessor):
         # Find location of each redaction candidate by page
         for page in pdf:
             page_redaction_candidates: List[Tuple[pymupdf.Rect, str]] = []
-            LoggingUtil().log_info(f"Page {page.number}:")
-
             for term_to_redact in text_to_redact:
-                LoggingUtil().log_info(f"    Searching for term '{term_to_redact}'")
-
                 text_instances = page.search_for(term_to_redact)
-                if not text_instances:
-                    LoggingUtil().log_info(
-                        f"    No instances found for term '{term_to_redact}'."
-                    )
                 for rect in text_instances:
-                    LoggingUtil().log_info(
-                        f"    Found candidate for term '{term_to_redact}' at location '{rect}'"
-                    )
                     page_redaction_candidates.append((rect, term_to_redact))
 
                 # Check for partial match across a line break for terms containing hyphens
                 if "-" in term_to_redact:
-                    LoggingUtil().log_info(
-                        f"    Term '{term_to_redact}' contains a hyphen, checking"
-                        "for partial matches before the hyphen in case of line break."
-                    )
                     words_to_redact = term_to_redact.split("-")
                     partial_term = words_to_redact[0]
                     for i in range(len(words_to_redact)):
                         partial_term += "-" + words_to_redact[i] if i > 0 else ""
                         hyphen_instances = page.search_for(partial_term)
                         for rect in hyphen_instances:
-                            LoggingUtil().log_info(
-                                f"    Found partial candidate for term '{term_to_redact}'"
-                                f" before hyphen: '{partial_term}' at location '{rect}'"
-                            )
                             page_redaction_candidates.append((rect, term_to_redact))
-
-            LoggingUtil().log_info(
-                f"    Found {len(page_redaction_candidates)} total redaction candidates."
-            )
             self.redaction_candidates.append(page_redaction_candidates)
-
-        LoggingUtil().log_info(
-            f"Found {sum(len(x) for x in self.redaction_candidates)} total redaction candidates."
-        )
 
         # Examine redaction candidates: only apply exact matches and partial matches
         # across line breaks
@@ -865,15 +833,7 @@ class PDFProcessor(FileProcessor):
         n_highlights = 0
         for page_to_redact, rect, term in redaction_instances:
             self._add_provisional_redaction(pdf[page_to_redact], rect, name=term)
-            LoggingUtil().log_info(
-                f"    Applied provisional redaction for term '{term}'"
-                f" at location '{rect}' on page {page_to_redact}."
-            )
             n_highlights += 1
-
-        LoggingUtil().log_info(
-            f"Applied {n_highlights} provisional redactions in total."
-        )
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
@@ -903,9 +863,6 @@ class PDFProcessor(FileProcessor):
         """
         redaction_instances = []
         for rect, term_to_redact in candidates_on_page:
-            LoggingUtil().log_info(
-                f"    Examining redaction candidate for term '{term_to_redact}'"
-            )
             redaction_instances.extend(
                 self._examine_provisional_text_redaction(
                     term_to_redact, rect, page_metadata, next_page_metadata
@@ -938,9 +895,6 @@ class PDFProcessor(FileProcessor):
             full matches, a two entry list for partial redactions across line breaks, or
             an empty list if no valid redaction is found.
         """
-        LoggingUtil().log_info(
-            f"    Examining redaction candidate for term '{term_to_redact}'"
-        )
         # Find line corresponding to the redaction candidate
         lines_on_page = page_metadata.lines
         page_number = page_metadata.page_number
@@ -950,10 +904,6 @@ class PDFProcessor(FileProcessor):
                 line for line in lines_on_page if line.y0 <= rect.y0 <= line.y1
             )
         except StopIteration:
-            LoggingUtil().log_info(
-                f"        No line found for redaction candidate at location '{rect}'. "
-                " Skipping this candidate."
-            )
             return []
 
         redaction_instances = []
@@ -991,16 +941,6 @@ class PDFProcessor(FileProcessor):
                                 start,
                             )
                         )
-                    else:
-                        LoggingUtil().log_info(
-                            f" No exact match found for single-word term '{term_to_redact}'"
-                            f" in line '{line_to_check.words}'. Skipping this candidate."
-                        )
-            else:
-                LoggingUtil().log_info(
-                    f"        No exact match found for single-word term '{term_to_redact}'"
-                    f" in line '{line_to_check.words}'. Skipping this candidate."
-                )
         else:  # Multi-word redaction candidate
             if not matches:
                 return redaction_instances
@@ -1008,10 +948,6 @@ class PDFProcessor(FileProcessor):
             for term_found, start, end in matches:
                 # No match found
                 if end == -1:
-                    LoggingUtil().log_info(
-                        f"        No exact match found for term '{term_to_redact}'"
-                        f" in line '{line_to_check.words}'. Skipping this candidate."
-                    )
                     continue
 
                 # Exact match found - apply highlight
@@ -1095,19 +1031,9 @@ class PDFProcessor(FileProcessor):
                                     pymupdf.Matrix(image_transform),
                                 )
                             )
-                            LoggingUtil().log_info(
-                                f"Transformed the rect {untransformed_bounding_box} in image-space "
-                                f"for an image with dimensions {(pdf_image.width, pdf_image.height)} "
-                                f"to the new rect {rect_in_global_space} in page-space, using the "
-                                f"transform {image_transform}"
-                            )
                             try:
                                 self._add_provisional_redaction(
                                     page, rect_in_global_space, name=redaction_name
-                                )
-                                LoggingUtil().log_info(
-                                    f"Applied image redaction highlight for rect {rect_in_global_space} "
-                                    f"on page {page.number}"
                                 )
                             except Exception as e:
                                 LoggingUtil().log_exception_with_message(
@@ -1306,13 +1232,6 @@ class PDFProcessor(FileProcessor):
     @log_to_appins
     def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
         LoggingUtil().log_info("Redacting PDF")
-
-        def is_float(string: str):
-            try:
-                float(string)
-                return True
-            except ValueError:
-                return False
 
         pdf = pymupdf.open(stream=file_bytes)
 

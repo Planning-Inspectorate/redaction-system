@@ -1,15 +1,75 @@
 from mock import patch, Mock
 from typing import List
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
-
 from core.util.azure_vision_util import AzureVisionUtil
 from core.util.logging_util import LoggingUtil
+from PIL import Image
 
 
 def MockImageAnalysisClientResult(people):
     mock_result = Mock()
     mock_result.people.list = people
     return mock_result
+
+
+@patch.object(AzureVisionUtil, "__init__", return_value=None)
+def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
+    def mock_detect_faces(inst, image, confidence):
+        if image == images[0]:
+            return "a"
+        if image == images[1]:
+            return "b"
+        if image == images[2]:
+            return "c"
+        if image == images[3]:
+            return "d"
+        if image == images[4]:
+            return "e"
+
+    with patch.object(AzureVisionUtil, "detect_faces", mock_detect_faces):
+        actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
+        expected_results = [
+            (images[0], "a"),
+            (images[1], "b"),
+            (images[2], "c"),
+            (images[3], "d"),
+            (images[4], "e"),
+        ]
+        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
+            expected_results, key=lambda x: x[1]
+        )
+
+
+@patch.object(AzureVisionUtil, "__init__", return_value=None)
+def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_vision):
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
+    def mock_detect_faces(inst, image, confidence):
+        if image == images[0]:
+            return "a"
+        if image == images[1]:
+            # This element should not be returned
+            raise Exception("Some exception")
+        if image == images[2]:
+            return "c"
+        if image == images[3]:
+            return "d"
+        if image == images[4]:
+            return "e"
+
+    with patch.object(AzureVisionUtil, "detect_faces", mock_detect_faces):
+        actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
+        expected_results = [
+            (images[0], "a"),
+            (images[2], "c"),
+            (images[3], "d"),
+            (images[4], "e"),
+        ]
+        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
+            expected_results, key=lambda x: x[1]
+        )
 
 
 @patch("core.util.azure_vision_util.BytesIO", autospec=True)
@@ -121,6 +181,66 @@ def MockTextAnalysisClientResult():
     ]
 
     return mock_result
+
+
+@patch.object(AzureVisionUtil, "__init__", return_value=None)
+def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
+    def mock_detect_text(inst, image):
+        if image == images[0]:
+            return "a"
+        if image == images[1]:
+            return "b"
+        if image == images[2]:
+            return "c"
+        if image == images[3]:
+            return "d"
+        if image == images[4]:
+            return "e"
+
+    with patch.object(AzureVisionUtil, "detect_text", mock_detect_text):
+        actual_results = AzureVisionUtil().detect_text_in_images(images)
+        expected_results = [
+            (images[0], "a"),
+            (images[1], "b"),
+            (images[2], "c"),
+            (images[3], "d"),
+            (images[4], "e"),
+        ]
+        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
+            expected_results, key=lambda x: x[1]
+        )
+
+
+@patch.object(AzureVisionUtil, "__init__", return_value=None)
+def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vision):
+    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+
+    def mock_detect_text(inst, image):
+        if image == images[0]:
+            return "a"
+        if image == images[1]:
+            return "b"
+        if image == images[2]:
+            # This element should not be returned
+            raise Exception("Some exception")
+        if image == images[3]:
+            return "d"
+        if image == images[4]:
+            return "e"
+
+    with patch.object(AzureVisionUtil, "detect_text", mock_detect_text):
+        actual_results = AzureVisionUtil().detect_text_in_images(images)
+        expected_results = [
+            (images[0], "a"),
+            (images[1], "b"),
+            (images[3], "d"),
+            (images[4], "e"),
+        ]
+        assert sorted(actual_results, key=lambda x: x[1]) == sorted(
+            expected_results, key=lambda x: x[1]
+        )
 
 
 @patch("core.util.azure_vision_util.BytesIO", autospec=True)

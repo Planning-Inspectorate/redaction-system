@@ -34,7 +34,7 @@ def app_ins_traces_contains_message(expected_message: str):
 @pytest.fixture(autouse=True, scope="module")
 @patch("core.util.logging_util.uuid4", return_value=JOB_ID)
 def run_logging_util(mock_job_id):
-    @log_to_appins
+    @log_to_appins(log_args=True)
     def some_test_function(mock_arg_a: str, mock_arg_b: str):
         return f"some_test_function says '{mock_arg_a}' and '{mock_arg_b}'"
 
