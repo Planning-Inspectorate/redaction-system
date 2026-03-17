@@ -71,8 +71,10 @@ class AzureVisionUtil:
 
     @retry(
         retry=retry_if_exception(
-            lambda exception: isinstance(exception, HttpResponseError)
-            and exception.status_code in [429]
+            lambda exception: (
+                isinstance(exception, HttpResponseError)
+                and exception.status_code in [429]
+            )
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
@@ -170,8 +172,10 @@ class AzureVisionUtil:
     @log_to_appins
     @retry(
         retry=retry_if_exception(
-            lambda exception: isinstance(exception, HttpResponseError)
-            and exception.status_code in [429]
+            lambda exception: (
+                isinstance(exception, HttpResponseError)
+                and exception.status_code in [429]
+            )
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
