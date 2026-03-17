@@ -65,7 +65,7 @@ resource "azurerm_storage_management_policy" "main" {
     actions {
       base_blob {
         tier_to_cold_after_days_since_last_access_time_greater_than = 7
-        delete_after_days_since_creation_greater_than              = 14
+        delete_after_days_since_creation_greater_than               = 14
       }
     }
   }
@@ -80,7 +80,7 @@ resource "azurerm_storage_management_policy" "main" {
     actions {
       base_blob {
         tier_to_cold_after_days_since_last_access_time_greater_than = 1
-        delete_after_days_since_creation_greater_than              = 1
+        delete_after_days_since_creation_greater_than               = 1
       }
     }
   }
