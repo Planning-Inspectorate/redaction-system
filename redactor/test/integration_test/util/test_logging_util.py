@@ -51,6 +51,7 @@ def test__logging_util__logging_initialised():
     expected_logging_initialised_message = (
         f"{JOB_ID}: Logging initialised for redactor_logs."
     )
+    time.sleep(30)
     initalisation_traces = app_ins_traces_contains_message(
         expected_logging_initialised_message
     )
@@ -68,6 +69,7 @@ def test__logging_util__logging_function_call():
         f"{JOB_ID}: Function some_test_function called with args: 'Hello', "
         "mock_arg_b='There'"
     )
+    time.sleep(30)
     function_call_traces = app_ins_traces_contains_message(
         expected_logging_function_message
     )
