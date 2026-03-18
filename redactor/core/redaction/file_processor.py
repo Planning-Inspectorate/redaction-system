@@ -245,6 +245,7 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         bad_redactions = xray.inspect(pdf)
         bad_redactions_list = [item["text"] for items in bad_redactions.values() for item in items]
+        print(bad_redactions_list)
         return bad_redactions_list
     
     def _load_stopwords(self): 
