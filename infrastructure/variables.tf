@@ -24,7 +24,7 @@ variable "log_retention_days" {
 variable "daily_log_cap" {
   description = "The max amount of logging data that can be logged in a day"
   type        = number
-  default     = 0.2
+  default     = 1
 }
 
 variable "tooling_config" {

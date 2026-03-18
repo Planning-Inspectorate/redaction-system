@@ -32,6 +32,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   tags                             = local.tags
 
   blob_properties {
+    last_access_time_enabled = true
     delete_retention_policy {
       days = var.storage_retention_days
     }
@@ -48,6 +49,55 @@ resource "azurerm_storage_account" "redaction_storage" {
   network_rules {
     default_action = "Deny"
     bypass         = ["AzureServices"] # Keep Azure platform services in scope
+  }
+}
+
+resource "azurerm_storage_management_policy" "main" {
+  storage_account_id = azurerm_storage_account.redaction_storage.id
+
+  rule {
+    name    = "Data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["redactiondata"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than = 7
+        delete_after_days_since_creation_greater_than               = 7
+      }
+    }
+  }
+
+  rule {
+    name    = "Analytics data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["analytics"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than    = 30
+        tier_to_archive_after_days_since_last_tier_change_greater_than = 60
+      }
+    }
+  }
+
+  rule {
+    name    = "Test data retention policy"
+    enabled = true
+    filters {
+      prefix_match = ["test"]
+      blob_types   = ["blockBlob"]
+    }
+    actions {
+      base_blob {
+        tier_to_cold_after_days_since_last_access_time_greater_than = 1
+        delete_after_days_since_creation_greater_than               = 1
+      }
+    }
   }
 }
 
