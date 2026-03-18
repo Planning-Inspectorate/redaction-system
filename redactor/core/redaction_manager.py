@@ -14,7 +14,7 @@ from azure.core.exceptions import ResourceExistsError
 from datetime import datetime
 from time import time
 from string import punctuation
-from numpy import isclose
+from math import isclose
 
 from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
@@ -371,10 +371,9 @@ class RedactionManager:
                         proposed["annotatedText"].strip(punctuation)
                         == final["annotatedText"].strip(punctuation)
                     ) and (
-                        isclose(
-                            proposed["rect"][1:4:2], final["rect"][1:4:2]
-                        ).all()  # Compare y-coordinates of the rects
-                    ):
+                        isclose(proposed["rect"][1], final["rect"][1])
+                        and isclose(proposed["rect"][3], final["rect"][3])
+                    ):  # Compare y-coordinates of the rects
                         true_positives += 1
                         found = True
                         break
