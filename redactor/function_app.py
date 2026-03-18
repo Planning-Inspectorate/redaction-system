@@ -271,5 +271,5 @@ def redact_dummy_task(params: Dict[str, Any]):
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager  # noqa: F402
-    time.sleep(600)
+    time.sleep(1800)
     return {"result": "done"}
