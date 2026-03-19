@@ -39,7 +39,7 @@ resource "azurerm_storage_account" "redaction_storage" {
   }
 
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = false
   }
 
   sas_policy {
