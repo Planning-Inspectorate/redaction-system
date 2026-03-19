@@ -2,7 +2,8 @@
 # User groups
 ############################################################################
 data "azuread_group" "redaction_engineers" {
-  display_name = "${local.org}-redaction-system-developers-${var.environment}"
+  display_name = "${local.org}-redaction-system-developers"
+  #display_name = "${local.org}-redaction-system-developers-${var.environment}"
   #security_enabled = true
 }
 
