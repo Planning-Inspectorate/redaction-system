@@ -35,7 +35,6 @@ resource "azurerm_consumption_budget_resource_group" "ai_cost" {
 
 locals {
   budget_alert_threshold_percentages = [
-    25,
     50,
     75,
     100,
