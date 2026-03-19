@@ -3,6 +3,13 @@ variable "environment" {
   type        = string
 }
 
+variable "budget_alert_config" {
+  description = "Config for setting up budget alerts"
+  type = object({
+    expected_cost = number
+  })
+}
+
 variable "storage_account_replication_type" {
   description = "The storage redundancy setting"
   type        = string
