@@ -38,10 +38,6 @@ resource "azurerm_storage_account" "redaction_storage" {
     }
   }
 
-  lifecycle {
-    prevent_destroy = false
-  }
-
   sas_policy {
     expiration_period = "01.12:00:00"
   }
