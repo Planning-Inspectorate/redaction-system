@@ -2,9 +2,10 @@
 # User groups
 ############################################################################
 data "azuread_group" "redaction_engineers" {
-  display_name = "${local.org}-redaction-system-developers"
+  display_name = "${local.org}-redaction-system-developers-${var.environment}"
   #security_enabled = true
 }
+
 data "azuread_service_principal" "deployment" {
   display_name = "Azure DevOps Pipelines - Redaction System - Deployment ${upper(var.environment)}"
 }
