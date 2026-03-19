@@ -35,3 +35,7 @@ class RedactorNameNotFoundException(Exception):  # pragma: no cover
 
 class NothingToRedactException(Exception):  # pragma: no cover
     pass
+
+
+class FileTooLargeException(Exception):  # pragma: no cover
+    pass

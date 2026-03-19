@@ -24,6 +24,7 @@ from core.redaction.exceptions import (
     UnprocessedRedactionResultException,
     NonEnglishContentException,
     NothingToRedactException,
+    FileTooLargeException,
 )
 from core.redaction.config import RedactionConfig
 from core.redaction.result import (
@@ -119,6 +120,13 @@ class FileProcessor(ABC):
         """
         pass
 
+    @abstractmethod
+    def try_reject_large_file(self, **kwargs) -> bool:
+        """
+        Raise a FileTooLargeException if the file being processed is too large
+        """
+        pass
+
 
 class PDFImageMetadata(BaseModel):
     source_image_resolution: Tuple[float, float]
@@ -184,6 +192,11 @@ class PDFProcessor(FileProcessor):
     """
     Class for managing the redaction of PDF documents
     """
+
+    MAX_CHARACTERS_PER_HOUR = 2000000
+    """The number of characters a PDF can have before exceeding a runtime of 1 hour"""
+    MAX_IMAGES_PER_HOUR = 300
+    """The number of images a PDF can have before exceeding a runtime of 1 hour"""
 
     @classmethod
     def get_name(cls) -> str:
@@ -1182,6 +1195,7 @@ class PDFProcessor(FileProcessor):
         pdf_images = self._extract_pdf_images(file_bytes)
         image_extraction_time_end = time()
         image_extraction_time = image_extraction_time_end - image_extraction_time_start
+        self.try_reject_large_file(pdf_text=pdf_text, pdf_images=pdf_images)
 
         # Generate list of redaction rules from config
         redaction_rules: List[RedactionConfig] = redaction_config.get(
@@ -1351,6 +1365,35 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
         return {TextRedactor, ImageRedactor}
+
+    def try_reject_large_file(self, **kwargs) -> bool:
+        if self.MAX_CHARACTERS_PER_HOUR < 1 or self.MAX_IMAGES_PER_HOUR < 1:
+            # Skip the check if character/image restrictions are not valid
+            return
+        # Reject files where the estimated execution time exceeds 1 hour
+        pdf_text: str = kwargs.get("pdf_text")
+        pdf_images: List[PDFImageMetadata] = kwargs.get("pdf_images")
+        character_count = float(len(pdf_text))
+        image_count = float(len(pdf_images))
+        character_utilisation = character_count / self.MAX_CHARACTERS_PER_HOUR
+        image_utilisation = image_count / self.MAX_IMAGES_PER_HOUR
+        total_utilisation = character_utilisation + image_utilisation
+        if total_utilisation >= 1:
+            estimated_time_in_minutes = int(total_utilisation * 60)
+            raise FileTooLargeException(
+                (
+                    "The input PDF is too large to process. Document analysis becomes very slow when PDFs contain a lot of text or images. "
+                    f"A text-only document with {self.MAX_CHARACTERS_PER_HOUR} characters will take around an hour to process. "
+                    f"An image-only document with {self.MAX_IMAGES_PER_HOUR} images take around an hour to process. "
+                    f"The document contained {int(character_count)} characters and {int(image_count)} images - when combined the analysis "
+                    f"time will take over an hour (estimated to take {estimated_time_in_minutes} minutes). "
+                    "In order to prevent this document from hogging resources, the document has been rejected"
+                )
+            )
+        if len(pdf_text) > self.MAX_CHARACTER_COUNT:
+            raise FileTooLargeException()
+        if len(pdf_images) > self.MAX_IMAGE_COUNT:
+            raise FileTooLargeException()
 
 
 class FileProcessorFactory:
