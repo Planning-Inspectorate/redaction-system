@@ -243,7 +243,9 @@ class PDFProcessor(FileProcessor):
         if line_text:
             lines.append(self._create_line_metadata(line_text, line_rects, n_lines))
 
-        return PDFPageMetadata(page_number=page.number, lines=lines, raw_text=page.get_text().strip())
+        return PDFPageMetadata(
+            page_number=page.number, lines=lines, raw_text=page.get_text().strip()
+        )
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
         """
@@ -928,10 +930,15 @@ class PDFProcessor(FileProcessor):
             (which may be the following page for partial redactions across line breaks),
             the bounding box to redact, and the full term being redacted.
         """
+        # Check if the text is found in the joined lines
         filtered_term_to_redact = [
             x
             for x in text_to_redact
-            if x in page_metadata.raw_text + (next_page_metadata.raw_text if next_page_metadata else "")
+            if x
+            in (
+                page_metadata.raw_text
+                + (next_page_metadata.raw_text if next_page_metadata else "")
+            ).replace("\n", "")
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:
