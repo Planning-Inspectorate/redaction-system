@@ -433,6 +433,7 @@ def test__llm_util___analyse_text_chunk__length_finish_reason():
         RateLimitError("message", response=MockOpenAIAPIResponse(), body="body"),
         TimeoutError("Some LLM invocation error"),
         LengthFinishReasonError(completion=create_mock_chat_completion()),
+        AttributeError("'str' object has no attribute 'choices'"),
     ],
 )
 def test__llm_util___analyse_text_chunk__retry_on_exception(exception):

@@ -237,7 +237,12 @@ class LLMUtil:
     # Only retry if there is a rate limit exception. All other errors are logged and skipped
     @retry(
         retry=retry_if_exception_type(
-            (RateLimitError, TimeoutError, LengthFinishReasonError)
+            (
+                RateLimitError,  # API rate limit exceeded
+                TimeoutError,  # Timeout while waiting for semaphore
+                LengthFinishReasonError,  # LLM response truncated due to length
+                AttributeError,  # LLM response parsing errors
+            )
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
