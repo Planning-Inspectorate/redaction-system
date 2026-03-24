@@ -270,10 +270,12 @@ class PDFProcessor(FileProcessor):
         """
         file_bytes.seek(0)
         bad_redactions = xray.inspect(file_bytes.read())
-        bad_redactions_list = [item["text"] for items in bad_redactions.values() for item in items]
+        bad_redactions_list = [
+            item["text"] for items in bad_redactions.values() for item in items
+        ]
         return bad_redactions_list
-    
-    def _load_stopwords(self): 
+
+    def _load_stopwords(self):
         """
         Check the text_to_redact list against the list in the stopwords yaml
 
