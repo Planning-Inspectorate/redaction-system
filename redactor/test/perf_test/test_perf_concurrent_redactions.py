@@ -64,7 +64,7 @@ def _env_required(name: str) -> str:
     return v
 
 
-PERF_CONCURRENCY = _int_env("PERF_CONCURRENCY", 20)
+PERF_CONCURRENCY = _int_env("PERF_CONCURRENCY", 5)
 PERF_TOTAL = _int_env("PERF_TOTAL", 200)
 PERF_TIMEOUT_S = _int_env("PERF_TIMEOUT_S", 200)
 PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
