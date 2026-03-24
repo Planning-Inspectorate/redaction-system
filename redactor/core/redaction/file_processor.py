@@ -420,9 +420,7 @@ class PDFProcessor(FileProcessor):
         return annotations_list
 
     @classmethod
-    def get_proposed_redactions(
-        cls, file_bytes: BytesIO, orient="records", **kwargs
-    ) -> List[Dict[str, Any]]:
+    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
         """
         Get the proposed redactions from the given PDF as a list of dictionaries containing
         the annotation details. Redactions proposed by _apply_provisional_text_redactions will
@@ -440,9 +438,7 @@ class PDFProcessor(FileProcessor):
         return cls._normalise_annotations(annotations)
 
     @classmethod
-    def get_final_redactions(
-        cls, file_bytes: BytesIO, orient="records", **kwargs
-    ) -> List[Dict[str, Any]]:
+    def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
         """
         Get the final redactions from the given PDF as a list of dictionaries containing
         the annotation details. Redactions proposed by _apply_provisional_text_redactions will

@@ -13,6 +13,8 @@ from core.redaction.file_processor import (
 from azure.core.exceptions import ResourceExistsError
 from datetime import datetime
 from time import time
+from string import punctuation
+from math import isclose
 
 from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
@@ -299,8 +301,9 @@ class RedactionManager:
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
         return run_metrics
 
+    @classmethod
     def _compare_redactions(
-        self,
+        cls,
         proposed_redactions_dict: Dict[str, Any],
         final_redactions_dict: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -320,13 +323,13 @@ class RedactionManager:
             )
             return output_dict
 
-        columns_to_compare = ["pageNumber", "annotatedText", "rect"]
+        attrs_to_compare = ["pageNumber", "annotatedText", "rect"]
 
         # Compare redactions
         true_positives = 0
         false_positives = 0
+        n_proposed_redactions = 0
         n_final_redactions = 0
-        matched_final = set()
 
         for page_annotations in proposed_annotations:
             page_number = page_annotations.get("pageNumber")
@@ -348,32 +351,30 @@ class RedactionManager:
 
             # Filter proposed redactions to only include candidates
             proposed_candidates = [
-                {k: v for k, v in ann.items() if k in columns_to_compare}
+                {k: v for k, v in ann.items() if k in attrs_to_compare}
                 for ann in proposed_annots_on_page
-                if ann.get("isRedactionCandidate", True)
+                if ann.get("isRedactionCandidate", False)
             ]
+            n_proposed_redactions += len(proposed_candidates)
 
             # Extract comparison fields from final redactions
             final_redactions = [
-                {k: v for k, v in ann.items() if k in columns_to_compare}
+                {k: v for k, v in ann.items() if k in attrs_to_compare}
                 for ann in final_annotations_on_page.get("annotations", [])
             ]
-
-            # Convert rect tuples to strings for comparison
-            for ann in proposed_candidates:
-                ann["rect"] = str(ann["rect"])
-            for ann in final_redactions:
-                ann["rect"] = str(ann["rect"])
 
             for proposed in proposed_candidates:
                 found = False
                 # Iterate over final redactions to find a match
-                for idx, final in enumerate(final_redactions):
-                    if (proposed["annotatedText"] == final["annotatedText"]) and (
-                        proposed["rect"] == final["rect"]
-                    ):
+                for final in final_redactions:
+                    if (
+                        proposed["annotatedText"].strip(punctuation)
+                        == final["annotatedText"].strip(punctuation)
+                    ) and (
+                        isclose(proposed["rect"][1], final["rect"][1])
+                        and isclose(proposed["rect"][3], final["rect"][3])
+                    ):  # Compare y-coordinates of the rects
                         true_positives += 1
-                        matched_final.add(idx)
                         found = True
                         break
                 if not found:
@@ -381,9 +382,11 @@ class RedactionManager:
 
             n_final_redactions += len(final_redactions)
 
-        false_negatives = n_final_redactions - len(matched_final)
+        false_negatives = n_final_redactions - true_positives
 
         analytics = {
+            "nProposedRedactions": n_proposed_redactions,
+            "nFinalRedactions": n_final_redactions,
             "truePositives": true_positives,
             "falsePositives": false_positives,
             "falseNegatives": false_negatives,
@@ -547,22 +550,20 @@ class RedactionManager:
         )
 
         # Apply the redactions to the file
-        proposed_redaction_file_data = file_processor_inst.apply(
-            file_data, config_cleaned
-        )
+        final_redaction_file_data = file_processor_inst.apply(file_data, config_cleaned)
         run_metrics = file_processor_inst.get_run_metrics()
 
         # Store a copy of the final redactions in redaction storage
         redaction_storage_io_inst.write(
-            proposed_redaction_file_data,
+            final_redaction_file_data,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/redacted.{extension}",
         )
-        proposed_redaction_file_data.seek(0)
+        final_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
-        write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        write_io_inst.write(final_redaction_file_data, **write_storage_properties)
         return run_metrics
 
     def save_logs(self, stage_name: str):
