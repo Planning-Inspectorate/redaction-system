@@ -10,9 +10,8 @@ from abc import ABC, abstractmethod
 from io import BytesIO
 from PIL import Image
 from pydantic import BaseModel
-from itertools import chain
 from yaml import safe_load
-from pydantic import BaseModel, Field
+from pydantic import Field
 from time import time
 from datetime import datetime
 
