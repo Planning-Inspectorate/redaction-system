@@ -103,3 +103,45 @@ def test__estimate_from_request_params__not_pdf():
     result = estimate_from_request_params(request_params)
 
     assert result is None
+
+
+def test__estimate_from_request_params__missing_read_details():
+    request_params = {"fileKind": "pdf"}
+
+    result = estimate_from_request_params(request_params)
+
+    assert result is None
+
+
+def test__estimate_from_request_params__caching_fails():
+    request_params = {
+        "fileKind": "pdf",
+        "readDetails": {
+            "storageKind": "AzureBlob",
+            "properties": {"storage_endpoint": "test_endpoint"},
+        },
+    }
+    with (
+        patch(
+            "core.util.param_util.convert_kwargs_for_io",
+            return_value={
+                "storage_kind": "AzureBlob",
+                "storage_endpoint": "test_endpoint",
+            },
+        ),
+        patch("core.io.io_factory.IOFactory.get", return_value=AzureBlobIO),
+        patch.object(AzureBlobIO, "read"),
+        patch(
+            "core.estimation.get_pdf_properties",
+            return_value={
+                "pageCount": 1,
+                "wordCount": 1000,
+                "imageCount": 2,
+            },
+        ),
+        patch("core.estimation.estimate_execution_time", return_value=42.34),
+        patch("os.environ.get", return_value="test_storage_connection_string"),
+        patch.object(AzureBlobIO, "write", side_effect=Exception("Caching failed")),
+    ):
+        with pytest.raises(Exception, match="Caching failed"):
+            estimate_from_request_params(request_params, job_folder="test_job_folder")
