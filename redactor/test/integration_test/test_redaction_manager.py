@@ -184,20 +184,12 @@ class TestIntegrationRedactionManager(TestCase):
         - Then the file should be downloaded from the source, and the redacted file should be uploaded to the destination
         """
         # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        test_container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
             pdf_bytes,
             overwrite=True,
@@ -236,7 +228,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
 
-        blob_client = test_container_client.get_blob_client(
+        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
