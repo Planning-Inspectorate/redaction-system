@@ -183,11 +183,15 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
         inst.validate_apply_json_payload(payload)
 
 
+@pytest.mark.parametrize(
+    "cached_blob_path",
+    [None, "test_job_folder/raw.pdf"],
+)
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
-@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(IOFactory, "get", return_value=MockIO)
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
+@mock.patch.object(AzureBlobIO, "read", return_value=BytesIO(b"cached"))
 @mock.patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
 @mock.patch("core.redaction_manager.datetime")
 @mock.patch.object(RedactionManager, "save_dict_to_blob_json")
@@ -209,11 +213,12 @@ def test__redaction_manager__redact(
     mock_save_dict_to_blob_json,
     mock_datetime,
     mock_file_processor_get,
+    mock_blob_read,
     mock_io_write,
     mock_io_read,
     mock_io_factory_get,
-    mock_blob_init,
     mock_init,
+    cached_blob_path,
 ):
     payload = {
         "tryApplyProvisionalRedactions": True,
@@ -231,6 +236,9 @@ def test__redaction_manager__redact(
             "properties": {"propertyExampleB": "value"},
         },
     }
+    # If cached blob provided from estimation step, should load from cached path
+    if cached_blob_path:
+        payload["_cachedRawBlobPath"] = cached_blob_path
     convert_kwargs_for_io_side_effects = [
         {"property_example_a": "value"},
         {"property_example_b": "value"},
@@ -260,8 +268,14 @@ def test__redaction_manager__redact(
             mock.call("writeStorageKind"),
         ]
     )
-    # Data should be read once, using read config in the payload
-    MockIO.read.assert_called_once_with(property_example_a="value")
+    if cached_blob_path:
+        # Data should be read once from the cached blob path
+        AzureBlobIO.read.assert_called_once_with(
+            container_name="redactiondata", blob_path=cached_blob_path
+        )
+    else:
+        # Data should be read once, using read config in the payload
+        MockIO.read.assert_called_once_with(property_example_a="value")
     # File processor should be loaded based on the payload
     FileProcessorFactory.get.assert_called_once_with("pdf")
     # Config should be loaded based on the payload
@@ -272,8 +286,17 @@ def test__redaction_manager__redact(
     )
     # Sample document data should be written twice - one for the raw file,
     # and once for the proposed redactions
-    AzureBlobIO.write.assert_has_calls(
-        [
+    if cached_blob_path:
+        # No write to blob storage if cached blob path provided
+        blob_write_calls = [
+            mock.call(
+                MockRedactor.redact.return_value,
+                container_name="redactiondata",
+                blob_path=f"{inst.folder_for_job}/proposed.pdf",
+            ),
+        ]
+    else:
+        blob_write_calls = [
             mock.call(
                 MockIO.read.return_value,
                 container_name="redactiondata",
@@ -285,12 +308,19 @@ def test__redaction_manager__redact(
                 blob_path=f"{inst.folder_for_job}/proposed.pdf",
             ),
         ]
-    )
+    AzureBlobIO.write.assert_has_calls(blob_write_calls)
     # Redact should be called once on the read file, using the loaded config
-    MockRedactor.redact.assert_called_once_with(
-        MockIO.read.return_value,
-        ConfigProcessor.validate_and_filter_config.return_value,
-    )
+    if cached_blob_path:
+        MockRedactor.redact.assert_called_once_with(
+            AzureBlobIO.read.return_value,
+            ConfigProcessor.validate_and_filter_config.return_value,
+        )
+    else:
+        MockRedactor.redact.assert_called_once_with(
+            MockIO.read.return_value,
+            ConfigProcessor.validate_and_filter_config.return_value,
+        )
+
     # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
     MockRedactor.get_proposed_redactions.assert_called_once_with(
         MockRedactor.redact.return_value

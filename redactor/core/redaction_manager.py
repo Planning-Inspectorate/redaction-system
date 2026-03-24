@@ -162,6 +162,7 @@ class RedactionManager:
         redaction_storage_io_inst = AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
         )
+        read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
 
         # Load the data — use cached blob from estimation if available
         cached_raw_blob_path = params.pop("_cachedRawBlobPath", None)
@@ -175,7 +176,6 @@ class RedactionManager:
             )
         else:
             LoggingUtil().log_info("Reading the raw file to redact")
-            read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
             file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
 
