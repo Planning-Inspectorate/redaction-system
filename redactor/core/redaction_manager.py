@@ -166,14 +166,23 @@ class RedactionManager:
 
         # Load the data — use cached blob from estimation if available
         cached_raw_blob_path = params.pop("_cachedRawBlobPath", None)
+        cache_success = False
         if cached_raw_blob_path:
             LoggingUtil().log_info(
                 f"Reading the raw file from redaction storage cache at '{cached_raw_blob_path}'"
             )
-            file_data = redaction_storage_io_inst.read(
-                container_name="redactiondata",
-                blob_path=cached_raw_blob_path,
-            )
+            try:
+                file_data = redaction_storage_io_inst.read(
+                    container_name="redactiondata",
+                    blob_path=cached_raw_blob_path,
+                )
+                cache_success = True
+            except Exception as e:
+                LoggingUtil().log_exception_with_message(
+                    f"Failed to read the cached raw file from redaction storage at '{cached_raw_blob_path}' - falling back to reading from original source",
+                    e,
+                )
+                file_data = read_io_inst.read(**read_storage_properties)
         else:
             LoggingUtil().log_info("Reading the raw file to redact")
             file_data = read_io_inst.read(**read_storage_properties)
@@ -196,7 +205,7 @@ class RedactionManager:
 
         # Store a copy of the raw data in redaction storage before processing begins
         # (skip if the estimation step already cached it there)
-        if not cached_raw_blob_path:
+        if not cache_success:
             LoggingUtil().log_info("Saving a copy of the raw file to redact")
             redaction_storage_io_inst.write(
                 file_data,

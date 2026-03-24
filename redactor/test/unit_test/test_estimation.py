@@ -83,7 +83,6 @@ def test__estimate_from_request_params(folder_for_job, cached_blob_path):
             },
         ),
         patch("core.estimation.estimate_execution_time", return_value=42.34),
-        patch("os.environ.get", return_value="test_storage_connection_string"),
         patch.object(AzureBlobIO, "write"),
     ):
         result = estimate_from_request_params(request_params, job_folder=folder_for_job)
@@ -140,8 +139,21 @@ def test__estimate_from_request_params__caching_fails():
             },
         ),
         patch("core.estimation.estimate_execution_time", return_value=42.34),
-        patch("os.environ.get", return_value="test_storage_connection_string"),
         patch.object(AzureBlobIO, "write", side_effect=Exception("Caching failed")),
+        patch("logging.warning") as mock_logging_warning,
     ):
-        with pytest.raises(Exception, match="Caching failed"):
-            estimate_from_request_params(request_params, job_folder="test_job_folder")
+        result = estimate_from_request_params(
+            request_params, job_folder="test_job_folder"
+        )
+        assert result == {
+            "estimatedExecutionTimeSeconds": 42.3,
+            "documentProperties": {
+                "pageCount": 1,
+                "wordCount": 1000,
+                "imageCount": 2,
+            },
+            "cachedRawBlobPath": None,
+        }
+        mock_logging_warning.assert_called_once_with(
+            "Warning: Failed to cache raw file to redaction storage: Caching failed"
+        )

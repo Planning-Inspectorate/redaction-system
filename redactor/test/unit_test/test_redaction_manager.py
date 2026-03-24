@@ -185,7 +185,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 
 @pytest.mark.parametrize(
     "cached_blob_path",
-    [None, "test_job_folder/raw.pdf"],
+    [None, "test_job_folder/raw.pdf", "error_blob_path/raw.pdf"],
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 @mock.patch.object(IOFactory, "get", return_value=MockIO)
@@ -239,6 +239,9 @@ def test__redaction_manager__redact(
     # If cached blob provided from estimation step, should load from cached path
     if cached_blob_path:
         payload["_cachedRawBlobPath"] = cached_blob_path
+        if cached_blob_path == "error_blob_path/raw.pdf":
+            # Simulate error when reading from cached blob path, to test fallback to original source
+            mock_blob_read.side_effect = Exception("Error reading cached blob")
     convert_kwargs_for_io_side_effects = [
         {"property_example_a": "value"},
         {"property_example_b": "value"},
@@ -273,6 +276,9 @@ def test__redaction_manager__redact(
         AzureBlobIO.read.assert_called_once_with(
             container_name="redactiondata", blob_path=cached_blob_path
         )
+        if cached_blob_path == "error_blob_path/raw.pdf":
+            # Fall back to reading from original source
+            MockIO.read.assert_called_once_with(property_example_a="value")
     else:
         # Data should be read once, using read config in the payload
         MockIO.read.assert_called_once_with(property_example_a="value")
@@ -286,7 +292,7 @@ def test__redaction_manager__redact(
     )
     # Sample document data should be written twice - one for the raw file,
     # and once for the proposed redactions
-    if cached_blob_path:
+    if cached_blob_path == "test_job_folder/raw.pdf":
         # No write to blob storage if cached blob path provided
         blob_write_calls = [
             mock.call(
@@ -310,7 +316,7 @@ def test__redaction_manager__redact(
         ]
     AzureBlobIO.write.assert_has_calls(blob_write_calls)
     # Redact should be called once on the read file, using the loaded config
-    if cached_blob_path:
+    if cached_blob_path == "test_job_folder/raw.pdf":
         MockRedactor.redact.assert_called_once_with(
             AzureBlobIO.read.return_value,
             ConfigProcessor.validate_and_filter_config.return_value,

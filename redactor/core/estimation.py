@@ -119,6 +119,7 @@ def estimate_from_request_params(
                     f"Cached raw file to redaction storage at path: {cached_blob_path}"
                 )
             except Exception as e:
+                cached_blob_path = None  # Clear cached path if write failed
                 logging.warning(
                     f"Warning: Failed to cache raw file to redaction storage: {e}"
                 )
