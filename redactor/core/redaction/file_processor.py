@@ -1243,7 +1243,7 @@ class PDFProcessor(FileProcessor):
         ]
         # Remove stopwords from text redaction list
         stopword_list = self._load_stopwords()
-        text_redactions = np.array(text_redactions) - np.array(stopword_list)
+        text_redactions = list(set(text_redactions) - set(stopword_list))
 
         image_redaction_results: List[ImageRedactionResult] = [
             x
