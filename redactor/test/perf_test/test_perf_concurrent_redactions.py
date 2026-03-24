@@ -102,6 +102,55 @@ def _run_id() -> str:
     return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
 
+def _candidate_fixture_paths(repo_root: Path, fixture_name: str) -> List[Path]:
+    fixtures_dir = repo_root / "redactor/test/resources/pdf"
+    raw_input = Path(fixture_name).expanduser()
+
+    base_candidates = []
+    if raw_input.is_absolute():
+        base_candidates.append(raw_input)
+    else:
+        base_candidates.extend(
+            [
+                Path.cwd() / raw_input,
+                repo_root / raw_input,
+                fixtures_dir / raw_input,
+                fixtures_dir / raw_input.name,
+            ]
+        )
+
+    candidates: List[Path] = []
+    seen = set()
+    for candidate in base_candidates:
+        variants = [candidate]
+        if candidate.suffix.lower() != ".pdf":
+            variants.append(candidate.with_suffix(".pdf"))
+
+        for variant in variants:
+            key = str(variant)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(variant)
+
+    return candidates
+
+
+def _resolve_fixture_path(repo_root: Path, fixture_name: str) -> Path:
+    fixtures_dir = repo_root / "redactor/test/resources/pdf"
+    candidates = _candidate_fixture_paths(repo_root, fixture_name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    available = sorted(path.name for path in fixtures_dir.glob("*.pdf"))
+    raise AssertionError(
+        f"Missing fixture PDF: {fixture_name}. "
+        f"Tried: {[str(path) for path in candidates]}. "
+        f"Available fixtures: {available}"
+    )
+
+
 # ----------------------------
 # Stats
 # ----------------------------
@@ -571,8 +620,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     start_url = function_start_url()
 
     repo_root = _repo_root()
-    fixture_path = repo_root / "redactor/test/resources/pdf" / PERF_FIXTURE_PDF
-    assert fixture_path.exists(), f"Missing fixture PDF: {fixture_path}"
+    fixture_path = _resolve_fixture_path(repo_root, PERF_FIXTURE_PDF)
 
     # where we will download sampled outputs (proof they can be written to disk)
     downloads_dir = tmp_path / "downloaded_redactions"

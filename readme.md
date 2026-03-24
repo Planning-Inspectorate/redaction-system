@@ -75,3 +75,5 @@ Below are the environment variables used by the project
 
 Optional perf tuning:
 - `PERF_TOTAL=20 PERF_CONCURRENCY=5 PERF_TIMEOUT_S=1200 make perf`
+- `PERF_FIXTURE_PDF=PINS_80_pages_repeated make perf`
+- `PERF_FIXTURE_PDF=/full/path/to/document.pdf make perf`
