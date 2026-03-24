@@ -37,7 +37,7 @@ def get_pdf_properties(file_bytes: BytesIO) -> Dict[str, int]:
     image_count = 0
 
     for page in pdf:
-        word_count += len(page.get_text().split())
+        word_count += len(page.get_text("text").split())
         image_count += len(page.get_images(full=True))
 
     pdf.close()
@@ -88,7 +88,7 @@ def estimate_from_request_params(
         return None
 
     storage_kind = read_details.get("storageKind")
-    storage_properties = convert_kwargs_for_io(read_details.get("properties", {}))
+    storage_properties = convert_kwargs_for_io(read_details.get("properties"))
 
     io_inst = IOFactory.get(storage_kind)(**storage_properties)
     file_bytes = io_inst.read(**storage_properties)
@@ -104,8 +104,7 @@ def estimate_from_request_params(
     if job_folder:
         env = os.environ.get("ENV")
         if env:
-            extension = "pdf"
-            cached_blob_path = f"{job_folder}/raw.{extension}"
+            cached_blob_path = f"{job_folder}/raw.{file_kind}"
             redaction_storage = AzureBlobIO(
                 storage_name=f"pinsstredaction{env}uks",
             )
