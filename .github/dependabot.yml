@@ -20,7 +20,7 @@ updates:
     cooldown:
       default-days: 7
   - package-ecosystem: 'uv'
-    directory: '/redactor'
+    directory: '/'
     schedule:
       interval: 'weekly'
       day: 'wednesday'
