@@ -418,6 +418,8 @@ def test__redaction_manager__compare_redactions():
         "applyDate": final_redactions_dict["date"],
         "redactJobID": proposed_redactions_dict["jobID"],
         "applyJobID": final_redactions_dict["jobID"],
+        "nProposedRedactions": 3,
+        "nFinalRedactions": 4,
         "fileName": proposed_redactions_dict["fileName"],
         "truePositives": 2,
         "falsePositives": 1,

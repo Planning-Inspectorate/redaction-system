@@ -3,6 +3,13 @@ variable "environment" {
   type        = string
 }
 
+variable "budget_alert_config" {
+  description = "Config for setting up budget alerts"
+  type = object({
+    expected_cost = number
+  })
+}
+
 variable "storage_account_replication_type" {
   description = "The storage redundancy setting"
   type        = string
@@ -24,7 +31,7 @@ variable "log_retention_days" {
 variable "daily_log_cap" {
   description = "The max amount of logging data that can be logged in a day"
   type        = number
-  default     = 0.2
+  default     = 1
 }
 
 variable "tooling_config" {

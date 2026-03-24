@@ -59,9 +59,10 @@ class TestIntegrationRedactionManager(TestCase):
             "test__redaction__manager__try_apply__REDACTED.pdf",
             "test__redaction__manager__try_redact__raw.pdf",
             "test__redaction__manager__try_redact__skip_redaction__raw.pdf"
-            "test__redaction_manager__try_redact__failure.pdf",
+            "test__redaction__manager__try_redact__failure.pdf",
             "test__redaction__manager__try_apply__curated.pdf",
             "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
         ]
         for file_name in files_to_delete:
             self.try_delete_blob(
@@ -179,6 +180,9 @@ class TestIntegrationRedactionManager(TestCase):
         )
         metric_blob_client = log_container_client.get_blob_client(
             f"{guid}/ANALYSE_metrics.txt"
+        )
+        assert not metric_blob_client.exists(), (
+            f"Expected {guid}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
         )
         assert not metric_blob_client.exists(), (
             f"Expected {guid}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
