@@ -1,7 +1,7 @@
 environment = "dev"
 
 budget_alert_config = {
-  expected_cost = 80
+  expected_cost = 100
 }
 
 vnet_cidr_block             = "10.36.0.0/22"
