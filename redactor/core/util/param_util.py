@@ -12,7 +12,7 @@ def clean_job_id(job_id: str) -> str:
     """Remove special unicode and blob-storage-incompatible characters from a job ID."""
     cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
     cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
-    cleaned = cleaned.strip(".")
+    cleaned = cleaned.strip().strip(".").strip("-")
     return cleaned
 
 

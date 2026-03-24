@@ -49,27 +49,13 @@ class MockIO:
 
 def test__redaction_manager__init():
     job_id = "some_job_id"
-    with mock.patch.object(
-        RedactionManager,
-        "_convert_job_id_to_storage_folder_name",
+    with mock.patch(
+        "core.redaction_manager.convert_job_id_to_storage_folder_name",
         return_value=f"{job_id}_blob",
     ):
         inst = RedactionManager("some_job_id")
         assert inst.job_id == job_id
         assert inst.folder_for_job == f"{job_id}_blob"
-
-
-@mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__redaction_manager__convert_kwargs_for_io(mock_init):
-    parameters = {"camelCaseA": "a", "partial_camel_caseB": "b", "snake_case_c": "c"}
-    expected_output = {
-        "camel_case_a": "a",
-        "partial_camel_case_b": "b",
-        "snake_case_c": "c",
-    }
-    inst = RedactionManager("")
-    actual_output = inst.convert_kwargs_for_io(parameters)
-    assert actual_output == expected_output
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -210,7 +196,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 )
 @mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
-@mock.patch.object(RedactionManager, "convert_kwargs_for_io")
+@mock.patch("core.redaction_manager.convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
 def test__redaction_manager__redact(
@@ -261,7 +247,7 @@ def test__redaction_manager__redact(
     mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.redact(payload)
     # Read and write properties should be converted to snake case
-    RedactionManager.convert_kwargs_for_io.assert_has_calls(
+    mock_convert_kwargs.assert_has_calls(
         [
             mock.call({"propertyExampleA": "value"}),
             mock.call({"propertyExampleB": "value"}),
@@ -452,9 +438,8 @@ def test__redaction_manager__compare_and_save_redactions(
     comparison_output = {"some": "output"}
 
     with (
-        mock.patch.object(
-            RedactionManager,
-            "_get_base_job_id_and_version",
+        mock.patch(
+            "core.redaction_manager.get_base_job_id_and_version",
             return_value=("job_id", 3),
         ),
         mock.patch.object(
@@ -506,7 +491,7 @@ def test__redaction_manager__compare_and_save_redactions(
 )
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
-@mock.patch.object(RedactionManager, "convert_kwargs_for_io")
+@mock.patch("core.redaction_manager.convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
 def test__redaction_manager__apply(
@@ -555,7 +540,7 @@ def test__redaction_manager__apply(
     mock_datetime.now.return_value = datetime(2024, 1, 1)
     inst.apply(payload)
     # Read and write properties should be converted to snake case
-    RedactionManager.convert_kwargs_for_io.assert_has_calls(
+    mock_convert_kwargs.assert_has_calls(
         [
             mock.call({"propertyExampleA": "value"}),
             mock.call({"propertyExampleB": "value"}),
@@ -1631,33 +1616,3 @@ def test__send_service_bus_completion_message__successful(pins_service):
             ServiceBusUtil.send_redaction_process_complete_message.assert_called_once_with(
                 pins_service, result
             )
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ("someid", "someid"),
-        (
-            "cbb3b731-412f-4047-9eca-27d17f827e95",
-            "cbb3b731-412f-4047-9eca-27d17f827e95",
-        ),
-        (
-            "340089c1-8f8a-4793-b94b-5482e2e7e726:5",
-            "340089c1-8f8a-4793-b94b-5482e2e7e726-5",
-        ),
-    ],
-)
-@mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
-    id = test_case[0]
-    expected_output = test_case[1]
-    inst = RedactionManager("")
-    assert expected_output == inst._convert_job_id_to_storage_folder_name(id)
-
-
-@pytest.mark.parametrize("id", [None, "a" * 41, 2])
-@mock.patch.object(RedactionManager, "__init__", return_value=None)
-def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
-    inst = RedactionManager()
-    with pytest.raises(ValueError):
-        inst._convert_job_id_to_storage_folder_name(id)

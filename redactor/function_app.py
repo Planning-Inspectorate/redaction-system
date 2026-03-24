@@ -43,9 +43,6 @@ async def trigger_redaction(
     if "overrideId" in request_params:
         override_id = str(request_params.pop("overrideId"))
 
-    # Estimate execution time before starting the orchestration.
-    # When the job ID is known (via overrideId), the estimator also caches the
-    # downloaded PDF to redaction storage so the activity skips re-downloading it.
     estimate = None
     try:
         from core.estimation import estimate_from_request_params
@@ -54,8 +51,10 @@ async def trigger_redaction(
         if override_id:
             from core.util.param_util import convert_job_id_to_storage_folder_name
 
+            # Named by override ID, so cache the downloaded PDF to redaction storage
             job_folder = convert_job_id_to_storage_folder_name(override_id)
 
+        # Estimate execution time and cache raw file
         estimate = estimate_from_request_params(request_params, job_folder=job_folder)
         if estimate and estimate.get("cachedRawBlobPath"):
             request_params["_cachedRawBlobPath"] = estimate["cachedRawBlobPath"]
