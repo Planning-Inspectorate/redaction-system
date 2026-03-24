@@ -38,17 +38,43 @@ async def trigger_redaction(
         )
     logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
     logging.info("request params: %s", request_params)
+
     override_id = None
     if "overrideId" in request_params:
         override_id = str(request_params.pop("overrideId"))
+
+    # Estimate execution time before starting the orchestration.
+    # When the job ID is known (via overrideId), the estimator also caches the
+    # downloaded PDF to redaction storage so the activity skips re-downloading it.
+    estimate = None
+    try:
+        from core.estimation import estimate_from_request_params
+
+        job_folder = None
+        if override_id:
+            from core.util.param_util import convert_job_id_to_storage_folder_name
+
+            job_folder = convert_job_id_to_storage_folder_name(override_id)
+
+        estimate = estimate_from_request_params(request_params, job_folder=job_folder)
+        if estimate and estimate.get("cachedRawBlobPath"):
+            request_params["_cachedRawBlobPath"] = estimate["cachedRawBlobPath"]
+    except Exception as e:
+        logging.warning("Failed to estimate execution time: %s", e)
+
     run_id = await client.start_new(
         "redaction_orchestrator", client_input=request_params, instance_id=override_id
     )
     response = client.create_check_status_response(req, run_id)
     respose_body = json.loads(response.get_body().decode("utf-8"))
     # Return a response with a simplified body
+    response_body = {
+        "id": run_id,
+        "pollEndpoint": respose_body["statusQueryGetUri"],
+        "estimate": estimate,
+    }
     return func.HttpResponse(
-        json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
+        json.dumps(response_body),
         status_code=response.status_code,
         headers=response.headers,
         mimetype="application/json",

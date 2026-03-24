@@ -1,12 +1,11 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
 import os
 import json
-import re
 import traceback
 
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from typing import Dict, Any, List, Optional, Callable, Tuple
+from typing import Dict, Any, List, Optional, Callable
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -22,6 +21,11 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
+from core.util.param_util import (
+    convert_job_id_to_storage_folder_name,
+    get_base_job_id_and_version,
+    convert_kwargs_for_io,
+)
 
 
 load_dotenv(verbose=True, override=True)
@@ -70,7 +74,7 @@ class ApplyJsonPayloadStructure(JsonPayloadStructure):
 class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = job_id
-        self.folder_for_job = self._convert_job_id_to_storage_folder_name(self.job_id)
+        self.folder_for_job = convert_job_id_to_storage_folder_name(self.job_id)
         self.env = os.environ.get("ENV", None)
         if not self.env:
             raise RuntimeError(
@@ -82,64 +86,6 @@ class RedactionManager:
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
-
-    def _clean_job_id(self, job_id: str) -> str:
-        # Remove special unicode characters from the string
-        cleaned = re.sub(r"[\x00-\x1f\x7f]", "", job_id)
-        # Replace any illegal characters that are not compatible with blob storage
-        cleaned = re.sub(r'["\\:|<>*?]', "-", cleaned)
-        # Remove any leading/trailing full stops
-        cleaned = cleaned.strip(".")
-        return cleaned
-
-    def _convert_job_id_to_storage_folder_name(self, job_id: str) -> str:
-        if job_id is None:
-            raise ValueError("Job ID cannot be None")
-        if not isinstance(job_id, str):
-            raise ValueError(f"Job ID must be a string, but was a {type(job_id)}")
-        if len(job_id) > 40:
-            raise ValueError(
-                f"Job ID must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
-            )
-        return self._clean_job_id(job_id)
-
-    def _get_base_job_id_and_version(self, job_id: str) -> Tuple[str, str]:
-        """
-        Get the base job ID and version number from the job ID submitted.
-
-        :param str job_id: The job ID submitted, which may contain a version number appended with a ":"
-
-        :return Tuple[str, Optional[int]]: A tuple containing the base job ID (without any version number)
-            and the version number as an integer (or None if no version number is present or if the format is invalid)
-        """
-        if ":" in job_id:
-            job_id_parts = job_id.split(":")
-            if len(job_id_parts) != 2:
-                LoggingUtil().log_info(
-                    f"Job ID '{job_id}' contains a ':', but does not split into exactly 2 parts."
-                    " Ignoring versioning."
-                )
-                return self._clean_job_id(job_id), None
-
-            if not job_id_parts[1].isdigit():
-                LoggingUtil().log_info(
-                    f"Job ID '{job_id}' contains a ':', but the part after the ':' is not an integer. "
-                    " Ignoring versioning."
-                )
-                return self._clean_job_id(job_id), None
-
-            return self._clean_job_id(job_id_parts[0]), int(job_id_parts[1])
-
-        return self._clean_job_id(job_id), None
-
-    def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
-        """
-        Process the input dictionary which contains camel case keys into a dictionary with snake case keys
-        """
-        return {
-            re.sub(r"([a-z])([A-Z])", r"\1_\2", k).lower(): v
-            for k, v in some_parameters.items()
-        }
 
     def validate_redact_json_payload(self, payload: Dict[str, Any]):
         model_inst = RedactJsonPayloadStructure(**payload)
@@ -201,14 +147,14 @@ class RedactionManager:
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
         read_torage_kind = read_details.get("storageKind")
-        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        read_storage_properties: Dict[str, Any] = convert_kwargs_for_io(
             read_details.get("properties")
         )
         skip_redaction = params.get("skipRedaction", False)
 
         write_details: Dict[str, Any] = params.get("writeDetails")
         write_storage_kind = write_details.get("storageKind")
-        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        write_storage_properties: Dict[str, Any] = convert_kwargs_for_io(
             write_details.get("properties")
         )
 
@@ -217,10 +163,20 @@ class RedactionManager:
             storage_name=f"pinsstredaction{self.env}uks",
         )
 
-        # Load the data
-        LoggingUtil().log_info("Reading the raw file to redact")
-        read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
-        file_data = read_io_inst.read(**read_storage_properties)
+        # Load the data — use cached blob from estimation if available
+        cached_raw_blob_path = params.pop("_cachedRawBlobPath", None)
+        if cached_raw_blob_path:
+            LoggingUtil().log_info(
+                f"Reading the raw file from redaction storage cache at '{cached_raw_blob_path}'"
+            )
+            file_data = redaction_storage_io_inst.read(
+                container_name="redactiondata",
+                blob_path=cached_raw_blob_path,
+            )
+        else:
+            LoggingUtil().log_info("Reading the raw file to redact")
+            read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
+            file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
 
         file_processor_class = FileProcessorFactory.get(file_kind)
@@ -239,12 +195,14 @@ class RedactionManager:
         )
 
         # Store a copy of the raw data in redaction storage before processing begins
-        LoggingUtil().log_info("Saving a copy of the raw file to redact")
-        redaction_storage_io_inst.write(
-            file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/raw.{extension}",
-        )
+        # (skip if the estimation step already cached it there)
+        if not cached_raw_blob_path:
+            LoggingUtil().log_info("Saving a copy of the raw file to redact")
+            redaction_storage_io_inst.write(
+                file_data,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/raw.{extension}",
+            )
 
         # Process the data
         run_metrics = None
@@ -406,7 +364,7 @@ class RedactionManager:
         :param final_redactions_dict: The final redactions to compare against
         :param redaction_storage_io_inst: The AzureBlobIO instance to use for accessing blob storage
         """
-        base_job_id, version = self._get_base_job_id_and_version(self.job_id)
+        base_job_id, version = get_base_job_id_and_version(self.job_id)
         LoggingUtil().log_info(
             f"Comparing proposed redactions with final redactions for job ID '{self.job_id}'"
             f" (base job ID '{base_job_id}' and version '{version}')'"
@@ -483,14 +441,14 @@ class RedactionManager:
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
         read_torage_kind = read_details.get("storageKind")
-        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
-            read_details.get("properties")
+        read_storage_properties: Dict[str, Any] = convert_kwargs_for_io(
+            read_details.get("properties", {})
         )
 
         write_details: Dict[str, Any] = params.get("writeDetails")
         write_storage_kind = write_details.get("storageKind")
-        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
-            write_details.get("properties")
+        write_storage_properties: Dict[str, Any] = convert_kwargs_for_io(
+            write_details.get("properties", {})
         )
 
         # Set up connection to redaction storage
