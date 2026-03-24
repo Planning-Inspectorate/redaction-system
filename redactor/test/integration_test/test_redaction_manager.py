@@ -284,13 +284,13 @@ class TestIntegrationRedactionManager(TestCase):
             "rb",
         ) as f:
             pdf_bytes = f.read()
+        guid = f"{RUN_ID}-trmtrc"
         self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
+            f"{guid}/test__redaction__manager__try_redact__cached.pdf",
             pdf_bytes,
             overwrite=True,
         )
         # Run test
-        guid = f"{RUN_ID}-trmtrc"
         manager = RedactionManager(guid)
         params = {
             "tryApplyProvisionalRedactions": True,
