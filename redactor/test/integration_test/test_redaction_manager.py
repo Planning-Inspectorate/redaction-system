@@ -285,10 +285,17 @@ class TestIntegrationRedactionManager(TestCase):
         ) as f:
             pdf_bytes = f.read()
         guid = f"{RUN_ID}-trmtrc"
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{guid}/test__redaction__manager__try_redact__cached.pdf",
+        cached_blob_path = f"{guid}/test__redaction__manager__try_redact__cached.pdf"
+        self.REDACTION_CONTAINER_CLIENT.upload_blob(
+            cached_blob_path,
             pdf_bytes,
             overwrite=True,
+        )
+        cached_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            cached_blob_path
+        )
+        assert cached_blob_client.exists(), (
+            f"Failed to upload the cached raw file to Azure Blob Storage at '{cached_blob_path}' for the test setup"
         )
         # Run test
         manager = RedactionManager(guid)
@@ -316,7 +323,7 @@ class TestIntegrationRedactionManager(TestCase):
                     "containerName": "test",
                 },
             },
-            "_cachedRawBlobPath": f"{guid}/test__redaction__manager__try_redact__cached.pdf",
+            "_cachedRawBlobPath": cached_blob_path,
         }
 
         response = manager.try_redact(params)
