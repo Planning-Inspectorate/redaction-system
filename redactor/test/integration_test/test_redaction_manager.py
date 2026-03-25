@@ -53,6 +53,7 @@ class TestIntegrationRedactionManager(TestCase):
         files_to_delete = [
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_redact__cached__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_apply__REDACTED.pdf",
             "test__redaction__manager__try_redact__raw.pdf",
             "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
@@ -328,7 +329,7 @@ class TestIntegrationRedactionManager(TestCase):
         )
 
         blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
+            f"{RUN_ID}/test__redaction__manager__try_redact__cached__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
