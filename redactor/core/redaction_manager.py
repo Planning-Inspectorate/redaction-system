@@ -353,7 +353,7 @@ class RedactionManager:
             proposed_candidates = [
                 {k: v for k, v in ann.items() if k in attrs_to_compare}
                 for ann in proposed_annots_on_page
-                if ann.get("isRedactionCandidate", True)
+                if ann.get("isRedactionCandidate", False)
             ]
             n_proposed_redactions += len(proposed_candidates)
 
