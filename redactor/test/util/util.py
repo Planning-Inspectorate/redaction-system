@@ -73,11 +73,10 @@ class ServiceBusUtil:
                     receive_mode=ServiceBusReceiveMode.RECEIVE_AND_DELETE,
                 )
                 async with receiver:
-                    new_messages = await receiver.receive_messages(
-                        max_message_count=100
+                    await receiver.receive_messages(
+                        max_message_count=100,
+                        max_wait_time=30,
                     )
-                    for message in new_messages:
-                        await receiver.complete_message(message)
             except Exception:
                 raise
             finally:
