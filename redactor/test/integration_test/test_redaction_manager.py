@@ -60,7 +60,6 @@ class TestIntegrationRedactionManager(TestCase):
             "test__redaction__manager__try_apply__curated.pdf",
             "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
-            "test__redaction__manager__try_redact__cached.pdf",
         ]
         for file_name in files_to_delete:
             self.try_delete_blob(
