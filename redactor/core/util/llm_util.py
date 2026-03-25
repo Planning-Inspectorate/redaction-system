@@ -2,7 +2,11 @@ import os
 import time
 
 from typing import List
-from tenacity.retry import retry_if_exception_type
+from tenacity.retry import (
+    retry_if_exception_type,
+    retry_if_exception_message,
+    retry_any,
+)
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -236,8 +240,17 @@ class LLMUtil:
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
     # Only retry if there is a rate limit exception. All other errors are logged and skipped
     @retry(
-        retry=retry_if_exception_type(
-            (RateLimitError, TimeoutError, LengthFinishReasonError)
+        retry=retry_any(
+            retry_if_exception_type(
+                (
+                    RateLimitError,  # API rate limit exceeded
+                    TimeoutError,  # Timeout while waiting for semaphore
+                    LengthFinishReasonError,  # LLM response truncated due to length
+                )
+            ),
+            retry_if_exception_message(  # LLM response parsing errors
+                "'str' object has no attribute 'choices'"
+            ),
         ),
         wait=wait_random_exponential(min=1, max=60),
         stop=stop_after_attempt(10),
