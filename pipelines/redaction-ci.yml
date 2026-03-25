@@ -8,7 +8,7 @@ parameters:
   values:
   - 'dev'
   - 'test'
-  - 'prod'
+  #- 'prod'
 
 # Run when Pull Request raised to the main branch
 pr:
