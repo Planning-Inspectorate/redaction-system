@@ -5,6 +5,7 @@ import json
 from io import BytesIO
 from azure.storage.blob import ContainerClient, BlobClient
 from datetime import datetime
+from azure.core.exceptions import ResourceNotFoundError
 
 from core.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
@@ -241,7 +242,9 @@ def test__redaction_manager__redact(
         payload["_cachedRawBlobPath"] = cached_blob_path
         if cached_blob_path == "error_blob_path/raw.pdf":
             # Simulate error when reading from cached blob path, to test fallback to original source
-            mock_blob_read.side_effect = Exception("Error reading cached blob")
+            mock_blob_read.side_effect = ResourceNotFoundError(
+                "Error reading cached blob"
+            )
     convert_kwargs_for_io_side_effects = [
         {"property_example_a": "value"},
         {"property_example_b": "value"},
