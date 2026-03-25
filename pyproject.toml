@@ -15,7 +15,7 @@ dependencies = [
     "azure-monitor-opentelemetry==1.8.3",
     "azure-storage-blob==12.23.1",
     "langdetect==1.0.9",
-    "langchain==1.1.0",
+    "langchain==1.2.12",
     "langchain-text-splitters==1.0.0",
     "openai==2.8.1",
     "pydantic==2.12.5",
