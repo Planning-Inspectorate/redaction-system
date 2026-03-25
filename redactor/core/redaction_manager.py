@@ -246,7 +246,6 @@ class RedactionManager:
             LoggingUtil().log_info(
                 "Saving a copy of the proposed redactions in JSON format for analytics"
             )
-        run_metrics.update({"cache_used": cache_success})
 
         # Store a copy of the proposed redactions in redaction storage
         LoggingUtil().log_info("Saving a copy of the proposed redactions")
@@ -263,6 +262,7 @@ class RedactionManager:
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+
         return run_metrics
 
     @classmethod
