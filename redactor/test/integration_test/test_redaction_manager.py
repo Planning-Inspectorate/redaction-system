@@ -330,6 +330,9 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
+        assert response.get("cache_used") is True, (
+            "Expected the cache to be used during the redaction process"
+        )
 
         blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"

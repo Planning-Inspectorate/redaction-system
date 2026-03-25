@@ -246,6 +246,7 @@ class RedactionManager:
             LoggingUtil().log_info(
                 "Saving a copy of the proposed redactions in JSON format for analytics"
             )
+        run_metrics.update({"cache_used": cache_success})
 
         # Store a copy of the proposed redactions in redaction storage
         LoggingUtil().log_info("Saving a copy of the proposed redactions")
