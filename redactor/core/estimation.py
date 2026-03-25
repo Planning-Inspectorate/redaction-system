@@ -16,14 +16,10 @@ from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.param_util import convert_kwargs_for_io
 
-# Estimation coefficients (from OLS polynomial regression on test-environment metrics)
-_TEXT_INTERCEPT = 6e-9
-_TEXT_COEF_WORDS = 1e-3
-_TEXT_COEF_WORDS_SQ = -8e-10
-_TEXT_COEF_WORDS_CUB = 7e-16
-_IMAGE_COEF_IMAGES = 0.13
-_IMAGE_COEF_IMAGES_SQ = -7e-4
-_IMAGE_COEF_IMAGES_CUB = 3e-6
+# Estimation coefficients (seconds)
+_SECONDS_PER_WORD = 0.003
+_SECONDS_PER_IMAGE = 12.0
+_BASE_OVERHEAD_SECONDS = 10.0
 
 
 def get_pdf_properties(file_bytes: BytesIO) -> Dict[str, int]:
@@ -56,25 +52,15 @@ def get_pdf_properties(file_bytes: BytesIO) -> Dict[str, int]:
 
 def estimate_execution_time(word_count: int, image_count: int) -> float:
     """
-    Estimate total redaction time in seconds based on document properties,
-    using a third-order polynomial model.
+    Estimate total execution time in seconds based on document properties.
 
     :param word_count: Total number of words in the document
     :param image_count: Total number of images in the document
     :return: Estimated execution time in seconds
     """
-    text = (
-        _TEXT_INTERCEPT
-        + _TEXT_COEF_WORDS * word_count
-        + _TEXT_COEF_WORDS_SQ * word_count**2
-        + _TEXT_COEF_WORDS_CUB * word_count**3
-    )
-    image = (
-        _IMAGE_COEF_IMAGES * image_count
-        + _IMAGE_COEF_IMAGES_SQ * image_count**2
-        + _IMAGE_COEF_IMAGES_CUB * image_count**3
-    )
-    return text + image
+    text_time = word_count * _SECONDS_PER_WORD
+    image_time = image_count * _SECONDS_PER_IMAGE
+    return _BASE_OVERHEAD_SECONDS + text_time + image_time
 
 
 def estimate_from_request_params(
