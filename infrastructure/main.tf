@@ -118,10 +118,22 @@ resource "azurerm_storage_share" "function_app" {
 # Create Azure Function App
 ############################################################################
 
-resource "azurerm_service_plan" "redaction_system" {
+resource "azurerm_service_plan" "receiver" {
   #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
   #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
-  name                = "${local.org}-asp-${local.resource_suffix}"
+  name                = "${local.org}-asp-receiver-${local.resource_suffix}"
+  resource_group_name = azurerm_resource_group.primary.name
+  location            = local.location
+  os_type             = "Linux"
+  sku_name            = "B1"
+  #worker_count           = 2
+  #zone_balancing_enabled = true
+}
+
+resource "azurerm_service_plan" "processor" {
+  #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
+  #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
+  name                = "${local.org}-asp-processor-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
   os_type             = "Linux"
@@ -142,7 +154,7 @@ resource "azurerm_service_plan" "redaction_system_copy" {
   #zone_balancing_enabled = true
 }
 
-resource "azurerm_linux_function_app" "redaction_system" {
+resource "azurerm_linux_function_app" "redaction_system_receiver" {
   name                = "${local.org}-func-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
@@ -178,6 +190,11 @@ resource "azurerm_linux_function_app" "redaction_system" {
     "WEBSITE_CONTENTOVERVNET"        = 1
     "AZURE_SERVICE_BUS_NAMESPACE"    = data.azurerm_servicebus_namespace.backoffice.name
   }
+}
+
+moved {
+  from = azurerm_linux_function_app.redaction_system
+  to   = azurerm_linux_function_app.redaction_system_receiver
 }
 
 ############################################################################
