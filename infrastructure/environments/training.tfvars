@@ -8,3 +8,7 @@ storage_containers = [
   "redactiondata",
   "analytics"
 ]
+
+budget_alert_config = {
+  expected_cost = 1000
+}
