@@ -315,7 +315,7 @@ class TestIntegrationRedactionManager(TestCase):
                 "storageKind": "AzureBlob",
                 "teamEmail": "someAccount@planninginspectorate.gov.uk",
                 "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__cached__PROPOSED_REDACTIONS.pdf",
                     "storageName": f"pinsstredaction{ENV}uks",
                     "containerName": "test",
                 },
