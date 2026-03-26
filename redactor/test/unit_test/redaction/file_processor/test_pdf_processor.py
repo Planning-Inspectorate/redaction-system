@@ -313,7 +313,9 @@ def test__pdf_processor__get_proposed_redactions__malformed_pdf_date():
     - Then the malformed date should be treated as missing metadata
     """
     creation_date = "D:20260103123456"
-    creation_timestamp = datetime(year=2026, month=1, day=3, hour=12, minute=34, second=56)
+    creation_timestamp = datetime(
+        year=2026, month=1, day=3, hour=12, minute=34, second=56
+    )
     annotations = (
         {
             "page_number": "0",
