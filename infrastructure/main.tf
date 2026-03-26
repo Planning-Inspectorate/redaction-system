@@ -154,7 +154,7 @@ resource "azurerm_service_plan" "redaction_system_copy" {
   #zone_balancing_enabled = true
 }
 
-resource "azurerm_linux_function_app" "redaction_system_receiver" {
+resource "azurerm_linux_function_app" "redaction_system" {
   name                = "${local.org}-func-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
