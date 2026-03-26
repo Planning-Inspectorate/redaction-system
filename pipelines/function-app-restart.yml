@@ -23,9 +23,9 @@ stages:
           - template: pipelines/steps/restart-function-app.yml
             parameters:
               env: "dev"
-      - name: Restart Function App Test
-        steps:
-          - template: pipelines/steps/restart-function-app.yml
-            parameters:
-              env: "dev"
+      #- name: Restart Function App Test
+      #  steps:
+      #    - template: pipelines/steps/restart-function-app.yml
+      #      parameters:
+      #        env: "dev"
           
