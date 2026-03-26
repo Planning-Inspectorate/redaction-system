@@ -20,6 +20,8 @@ stages:
     jobs:
       - job: Restart Function App Dev
         steps:
+          - checkout: self
+              displayName: "Checkout repo"
           - template: pipelines/steps/restart-function-app.yml
             parameters:
               env: "dev"
