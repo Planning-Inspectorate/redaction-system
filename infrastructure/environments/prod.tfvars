@@ -1,4 +1,5 @@
-environment = "prod"
+environment       = "prod"
+environment_short = "prod"
 
 
 budget_alert_config = {
