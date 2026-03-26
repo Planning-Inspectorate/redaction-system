@@ -106,7 +106,11 @@ async def trigger_apply(req: func.HttpRequest, client: df.DurableOrchestrationCl
             )
         )
     logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
-    logging.info("request params: %s", request_params)
+    logging.info(
+        "trigger_apply request_parsed keys=%s body_bytes=%s",
+        sorted(request_params.keys()),
+        len(req.get_body() or b""),
+    )
     override_id = None
     if "overrideId" in request_params:
         override_id = str(request_params.pop("overrideId"))

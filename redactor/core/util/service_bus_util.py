@@ -19,6 +19,8 @@ class ServiceBusUtil:
     Utility class for sending messages to the service bus
     """
 
+    SEND_TIMEOUT_SECONDS = 30
+
     async def _send_message(
         self, topic_name: str, pins_service: PINSService, payload: Dict[str, Any]
     ):
@@ -76,4 +78,4 @@ class ServiceBusUtil:
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             response = executor.submit(inner_wrapper)
-            return response.result()
+            return response.result(timeout=self.SEND_TIMEOUT_SECONDS)

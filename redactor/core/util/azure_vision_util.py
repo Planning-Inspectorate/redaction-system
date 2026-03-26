@@ -15,6 +15,7 @@ from azure.identity import (
     AzureCliCredential,
 )
 from azure.core.exceptions import HttpResponseError
+from azure.core.pipeline.transport import RequestsTransport
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
 
@@ -35,6 +36,9 @@ class AzureVisionUtil:
     _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
     _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
     CACHE_LOCK = Lock()
+    MAX_PARALLEL_WORKERS = 2
+    CONNECTION_TIMEOUT_SECONDS = 10.0
+    READ_TIMEOUT_SECONDS = 30.0
 
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
@@ -45,14 +49,29 @@ class AzureVisionUtil:
             f"Establishing connection to Azure Computer Vision at {self.azure_endpoint}"
         )
         self.vision_client = ImageAnalysisClient(
-            endpoint=self.azure_endpoint, credential=credential
+            endpoint=self.azure_endpoint,
+            credential=credential,
+            transport=RequestsTransport(
+                connection_timeout=self.CONNECTION_TIMEOUT_SECONDS,
+                read_timeout=self.READ_TIMEOUT_SECONDS,
+            ),
         )
+
+    @classmethod
+    def _get_worker_count(cls) -> int:
+        return min(get_max_workers(), cls.MAX_PARALLEL_WORKERS)
+
+    @classmethod
+    def clear_caches(cls):
+        with cls.CACHE_LOCK:
+            cls._IMAGE_TEXT_CACHE.clear()
+            cls._IMAGE_FACE_CACHE.clear()
 
     def detect_faces_in_images(
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
         responses = []
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        with ThreadPoolExecutor(max_workers=self._get_worker_count()) as tpe:
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
@@ -113,6 +132,7 @@ class AzureVisionUtil:
                 result = self.vision_client.analyze(
                     image_bytes,
                     [VisualFeatures.PEOPLE],
+                    timeout=self.READ_TIMEOUT_SECONDS,
                 )
             except HttpResponseError as e:
                 raise e
@@ -149,7 +169,7 @@ class AzureVisionUtil:
         responses: List[
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        with ThreadPoolExecutor(max_workers=self._get_worker_count()) as tpe:
             ai_vision_responses_future_map = {
                 tpe.submit(
                     self.detect_text,
@@ -212,6 +232,7 @@ class AzureVisionUtil:
                 result = self.vision_client.analyze(
                     image_bytes,
                     [VisualFeatures.READ],
+                    timeout=self.READ_TIMEOUT_SECONDS,
                 )
             except HttpResponseError as e:
                 raise e

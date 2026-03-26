@@ -368,6 +368,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             try:
+                LoggingUtil().log_info(
+                    f"Detected OCR tokens for image token_count={len(text_rect_map)}"
+                )
                 text_content = " ".join([x[0] for x in text_rect_map])
 
                 # Detect number plates using regex
@@ -457,14 +460,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
-            LoggingUtil().log_info(f"image: {image_to_redact}")
             try:
                 LoggingUtil().log_info(
-                    f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
+                    f"Detected OCR tokens for image token_count={len(text_rect_map)}"
                 )
                 text_content = " ".join([x[0] for x in text_rect_map])
                 LoggingUtil().log_info(
-                    f"The following text was extracted from an image in the PDF:\n'{text_content}'"
+                    f"Extracted OCR text from image char_count={len(text_content)}"
                 )
 
                 # Analyse detected text with LLM

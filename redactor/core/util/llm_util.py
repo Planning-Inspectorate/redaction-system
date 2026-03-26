@@ -88,6 +88,8 @@ class LLMUtil:
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
+    MAX_PARALLEL_WORKERS = 2
+    OPENAI_TIMEOUT_SECONDS = 60.0
 
     def __init__(
         self,
@@ -110,6 +112,7 @@ class LLMUtil:
             azure_endpoint=self.azure_endpoint,
             api_version="2024-12-01-preview",
             azure_ad_token=self.token,
+            timeout=self.OPENAI_TIMEOUT_SECONDS,
         )
 
         # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
@@ -179,7 +182,9 @@ class LLMUtil:
     def _set_workers(self, n: int = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
-        self.config.max_concurrent_requests = get_max_workers(n)
+        self.config.max_concurrent_requests = min(
+            get_max_workers(n), self.MAX_PARALLEL_WORKERS
+        )
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -233,6 +238,7 @@ class LLMUtil:
             temperature=self.config.temperature,
             max_tokens=max_completion_tokens,
             response_format=response_format,
+            timeout=self.OPENAI_TIMEOUT_SECONDS,
         )
         return response
 
@@ -306,15 +312,20 @@ class LLMUtil:
 
             # Invoke LLM
             try:
+                prompt_chars = sum(len(message.get("content", "")) for message in api_messages)
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
+                    f"{chunk_hash_string} Sending LLM request with "
+                    f"message_count={len(api_messages)} prompt_chars={prompt_chars} "
+                    f"max_completion_tokens={max_completion_tokens}"
                 )
                 response = self.invoke_chain(
                     api_messages, LLMRedactionResultFormat, max_completion_tokens
                 )
                 usage = response.usage
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
+                    f"{chunk_hash_string} LLM response received "
+                    f"prompt_tokens={getattr(usage, 'prompt_tokens', None)} "
+                    f"completion_tokens={getattr(usage, 'completion_tokens', None)}"
                 )
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
@@ -385,9 +396,11 @@ class LLMUtil:
             len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
         )
         start_time = time.time()
-        chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
+        chunk_lengths = [len(chunk) for chunk in text_chunks]
         LoggingUtil().log_info(
-            f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
+            "Preparing LLM text analysis with "
+            f"chunk_count={chunk_count} total_chars={character_count} "
+            f"chunk_lengths={json.dumps(chunk_lengths)}"
         )
 
         # Initialise LLM interface
