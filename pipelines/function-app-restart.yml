@@ -16,7 +16,7 @@ schedules:
   batch: false
 
 stages:
-  - stage: Restart Function App
+  - stage: RestartFunctionApp
     jobs:
       - job: Restart Function App Dev
         steps:
