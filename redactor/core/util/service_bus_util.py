@@ -5,6 +5,7 @@ from azure.identity.aio import (
     ManagedIdentityCredential,
     ChainedTokenCredential,
 )
+from core.util.logging_util import LoggingUtil
 from core.util.enum import PINSService
 from typing import Dict, Any
 from datetime import timedelta
@@ -78,4 +79,10 @@ class ServiceBusUtil:
 
         with ThreadPoolExecutor(max_workers=1) as executor:
             response = executor.submit(inner_wrapper)
-            return response.result(timeout=self.SEND_TIMEOUT_SECONDS)
+            try:
+                return response.result(timeout=self.SEND_TIMEOUT_SECONDS)
+            except Exception as e:
+                LoggingUtil().log_warning(
+                    f"Service bus send failed or timed out: {e}"
+                )
+                return None

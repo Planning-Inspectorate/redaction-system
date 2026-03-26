@@ -132,6 +132,24 @@ class LLMTextRedactor(TextRedactor):
         # Create system prompt from loaded config
         system_prompt = self.config.create_system_prompt()
 
+        if not text_to_analyse:
+            return LLMTextRedactionResult(
+                rule_name=self.config.name,
+                run_metrics={
+                    "llm_analysis_time": 0.0,
+                    "llm_character_count": 0,
+                    "llm_approx_text_word_count": 0,
+                    "llm_text_chunk_count": 0,
+                    "llm_request_count": 0,
+                    "llm_input_token_count": 0,
+                    "llm_output_token_count": 0,
+                    "llm_total_token_count": 0,
+                    "llm_total_cost": 0.0,
+                },
+                redaction_strings=(),
+                metadata=LLMTextRedactionResult.LLMResultMetadata(),
+            )
+
         # The user's prompt will just be the raw text
         text_chunks = self.TEXT_SPLITTER.split_text(text_to_analyse)
         LoggingUtil().log_info(
@@ -183,7 +201,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
         )
         for face_detection_result in face_detection_results:
             image_to_redact = face_detection_result[0]
-            faces_detected = face_detection_result[1]
+            faces_detected = face_detection_result[1] or ()
             results.append(
                 ImageRedactionResult.Result(
                     image_dimensions=(image_to_redact.width, image_to_redact.height),
@@ -368,6 +386,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             try:
+                if not text_rect_map:
+                    LoggingUtil().log_warning(
+                        "Non-critical step failed: OCR returned no text for image"
+                    )
+                    continue
                 LoggingUtil().log_info(
                     f"Detected OCR tokens for image token_count={len(text_rect_map)}"
                 )
@@ -461,6 +484,11 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
             try:
+                if not text_rect_map:
+                    LoggingUtil().log_warning(
+                        "Non-critical step failed: OCR returned no text for image"
+                    )
+                    continue
                 LoggingUtil().log_info(
                     f"Detected OCR tokens for image token_count={len(text_rect_map)}"
                 )
