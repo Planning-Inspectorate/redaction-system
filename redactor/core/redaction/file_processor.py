@@ -383,11 +383,21 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _convert_pdf_date(cls, datetime_str: str):
         """Convert PDF date format to Timestamp."""
-        return (
-            datetime.strptime(datetime_str[2:16], "%Y%m%d%H%M%S")
-            if datetime_str
-            else None
-        )
+        if not datetime_str:
+            return None
+
+        # PDF dates are typically shaped like D:YYYYMMDDHHmmSS, optionally with
+        # extra timezone suffixes. Some third-party annotations contain malformed
+        # placeholders instead; treat those as missing metadata rather than
+        # failing the whole apply flow.
+        digits = "".join(ch for ch in datetime_str if ch.isdigit())
+        if len(digits) < 14:
+            return None
+
+        try:
+            return datetime.strptime(digits[:14], "%Y%m%d%H%M%S")
+        except ValueError:
+            return None
 
     @classmethod
     def _normalise_annotations(

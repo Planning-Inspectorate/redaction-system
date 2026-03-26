@@ -306,6 +306,56 @@ def test__pdf_processor__get_proposed_redactions():
     assert expected_dict == actual_dict
 
 
+def test__pdf_processor__get_proposed_redactions__malformed_pdf_date():
+    """
+    - Given I have annotation metadata with a malformed PDF date
+    - When I call get_proposed_redactions
+    - Then the malformed date should be treated as missing metadata
+    """
+    creation_date = "D:20260103123456"
+    creation_timestamp = datetime(year=2026, month=1, day=3, hour=12, minute=34, second=56)
+    annotations = (
+        {
+            "page_number": "0",
+            "annotations": [
+                {
+                    "title": "REDACTION CANDIDATE",
+                    "content": "Redact this",
+                    "type": "Highlight",
+                    "rect": pymupdf.Rect(0, 0, 1, 1),
+                    "text": "Redact this",
+                    "creationDate": creation_date,
+                    "modDate": "D:-001-1-1-1-1-1",
+                },
+            ],
+        },
+    )
+    document_bytes = BytesIO()
+    expected_dict = [
+        {
+            "pageNumber": 0,
+            "annotations": [
+                {
+                    "annotationType": "Highlight",
+                    "proposedRedaction": "Redact this",
+                    "annotatedText": "Redact this",
+                    "rect": (0.0, 0.0, 1.0, 1.0),
+                    "creationDate": creation_timestamp,
+                    "isRedactionCandidate": True,
+                    "modDate": None,
+                },
+            ],
+        }
+    ]
+
+    with patch.object(
+        PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+    ):
+        actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
+
+    assert expected_dict == actual_dict
+
+
 def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
     """
     - Given I have an image of size 100x100, and a bounding box within that image
