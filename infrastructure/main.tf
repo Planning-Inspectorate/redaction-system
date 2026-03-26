@@ -149,7 +149,7 @@ resource "azurerm_service_plan" "processor" {
 
 
 resource "azurerm_linux_function_app" "receiver" {
-  name                = "${local.org}-func-receiver${local.resource_suffix}"
+  name                = "${local.org}-func-receiver-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
 
