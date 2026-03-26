@@ -108,6 +108,11 @@ resource "azurerm_storage_container" "redaction_storage" {
 
 # The dev env fileshare was manually created - deleting the dev infra to resync is quite a long process (due to resource locks)
 # there are higher priority things to focus on right now. This should be resynced when possible
+resource "azurerm_storage_share" "function_app_receiver" {
+  name               = azurerm_linux_function_app.receiver.name
+  storage_account_id = azurerm_storage_account.redaction_storage.id
+  quota              = 5120
+}
 resource "azurerm_storage_share" "function_app" {
   name               = azurerm_linux_function_app.redaction_system.name
   storage_account_id = azurerm_storage_account.redaction_storage.id
@@ -117,7 +122,7 @@ resource "azurerm_storage_share" "function_app" {
 ############################################################################
 # Create Azure Function App
 ############################################################################
-
+# Note: We use separate ASPs for receiving/processing messages due to high CPU utilisation which throttles requests at high load
 resource "azurerm_service_plan" "receiver" {
   #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
   #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
@@ -142,6 +147,44 @@ resource "azurerm_service_plan" "processor" {
   #zone_balancing_enabled = true
 }
 
+
+resource "azurerm_linux_function_app" "receiver" {
+  name                = "${local.org}-func-receiver${local.resource_suffix}"
+  resource_group_name = azurerm_resource_group.primary.name
+  location            = local.location
+
+  storage_account_name          = azurerm_storage_account.redaction_storage.name
+  storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
+  service_plan_id               = azurerm_service_plan.receiver.id
+  public_network_access_enabled = false
+  virtual_network_subnet_id     = azurerm_subnet.function_app.id
+  https_only                    = true
+
+  site_config {
+    application_stack {
+      python_version = var.function_app_python_version
+    }
+    application_insights_key = azurerm_application_insights.redaction_system.instrumentation_key
+    cors {
+      allowed_origins = ["https://portal.azure.com"]
+    }
+    always_on = true
+  }
+  identity {
+    type = "SystemAssigned"
+  }
+  app_settings = {
+    "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
+    "WEBSITE_CONTENTSHARE" : "${local.org}-func-receiver-${local.resource_suffix}"
+    "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
+    "OPENAI_ENDPOINT"                = azurerm_cognitive_account.open_ai.endpoint
+    "AZURE_VISION_ENDPOINT"          = azurerm_cognitive_account.computer_vision.endpoint
+    "ENV"                            = var.environment
+    "APP_INSIGHTS_CONNECTION_STRING" = azurerm_application_insights.redaction_system.connection_string
+    "WEBSITE_CONTENTOVERVNET"        = 1
+    "AZURE_SERVICE_BUS_NAMESPACE"    = data.azurerm_servicebus_namespace.backoffice.name
+  }
+}
 
 resource "azurerm_linux_function_app" "redaction_system" {
   name                = "${local.org}-func-${local.resource_suffix}"
