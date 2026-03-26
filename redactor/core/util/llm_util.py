@@ -1,7 +1,7 @@
 import os
 import time
 
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from azure.identity import (
@@ -12,7 +12,6 @@ from azure.identity import (
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import AzureOpenAI
-from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from openai.types.chat.chat_completion import CompletionUsage
 from tiktoken import get_encoding
 from threading import Semaphore
@@ -59,6 +58,7 @@ class LLMUtil:
     MAX_PARALLEL_WORKERS = 2
     OPENAI_TIMEOUT_SECONDS = 60.0
     MAX_CALL_ATTEMPTS = 2
+    RETRYABLE_BACKOFF_SECONDS = 1.5
 
     def __init__(
         self,
@@ -199,38 +199,40 @@ class LLMUtil:
         self,
         api_messages: str,
         response_format: BaseModel,
+        context: str,
         max_completion_tokens: int = None,
-    ) -> Optional[ParsedChatCompletion]:
+    ) -> tuple[CompletionUsage | None, LLMRedactionResultFormat]:
         last_exception = None
-        completion_tokens = max_completion_tokens or self.config.max_tokens
         for attempt in range(self.MAX_CALL_ATTEMPTS):
             try:
-                return self.llm.chat.completions.parse(
+                response = self.llm.chat.completions.parse(
                     model=self.config.model,
                     messages=api_messages,
                     temperature=self.config.temperature,
-                    max_tokens=completion_tokens,
+                    max_tokens=max_completion_tokens,
                     response_format=response_format,
                     timeout=self.OPENAI_TIMEOUT_SECONDS,
                 )
+                return response.usage, response.choices[0].message.parsed
             except Exception as e:
                 last_exception = e
                 LoggingUtil().log_warning(
-                    f"Non-critical step failed: {e} "
-                    f"(llm_attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS})"
+                    f"llm_request_failed context={context} "
+                    f"attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS}: {e}"
                 )
-                completion_tokens = min(completion_tokens * 2, 8000)
-        LoggingUtil().log_warning(
-            f"LLM call exhausted retries and will return empty result: {last_exception}"
+                if getattr(e, "status_code", None) == 429 or "429" in str(e):
+                    time.sleep(self.RETRYABLE_BACKOFF_SECONDS)
+        LoggingUtil().log_non_critical(
+            f"llm_request_exhausted context={context}: {last_exception}"
         )
-        return None
+        return None, LLMRedactionResultFormat.empty()
 
     def _analyse_text_chunk(
         self,
         system_prompt: str,
         user_prompt: str,
         max_completion_tokens: int = None,
-    ) -> tuple[Optional[ParsedChatCompletion], List[str]]:
+    ) -> List[str]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
         chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
@@ -248,10 +250,10 @@ class LLMUtil:
             timeout=self.config.request_timeout
         )  # returns True if acquired, False on timeout
         if not thread_available:
-            LoggingUtil().log_warning(
-                f"{chunk_hash_string} Timeout while waiting for request semaphore to be available."
+            LoggingUtil().log_non_critical(
+                f"llm_request_semaphore_timeout context={chunk_hash_string}"
             )
-            return None, LLMRedactionResultFormat.empty().redaction_strings
+            return list(LLMRedactionResultFormat.empty().redaction_strings)
 
         try:
             # Acquire token semaphore
@@ -260,10 +262,10 @@ class LLMUtil:
                 self.token_semaphore.acquire(estimated_tokens)
                 token_acquired = True
             except TimeoutError as te:
-                LoggingUtil().log_warning(
-                    f"{chunk_hash_string} Non-critical step failed: {te}"
+                LoggingUtil().log_non_critical(
+                    f"llm_token_semaphore_timeout context={chunk_hash_string}: {te}"
                 )
-                return None, LLMRedactionResultFormat.empty().redaction_strings
+                return list(LLMRedactionResultFormat.empty().redaction_strings)
 
             # Invoke LLM
             usage = None
@@ -274,31 +276,27 @@ class LLMUtil:
                     f"message_count={len(api_messages)} prompt_chars={prompt_chars} "
                     f"max_completion_tokens={max_completion_tokens}"
                 )
-                response = self.invoke_chain(
-                    api_messages, LLMRedactionResultFormat, max_completion_tokens
+                usage, response_cleaned = self.invoke_chain(
+                    api_messages,
+                    LLMRedactionResultFormat,
+                    chunk_hash_string,
+                    max_completion_tokens,
                 )
-                if response is None:
-                    return None, LLMRedactionResultFormat.empty().redaction_strings
-                usage = response.usage
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} LLM response received "
                     f"prompt_tokens={getattr(usage, 'prompt_tokens', None)} "
                     f"completion_tokens={getattr(usage, 'completion_tokens', None)}"
                 )
-
-                response_cleaned: LLMRedactionResultFormat = response.choices[
-                    0
-                ].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following redaction_strings were generated"
                 )
-                return response, redaction_strings
+                return list(redaction_strings)
             except Exception as e:
-                LoggingUtil().log_warning(
-                    f"{chunk_hash_string} Non-critical step failed: {e}"
+                LoggingUtil().log_non_critical(
+                    f"llm_chunk_processing_failed context={chunk_hash_string}: {e}"
                 )
-                return None, LLMRedactionResultFormat.empty().redaction_strings
+                return list(LLMRedactionResultFormat.empty().redaction_strings)
             finally:
                 # Update token counts and costs
                 self._compute_costs(usage)
@@ -352,7 +350,6 @@ class LLMUtil:
         # Initialise LLM interface
         request_counter = 0
         text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
@@ -384,13 +381,11 @@ class LLMUtil:
 
                 try:
                     # Get redaction result for chunk and append to overall results
-                    response, redaction_strings = future.result()
-                    if response is not None:
-                        responses.append(response)
+                    redaction_strings = future.result()
                     text_to_redact.extend(redaction_strings)
                 except Exception as e:
                     LoggingUtil().log_warning(
-                        f"Non-critical step failed: {e} (chunk_id={hash(chunk)})"
+                        f"llm_future_failed chunk_id={hash(chunk)}: {e}"
                     )
 
                 # Check budget after each request

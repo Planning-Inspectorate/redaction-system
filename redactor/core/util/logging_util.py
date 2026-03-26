@@ -74,6 +74,7 @@ class LoggingUtil(metaclass=Singleton):
         self.log_level = kwargs.pop("log_level", logging.DEBUG)
         self.raw_logs = []
         self._raw_logs_lock = threading.Lock()
+        self.non_critical_failure_count = 0
 
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
@@ -112,6 +113,7 @@ class LoggingUtil(metaclass=Singleton):
             self.job_id = job_id
         if clear_buffer:
             self.clear_raw_logs()
+            self.reset_non_critical_failure_count()
 
     def _append_raw_log(self, message: str):
         with self._raw_logs_lock:
@@ -153,6 +155,11 @@ class LoggingUtil(metaclass=Singleton):
         self._append_raw_log(f"WARNING: {message}\n")
         self.logger.warning(message)
 
+    def log_non_critical(self, msg: str):
+        with self._raw_logs_lock:
+            self.non_critical_failure_count += 1
+        self.log_warning(msg)
+
     def get_log_bytes(self, clear: bool = False) -> bytes:
         with self._raw_logs_lock:
             output = "".join(self.raw_logs).encode("utf-8")
@@ -163,6 +170,14 @@ class LoggingUtil(metaclass=Singleton):
     def clear_raw_logs(self):
         with self._raw_logs_lock:
             self.raw_logs = []
+
+    def get_non_critical_failure_count(self) -> int:
+        with self._raw_logs_lock:
+            return self.non_critical_failure_count
+
+    def reset_non_critical_failure_count(self):
+        with self._raw_logs_lock:
+            self.non_critical_failure_count = 0
 
 
 def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):

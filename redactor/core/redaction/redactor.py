@@ -387,8 +387,8 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             # Detect and analyse text in the image
             try:
                 if not text_rect_map:
-                    LoggingUtil().log_warning(
-                        "Non-critical step failed: OCR returned no text for image"
+                    LoggingUtil().log_info(
+                        f"Skipping image with no OCR text image_id={id(image_to_redact)}"
                     )
                     continue
                 LoggingUtil().log_info(
@@ -485,8 +485,8 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             # Detect and analyse text in the image
             try:
                 if not text_rect_map:
-                    LoggingUtil().log_warning(
-                        "Non-critical step failed: OCR returned no text for image"
+                    LoggingUtil().log_info(
+                        f"Skipping image with no OCR text image_id={id(image_to_redact)}"
                     )
                     continue
                 LoggingUtil().log_info(

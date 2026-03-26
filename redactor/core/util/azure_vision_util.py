@@ -12,7 +12,6 @@ from azure.identity import (
     ManagedIdentityCredential,
     AzureCliCredential,
 )
-from azure.core.exceptions import HttpResponseError
 from azure.core.pipeline.transport import RequestsTransport
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
@@ -29,6 +28,7 @@ class AzureVisionUtil:
     CONNECTION_TIMEOUT_SECONDS = 10.0
     READ_TIMEOUT_SECONDS = 30.0
     MAX_CALL_ATTEMPTS = 2
+    RETRYABLE_BACKOFF_SECONDS = 1.5
 
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
@@ -73,7 +73,7 @@ class AzureVisionUtil:
                     responses.append((image, faces or ()))
                 except Exception as e:
                     LoggingUtil().log_warning(
-                        f"Non-critical step failed: {e}"
+                        f"ocr_faces_future_failed image_id={id(ai_vision_responses_future_map[future])}: {e}"
                     )
         return responses
 
@@ -114,10 +114,15 @@ class AzureVisionUtil:
                     break
                 except Exception as e:
                     LoggingUtil().log_warning(
-                        f"Non-critical step failed: {e} "
-                        f"(ocr_faces_attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS})"
+                        f"ocr_faces_failed image_id={id(image)} "
+                        f"attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS}: {e}"
                     )
+                    if getattr(e, "status_code", None) == 429 or "429" in str(e):
+                        time.sleep(self.RETRYABLE_BACKOFF_SECONDS)
             if result is None:
+                LoggingUtil().log_non_critical(
+                    f"ocr_faces_exhausted image_id={id(image)}"
+                )
                 return ()
 
             faces_detected = tuple(
@@ -163,7 +168,7 @@ class AzureVisionUtil:
                     responses.append((image, text or ()))
                 except Exception as e:
                     LoggingUtil().log_warning(
-                        f"Non-critical step failed: {e}"
+                        f"ocr_text_future_failed image_id={id(ai_vision_responses_future_map[future])}: {e}"
                     )
         return responses
 
@@ -203,10 +208,15 @@ class AzureVisionUtil:
                     break
                 except Exception as e:
                     LoggingUtil().log_warning(
-                        f"Non-critical step failed: {e} "
-                        f"(ocr_text_attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS})"
+                        f"ocr_text_failed image_id={id(image)} "
+                        f"attempt={attempt + 1}/{self.MAX_CALL_ATTEMPTS}: {e}"
                     )
+                    if getattr(e, "status_code", None) == 429 or "429" in str(e):
+                        time.sleep(self.RETRYABLE_BACKOFF_SECONDS)
             if result is None:
+                LoggingUtil().log_non_critical(
+                    f"ocr_text_exhausted image_id={id(image)}"
+                )
                 return ()
 
             text_detected = tuple(

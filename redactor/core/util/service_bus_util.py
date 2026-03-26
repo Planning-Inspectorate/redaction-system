@@ -82,7 +82,7 @@ class ServiceBusUtil:
             try:
                 return response.result(timeout=self.SEND_TIMEOUT_SECONDS)
             except Exception as e:
-                LoggingUtil().log_warning(
-                    f"Service bus send failed or timed out: {e}"
+                LoggingUtil().log_non_critical(
+                    f"service_bus_send_failed topic=redaction-process-complete: {e}"
                 )
                 return None

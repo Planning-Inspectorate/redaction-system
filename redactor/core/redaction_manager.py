@@ -726,6 +726,10 @@ class RedactionManager:
             non_fatal_errors.append(
                 f"Failed to submit a service bus message with the following error: {e}"
             )
+        LoggingUtil().log_info(
+            "Job processing summary "
+            f"stage={stage} non_critical_failures={LoggingUtil().get_non_critical_failure_count()}"
+        )
         try:
             self.save_logs(stage)
         except Exception as e:
