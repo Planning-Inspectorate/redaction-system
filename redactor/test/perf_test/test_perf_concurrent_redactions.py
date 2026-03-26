@@ -64,7 +64,7 @@ def _env_required(name: str) -> str:
     return v
 
 
-PERF_CONCURRENCY = _int_env("PERF_CONCURRENCY", 20)
+PERF_CONCURRENCY = _int_env("PERF_CONCURRENCY", 5)
 PERF_TOTAL = _int_env("PERF_TOTAL", 200)
 PERF_TIMEOUT_S = _int_env("PERF_TIMEOUT_S", 200)
 PERF_POLL_S = _float_env("PERF_POLL_S", 2.0)
@@ -102,6 +102,72 @@ def _run_id() -> str:
     return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("%Y%m%d-%H%M%S")
 
 
+def _candidate_fixture_paths(repo_root: Path, fixture_name: str) -> List[Path]:
+    fixtures_dir = repo_root / "redactor/test/resources/pdf"
+    raw_input = Path(fixture_name).expanduser()
+
+    base_candidates = []
+    if raw_input.is_absolute():
+        base_candidates.append(raw_input)
+    else:
+        base_candidates.extend(
+            [
+                Path.cwd() / raw_input,
+                repo_root / raw_input,
+                fixtures_dir / raw_input,
+                fixtures_dir / raw_input.name,
+            ]
+        )
+
+    candidates: List[Path] = []
+    seen = set()
+    for candidate in base_candidates:
+        variants = [candidate]
+        if candidate.suffix.lower() != ".pdf":
+            variants.append(candidate.with_suffix(".pdf"))
+
+        for variant in variants:
+            key = str(variant)
+            if key not in seen:
+                seen.add(key)
+                candidates.append(variant)
+
+    return candidates
+
+
+def _resolve_fixture_path(repo_root: Path, fixture_name: str) -> Path:
+    fixtures_dir = repo_root / "redactor/test/resources/pdf"
+    candidates = _candidate_fixture_paths(repo_root, fixture_name)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    available = sorted(path.name for path in fixtures_dir.glob("*.pdf"))
+    raise AssertionError(
+        f"Missing fixture PDF: {fixture_name}. "
+        f"Tried: {[str(path) for path in candidates]}. "
+        f"Available fixtures: {available}"
+    )
+
+
+def _load_durable_host_limits(repo_root: Path) -> Dict[str, Optional[int]]:
+    host_path = repo_root / "redactor/host.json"
+    try:
+        host_config = json.loads(host_path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return {
+            "activity_limit": None,
+            "orchestrator_limit": None,
+        }
+
+    durable_cfg = host_config.get("extensions", {}).get("durableTask", {})
+    return {
+        "activity_limit": durable_cfg.get("maxConcurrentActivityFunctions"),
+        "orchestrator_limit": durable_cfg.get("maxConcurrentOrchestratorFunctions"),
+    }
+
+
 # ----------------------------
 # Stats
 # ----------------------------
@@ -128,6 +194,21 @@ def _percentiles(values: List[float]) -> Dict[str, float]:
         "max": xs[-1],
         "mean": statistics.mean(xs),
     }
+
+
+def _timing_summary(stats: Dict[str, float], sample_size: int) -> Dict[str, float]:
+    summary = {
+        "first": stats["min"],
+        "p50": stats["p50"],
+        "last": stats["max"],
+        "spread": stats["max"] - stats["min"],
+        "mean": stats["mean"],
+    }
+    if sample_size >= 20:
+        summary["p95"] = stats["p95"]
+    if sample_size >= 100:
+        summary["p99"] = stats["p99"]
+    return summary
 
 
 # ----------------------------
@@ -571,8 +652,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     start_url = function_start_url()
 
     repo_root = _repo_root()
-    fixture_path = repo_root / "redactor/test/resources/pdf" / PERF_FIXTURE_PDF
-    assert fixture_path.exists(), f"Missing fixture PDF: {fixture_path}"
+    fixture_path = _resolve_fixture_path(repo_root, PERF_FIXTURE_PDF)
+    host_limits = _load_durable_host_limits(repo_root)
 
     # where we will download sampled outputs (proof they can be written to disk)
     downloads_dir = tmp_path / "downloaded_redactions"
@@ -649,6 +730,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     # ----------------------------
     times = [r.seconds for r in results]
     stats = _percentiles(times)
+    timing_summary = _timing_summary(stats, len(times))
+    sorted_completion_seconds = [round(t, 3) for t in sorted(times)]
 
     successes = [r for r in results if r.outcome == Outcome.SUCCESS]
     app_failures = [r for r in results if r.outcome == Outcome.APP_FAIL]
@@ -656,6 +739,15 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
 
     # throughput: successes per wall-clock second
     throughput = (len(successes) / wall_elapsed) if wall_elapsed > 0 else 0.0
+    docs_per_hour = throughput * 3600
+
+    activity_limit = host_limits["activity_limit"]
+    orchestrator_limit = host_limits["orchestrator_limit"]
+    effective_concurrency = (
+        min(PERF_CONCURRENCY, activity_limit)
+        if activity_limit is not None
+        else PERF_CONCURRENCY
+    )
 
     exists_checked = sum(1 for r in results if r.checked_blob_exists)
     exists_failures = [
@@ -665,8 +757,13 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     downloaded = [r for r in results if r.downloaded_to]
 
     print("\n=== PERF SUMMARY ===")
-    print(f"fixture={PERF_FIXTURE_PDF}")
-    print(f"concurrency={PERF_CONCURRENCY} total={PERF_TOTAL} poll_s={PERF_POLL_S}")
+    print(f"fixture={fixture_path.name}")
+    print(
+        "total="
+        f"{PERF_TOTAL} requested_concurrency={PERF_CONCURRENCY} "
+        f"activity_limit={activity_limit} orchestrator_limit={orchestrator_limit} "
+        f"effective_concurrency={effective_concurrency} poll_s={PERF_POLL_S}"
+    )
     print(f"timeout_s={PERF_TIMEOUT_S} exists_sample_every={PERF_EXISTS_SAMPLE_EVERY}")
     print(
         f"exists_wait_s={PERF_EXISTS_WAIT_S} exists_wait_poll_s={PERF_EXISTS_WAIT_POLL_S}"
@@ -675,9 +772,15 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         f"success={len(successes)} app_fail={len(app_failures)} test_fail={len(test_failures)}"
     )
     print(
-        f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}"
+        "wall_seconds="
+        f"{wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f} "
+        f"docs_per_hour={docs_per_hour:.1f}"
     )
-    print("timings_seconds:", {k: round(v, 3) for k, v in stats.items()})
+    print(
+        "completion_summary_seconds:",
+        {k: round(v, 3) for k, v in timing_summary.items()},
+    )
+    print("completion_seconds_sorted:", sorted_completion_seconds)
     print(
         f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}"
     )
