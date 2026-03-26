@@ -386,10 +386,6 @@ class PDFProcessor(FileProcessor):
         if not datetime_str:
             return None
 
-        # PDF dates are typically shaped like D:YYYYMMDDHHmmSS, optionally with
-        # extra timezone suffixes. Some third-party annotations contain malformed
-        # placeholders instead; treat those as missing metadata rather than
-        # failing the whole apply flow.
         digits = "".join(ch for ch in datetime_str if ch.isdigit())
         if len(digits) < 14:
             return None
