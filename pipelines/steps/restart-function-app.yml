@@ -1,0 +1,9 @@
+parameters:
+  - name: env
+    type: string
+
+steps:
+  - script: |
+      set -e
+      az functionapp restart --name "pins-func-redaction-system-${{ parameters.env }}-uks" --resource-group "pins-rg-redaction-system-${{ parameters.env }}-uks"
+    displayName: 'Restart the function app in the ${{ parameters.env }} environment'

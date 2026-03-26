@@ -1,0 +1,31 @@
+name: Function App OOH Restart
+# This is a scheduled job to restart the function app out of hours
+
+# No manual triggers - this pipeline runs only on schedule
+trigger: none
+pr: none
+
+# Schedule for daily execution at 11pm
+schedules:
+- cron: '0 0 * * *' # Daily at midnight UTC
+  displayName: Function App Out-Of-Hours Restart
+  branches:
+    include:
+    - main
+  always: true
+  batch: false
+
+stages:
+  - stage: Restart Function App
+    jobs:
+      - name: Restart Function App Dev
+        steps:
+          - template: pipelines/steps/restart-function-app.yml
+            parameters:
+              env: "dev"
+      - name: Restart Function App Test
+        steps:
+          - template: pipelines/steps/restart-function-app.yml
+            parameters:
+              env: "dev"
+          
