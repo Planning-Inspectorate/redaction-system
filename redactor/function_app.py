@@ -7,7 +7,6 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 
 import json
 import logging
-import time
 from typing import Any, Dict
 
 import azure.durable_functions as df
@@ -22,35 +21,15 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 async def trigger_redaction(
     req: func.HttpRequest,
     client: df.DurableOrchestrationClient,
-    context: func.Context,
 ):
     """
     This function is called via HTTP post and triggers the redaction process.
     This asynchronously triggers the process, and returns a response object containing callback info
     for the caller to check the status via the `statusQueryGetUri` property of the json response
     """
-    t0 = time.perf_counter()
-    invocation_id = context.invocation_id
-
-    def log_stage(stage: str, **extra: Any):
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        extra_fields = " ".join(f"{k}={v}" for k, v in extra.items())
-        logging.info(
-            "trigger_redaction stage=%s invocation_id=%s ts=%s elapsed_ms=%s %s",
-            stage,
-            invocation_id,
-            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            elapsed_ms,
-            extra_fields,
-        )
-
-    log_stage("entered", method=req.method, body_bytes=len(req.get_body() or b""))
-
     try:
         request_params = req.get_json()
-        log_stage("request_parsed")
     except ValueError:
-        log_stage("request_parse_failed")
         return func.HttpResponse(
             json.dumps(
                 {
@@ -64,15 +43,12 @@ async def trigger_redaction(
         if "overrideId" in request_params
         else None
     )
-    log_stage("before_start_new", has_override_id=bool(override_id))
     run_id = await client.start_new(
         "redaction_orchestrator", client_input=request_params, instance_id=override_id
     )
-    log_stage("after_start_new", run_id=run_id)
     response = client.create_check_status_response(req, run_id)
     respose_body = json.loads(response.get_body().decode("utf-8"))
     # Return a response with a simplified body
-    log_stage("before_return", status_code=response.status_code, run_id=run_id)
     return func.HttpResponse(
         json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
         status_code=response.status_code,
