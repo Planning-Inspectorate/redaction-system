@@ -192,11 +192,6 @@ resource "azurerm_linux_function_app" "redaction_system" {
   }
 }
 
-moved {
-  from = azurerm_linux_function_app.redaction_system
-  to   = azurerm_linux_function_app.redaction_system_receiver
-}
-
 ############################################################################
 # Create App Insights / Monitoring resources
 ############################################################################
