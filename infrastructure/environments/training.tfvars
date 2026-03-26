@@ -1,4 +1,5 @@
 environment                 = "training"
+environment_short           = "train"
 vnet_cidr_block             = "10.36.8.0/22"
 subnet_cidr_block           = "10.36.8.0/24"
 functionapp_cidr_block      = "10.36.9.0/24"
