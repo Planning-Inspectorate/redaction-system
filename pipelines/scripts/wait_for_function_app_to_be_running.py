@@ -76,10 +76,12 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("-e", "--env", help="Environment to run against")
+    parser.add_argument("-d", "--domain", help="The domain the function app targets. Should be either 'receiver' or 'processor'")
     args = parser.parse_args()
     env = str(args.env).lower()
+    domain = str(args.domain).lower()
     resource_group_name = f"pins-rg-redaction-system-{env}-uks"
-    function_app_name = f"pins-func-redaction-system-{env}-uks"
+    function_app_name = f"pins-func-{domain}-redaction-system-{env}-uks"
     FunctionAppUtil(
         function_app_name, resource_group_name
     ).wait_for_function_app_to_be_running()
