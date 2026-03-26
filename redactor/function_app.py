@@ -5,12 +5,12 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/durable-function
 https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-python-vscode
 """
 
-import logging
-import azure.functions as func
-import azure.durable_functions as df
 import json
-from typing import Dict, Any
+import logging
+from typing import Any, Dict
 
+import azure.durable_functions as df
+import azure.functions as func
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -19,7 +19,8 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.route(route="redact", methods=["POST"])
 @app.durable_client_input(client_name="client")
 async def trigger_redaction(
-    req: func.HttpRequest, client: df.DurableOrchestrationClient
+    req: func.HttpRequest,
+    client: df.DurableOrchestrationClient,
 ):
     """
     This function is called via HTTP post and triggers the redaction process.
@@ -36,11 +37,12 @@ async def trigger_redaction(
                 }
             )
         )
-    logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
-    logging.info("request params: %s", request_params)
-    override_id = None
-    if "overrideId" in request_params:
-        override_id = str(request_params.pop("overrideId"))
+
+    override_id = (
+        str(request_params.pop("overrideId"))
+        if "overrideId" in request_params
+        else None
+    )
     run_id = await client.start_new(
         "redaction_orchestrator", client_input=request_params, instance_id=override_id
     )
