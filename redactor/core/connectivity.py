@@ -25,21 +25,23 @@ def send_llm_message():
     """
     Send a simple message to the llm and extract the response
     """
-    azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-    credential = ChainedTokenCredential(
-        ManagedIdentityCredential(), AzureCliCredential()
-    )
-    token = credential.get_token("https://cognitiveservices.azure.com/.default").token
-    llm = AzureOpenAI(
-        azure_endpoint=azure_endpoint,
-        api_version="2024-12-01-preview",
-        azure_ad_token=token,
-    )
-
-    class SampleResultFormat(BaseModel):
-        some_strings: list[str]
-
     try:
+        azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
+        credential = ChainedTokenCredential(
+            ManagedIdentityCredential(), AzureCliCredential()
+        )
+        token = credential.get_token(
+            "https://cognitiveservices.azure.com/.default"
+        ).token
+        llm = AzureOpenAI(
+            azure_endpoint=azure_endpoint,
+            api_version="2024-12-01-preview",
+            azure_ad_token=token,
+        )
+
+        class SampleResultFormat(BaseModel):
+            some_strings: list[str]
+
         response = llm.chat.completions.parse(
             model="gpt-4.1",
             messages=[
