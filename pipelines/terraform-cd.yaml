@@ -21,10 +21,11 @@ extends:
   template: pipelines/terraform_plan_apply.yml@templates
   parameters:
     environments:
-      - name: Dev
-      - name: Test
-        dependsOn:
-          - Dev
+      #- name: Dev
+      #- name: Test
+      #  dependsOn:
+      #    - Dev
+      - name: Training
       #- name: Prod
       #  dependsOn:
       #    - Test
