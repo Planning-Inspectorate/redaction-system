@@ -115,6 +115,9 @@ extends:
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
       - name: Run Smoke Tests
+        dependsOn:
+          - Deploy Receiver Function App
+          - Deploy Processor Function App
         deploymentJobs:
           - name: Run Smoke Tests
             steps:
