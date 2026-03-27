@@ -66,7 +66,7 @@ def trigger_task(params: Dict[str, Any]):
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager  # noqa: F402
 
-    job_id = params.pop("job_id")
+    job_id = params.pop("run_id")
     stage = params["stage"]
     if stage == "ANALYSE":
         logging.info("Call try_redact")
