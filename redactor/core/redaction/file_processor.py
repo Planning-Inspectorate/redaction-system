@@ -938,7 +938,9 @@ class PDFProcessor(FileProcessor):
             in (
                 page_metadata.raw_text
                 + (next_page_metadata.raw_text if next_page_metadata else "")
-            ).replace("\n", "")
+            )
+            .replace("-\n", "")
+            .replace("\n", " ")
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:

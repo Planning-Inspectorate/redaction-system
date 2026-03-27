@@ -609,7 +609,7 @@ def create_mock_page_metadata(
 def test__pdf_processor__check_partial_redaction_across_line_breaks():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="Hello World",
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -639,7 +639,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
 def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="Hello You",
+        text_content="Hello\nYou",
         lines=["Hello", "You"],
         y0=[0, 20],
         y1=[10, 30],
@@ -668,8 +668,8 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
 def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="This is line-\nbroken",
-        lines=["This", "is line-", "broken"],
+        text_content="This is line\nbroken",
+        lines=["This", "is line", "broken"],
         y0=[0, 20, 40],
         y1=[10, 30, 50],
         x0=[[0], [0, 15], [0]],
@@ -749,7 +749,7 @@ def test__pdf_processor__examine_provisional_text_redaction__no_matches(
 def test__pdf_processor__examine_provisional_text_redaction__line_break():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="Hello World",
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -788,7 +788,7 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
 def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_break():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="Something-Else",
+        text_content="Something-\nElse",
         lines=["Something-", "Else"],
         y0=[0, 20],
         y1=[10, 30],
@@ -860,7 +860,7 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
 def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock_init):
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        text_content="Hello World",
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
