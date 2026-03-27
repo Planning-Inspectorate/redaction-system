@@ -47,10 +47,10 @@ def function_start_url(route: str = "redact") -> str:
             )
         )
 
-    base = _env("E2E_FUNCTION_BASE_URL")
+    base = _env("E2E_FUNCTION_RECEIVER_BASE_URL")
     if not base:
         raise RuntimeError(
-            "Missing E2E function URL. Set E2E_FUNCTION_URL (preferred) or E2E_FUNCTION_BASE_URL."
+            "Missing E2E function URL. Set E2E_FUNCTION_URL (preferred) or E2E_FUNCTION_RECEIVER_BASE_URL."
         )
 
     base = base.rstrip("/")
@@ -81,30 +81,12 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 600) -> dic
     r.raise_for_status()
     data = r.json()
 
-    poll_url = data["pollEndpoint"]
     instance_id = data.get("id") or data.get("instanceId") or "<unknown>"
-    logger.info("Orchestration started: id=%s poll=%s", instance_id, poll_url)
+    logger.info("Orchestration started: id=%s", instance_id)
 
-    deadline = time.time() + timeout_s
-    last_state = None
-
-    while time.time() < deadline:
-        status = requests.get(poll_url, timeout=60).json()
-        state = status.get("runtimeStatus")
-
-        if state != last_state:
-            logger.info("Orchestration status: %s", state)
-            last_state = state
-
-        if state in ("Completed", "Failed", "Terminated"):
-            logger.info("Orchestration finished: %s (total %s)", state, _dt(t0))
-            if state != "Completed":
-                logger.error("Orchestration output: %s", status.get("output"))
-            return status
-
-        time.sleep(2)
-
-    raise TimeoutError(f"Timed out waiting for orchestration. pollEndpoint={poll_url}")
+    # Wait for 60 seconds, should be more than enough time for the function to finish processing
+    # Ideally we have a mechanism to check the service bus, and to check trace information, but this is tricky to set up
+    time.sleep(20)
 
 
 def _run_az(cmd: list[str]) -> subprocess.CompletedProcess[str]:

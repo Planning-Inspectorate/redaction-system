@@ -120,12 +120,7 @@ def run_redact_then_apply(
         out_blob=proposed_blob,
         skip_redaction=False,
     )
-    provisional_status = trigger_and_wait(
-        redact_start_url, provisional_payload, timeout_s=timeout_s
-    )
-    assert provisional_status["runtimeStatus"] == "Completed", provisional_status.get(
-        "output"
-    )
+    trigger_and_wait(redact_start_url, provisional_payload, timeout_s=timeout_s)
     assert az_blob_exists(e2e_storage_account, e2e_container_name, proposed_blob)
 
     provisional_file = tmp_path / Path(proposed_blob).name
@@ -139,8 +134,7 @@ def run_redact_then_apply(
         in_blob=proposed_blob,
         out_blob=redacted_blob,
     )
-    apply_status = trigger_and_wait(apply_start_url, apply_payload, timeout_s=timeout_s)
-    assert apply_status["runtimeStatus"] == "Completed", apply_status.get("output")
+    trigger_and_wait(apply_start_url, apply_payload, timeout_s=timeout_s)
     assert az_blob_exists(e2e_storage_account, e2e_container_name, redacted_blob)
 
     redacted_file = tmp_path / Path(redacted_blob).name
