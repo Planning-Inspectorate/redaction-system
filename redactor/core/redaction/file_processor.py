@@ -216,7 +216,9 @@ class PDFProcessor(FileProcessor):
             including for each line the list of words and bounding box coordinates as
             a PDFLineMetadata object.
         """
-        page_text = page.get_text("words", sort=True)
+        page_text = page.get_text(
+            "words", sort=True, delimiters=["\n", "\r", "\u200b", "\ufeff", "\u202f"]
+        )
         lines = []
         current_line = 0
         current_block = 1
@@ -237,8 +239,15 @@ class PDFProcessor(FileProcessor):
                 current_line = line_no
                 current_block = block_no
 
-            line_text.append(word_text)
-            line_rects.append((x0, y0, x1, y1))
+            word_cleaned = word_text
+            # word_cleaned = (
+            #     word_text.replace("\u200b", "")  # Remove zero-width space characters
+            #     .replace("\ufeff", "")  # Remove zero-width no-break space characters
+            #     .replace("\u202f", " ")  # Remove narrow no-break space characters
+            # )
+            if len(word_cleaned.strip()) > 0:  # Don't add empty words
+                line_text.append(word_cleaned)
+                line_rects.append((x0, y0, x1, y1))
 
         if line_text:
             lines.append(self._create_line_metadata(line_text, line_rects, n_lines))
@@ -253,7 +262,14 @@ class PDFProcessor(FileProcessor):
         :return str: The text content of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        pages = [page.get_text().strip() for page in pdf]
+        pages = [
+            page.get_text()
+            .replace("\u200b", "")  # Remove zero-width space characters
+            .replace("\ufeff", "")  # Remove zero-width no-break space characters
+            .replace("\u202f", " ")  # Remove narrow no-break space characters
+            .strip()
+            for page in pdf
+        ]
 
         if all(page == "" for page in pages):  # No text found on any page
             return None
@@ -496,7 +512,8 @@ class PDFProcessor(FileProcessor):
 
         matches = np.logical_or(
             words_slice == words_to_redact_array,
-            np.char.rstrip(words_slice, "'s") == words_to_redact_array,
+            np.char.rstrip(np.char.rstrip(words_slice, "s"), "'")
+            == words_to_redact_array,
         )
 
         # Find the longest consecutive sequence of matches from the start
@@ -585,7 +602,7 @@ class PDFProcessor(FileProcessor):
         return np.where(
             np.logical_or(
                 words_to_check == word,
-                np.char.strip(words_to_check, "'s") == word,
+                np.char.rstrip(np.char.rstrip(words_to_check, "s"), "'") == word,
             )
         )[0].tolist()
 
@@ -713,7 +730,7 @@ class PDFProcessor(FileProcessor):
         if partial_term_found and partial_term_found != term_to_redact:
             # Remove the part already found in the current rect
             remaining_words_to_redact = (
-                term_to_redact.replace(partial_term_found, "").strip().split(" ")
+                term_to_redact[len(partial_term_found) :].strip().split(" ")
             )
 
             # Check if the next line contains the remaining words to redact
@@ -783,6 +800,7 @@ class PDFProcessor(FileProcessor):
                         " ".join([partial_term_found] + matching_words_on_next_line),
                         next_line,
                         page_metadata,
+                        next_page_metadata,
                     )
 
                     if next_line_result:
@@ -1293,6 +1311,11 @@ class PDFProcessor(FileProcessor):
         image_redaction_apply_time = (
             image_redaction_apply_time_end - image_redaction_apply_time_start
         )
+
+        unapplied_redaction_terms = [
+            term for term, count in self.terms_found.items() if count == 0
+        ]
+
         self.run_metrics = {
             "pdf_text_extraction_time": pdf_text_extraction_time,
             "pdf_image_extraction_time": image_extraction_time,
@@ -1303,6 +1326,8 @@ class PDFProcessor(FileProcessor):
             "image_redaction_apply_time": image_redaction_apply_time,
             "result_metrics": all_result_metrics,
             "aggregate_result_metrics": combined_metrics,
+            "redaction_terms_found": self.terms_found,
+            "unapplied_redaction_terms": unapplied_redaction_terms,
         }
 
         return new_file_bytes

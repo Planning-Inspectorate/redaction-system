@@ -57,6 +57,26 @@ def test__pdf_processor__extract_pdf_text():
     assert expected_text_split == actual_text_split
 
 
+def test__pdf_processor__extract_pdf_text__zero_width_spaces():
+    """
+    - Given I have a PDF with zero-width space characters
+    - When I call _extract_pdf_text
+    - Then the zero-width space characters should be removed
+    """
+    expected_text = "This is a test of zero-width spaces."
+    mock_document = pymupdf.open()
+    mock_document.new_page()
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch(
+            "pymupdf.Page.get_text",
+            side_effect=["This is a test of zero-\u200bwidth spaces."],
+        ),
+    ):
+        actual_text = PDFProcessor()._extract_pdf_text(BytesIO())
+    assert expected_text == actual_text
+
+
 def test__pdf_processor__extract_pdf_images():
     """
     - Given I have a PDF with an image
