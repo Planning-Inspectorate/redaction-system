@@ -176,13 +176,14 @@ resource "azurerm_linux_function_app" "receiver" {
   app_settings = {
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
     "WEBSITE_CONTENTSHARE" : "${local.org}-func-receiver-${local.resource_suffix}"
-    "SCM_DO_BUILD_DURING_DEPLOYMENT" = "true"
-    "OPENAI_ENDPOINT"                = azurerm_cognitive_account.open_ai.endpoint
-    "AZURE_VISION_ENDPOINT"          = azurerm_cognitive_account.computer_vision.endpoint
-    "ENV"                            = var.environment
-    "APP_INSIGHTS_CONNECTION_STRING" = azurerm_application_insights.redaction_system.connection_string
-    "WEBSITE_CONTENTOVERVNET"        = 1
-    "AZURE_SERVICE_BUS_NAMESPACE"    = data.azurerm_servicebus_namespace.backoffice.name
+    "SCM_DO_BUILD_DURING_DEPLOYMENT"                = "true"
+    "OPENAI_ENDPOINT"                               = azurerm_cognitive_account.open_ai.endpoint
+    "AZURE_VISION_ENDPOINT"                         = azurerm_cognitive_account.computer_vision.endpoint
+    "ENV"                                           = var.environment
+    "APP_INSIGHTS_CONNECTION_STRING"                = azurerm_application_insights.redaction_system.connection_string
+    "WEBSITE_CONTENTOVERVNET"                       = 1
+    "AZURE_SERVICE_BUS_NAMESPACE"                   = data.azurerm_servicebus_namespace.backoffice.name
+    "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
   }
 }
 

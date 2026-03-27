@@ -7,12 +7,6 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 
 import json
 from typing import Dict, Any
-from dotenv import load_dotenv
-import os
-
-
-load_dotenv()
-AZURE_SERVICE_BUS_NAMESPACE = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
 
 import azure.durable_functions as df
 import azure.functions as func
@@ -24,7 +18,7 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.service_bus_queue_trigger(
     arg_name="received_message",
     queue_name="redaction-internal-queue",
-    connection=f"{AZURE_SERVICE_BUS_NAMESPACE}.servicebus.windows.net",
+    connection="AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING",
 )
 @app.durable_client_input(client_name="client")
 async def trigger(
