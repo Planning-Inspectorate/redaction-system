@@ -399,7 +399,7 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
                 page.get_textbox(annotation.rect).strip().lower()
             )
 
-    # assert len(actual_annotated_text) == 2
+    assert len(actual_annotated_text) == 2
     assert "all who" in actual_annotated_text
     assert "come after him" in actual_annotated_text
 
@@ -430,7 +430,7 @@ def test__pdf_processor__apply_provisional_text_redactions__multi_line_break():
                 page.get_textbox(annotation.rect).strip().lower()
             )
 
-    # assert len(actual_annotated_text) == 2
+    assert len(actual_annotated_text) == 3
     assert "it" in actual_annotated_text
     assert (
         "could significantly redefine the boundaries of personal liberty and freedom,"
