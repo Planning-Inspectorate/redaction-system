@@ -293,7 +293,9 @@ class PDFProcessor(FileProcessor):
                     ),
                 )
                 LoggingUtil().log_info(
-                    f"Loaded image with the following metadata {image_metadata}"
+                    "Loaded PDF image metadata "
+                    f"page_number={page_number} resolution={image_details['width']}x{image_details['height']} "
+                    f"format={file_format}"
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
@@ -904,6 +906,8 @@ class PDFProcessor(FileProcessor):
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
+        del pdf_images
+        del pages
         return new_file_bytes
 
     @log_to_appins(log_args=False)
@@ -1171,7 +1175,7 @@ class PDFProcessor(FileProcessor):
             pdf_text_extraction_time_end - pdf_text_extraction_time_start
         )
         LoggingUtil().log_info(
-            f"The following text was extracted from the PDF:\n'{pdf_text}'"
+            f"Extracted PDF text with char_count={len(pdf_text) if pdf_text else 0}"
         )
         if pdf_text and not is_english_text(pdf_text):
             exception = NonEnglishContentException(
@@ -1194,8 +1198,10 @@ class PDFProcessor(FileProcessor):
         for redaction_config in redaction_rules:
             if hasattr(redaction_config, "text"):
                 redaction_config.text = pdf_text
+        unique_pdf_images = self._extract_unique_pdf_images(pdf_images)
+        for redaction_config in redaction_rules:
             if hasattr(redaction_config, "images"):
-                redaction_config.images = self._extract_unique_pdf_images(pdf_images)
+                redaction_config.images = unique_pdf_images
 
         # Generate list of rules to apply
         redaction_rules_to_apply: List[Redactor] = [
@@ -1220,8 +1226,9 @@ class PDFProcessor(FileProcessor):
             elif issubclass(redaction_result.__class__, ImageRedactionResult):
                 image_analysis_total_time += redaction_time
             LoggingUtil().log_info(
-                f"The redactor {rule_to_apply} yielded the following result: "
-                f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+                f"The redactor {rule_to_apply} completed in {round(redaction_time, 2)}s "
+                f"with result_type={redaction_result.__class__.__name__} "
+                f"metric_keys={list(redaction_result.run_metrics.keys())}"
             )
             redaction_results.append(redaction_result)
         LoggingUtil().log_info("PDF analysis complete")
@@ -1289,6 +1296,10 @@ class PDFProcessor(FileProcessor):
             "result_metrics": all_result_metrics,
             "aggregate_result_metrics": combined_metrics,
         }
+        del pdf_text
+        del pdf_images
+        del unique_pdf_images
+        del redaction_results
 
         return new_file_bytes
 

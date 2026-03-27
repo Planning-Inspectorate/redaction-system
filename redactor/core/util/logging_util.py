@@ -33,6 +33,11 @@ class Singleton(type):
                     cls._INSTANCES[cls] = super(Singleton, cls).__call__(
                         cls, *args, **kwargs
                     )
+        else:
+            cls._INSTANCES[cls].configure_context(
+                job_id=kwargs.get("job_id"),
+                clear_buffer=kwargs.get("clear_buffer", False),
+            )
         return cls._INSTANCES[cls]
 
 
@@ -56,6 +61,8 @@ class LoggingUtil(metaclass=Singleton):
 
     """
 
+    MAX_BUFFERED_LOG_LINES = 1000
+
     def __init__(self, *args, **kwargs):
         """
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which
@@ -66,6 +73,8 @@ class LoggingUtil(metaclass=Singleton):
         self.log_file = kwargs.pop("log_file", None)
         self.log_level = kwargs.pop("log_level", logging.DEBUG)
         self.raw_logs = []
+        self._raw_logs_lock = threading.Lock()
+        self.non_critical_failure_count = 0
 
         app_insights_connection_string = os.environ.get(
             "APP_INSIGHTS_CONNECTION_STRING", None
@@ -99,12 +108,25 @@ class LoggingUtil(metaclass=Singleton):
         self.logger.setLevel(self.log_level)
         self.log_info(f"Logging initialised for {self.namespace}.")
 
+    def configure_context(self, job_id=None, clear_buffer: bool = False):
+        if job_id is not None:
+            self.job_id = job_id
+        if clear_buffer:
+            self.clear_raw_logs()
+            self.reset_non_critical_failure_count()
+
+    def _append_raw_log(self, message: str):
+        with self._raw_logs_lock:
+            self.raw_logs.append(message)
+            if len(self.raw_logs) > self.MAX_BUFFERED_LOG_LINES:
+                self.raw_logs = self.raw_logs[-self.MAX_BUFFERED_LOG_LINES :]
+
     def log_info(self, msg: str):
         """
         Log an information message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"INFO: {message}\n")
+        self._append_raw_log(f"INFO: {message}\n")
         self.logger.info(message)
 
     def log_exception(self, ex: Exception):
@@ -113,7 +135,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        self._append_raw_log(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_exception_with_message(self, message: str, ex: Exception):
@@ -122,7 +144,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{self.job_id}: {message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        self._append_raw_log(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_warning(self, msg: str):
@@ -130,11 +152,32 @@ class LoggingUtil(metaclass=Singleton):
         Log a warning message
         """
         message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"WARNING: {message}\n")
+        self._append_raw_log(f"WARNING: {message}\n")
         self.logger.warning(message)
 
-    def get_log_bytes(self) -> bytes:
-        return "".join(self.raw_logs).encode("utf-8")
+    def log_non_critical(self, msg: str):
+        with self._raw_logs_lock:
+            self.non_critical_failure_count += 1
+        self.log_warning(msg)
+
+    def get_log_bytes(self, clear: bool = False) -> bytes:
+        with self._raw_logs_lock:
+            output = "".join(self.raw_logs).encode("utf-8")
+            if clear:
+                self.raw_logs = []
+        return output
+
+    def clear_raw_logs(self):
+        with self._raw_logs_lock:
+            self.raw_logs = []
+
+    def get_non_critical_failure_count(self) -> int:
+        with self._raw_logs_lock:
+            return self.non_critical_failure_count
+
+    def reset_non_critical_failure_count(self):
+        with self._raw_logs_lock:
+            self.non_critical_failure_count = 0
 
 
 def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):

@@ -78,7 +78,7 @@ class RedactionManager:
             )
         self.runtime_errors: List[str] = []
         # Ensure the logger's job id is set to the job id
-        LoggingUtil(job_id=self.job_id)
+        LoggingUtil(job_id=self.job_id, clear_buffer=True)
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
@@ -194,9 +194,6 @@ class RedactionManager:
         """
         Perform a redaction using the supplied parameters
         """
-        LoggingUtil().log_info(
-            f"Starting the redaction process with params '{json.dumps(params, indent=4)}'"
-        )
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: Dict[str, Any] = params.get("readDetails")
@@ -210,6 +207,13 @@ class RedactionManager:
         write_storage_kind = write_details.get("storageKind")
         write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
             write_details.get("properties")
+        )
+        LoggingUtil().log_info(
+            "Starting redaction process "
+            f"file_kind={file_kind} config_name={config_name} "
+            f"read_blob={read_storage_properties.get('blob_path')} "
+            f"write_blob={write_storage_properties.get('blob_path')} "
+            f"skip_redaction={skip_redaction}"
         )
 
         # Set up connection to redaction storage
@@ -240,11 +244,16 @@ class RedactionManager:
 
         # Store a copy of the raw data in redaction storage before processing begins
         LoggingUtil().log_info("Saving a copy of the raw file to redact")
-        redaction_storage_io_inst.write(
-            file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/raw.{extension}",
-        )
+        try:
+            redaction_storage_io_inst.write(
+                file_data,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/raw.{extension}",
+            )
+            file_data.seek(0)
+        except Exception as e:
+            LoggingUtil().log_warning(f"Non-critical raw file copy failed: {e}")
+            file_data.seek(0)
 
         # Process the data
         run_metrics = None
@@ -270,27 +279,38 @@ class RedactionManager:
             proposed_redactions_dict = file_processor_inst.get_proposed_redactions(
                 proposed_redaction_file_data,
             )
-            self.save_dict_to_blob_json(
-                {
-                    "jobID": self.job_id,
-                    "date": datetime.now().date().isoformat(),
-                    "fileName": read_storage_properties.get("blob_path", ""),
-                    "proposedRedactions": proposed_redactions_dict,
-                },
-                redaction_storage_io_inst,
-                blob_path=f"{self.folder_for_job}/proposed_redactions.json",
-            )
-            LoggingUtil().log_info(
-                "Saving a copy of the proposed redactions in JSON format for analytics"
-            )
+            try:
+                self.save_dict_to_blob_json(
+                    {
+                        "jobID": self.job_id,
+                        "date": datetime.now().date().isoformat(),
+                        "fileName": read_storage_properties.get("blob_path", ""),
+                        "proposedRedactions": proposed_redactions_dict,
+                    },
+                    redaction_storage_io_inst,
+                    blob_path=f"{self.folder_for_job}/proposed_redactions.json",
+                )
+                LoggingUtil().log_info(
+                    "Saved a copy of the proposed redactions in JSON format for analytics"
+                )
+            except Exception as e:
+                LoggingUtil().log_warning(
+                    f"Non-critical proposed redactions analytics write failed: {e}"
+                )
+            del proposed_redactions_dict
 
         # Store a copy of the proposed redactions in redaction storage
         LoggingUtil().log_info("Saving a copy of the proposed redactions")
-        redaction_storage_io_inst.write(
-            proposed_redaction_file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/proposed.{extension}",
-        )
+        try:
+            redaction_storage_io_inst.write(
+                proposed_redaction_file_data,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/proposed.{extension}",
+            )
+        except Exception as e:
+            LoggingUtil().log_warning(
+                f"Non-critical proposed file copy failed: {e}"
+            )
         proposed_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
@@ -299,6 +319,8 @@ class RedactionManager:
         )
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(proposed_redaction_file_data, **write_storage_properties)
+        del file_data
+        del proposed_redaction_file_data
         return run_metrics
 
     @classmethod
@@ -518,11 +540,16 @@ class RedactionManager:
         )
 
         # Store a copy of the raw data in redaction storage before processing begins
-        redaction_storage_io_inst.write(
-            file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/curated.{extension}",
-        )
+        try:
+            redaction_storage_io_inst.write(
+                file_data,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/curated.{extension}",
+            )
+            file_data.seek(0)
+        except Exception as e:
+            LoggingUtil().log_warning(f"Non-critical curated file copy failed: {e}")
+            file_data.seek(0)
 
         # Process the data
         file_processor_inst = file_processor_class()
@@ -534,43 +561,61 @@ class RedactionManager:
             "fileName": read_storage_properties.get("blob_path", ""),
             "finalRedactions": file_processor_inst.get_final_redactions(file_data),
         }
-        self.save_dict_to_blob_json(
-            final_redactions_dict,
-            redaction_storage_io_inst,
-            blob_path=f"{self.folder_for_job}/final_redactions.json",
-        )
-        LoggingUtil().log_info(
-            "Saving a copy of the final redactions in JSON format for analytics"
-        )
+        try:
+            self.save_dict_to_blob_json(
+                final_redactions_dict,
+                redaction_storage_io_inst,
+                blob_path=f"{self.folder_for_job}/final_redactions.json",
+            )
+            LoggingUtil().log_info(
+                "Saved a copy of the final redactions in JSON format for analytics"
+            )
+        except Exception as e:
+            LoggingUtil().log_warning(
+                f"Non-critical final redactions analytics write failed: {e}"
+            )
 
         # Compare proposed redactions with final redactions and save analytics
-        self.compare_and_save_redactions(
-            final_redactions_dict,
-            redaction_storage_io_inst,
-        )
+        try:
+            self.compare_and_save_redactions(
+                final_redactions_dict,
+                redaction_storage_io_inst,
+            )
+        except Exception as e:
+            LoggingUtil().log_warning(
+                f"Non-critical redaction comparison write failed: {e}"
+            )
 
         # Apply the redactions to the file
         final_redaction_file_data = file_processor_inst.apply(file_data, config_cleaned)
         run_metrics = file_processor_inst.get_run_metrics()
 
         # Store a copy of the final redactions in redaction storage
-        redaction_storage_io_inst.write(
-            final_redaction_file_data,
-            container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/redacted.{extension}",
-        )
+        try:
+            redaction_storage_io_inst.write(
+                final_redaction_file_data,
+                container_name="redactiondata",
+                blob_path=f"{self.folder_for_job}/redacted.{extension}",
+            )
+        except Exception as e:
+            LoggingUtil().log_warning(
+                f"Non-critical final redacted file copy failed: {e}"
+            )
         final_redaction_file_data.seek(0)
 
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(final_redaction_file_data, **write_storage_properties)
+        del file_data
+        del final_redaction_file_data
+        del final_redactions_dict
         return run_metrics
 
     def save_logs(self, stage_name: str):
         """
         Write a log file locally and in Azure
         """
-        log_bytes = LoggingUtil().get_log_bytes()
+        log_bytes = LoggingUtil().get_log_bytes(clear=True)
         # Dump in Azure
         AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
@@ -681,6 +726,10 @@ class RedactionManager:
             non_fatal_errors.append(
                 f"Failed to submit a service bus message with the following error: {e}"
             )
+        LoggingUtil().log_info(
+            "Job processing summary "
+            f"stage={stage} non_critical_failures={LoggingUtil().get_non_critical_failure_count()}"
+        )
         try:
             self.save_logs(stage)
         except Exception as e:
@@ -700,6 +749,14 @@ class RedactionManager:
         except Exception as e:
             non_fatal_errors.append(
                 f"Failed to write an exception log with the following error: {e}"
+            )
+        try:
+            from core.util.azure_vision_util import AzureVisionUtil
+
+            AzureVisionUtil.clear_caches()
+        except Exception as e:
+            non_fatal_errors.append(
+                f"Failed to clear image analysis caches with the following error: {e}"
             )
         # Return any non-fatal errors to the caller
         if non_fatal_errors:

@@ -53,3 +53,7 @@ class LLMTextRedactionResult(TextRedactionResult):
 
 class LLMRedactionResultFormat(BaseModel):
     redaction_strings: List[str]
+
+    @classmethod
+    def empty(cls) -> "LLMRedactionResultFormat":
+        return cls(redaction_strings=[])
