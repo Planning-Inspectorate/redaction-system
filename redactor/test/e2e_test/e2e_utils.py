@@ -86,7 +86,7 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 600) -> dic
 
     # Wait for 60 seconds, should be more than enough time for the function to finish processing
     # Ideally we have a mechanism to check the service bus, and to check trace information, but this is tricky to set up
-    time.sleep(60)
+    time.sleep(20)
 
 def _run_az(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     logger.debug("Running: %s", " ".join(cmd))
