@@ -871,6 +871,7 @@ class PDFProcessor(FileProcessor):
 
         # Examine redaction candidates: only apply exact matches and partial matches across line breaks
         redaction_instances = []
+        self.terms_found = {term: 0 for term in text_to_redact}
         for i, page in enumerate(pdf):
             if i == 0:
                 page_metadata = self._extract_page_text(page)
@@ -882,18 +883,28 @@ class PDFProcessor(FileProcessor):
             LoggingUtil().log_info(
                 f"Examining page {page.number} for redaction candidates."
             )
-            page_redaction_instances = self._examine_provisional_redactions_on_page(
-                text_to_redact,
-                page_metadata,
-                next_page_metadata,
+            page_redaction_instances, page_terms_found = (
+                self._examine_provisional_redactions_on_page(
+                    text_to_redact,
+                    page_metadata,
+                    next_page_metadata,
+                )
             )
             redaction_instances.extend(page_redaction_instances)
+            for term in page_terms_found:
+                self.terms_found[term] = self.terms_found.get(term, 0) + 1
             LoggingUtil().log_info(
-                f"    Found {len(page_redaction_instances)} redaction candidates on page {page.number}."
+                f"    Found {len(page_redaction_instances)} redaction candidates on "
+                f"page {page.number}."
             )
 
         LoggingUtil().log_info(
             f"Found {len(redaction_instances)} total redaction candidates."
+        )
+        # Report the redaction terms that were not found
+        LoggingUtil().log_info(
+            f"Redaction terms not found in document: "
+            f"{[term for term in text_to_redact if self.terms_found[term] == 0]}"
         )
 
         n_highlights = 0
@@ -927,16 +938,18 @@ class PDFProcessor(FileProcessor):
             the bounding box to redact, and the full term being redacted.
         """
         redaction_instances = []
+        terms_found = []
         for term_to_redact in text_to_redact:
             LoggingUtil().log_info(
                 f"    Examining redaction candidate for term '{term_to_redact}'"
             )
-            redaction_instances.extend(
-                self._examine_provisional_text_redaction(
-                    term_to_redact, page_metadata, next_page_metadata
-                )
+            instances_to_apply = self._examine_provisional_text_redaction(
+                term_to_redact, page_metadata, next_page_metadata
             )
-        return redaction_instances
+            redaction_instances.extend(instances_to_apply)
+            if instances_to_apply:
+                terms_found.append(term_to_redact)
+        return redaction_instances, terms_found
 
     @log_to_appins(log_args=False)
     def _examine_provisional_text_redaction(
