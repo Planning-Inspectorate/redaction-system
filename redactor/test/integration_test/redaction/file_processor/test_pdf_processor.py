@@ -399,9 +399,44 @@ def test__pdf_processor__apply_provisional_text_redactions__line_break():
                 page.get_textbox(annotation.rect).strip().lower()
             )
 
-    # assert len(actual_annotated_text) == 2
+    assert len(actual_annotated_text) == 2
     assert "all who" in actual_annotated_text
     assert "come after him" in actual_annotated_text
+
+
+def test__pdf_processor__apply_provisional_text_redactions__multi_line_break():
+    """
+    - Given I have a PDF with some provisional redactions
+    - When I apply the redactions
+    - Then the provisional redactions should be removed, and the text content of the PDF
+      should not contain the text identified by the provisional redactions
+    """
+    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
+        document_bytes = BytesIO(f.read())
+    redaction_strings = [
+        "It could significantly redefine the boundaries of personal liberty and freedom,"
+        " expanding them for some, savagely curtailing them for others."
+    ]
+
+    redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+        document_bytes, redaction_strings
+    )
+
+    # Get the actual redacted text
+    actual_annotated_text = []
+    for page in pymupdf.open(stream=redacted_document_bytes):
+        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+            actual_annotated_text.append(
+                page.get_textbox(annotation.rect).strip().lower()
+            )
+
+    assert len(actual_annotated_text) == 3
+    assert "it" in actual_annotated_text
+    assert (
+        "could significantly redefine the boundaries of personal liberty and freedom,"
+        " expanding them" in actual_annotated_text
+    )
+    assert "for some, savagely curtailing them for others." in actual_annotated_text
 
 
 def test__pdf_processor__redact():

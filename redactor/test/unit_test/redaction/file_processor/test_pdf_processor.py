@@ -674,7 +674,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks(
                 page_metadata,
             )
 
-    assert result == [(0, page_metadata.lines[1], 0), (0, page_metadata.lines[2], 0)]
+    assert result == [(0, page_metadata.lines[1], 1), (0, page_metadata.lines[2], 0)]
 
 
 def test__pdf_processor__examine_provisional_text_redaction():
