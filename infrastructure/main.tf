@@ -126,6 +126,7 @@ resource "azurerm_storage_share" "function_app" {
 resource "azurerm_service_plan" "receiver" {
   #checkov:skip=CKV_AZURE_212: TODO: Limit reached in subscription
   #checkov:skip=CKV_AZURE_225: TODO: Limit reached in subscription
+  #checkov:skip=CKV_AZURE_211: Chose a basic plan to keep costs low and because the function app is very lightweight
   name                = "${local.org}-asp-receiver-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
