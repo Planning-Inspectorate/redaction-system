@@ -114,6 +114,12 @@ extends:
                     --build-remote true \
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
+      - name: Run Smoke Tests
+        deploymentJobs:
+          - name: Run Smoke Tests
+            steps:
+              - checkout: self
+                displayName: 'Checkout repo'
               # Run a quick smoke test to check connectivity
               - task: AzureCLI@2
                 displayName: 'Run function app smoke test'
