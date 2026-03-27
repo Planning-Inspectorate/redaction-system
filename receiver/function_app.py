@@ -66,7 +66,7 @@ async def trigger_redaction(req: func.HttpRequest):
     """
     This function is called via HTTP post and adds redaction analysis requests to the service bus queue
     """
-    return await _add_message_to_service_bus_queue("ANALYSE")
+    return await _add_message_to_service_bus_queue("ANALYSE", req)
 
 
 # An HTTP-triggered function with a Durable Functions client binding
@@ -75,4 +75,4 @@ async def trigger_apply(req: func.HttpRequest):
     """
     This function is called via HTTP post and adds redaction application requests to the service bus queue
     """
-    return await _add_message_to_service_bus_queue("REDACT")
+    return await _add_message_to_service_bus_queue("REDACT", req)
