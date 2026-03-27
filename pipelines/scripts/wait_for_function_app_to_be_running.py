@@ -76,7 +76,11 @@ if __name__ == "__main__":
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("-e", "--env", help="Environment to run against")
-    parser.add_argument("-d", "--domain", help="The domain the function app targets. Should be either 'receiver' or 'processor'")
+    parser.add_argument(
+        "-d",
+        "--domain",
+        help="The domain the function app targets. Should be either 'receiver' or 'processor'",
+    )
     args = parser.parse_args()
     env = str(args.env).lower()
     domain = str(args.domain).lower()
