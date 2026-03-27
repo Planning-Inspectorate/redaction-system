@@ -57,7 +57,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
             ) as sender:
                 message = ServiceBusMessage(
                     json.dumps(request_params),
-                    time_to_live=timedelta(days=10)
+                    time_to_live=timedelta(days=1)
                 )
                 await sender.send_messages([message])
     except Exception as e:
