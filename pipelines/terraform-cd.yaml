@@ -25,6 +25,7 @@ extends:
       #- name: Test
       #  dependsOn:
       #    - Dev
+      - name: Prod
       - name: Training
       #- name: Prod
       #  dependsOn:
