@@ -1,28 +1,28 @@
 ############################################################################
 # Service permissions
 ############################################################################
-resource "azurerm_role_assignment" "function_app_receiver_storage_contributor" {
+resource "azurerm_role_assignment" "function_app_processor_storage_contributor" {
   scope                = azurerm_storage_account.redaction_storage.id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = azurerm_linux_function_app.receiver.identity[0].principal_id
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
 }
 
-resource "azurerm_role_assignment" "function_app_receiver_openai_contributor" {
+resource "azurerm_role_assignment" "function_app_processor_openai_contributor" {
   scope                = azurerm_cognitive_account.open_ai.id
   role_definition_name = "Cognitive Services OpenAI User"
-  principal_id         = azurerm_linux_function_app.receiver.identity[0].principal_id
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
 }
 
-resource "azurerm_role_assignment" "function_app_receiver_computervision_contributor" {
+resource "azurerm_role_assignment" "function_app_processor_computervision_contributor" {
   scope                = azurerm_cognitive_account.computer_vision.id
   role_definition_name = "Cognitive Services User"
-  principal_id         = azurerm_linux_function_app.receiver.identity[0].principal_id
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
 }
 
-resource "azurerm_role_assignment" "function_app_receiver_servicebus_datasender" {
+resource "azurerm_role_assignment" "function_app_processor_servicebus_datasender" {
   scope                = data.azurerm_servicebus_namespace.backoffice.id
   role_definition_name = "Azure Service Bus Data Sender"
-  principal_id         = azurerm_linux_function_app.receiver.identity[0].principal_id
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "function_app_storage_contributor" {
@@ -98,8 +98,8 @@ resource "azurerm_role_assignment" "ado_deployment_storage_contributor" {
   principal_id         = data.azuread_service_principal.deployment.object_id
 }
 
-resource "azurerm_role_assignment" "ado_deployment_functions_receiver_contributor" {
-  scope                = azurerm_linux_function_app.receiver.id
+resource "azurerm_role_assignment" "ado_deployment_functions_processor_contributor" {
+  scope                = azurerm_linux_function_app.processor.id
   role_definition_name = "Contributor"
   principal_id         = data.azuread_service_principal.deployment.object_id
 }

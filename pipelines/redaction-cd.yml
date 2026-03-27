@@ -65,7 +65,7 @@ extends:
                   inlineScript: |
                     az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --name 'pins-func-receiver-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/receiver.zip' \
                     --build-remote true \
                     --verbose
@@ -109,7 +109,7 @@ extends:
                   inlineScript: |
                     az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
                     --build-remote true \
                     --verbose
