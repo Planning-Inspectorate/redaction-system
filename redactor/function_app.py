@@ -6,13 +6,79 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 """
 
 import json
-import logging
-from typing import Any, Dict
+from typing import Dict, Any
+from dotenv import load_dotenv
+import os
+
+
+load_dotenv()
+AZURE_SERVICE_BUS_NAMESPACE = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
 
 import azure.durable_functions as df
 import azure.functions as func
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+
+
+# An HTTP-triggered function with a Durable Functions client binding
+@app.service_bus_queue_trigger(
+    arg_name="received_message",
+    queue_name="redaction-internal-queue",
+    connection=f"{AZURE_SERVICE_BUS_NAMESPACE}.servicebus.windows.net"
+)
+@app.durable_client_input(client_name="client")
+async def trigger(
+    received_message: func.ServiceBusMessage, client: df.DurableOrchestrationClient
+):
+    """
+    Service Bus trigger for redaction tasks
+    """
+    request_params = json.loads(received_message.get_body().decode("utf-8"))
+    logging.info("request params: %s", request_params)
+    override_id = None
+    if "overrideId" in request_params:
+        override_id = str(request_params.pop("overrideId"))
+    run_id = await client.start_new(
+        "trigger_orchestrator", client_input=request_params, instance_id=override_id
+    )
+    logging.info(f"Started orchestration with ID = '{run_id}'")
+
+
+# Orchestrator
+@app.orchestration_trigger(context_name="context")
+def trigger_orchestrator(context: df.DurableOrchestrationContext):
+    """
+    Orchestrator of the redaction process
+    """
+    input_params = context.get_input() | {"job_id": context.instance_id}
+    retry_options = df.RetryOptions(1, 1)
+    result = yield context.call_activity_with_retry(
+        "trigger_task", retry_options, input_params
+    )
+    return result
+
+
+# Activity
+@app.activity_trigger(input_name="params")
+def trigger_task(params: Dict[str, Any]):
+    """
+    Task which completes the redaction process
+    """
+    # Import inside this function so that the function app has a chance to start
+    # Exceptions will instead be raised when this function is trigger
+    from core.redaction_manager import RedactionManager  # noqa: F402
+
+    job_id = params.pop("job_id")
+    stage = params["stage"]
+    if stage == "ANALYSE":
+        logging.info(f"Call try_redact")
+        return {"a": "try_redact"}
+        #return RedactionManager(job_id).try_redact(params)
+    if stage == "REDACT":
+        logging.info(f"Call try_apply")
+        return {"a": "try_apply"}
+        #return RedactionManager(job_id).try_apply(params)
+    raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
 
 # An HTTP-triggered function with a Durable Functions client binding
