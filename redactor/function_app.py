@@ -33,7 +33,7 @@ async def trigger(
     )
     logging.info("request params: %s", request_params)
     job_id = request_params.pop("job_id", None)
-    if "job_id" not in request_params:
+    if not job_id:
         message = "'job_id' property missing from service bus message"
         logging.error(message)
         raise ValueError(message)
