@@ -222,6 +222,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
     "APP_INSIGHTS_CONNECTION_STRING" = azurerm_application_insights.redaction_system.connection_string
     "WEBSITE_CONTENTOVERVNET"        = 1
     "AZURE_SERVICE_BUS_NAMESPACE"    = data.azurerm_servicebus_namespace.backoffice.name
+    "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
   }
 }
 
