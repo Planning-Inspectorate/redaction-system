@@ -815,7 +815,6 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
     )
     term = "Hello"
     rect = pymupdf.Rect(0, 0, 10, 10)
-    candidates_on_page = [(rect, term)]
 
     expected_result = [(0, rect, term)]
     with patch.object(
@@ -825,10 +824,10 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
     ):
         pdf_processor = PDFProcessor()
         pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
-        pdf_processor.redaction_candidates = [candidates_on_page]
+        pdf_processor.terms_found = {term: 0}
 
         result = pdf_processor._examine_provisional_redactions_on_page(
-            candidates_on_page, page_metadata
+            [term], page_metadata
         )
 
     assert result == expected_result
@@ -847,7 +846,6 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
     term = "Hello World"
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
-    candidates_on_page = [(rect, term), (next_rect, term)]
 
     expected_result = [(0, rect, term), (0, next_rect, term)]
     side_effects = [
@@ -861,9 +859,9 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
             side_effect=side_effects,
         ):
             pdf_processor = PDFProcessor()
-            pdf_processor.redaction_candidates = [candidates_on_page]
+            pdf_processor.terms_found = {term: 0}
             result = pdf_processor._examine_provisional_redactions_on_page(
-                candidates_on_page,
+                [term],
                 page_metadata,
             )
 
