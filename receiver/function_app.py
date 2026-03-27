@@ -56,12 +56,13 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
                 "redaction-internal-queue"
             ) as sender:
                 message = ServiceBusMessage(
-                    json.dumps(request_params),
-                    time_to_live=timedelta(days=1)
+                    json.dumps(request_params), time_to_live=timedelta(days=1)
                 )
                 await sender.send_messages([message])
     except Exception as e:
-        logging.error(f"Failed to send the new message to the service bus queue with the following exception: {e}")
+        logging.error(
+            f"Failed to send the new message to the service bus queue with the following exception: {e}"
+        )
     return func.HttpResponse(json.dumps({"id": job_id}), status_code=200)
 
 

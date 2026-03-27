@@ -120,9 +120,7 @@ def run_redact_then_apply(
         out_blob=proposed_blob,
         skip_redaction=False,
     )
-    trigger_and_wait(
-        redact_start_url, provisional_payload, timeout_s=timeout_s
-    )
+    trigger_and_wait(redact_start_url, provisional_payload, timeout_s=timeout_s)
     assert az_blob_exists(e2e_storage_account, e2e_container_name, proposed_blob)
 
     provisional_file = tmp_path / Path(proposed_blob).name
