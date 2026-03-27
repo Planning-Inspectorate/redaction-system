@@ -41,22 +41,25 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
         raise RuntimeError(
             "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
         )
-    credential = ChainedTokenCredential(
-        ManagedIdentityCredential(), AzureCliCredential()
-    )
-    async with ServiceBusClient(
-        fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
-        credential=credential,
-        logging_enable=True,
-    ) as service_bus_client:
-        logging.info("Adding message to service bus queue")
-        async with service_bus_client.get_queue_sender(
-            "redaction-internal-queue"
-        ) as sender:
-            message = ServiceBusMessage(
-                json.dumps(request_params),
-            )
-            await sender.send_messages([message])
+    try:
+        credential = ChainedTokenCredential(
+            ManagedIdentityCredential(), AzureCliCredential()
+        )
+        async with ServiceBusClient(
+            fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
+            credential=credential,
+            logging_enable=True,
+        ) as service_bus_client:
+            logging.info("Adding message to service bus queue")
+            async with service_bus_client.get_queue_sender(
+                "redaction-internal-queue"
+            ) as sender:
+                message = ServiceBusMessage(
+                    json.dumps(request_params),
+                )
+                await sender.send_messages([message])
+    except Exception as e:
+        logging.error(f"Failed to send the new message to the service bus queue with the following exception: {e}")
     return func.HttpResponse(json.dumps({"id": job_id}), status_code=200)
 
 
