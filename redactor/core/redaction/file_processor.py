@@ -1,4 +1,5 @@
 import json
+import re
 import pymupdf
 import dataclasses
 import numpy as np
@@ -242,11 +243,6 @@ class PDFProcessor(FileProcessor):
                 current_block = block_no
 
             word_cleaned = word_text
-            # word_cleaned = (
-            #     word_text.replace("\u200b", "")  # Remove zero-width space characters
-            #     .replace("\ufeff", "")  # Remove zero-width no-break space characters
-            #     .replace("\u202f", " ")  # Remove narrow no-break space characters
-            # )
             if len(word_cleaned.strip()) > 0:  # Don't add empty words
                 line_text.append(word_cleaned)
                 line_rects.append((x0, y0, x1, y1))
@@ -255,7 +251,18 @@ class PDFProcessor(FileProcessor):
             lines.append(self._create_line_metadata(line_text, line_rects, n_lines))
 
         return PDFPageMetadata(
-            page_number=page.number, lines=lines, raw_text=page.get_text().strip()
+            page_number=page.number,
+            lines=lines,
+            raw_text=self._get_clean_page_text(page),
+        )
+
+    def _get_clean_page_text(self, page: pymupdf.Page) -> str:
+        return (
+            page.get_text()
+            .replace("\u200b", "")  # Remove zero-width space characters
+            .replace("\ufeff", "")  # Remove zero-width no-break space characters
+            .replace("\u202f", " ")  # Remove narrow no-break space characters
+            .strip()
         )
 
     def _extract_pdf_text(self, file_bytes: BytesIO) -> str:
@@ -266,14 +273,7 @@ class PDFProcessor(FileProcessor):
         :return str: The text content of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        pages = [
-            page.get_text()
-            .replace("\u200b", "")  # Remove zero-width space characters
-            .replace("\ufeff", "")  # Remove zero-width no-break space characters
-            .replace("\u202f", " ")  # Remove narrow no-break space characters
-            .strip()
-            for page in pdf
-        ]
+        pages = [self._get_clean_page_text(page) for page in pdf]
 
         if all(page == "" for page in pages):  # No text found on any page
             return None
@@ -962,7 +962,7 @@ class PDFProcessor(FileProcessor):
         filtered_term_to_redact = [
             x
             for x in text_to_redact
-            if x
+            if re.sub(r"\s+", " ", x.strip())  # Normalise whitespace
             in (
                 page_metadata.raw_text
                 + (next_page_metadata.raw_text if next_page_metadata else "")
@@ -1343,7 +1343,6 @@ class PDFProcessor(FileProcessor):
             "image_redaction_apply_time": image_redaction_apply_time,
             "result_metrics": all_result_metrics,
             "aggregate_result_metrics": combined_metrics,
-            "redaction_terms_found": self.terms_found,
             "unapplied_redaction_terms": unapplied_redaction_terms,
         }
 
