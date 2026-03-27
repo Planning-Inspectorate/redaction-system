@@ -108,8 +108,8 @@ resource "azurerm_storage_container" "redaction_storage" {
 
 # The dev env fileshare was manually created - deleting the dev infra to resync is quite a long process (due to resource locks)
 # there are higher priority things to focus on right now. This should be resynced when possible
-resource "azurerm_storage_share" "function_app_receiver" {
-  name               = azurerm_linux_function_app.receiver.name
+resource "azurerm_storage_share" "function_app_processor" {
+  name               = azurerm_linux_function_app.processor.name
   storage_account_id = azurerm_storage_account.redaction_storage.id
   quota              = 5120
 }
@@ -148,14 +148,14 @@ resource "azurerm_service_plan" "processor" {
 }
 
 
-resource "azurerm_linux_function_app" "receiver" {
-  name                = "${local.org}-func-receiver-${local.resource_suffix}"
+resource "azurerm_linux_function_app" "processor" {
+  name                = "${local.org}-func-processor-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
 
   storage_account_name          = azurerm_storage_account.redaction_storage.name
   storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
-  service_plan_id               = azurerm_service_plan.receiver.id
+  service_plan_id               = azurerm_service_plan.processor.id
   public_network_access_enabled = false
   virtual_network_subnet_id     = azurerm_subnet.function_app.id
   https_only                    = true
@@ -175,7 +175,7 @@ resource "azurerm_linux_function_app" "receiver" {
   }
   app_settings = {
     "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING" = "DefaultEndpointsProtocol=https;AccountName=${azurerm_storage_account.redaction_storage.name};AccountKey=${azurerm_storage_account.redaction_storage.primary_access_key};EndpointSuffix=core.windows.net"
-    "WEBSITE_CONTENTSHARE" : "${local.org}-func-receiver-${local.resource_suffix}"
+    "WEBSITE_CONTENTSHARE" : "${local.org}-func-processor-${local.resource_suffix}"
     "SCM_DO_BUILD_DURING_DEPLOYMENT"                = "true"
     "OPENAI_ENDPOINT"                               = azurerm_cognitive_account.open_ai.endpoint
     "AZURE_VISION_ENDPOINT"                         = azurerm_cognitive_account.computer_vision.endpoint
@@ -194,7 +194,7 @@ resource "azurerm_linux_function_app" "redaction_system" {
 
   storage_account_name          = azurerm_storage_account.redaction_storage.name
   storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
-  service_plan_id               = azurerm_service_plan.processor.id
+  service_plan_id               = azurerm_service_plan.receiver.id
   public_network_access_enabled = false
   virtual_network_subnet_id     = azurerm_subnet.function_app.id
   https_only                    = true
