@@ -11,6 +11,7 @@ import json
 import os
 from uuid import uuid4
 from typing import Dict, Any
+from datetime import timedelta
 
 app = func.FunctionApp()
 
@@ -56,6 +57,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
             ) as sender:
                 message = ServiceBusMessage(
                     json.dumps(request_params),
+                    time_to_live=timedelta(days=10)
                 )
                 await sender.send_messages([message])
     except Exception as e:
