@@ -13,6 +13,12 @@ variables:
   E2E_FUNCTION_BASE_URL_DEV: https://pins-func-redaction-system-dev-uks.azurewebsites.net
   E2E_FUNCTION_BASE_URL_TEST: https://pins-func-redaction-system-test-uks.azurewebsites.net
   E2E_FUNCTION_BASE_URL_PROD: https://pins-func-redaction-system-prod-uks.azurewebsites.net
+  E2E_FUNCTION_RECEIVER_BASE_URL_DEV: https://pins-func-redaction-system-dev-uks.azurewebsites.net
+  E2E_FUNCTION_RECEIVER_BASE_URL_TEST: https://pins-func-redaction-system-test-uks.azurewebsites.net
+  E2E_FUNCTION_RECEIVER_BASE_URL_PROD: https://pins-func-redaction-system-prod-uks.azurewebsites.net
+  E2E_FUNCTION_PROCESSOR_BASE_URL_DEV: https://pins-func-processor-redaction-system-dev-uks.azurewebsites.net
+  E2E_FUNCTION_PROCESSOR_BASE_URL_TEST: https://pins-func-processor-redaction-system-test-uks.azurewebsites.net
+  E2E_FUNCTION_PROCESSOR_BASE_URL_PROD: https://pins-func-processor-redaction-system-prod-uks.azurewebsites.net
 
   # ---- Storage containers ----
   E2E_CONTAINER_NAME_DEV: pinsfuncredactionsystemdevuks-applease
