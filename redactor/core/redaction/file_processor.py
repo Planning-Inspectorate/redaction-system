@@ -786,12 +786,12 @@ class PDFProcessor(FileProcessor):
                     if next_line_result:
                         if isinstance(next_line_result, tuple):
                             return [
-                                (page_number, next_line, end_index - 1),
+                                (page_number, next_line, end_index),
                                 next_line_result,
                             ]
                         elif isinstance(next_line_result, list):
                             return [
-                                (page_number, next_line, end_index - 1)
+                                (page_number, next_line, end_index)
                             ] + next_line_result
 
         return []
