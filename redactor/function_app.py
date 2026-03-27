@@ -24,7 +24,7 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.service_bus_queue_trigger(
     arg_name="received_message",
     queue_name="redaction-internal-queue",
-    connection=f"{AZURE_SERVICE_BUS_NAMESPACE}.servicebus.windows.net"
+    connection=f"{AZURE_SERVICE_BUS_NAMESPACE}.servicebus.windows.net",
 )
 @app.durable_client_input(client_name="client")
 async def trigger(
@@ -33,15 +33,19 @@ async def trigger(
     """
     Service Bus trigger for redaction tasks
     """
-    request_params = json.loads(received_message.get_body().decode("utf-8"))
-    logging.info("request params: %s", request_params)
-    override_id = None
-    if "overrideId" in request_params:
-        override_id = str(request_params.pop("overrideId"))
-    run_id = await client.start_new(
-        "trigger_orchestrator", client_input=request_params, instance_id=override_id
+    request_params: Dict[str, Any] = json.loads(
+        received_message.get_body().decode("utf-8")
     )
-    logging.info(f"Started orchestration with ID = '{run_id}'")
+    logging.info("request params: %s", request_params)
+    job_id = request_params.pop("job_id", None)
+    if "job_id" not in request_params:
+        message = "'job_id' property missing from service bus message"
+        logging.error(message)
+        raise ValueError(message)
+    job_id = await client.start_new(
+        "trigger_orchestrator", client_input=request_params, instance_id=job_id
+    )
+    logging.info(f"Started orchestration with ID = '{job_id}'")
 
 
 # Orchestrator
@@ -68,16 +72,14 @@ def trigger_task(params: Dict[str, Any]):
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager  # noqa: F402
 
-    job_id = params.pop("job_id")
+    job_id = params.pop("run_id")
     stage = params["stage"]
     if stage == "ANALYSE":
-        logging.info(f"Call try_redact")
-        return {"a": "try_redact"}
-        #return RedactionManager(job_id).try_redact(params)
+        logging.info("Call try_redact")
+        return RedactionManager(job_id).try_redact(params)
     if stage == "REDACT":
-        logging.info(f"Call try_apply")
-        return {"a": "try_apply"}
-        #return RedactionManager(job_id).try_apply(params)
+        logging.info("Call try_apply")
+        return RedactionManager(job_id).try_apply(params)
     raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
 
