@@ -156,8 +156,8 @@ resource "azurerm_linux_function_app" "processor" {
   storage_account_name          = azurerm_storage_account.redaction_storage.name
   storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id               = azurerm_service_plan.processor.id
-  public_network_access_enabled = false
-  virtual_network_subnet_id     = azurerm_subnet.function_app.id
+  public_network_access_enabled = true
+  #virtual_network_subnet_id     = azurerm_subnet.function_app.id
   https_only                    = true
 
   site_config {
@@ -195,8 +195,8 @@ resource "azurerm_linux_function_app" "redaction_system" {
   storage_account_name          = azurerm_storage_account.redaction_storage.name
   storage_account_access_key    = azurerm_storage_account.redaction_storage.primary_access_key
   service_plan_id               = azurerm_service_plan.receiver.id
-  public_network_access_enabled = false
-  virtual_network_subnet_id     = azurerm_subnet.function_app.id
+  public_network_access_enabled = true
+  #virtual_network_subnet_id     = azurerm_subnet.function_app.id
   https_only                    = true
 
   site_config {
