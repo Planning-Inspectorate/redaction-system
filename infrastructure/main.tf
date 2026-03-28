@@ -208,11 +208,14 @@ resource "azurerm_monitor_action_group" "redaction_tech" {
 }
 
 # Log cap alert using scheduled query rules
+variable "monitoring_config" {
+  default = ""
+}
 resource "azurerm_monitor_scheduled_query_rules_alert_v2" "log_cap" {
   count = var.environment == "prod" ? 1 : 0
 
   name         = "Log cap Alert"
-  display_name = "log Daily data limit reached"
+  display_name = "Daily logging limit {${var.monitoring_config.log_size}GB) reached for ${local.service_name} in PROD"
   description  = "Triggered when the log Data cap is reached."
 
   location            = local.location
