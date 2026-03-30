@@ -162,68 +162,68 @@ resource "azurerm_private_endpoint" "function_app" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
-  name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-cognitiveservices"
-  resource_group_name = azurerm_resource_group.primary.name
-  location            = local.location
-  subnet_id           = azurerm_subnet.redaction_system.id
+# resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
+#   name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-cognitiveservices"
+#   resource_group_name = azurerm_resource_group.primary.name
+#   location            = local.location
+#   subnet_id           = azurerm_subnet.redaction_system.id
 
-  private_dns_zone_group {
-    name                 = "${local.org}-pdns-${local.service_name}-openai-cognitiveservices-${var.environment}"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
-  }
+#   private_dns_zone_group {
+#     name                 = "${local.org}-pdns-${local.service_name}-openai-cognitiveservices-${var.environment}"
+#     private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
+#   }
 
-  private_service_connection {
-    name                           = "${local.org}-psc-${local.service_name}-openai-cognitiveservices-${var.environment}"
-    is_manual_connection           = false
-    private_connection_resource_id = azurerm_cognitive_account.open_ai.id
-    subresource_names              = ["account"]
-  }
+#   private_service_connection {
+#     name                           = "${local.org}-psc-${local.service_name}-openai-cognitiveservices-${var.environment}"
+#     is_manual_connection           = false
+#     private_connection_resource_id = azurerm_cognitive_account.open_ai.id
+#     subresource_names              = ["account"]
+#   }
 
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
-resource "azurerm_private_endpoint" "open_ai_openai" {
-  name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-openai"
-  resource_group_name = azurerm_resource_group.primary.name
-  location            = local.location
-  subnet_id           = azurerm_subnet.redaction_system.id
+# resource "azurerm_private_endpoint" "open_ai_openai" {
+#   name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-openai"
+#   resource_group_name = azurerm_resource_group.primary.name
+#   location            = local.location
+#   subnet_id           = azurerm_subnet.redaction_system.id
 
-  private_dns_zone_group {
-    name                 = "${local.org}-pdns-${local.service_name}-openai-openai-${var.environment}"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.openai.id]
-  }
+#   private_dns_zone_group {
+#     name                 = "${local.org}-pdns-${local.service_name}-openai-openai-${var.environment}"
+#     private_dns_zone_ids = [data.azurerm_private_dns_zone.openai.id]
+#   }
 
-  private_service_connection {
-    name                           = "${local.org}-psc-${local.service_name}-openai-openai-${var.environment}"
-    is_manual_connection           = false
-    private_connection_resource_id = azurerm_cognitive_account.open_ai.id
-    subresource_names              = ["account"]
-  }
+#   private_service_connection {
+#     name                           = "${local.org}-psc-${local.service_name}-openai-openai-${var.environment}"
+#     is_manual_connection           = false
+#     private_connection_resource_id = azurerm_cognitive_account.open_ai.id
+#     subresource_names              = ["account"]
+#   }
 
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
-resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
-  name                = "${local.org}-pe-${azurerm_cognitive_account.computer_vision.name}-cognitiveservices"
-  resource_group_name = azurerm_resource_group.primary.name
-  location            = local.location
-  subnet_id           = azurerm_subnet.redaction_system.id
+# resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
+#   name                = "${local.org}-pe-${azurerm_cognitive_account.computer_vision.name}-cognitiveservices"
+#   resource_group_name = azurerm_resource_group.primary.name
+#   location            = local.location
+#   subnet_id           = azurerm_subnet.redaction_system.id
 
-  private_dns_zone_group {
-    name                 = "${local.org}-pdns-${local.service_name}-computervision-cognitiveservices-${var.environment}"
-    private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
-  }
+#   private_dns_zone_group {
+#     name                 = "${local.org}-pdns-${local.service_name}-computervision-cognitiveservices-${var.environment}"
+#     private_dns_zone_ids = [data.azurerm_private_dns_zone.ai.id]
+#   }
 
-  private_service_connection {
-    name                           = "${local.org}-psc-${local.service_name}-computervision-cognitiveservices-${var.environment}"
-    is_manual_connection           = false
-    private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
-    subresource_names              = ["account"]
-  }
+#   private_service_connection {
+#     name                           = "${local.org}-psc-${local.service_name}-computervision-cognitiveservices-${var.environment}"
+#     is_manual_connection           = false
+#     private_connection_resource_id = azurerm_cognitive_account.computer_vision.id
+#     subresource_names              = ["account"]
+#   }
 
-  tags = local.tags
-}
+#   tags = local.tags
+# }
 
 
 ############################################################################
