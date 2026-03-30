@@ -8,7 +8,7 @@ parameters:
   values:
   - 'Dev'
   - 'Test'
-  - 'Prod'
+  - 'Training'
 
 resources:
   repositories:
