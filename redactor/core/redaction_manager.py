@@ -103,9 +103,9 @@ class RedactionManager:
             raise ValueError("Job ID cannot be None")
         if not isinstance(job_id, str):
             raise ValueError(f"Job ID must be a string, but was a {type(job_id)}")
-        if len(job_id) > 40:
+        if len(job_id) > 60:
             raise ValueError(
-                f"Job ID must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
+                f"Job ID must be at most 60 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
         return self._clean_job_id(job_id)
 
