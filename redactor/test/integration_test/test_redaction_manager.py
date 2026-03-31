@@ -170,17 +170,17 @@ class TestIntegrationRedactionManager(TestCase):
         blob_bytes = blob_client.download_blob().read()
         assert pdf_bytes == blob_bytes
         self.validate_service_bus_message_sent(guid)
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_log.txt"
-        )
+        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_log.txt to be in the redactiondata container, but was missing"
+            f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
+        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_metrics.txt"
+            metric_blob
         )
         assert not metric_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
+            f"Expected {metric_blob} to not be in the redactiondata container, but was created"
         )
 
     def test__redaction__manager__try_redact(self):
@@ -247,16 +247,12 @@ class TestIntegrationRedactionManager(TestCase):
 
         self.validate_service_bus_message_sent(guid)
 
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_log.txt"
+        json_blob = f"{guid}-{MOCK_START_TIME}/proposed_redactions.json"
+        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(json_blob)
+        assert json_blob_client.exists(), (
+            f"Expected {json_blob} to be in the redactiondata container, but was missing"
         )
 
-        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/proposed_redactions.json"
-        )
-        assert json_blob_client.exists(), (
-            "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
-        )
         proposed_redactions_dict = json.loads(
             json_blob_client.download_blob().read().decode("utf-8")
         )
@@ -266,16 +262,21 @@ class TestIntegrationRedactionManager(TestCase):
             "fileName",
             "proposedRedactions",
         }, (
-            "proposed_redactions.json should contain at least the keys 'jobID', 'date', 'fileName', and 'proposedRedactions'"
+            f"{json_blob} should contain at least the keys 'jobID', 'date', 'fileName', and 'proposedRedactions'"
         )
+
+        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/log.txt to be in the redactiondata container, but was missing"
+            f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
+
+        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_metrics.txt"
+            metric_blob
         )
         assert metric_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt to be in the redactiondata container, but was missing"
+            f"Expected {metric_blob} to be in the redactiondata container, but was missing"
         )
 
     def test__redaction_manager__try_redact__failure(self):
@@ -301,15 +302,18 @@ class TestIntegrationRedactionManager(TestCase):
         params = {"an example bad payload": None}
         response = manager.try_redact(params)
         assert response["status"] == "FAIL"
+        exception_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_exceptions.txt"
         exception_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_exceptions.txt"
+            exception_blob
         )
-        assert exception_blob_client.exists()
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/ANALYSE_log.txt"
+        assert exception_blob_client.exists(), (
+            f"Expected {exception_blob} to be in the redactiondata container, but was missing"
         )
+
+        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_log.txt to be in the redactiondata container, but was missing"
+            f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
 
     def test__redaction_manager__try_apply(self):
@@ -370,25 +374,24 @@ class TestIntegrationRedactionManager(TestCase):
 
         self.validate_service_bus_message_sent(guid)
 
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/REDACT_log.txt"
-        )
+        log_blob = f"{guid}-{MOCK_START_TIME}/REDACT_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/log.txt to be in the redactiondata container, but was missing"
+            f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
 
+        metric_blob = f"{guid}-{MOCK_START_TIME}/REDACT_metrics.txt"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/REDACT_metrics.txt"
+            metric_blob
         )
         assert metric_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/REDACT_metrics.txt to be in the redactiondata container, but was missing"
+            f"Expected {metric_blob} to be in the redactiondata container, but was missing"
         )
 
-        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            f"{guid}/final_redactions.json"
-        )
+        json_blob = f"{guid}-{MOCK_START_TIME}/final_redactions.json"
+        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(json_blob)
         assert json_blob_client.exists(), (
-            "Expected final_redactions.json to be in the redactiondata container, but was missing"
+            f"Expected {json_blob} to be in the redactiondata container, but was missing"
         )
 
         final_redactions_dict = json.loads(
