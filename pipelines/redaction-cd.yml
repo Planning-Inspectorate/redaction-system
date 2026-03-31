@@ -26,9 +26,53 @@ extends:
     environments:
       - name: ${{ parameters.env }}
     deploymentStages:
-      - name: Deploy Function App
+      - name: Deploy Receiver Function App
         deploymentJobs:
-          - name: Deploy Function App
+          - name: Deploy Receiver Function App
+            steps:
+              - checkout: self
+                displayName: 'Checkout repo'
+              
+              # Create a zip file of all the files in the filelist.
+              - script: |
+                  set -e
+                  cd $(Build.SourcesDirectory)/receiver
+                  zip -r $(Build.ArtifactStagingDirectory)/receiver.zip .
+                displayName: 'Archive top level files'
+              
+              # Publish the zip file as an artifact to be used further in the pipeline.
+              - task: PublishBuildArtifacts@1
+                displayName: 'Publish build artifact'
+                inputs:
+                  PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+                  ArtifactName: 'FunctionCode'
+              
+              # Download the artifact first - the zip file.
+              - task: DownloadBuildArtifacts@1
+                displayName: 'Download function code artifact'
+                inputs:
+                  buildType: 'current'
+                  artifactName: 'FunctionCode'
+                  downloadPath: '$(System.ArtifactsDirectory)'
+
+              # Use the Azure CLI to deploy the zip file to the Function App in Azure.
+              - task: AzureCLI@2
+                displayName: 'Deploy to function app'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    az functionapp deployment source config-zip \
+                    --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --src '$(System.ArtifactsDirectory)/FunctionCode/receiver.zip' \
+                    --build-remote true \
+                    --verbose
+                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
+      - name: Deploy Processor Function App
+        deploymentJobs:
+          - name: Deploy Processor Function App
             steps:
               - checkout: self
                 displayName: 'Checkout repo'
@@ -65,11 +109,20 @@ extends:
                   inlineScript: |
                     az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
                     --build-remote true \
                     --verbose
-                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}
+                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
+      - name: Run Smoke Tests
+        dependsOn:
+          - Deploy Receiver Function App
+          - Deploy Processor Function App
+        deploymentJobs:
+          - name: Run Smoke Tests
+            steps:
+              - checkout: self
+                displayName: 'Checkout repo'
               # Run a quick smoke test to check connectivity
               - task: AzureCLI@2
                 displayName: 'Run function app smoke test'

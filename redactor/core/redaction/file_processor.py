@@ -1305,7 +1305,7 @@ class PDFProcessor(FileProcessor):
                 page, annotation_class=pymupdf.PDF_ANNOT_HIGHLIGHT, return_annot=True
             ):
                 redaction_highlight_count += 1
-                if annotation["rect"]:
+                if "rect" in annotation and annotation["rect"]:
                     # Use the rect generated from the vertices if it exists, since
                     # this will have preserved the position of the highlight applied more accurately
                     annotation_rect = annotation["rect"]

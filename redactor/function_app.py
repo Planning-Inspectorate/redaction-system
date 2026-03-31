@@ -6,9 +6,8 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 """
 
 import json
+from typing import Dict, Any
 import logging
-from typing import Any, Dict
-
 import azure.durable_functions as df
 import azure.functions as func
 
@@ -16,65 +15,50 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 # An HTTP-triggered function with a Durable Functions client binding
-@app.route(route="redact", methods=["POST"])
+@app.service_bus_queue_trigger(
+    arg_name="received_message",
+    queue_name="redaction-internal-queue",
+    connection="AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING",
+)
 @app.durable_client_input(client_name="client")
-async def trigger_redaction(
-    req: func.HttpRequest,
-    client: df.DurableOrchestrationClient,
+async def trigger(
+    received_message: func.ServiceBusMessage, client: df.DurableOrchestrationClient
 ):
     """
-    This function is called via HTTP post and triggers the redaction process.
-    This asynchronously triggers the process, and returns a response object containing callback info
-    for the caller to check the status via the `statusQueryGetUri` property of the json response
+    Service Bus trigger for redaction tasks
     """
-    try:
-        request_params = req.get_json()
-    except ValueError:
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "error": "The json payload is missing from the request - unable to trigger the redaction process"
-                }
-            )
-        )
-
-    override_id = (
-        str(request_params.pop("overrideId"))
-        if "overrideId" in request_params
-        else None
+    request_params: Dict[str, Any] = json.loads(
+        received_message.get_body().decode("utf-8")
     )
-    run_id = await client.start_new(
-        "redaction_orchestrator", client_input=request_params, instance_id=override_id
+    logging.info("request params: %s", request_params)
+    job_id = request_params.pop("job_id", None)
+    if not job_id:
+        message = "'job_id' property missing from service bus message"
+        logging.error(message)
+        raise ValueError(message)
+    job_id = await client.start_new(
+        "trigger_orchestrator", client_input=request_params, instance_id=job_id
     )
-    response = client.create_check_status_response(req, run_id)
-    respose_body = json.loads(response.get_body().decode("utf-8"))
-    # Return a response with a simplified body
-    return func.HttpResponse(
-        json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
-        status_code=response.status_code,
-        headers=response.headers,
-        mimetype="application/json",
-        charset=response.charset,
-    )
+    logging.info(f"Started orchestration with ID = '{job_id}'")
 
 
 # Orchestrator
 @app.orchestration_trigger(context_name="context")
-def redaction_orchestrator(context: df.DurableOrchestrationContext):
+def trigger_orchestrator(context: df.DurableOrchestrationContext):
     """
     Orchestrator of the redaction process
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
     retry_options = df.RetryOptions(1, 1)
     result = yield context.call_activity_with_retry(
-        "redact_task", retry_options, input_params
+        "trigger_task", retry_options, input_params
     )
     return result
 
 
 # Activity
 @app.activity_trigger(input_name="params")
-def redact_task(params: Dict[str, Any]):
+def trigger_task(params: Dict[str, Any]):
     """
     Task which completes the redaction process
     """
@@ -83,74 +67,14 @@ def redact_task(params: Dict[str, Any]):
     from core.redaction_manager import RedactionManager  # noqa: F402
 
     job_id = params.pop("job_id")
-    return RedactionManager(job_id).try_redact(params)
-
-
-# An HTTP-triggered function with a Durable Functions client binding
-@app.route(route="apply", methods=["POST"])
-@app.durable_client_input(client_name="client")
-async def trigger_apply(req: func.HttpRequest, client: df.DurableOrchestrationClient):
-    """
-    This function is called via HTTP post and triggers the redaction application process.
-    This asynchronously triggers the process, and returns a response object containing callback info
-    for the caller to check the status via the `statusQueryGetUri` property of the json response
-    """
-    try:
-        request_params = req.get_json()
-    except ValueError:
-        return func.HttpResponse(
-            json.dumps(
-                {
-                    "error": "The json payload is missing from the request - unable to trigger the redaction process"
-                }
-            )
-        )
-    logging.info("DEPLOYMENT_MARKER=deploy-check-2026-01-22")
-    logging.info("request params: %s", request_params)
-    override_id = None
-    if "overrideId" in request_params:
-        override_id = str(request_params.pop("overrideId"))
-    run_id = await client.start_new(
-        "apply_orchestrator", client_input=request_params, instance_id=override_id
-    )
-    response = client.create_check_status_response(req, run_id)
-    respose_body = json.loads(response.get_body().decode("utf-8"))
-    # Return a response with a simplified body
-    return func.HttpResponse(
-        json.dumps({"id": run_id, "pollEndpoint": respose_body["statusQueryGetUri"]}),
-        status_code=response.status_code,
-        headers=response.headers,
-        mimetype="application/json",
-        charset=response.charset,
-    )
-
-
-# Orchestrator
-@app.orchestration_trigger(context_name="context")
-def apply_orchestrator(context: df.DurableOrchestrationContext):
-    """
-    Orchestrator of the redaction application process
-    """
-    input_params = context.get_input() | {"job_id": context.instance_id}
-    retry_options = df.RetryOptions(1, 1)
-    result = yield context.call_activity_with_retry(
-        "apply_task", retry_options, input_params
-    )
-    return result
-
-
-# Activity
-@app.activity_trigger(input_name="params")
-def apply_task(params: Dict[str, Any]):
-    """
-    Task which completes the redaction application process
-    """
-    # Import inside this function so that the function app has a chance to start
-    # Exceptions will instead be raised when this function is trigger
-    from core.redaction_manager import RedactionManager  # noqa: F402
-
-    job_id = params.pop("job_id")
-    return RedactionManager(job_id).try_apply(params)
+    stage = params["stage"]
+    if stage == "ANALYSE":
+        logging.info("Call try_redact")
+        return RedactionManager(job_id).try_redact(params)
+    if stage == "REDACT":
+        logging.info("Call try_apply")
+        return RedactionManager(job_id).try_apply(params)
+    raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
 
 # Functions just for smoke testing connections

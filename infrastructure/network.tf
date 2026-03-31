@@ -120,6 +120,27 @@ resource "azurerm_private_endpoint" "redaction_storage" {
   tags = local.tags
 }
 
+resource "azurerm_private_endpoint" "function_app_processor" {
+  name                = "${local.org}-pe-${azurerm_linux_function_app.processor.name}-${var.environment}"
+  resource_group_name = azurerm_resource_group.primary.name
+  location            = local.location
+  subnet_id           = azurerm_subnet.redaction_system.id
+
+  private_dns_zone_group {
+    name                 = "${local.org}-pdns-${local.service_name}-functionapp-processor-${var.environment}"
+    private_dns_zone_ids = [data.azurerm_private_dns_zone.function.id]
+  }
+
+  private_service_connection {
+    name                           = "${local.org}-psc-${local.service_name}-functionapp-processor-${var.environment}"
+    is_manual_connection           = false
+    private_connection_resource_id = azurerm_linux_function_app.processor.id
+    subresource_names              = ["sites"]
+  }
+
+  tags = local.tags
+}
+
 resource "azurerm_private_endpoint" "function_app" {
   name                = "${local.org}-pe-${azurerm_linux_function_app.redaction_system.name}-${var.environment}"
   resource_group_name = azurerm_resource_group.primary.name

@@ -145,6 +145,62 @@ extends:
 
           - script: |
               set -e
+              cd redaction-system/receiver
+
+              echo "Creating local.settings.json for Functions host..."
+
+              APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
+              # In PR builds, Azure DevOps may leave this as the literal placeholder.
+              if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
+                echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
+                APPINS=""
+                # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
+                export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
+                export OTEL_TRACES_EXPORTER=none
+                export OTEL_METRICS_EXPORTER=none
+                export OTEL_LOGS_EXPORTER=none
+              fi
+
+              cat > local.settings.json <<JSON
+              {
+                "IsEncrypted": false,
+                "Values": {
+                  "FUNCTIONS_WORKER_RUNTIME": "python",
+                  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+                  "AzureWebJobsSecretStorageType": "files",
+                  "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
+
+                  "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
+                  "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
+                  "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
+                },
+                "Host": {
+                  "LocalHttpPort": 7072,
+                  "CORS": "*",
+                  "CORSCredentials": false
+                }
+              }
+              JSON
+
+              echo "Starting Functions host..."
+              nohup func start --python --port 7072 --verbose > ../func-host.log 2>&1 &
+              echo $! > ../func-host.pid
+
+              echo "Waiting for Functions host (/admin/host/status)..."
+              for i in {1..60}; do
+                if curl -sSf http://localhost:7072/admin/host/status >/dev/null 2>&1; then
+                  echo "Functions host is up"
+                  exit 0
+                fi
+                sleep 2
+              done
+
+              echo "Functions host did not become ready. Last 200 lines:"
+              tail -n 200 ../func-host.log || true
+              exit 1
+            displayName: 'Start local Azure Functions receiver host (background) + wait'
+          - script: |
+              set -e
               cd redaction-system/redactor
 
               echo "Creating local.settings.json for Functions host..."
@@ -198,14 +254,15 @@ extends:
               echo "Functions host did not become ready. Last 200 lines:"
               tail -n 200 ../func-host.log || true
               exit 1
-            displayName: 'Start local Azure Functions host (background) + wait'
+            displayName: 'Start local Azure Functions processor host (background) + wait'
 
           - script: |
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
-              export E2E_FUNCTION_BASE_URL="http://localhost:7071"
+              export E2E_FUNCTION_RECEIVER_BASE_URL="http://localhost:7072"
+              export E2E_FUNCTION_PROCESSOR_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_CONTAINER_NAME="test"
               export E2E_RUN_ID="ado-$(Build.BuildId)"
