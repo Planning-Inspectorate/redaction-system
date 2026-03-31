@@ -30,7 +30,6 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
         )
     logging.info(f"Request added to queue with parameters {request_params}")
     request_params["stage"] = stage
-    job_id = str(uuid4())
     job_id = str(request_params.pop("overrideId", uuid4()))
     request_params["job_id"] = job_id
     service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
