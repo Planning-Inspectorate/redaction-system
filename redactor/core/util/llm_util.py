@@ -312,18 +312,15 @@ class LLMUtil:
                 response = self.invoke_chain(
                     api_messages, LLMRedactionResultFormat, max_completion_tokens
                 )
-                usage = response.usage
                 LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following raw message were received by the LLM: {api_messages}"
+                    f"{chunk_hash_string} LLM response received: {response}"
                 )
+                usage = response.usage
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
                     0
                 ].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
-                LoggingUtil().log_info(
-                    f"{chunk_hash_string} The following redaction_strings were generated"
-                )
                 return response, redaction_strings
             except LengthFinishReasonError as lfe:
                 LoggingUtil().log_exception_with_message(

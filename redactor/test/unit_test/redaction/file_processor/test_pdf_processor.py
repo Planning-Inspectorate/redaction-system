@@ -57,6 +57,26 @@ def test__pdf_processor__extract_pdf_text():
     assert expected_text_split == actual_text_split
 
 
+def test__pdf_processor__extract_pdf_text__zero_width_spaces():
+    """
+    - Given I have a PDF with zero-width space characters
+    - When I call _extract_pdf_text
+    - Then the zero-width space characters should be removed
+    """
+    expected_text = "This is a test of zero-width spaces."
+    mock_document = pymupdf.open()
+    mock_document.new_page()
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch(
+            "pymupdf.Page.get_text",
+            side_effect=["This is a test of zero-\u200bwidth spaces."],
+        ),
+    ):
+        actual_text = PDFProcessor()._extract_pdf_text(BytesIO())
+    assert expected_text == actual_text
+
+
 def test__pdf_processor__extract_pdf_images():
     """
     - Given I have a PDF with an image
@@ -518,7 +538,7 @@ def test__pdf_processor__create_line_metadata():
         x1=(10, 25),
     )
     line_metadata = PDFProcessor()._create_line_metadata(
-        ["Hello", "World!"],
+        ["hello", "world"],
         [
             pymupdf.Rect(
                 0,
@@ -535,16 +555,18 @@ def test__pdf_processor__create_line_metadata():
 
 def test__pdf_processor__extract_page_text():
     page = pymupdf.open().new_page()
-    with patch.object(
-        pymupdf.Page,
-        "get_text",
-        return_value=[
-            (0, 0, 10, 10, "Hello", 0, 0, None),
-            (5, 0, 15, 10, "World", 0, 0, None),
-            (0, 10, 10, 20, "Hey", 0, 1, None),
-            (5, 10, 15, 20, "there", 0, 1, None),
-        ],
-    ):
+
+    def mock_get_text(*args, **kwargs):
+        if len(args) > 1 or kwargs:
+            return [
+                (0, 0, 10, 10, "Hello", 0, 0, None),
+                (5, 0, 15, 10, "World!", 0, 0, None),
+                (0, 10, 10, 20, "Hey", 0, 1, None),
+                (5, 10, 15, 20, "there", 0, 1, None),
+            ]
+        return "Hello World! Hey there"
+
+    with patch.object(pymupdf.Page, "get_text", mock_get_text):
         page_metadata = PDFProcessor()._extract_page_text(page)
 
     expected_page_metadata = PDFPageMetadata(
@@ -567,34 +589,47 @@ def test__pdf_processor__extract_page_text():
                 x1=(10, 15),
             ),
         ],
+        raw_text="Hello World! Hey there",
     )
 
     assert expected_page_metadata == page_metadata
 
 
 def create_mock_page_metadata(
-    page_number, lines=None, y0=None, y1=None, x0=None, x1=None
+    page_number,
+    text_content: str = None,
+    lines=None,
+    y0=None,
+    y1=None,
+    x0=None,
+    x1=None,
 ):
     line_metadata = []
 
     if lines:
         for i, line in enumerate(lines):
+            normalised_words = get_normalised_words(line)
             line_metadata.append(
                 PDFLineMetadata(
                     line_number=i,
-                    words=np.array(get_normalised_words(line), dtype=str),
+                    words=np.array(normalised_words, dtype=str),
                     y0=y0[i],
                     y1=y1[i],
                     x0=tuple(x0[i]),
                     x1=tuple(x1[i]),
                 )
             )
-    return PDFPageMetadata(page_number=page_number, lines=line_metadata)
+    return PDFPageMetadata(
+        page_number=page_number,
+        lines=line_metadata,
+        raw_text=text_content if text_content else "",
+    )
 
 
 def test__pdf_processor__check_partial_redaction_across_line_breaks():
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -624,6 +659,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
 def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello\nYou",
         lines=["Hello", "You"],
         y0=[0, 20],
         y1=[10, 30],
@@ -652,7 +688,8 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
 def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks():
     page_metadata = create_mock_page_metadata(
         page_number=0,
-        lines=["This", "is line-", "broken"],
+        text_content="This is line\nbroken",
+        lines=["This", "is line", "broken"],
         y0=[0, 20, 40],
         y1=[10, 30, 50],
         x0=[[0], [0, 15], [0]],
@@ -680,6 +717,7 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks(
 def test__pdf_processor__examine_provisional_text_redaction():
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello World",
         lines=["Hello World"],
         y0=[0],
         y1=[10],
@@ -709,6 +747,7 @@ def test__pdf_processor__examine_provisional_text_redaction__no_matches(
 ):
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello World",
         lines=["Hello World"],
         y0=[0],
         y1=[10],
@@ -730,6 +769,7 @@ def test__pdf_processor__examine_provisional_text_redaction__no_matches(
 def test__pdf_processor__examine_provisional_text_redaction__line_break():
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -768,6 +808,7 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
 def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_break():
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Something-\nElse",
         lines=["Something-", "Else"],
         y0=[0, 20],
         y1=[10, 30],
@@ -807,6 +848,7 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
 def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello World",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -815,7 +857,6 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
     )
     term = "Hello"
     rect = pymupdf.Rect(0, 0, 10, 10)
-    candidates_on_page = [(rect, term)]
 
     expected_result = [(0, rect, term)]
     with patch.object(
@@ -825,10 +866,10 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
     ):
         pdf_processor = PDFProcessor()
         pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
-        pdf_processor.redaction_candidates = [candidates_on_page]
+        pdf_processor.terms_found = {term: 0}
 
         result = pdf_processor._examine_provisional_redactions_on_page(
-            candidates_on_page, page_metadata
+            [term], page_metadata
         )
 
     assert result == expected_result
@@ -838,6 +879,7 @@ def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
 def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock_init):
     page_metadata = create_mock_page_metadata(
         page_number=0,
+        text_content="Hello\nWorld",
         lines=["Hello", "World"],
         y0=[0, 20],
         y1=[10, 30],
@@ -847,7 +889,6 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
     term = "Hello World"
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
-    candidates_on_page = [(rect, term), (next_rect, term)]
 
     expected_result = [(0, rect, term), (0, next_rect, term)]
     side_effects = [
@@ -861,9 +902,9 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
             side_effect=side_effects,
         ):
             pdf_processor = PDFProcessor()
-            pdf_processor.redaction_candidates = [candidates_on_page]
+            pdf_processor.terms_found = {term: 0}
             result = pdf_processor._examine_provisional_redactions_on_page(
-                candidates_on_page,
+                [term],
                 page_metadata,
             )
 
