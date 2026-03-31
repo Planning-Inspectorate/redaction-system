@@ -52,11 +52,14 @@ def test__redaction_manager__init():
     with mock.patch.object(
         RedactionManager,
         "_convert_job_id_to_storage_folder_name",
-        return_value=f"{job_id}_blob",
+        return_value=f"{job_id}-12345_blob",
     ):
-        inst = RedactionManager("some_job_id")
-        assert inst.job_id == job_id
-        assert inst.folder_for_job == f"{job_id}_blob"
+        with mock.patch.object(
+            RedactionManager, "_make_job_id_unique", return_value=f"{job_id}-12345"
+        ):
+            inst = RedactionManager("some_job_id")
+            assert inst.job_id == f"{job_id}-12345"
+            assert inst.folder_for_job == f"{job_id}-12345_blob"
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
@@ -471,6 +474,11 @@ def test__redaction_manager__compare_and_save_redactions(
         mock.patch.object(
             RedactionManager, "_compare_redactions", return_value=comparison_output
         ) as mock_compare_redactions,
+        mock.patch.object(
+            RedactionManager,
+            "_get_most_recent_blob",
+            return_value="job_id-1-12345/proposed_redactions.json",
+        ),
     ):
         inst = RedactionManager()
         inst.job_id = "job_id"
@@ -482,7 +490,7 @@ def test__redaction_manager__compare_and_save_redactions(
             proposed_redactions_dict, final_redactions_dict
         )
         mock_container_client.get_blob_client.assert_called_once_with(
-            "job_id-1/proposed_redactions.json"
+            "job_id-1-12345/proposed_redactions.json"
         )
         mock_save_dict_to_blob_json.assert_called_once_with(
             comparison_output,
@@ -1655,9 +1663,30 @@ def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
     assert expected_output == inst._convert_job_id_to_storage_folder_name(id)
 
 
-@pytest.mark.parametrize("id", [None, "a" * 41, 2])
+@pytest.mark.parametrize("id", [None, "a" * 61, 2])
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
     inst = RedactionManager()
     with pytest.raises(ValueError):
         inst._convert_job_id_to_storage_folder_name(id)
+
+
+@mock.patch.object(RedactionManager, "__init__", return_value=None)
+def test__get_most_recent_blob(mock_init):
+    candidate_blobs = {
+        "827df6d4-1-12345/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0),
+        "827df6d4-1-12345/ANALYSE_metrics.txt": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-12345/proposed.pdf": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-12345/proposed_redactions.json": datetime(2026, 3, 12, 0, 0, 0),
+        "827df6d4-1-12345/raw.pdf": datetime(2026, 3, 12, 0, 0, 0),
+        "827df6d4-1-23456/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-23456/ANALYSE_metrics.txt": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-23456/proposed.pdf": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-23456/proposed_redactions.json": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-23456/raw.pdf": datetime(2026, 3, 12, 0, 0, 1),
+    }
+    target_file = "proposed_redactions.json"
+    inst = RedactionManager()
+    expected_file = "827df6d4-1-23456/proposed_redactions.json"
+    actual_file = inst._get_most_recent_blob(candidate_blobs, target_file)
+    assert expected_file == actual_file

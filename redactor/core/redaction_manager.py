@@ -69,7 +69,7 @@ class ApplyJsonPayloadStructure(JsonPayloadStructure):
 
 class RedactionManager:
     def __init__(self, job_id: str):
-        self.job_id = job_id
+        self.job_id = self._make_job_id_unique(job_id)
         self.folder_for_job = self._convert_job_id_to_storage_folder_name(self.job_id)
         self.env = os.environ.get("ENV", None)
         if not self.env:
@@ -77,11 +77,15 @@ class RedactionManager:
                 "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
         self.runtime_errors: List[str] = []
-        # Ensure the logger's job id is set to the job id
-        LoggingUtil(job_id=self.job_id)
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
+
+    def _make_job_id_unique(self, job_id: str):
+        """
+        Append a unix timestamp to the job id. This is defined as a dedicated function to simplify mocking in tests
+        """
+        return job_id + f"-{int(time())}"
 
     def _clean_job_id(self, job_id: str) -> str:
         # Remove special unicode characters from the string
@@ -97,9 +101,9 @@ class RedactionManager:
             raise ValueError("Job ID cannot be None")
         if not isinstance(job_id, str):
             raise ValueError(f"Job ID must be a string, but was a {type(job_id)}")
-        if len(job_id) > 40:
+        if len(job_id) > 60:
             raise ValueError(
-                f"Job ID must be at most 40 characters, but was '{job_id}' which is {len(job_id)} characters"
+                f"Job ID must be at most 60 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
         return self._clean_job_id(job_id)
 
@@ -120,15 +124,21 @@ class RedactionManager:
                     " Ignoring versioning."
                 )
                 return self._clean_job_id(job_id), None
+            version_split = job_id_parts[1].split("-")
+            if len(version_split) != 2:
+                LoggingUtil().log_info(
+                    f"version section of Job ID '{job_id}' does not split into <version>-<timestamp>. Ignoring versioning."
+                )
+                return self._clean_job_id(job_id), None
 
-            if not job_id_parts[1].isdigit():
+            if not version_split[0].isdigit():
                 LoggingUtil().log_info(
                     f"Job ID '{job_id}' contains a ':', but the part after the ':' is not an integer. "
                     " Ignoring versioning."
                 )
                 return self._clean_job_id(job_id), None
 
-            return self._clean_job_id(job_id_parts[0]), int(job_id_parts[1])
+            return self._clean_job_id(job_id_parts[0]), int(version_split[0])
 
         return self._clean_job_id(job_id), None
 
@@ -394,6 +404,16 @@ class RedactionManager:
         output_dict.update(analytics)
         return output_dict
 
+    def _get_most_recent_blob(
+        self, blob_map: Dict[str, datetime], filename_suffix: str
+    ):
+        blob_map_filtered = {
+            k: v for k, v in blob_map.items() if k.endswith(filename_suffix)
+        }
+        if not blob_map_filtered:
+            return None
+        return max(blob_map_filtered, key=blob_map_filtered.get)
+
     def compare_and_save_redactions(
         self,
         final_redactions_dict: Dict[str, Any],
@@ -428,45 +448,53 @@ class RedactionManager:
 
         # Check all possible versions from version-2 to 1
         while proposed_version > 0:
-            blob_path = f"{base_job_id}-{proposed_version}/proposed_redactions.json"
-            blob_client = container_client.get_blob_client(blob_path)
+            base_blob_path = f"{base_job_id}-{proposed_version}"
+            candidate_blobs = {
+                x.name: x.creation_time
+                for x in container_client.list_blobs(name_starts_with=base_blob_path)
+            }
+            blob_path = self._get_most_recent_blob(
+                candidate_blobs, "proposed_redactions.json"
+            )
+            if blob_path:
+                blob_client = container_client.get_blob_client(blob_path)
 
-            # Read from most recent version if it exists
-            if blob_client.exists():
-                proposed_redactions_dict = json.loads(
-                    blob_client.download_blob().read().decode("utf-8")
-                )
-                if not proposed_redactions_dict:
-                    LoggingUtil().log_info(
-                        f"Proposed redactions file at '{blob_path}' is empty."
+                # Read from most recent version if it exists
+                if blob_client.exists():
+                    proposed_redactions_dict = json.loads(
+                        blob_client.download_blob().read().decode("utf-8")
                     )
-                # Compare proposed redactions with final redactions and log differences
-                redaction_analytics = self._compare_redactions(
-                    proposed_redactions_dict, final_redactions_dict
-                )
+                    if not proposed_redactions_dict:
+                        LoggingUtil().log_info(
+                            f"Proposed redactions file at '{blob_path}' is empty."
+                        )
+                    # Compare proposed redactions with final redactions and log differences
+                    redaction_analytics = self._compare_redactions(
+                        proposed_redactions_dict, final_redactions_dict
+                    )
 
-                # Save to analytics container
-                try:
+                    # Save to analytics container
+                    try:
+                        LoggingUtil().log_info(
+                            f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+                        )
+                        self.save_dict_to_blob_json(
+                            redaction_analytics,
+                            redaction_storage_io_inst,
+                            f"{base_job_id}.json",
+                            container_name="analytics",
+                        )
+                    except ResourceExistsError as e:
+                        # TODO Refine logic: should be saved, but what should the name be?
+                        LoggingUtil().log_exception_with_message(
+                            f"An analytics file for job ID '{base_job_id}' already exists",
+                            e,
+                        )
+                    return
+                else:
                     LoggingUtil().log_info(
-                        f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+                        f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
                     )
-                    self.save_dict_to_blob_json(
-                        redaction_analytics,
-                        redaction_storage_io_inst,
-                        f"{base_job_id}.json",
-                        container_name="analytics",
-                    )
-                except ResourceExistsError as e:
-                    # TODO Refine logic: should be saved, but what should the name be?
-                    LoggingUtil().log_exception_with_message(
-                        f"An analytics file for job ID '{base_job_id}' already exists",
-                        e,
-                    )
-                return
-            else:
-                LoggingUtil().log_info(
-                    f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
-                )
 
             proposed_version -= 1
 

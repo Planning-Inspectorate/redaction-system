@@ -4,9 +4,8 @@ import pytest
 import time
 
 from azure.identity import AzureCliCredential
-from mock import patch
 
-from core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import log_to_appins
 
 
 APP_INSIGHTS_TOKEN = (
@@ -14,7 +13,6 @@ APP_INSIGHTS_TOKEN = (
 )
 APP_INSIGHTS_CONNECTION_STRING = os.environ.get("APP_INSIGHTS_CONNECTION_STRING", None)
 APP_INSIGHTS_APP_ID = APP_INSIGHTS_CONNECTION_STRING.split("ApplicationId=")[1]
-JOB_ID = LoggingUtil().job_id  # Get job ID created during other tests or create new one
 
 
 def app_ins_traces_contains_message(expected_message: str):
@@ -32,8 +30,7 @@ def app_ins_traces_contains_message(expected_message: str):
 
 
 @pytest.fixture(autouse=True, scope="module")
-@patch("core.util.logging_util.uuid4", return_value=JOB_ID)
-def run_logging_util(mock_job_id):
+def run_logging_util():
     @log_to_appins(log_args=True)
     def some_test_function(mock_arg_a: str, mock_arg_b: str):
         return f"some_test_function says '{mock_arg_a}' and '{mock_arg_b}'"
@@ -48,16 +45,12 @@ def run_logging_util(mock_job_id):
     reruns=3, reruns_delay=20, only_rerun="AssertionError"
 )  # Flaky test due to delay in logs appearing in app insights
 def test__logging_util__logging_initialised():
-    expected_logging_initialised_message = (
-        f"{JOB_ID}: Logging initialised for redactor_logs."
-    )
+    expected_logging_initialised_message = "Logging initialised for redactor_logs."
     initalisation_traces = app_ins_traces_contains_message(
         expected_logging_initialised_message
     )
 
-    assert initalisation_traces, (
-        f"Logging initialisation message not found for job with id {JOB_ID}."
-    )
+    assert initalisation_traces, "Logging initialisation message not found."
 
 
 @pytest.mark.flaky(
@@ -65,13 +58,10 @@ def test__logging_util__logging_initialised():
 )  # Flaky test due to delay in logs appearing in app insights
 def test__logging_util__logging_function_call():
     expected_logging_function_message = (
-        f"{JOB_ID}: Function some_test_function called with args: 'Hello', "
-        "mock_arg_b='There'"
+        "Function some_test_function called with args: 'Hello', mock_arg_b='There'"
     )
     function_call_traces = app_ins_traces_contains_message(
         expected_logging_function_message
     )
 
-    assert function_call_traces, (
-        f"Logging function call message not found for job with id {JOB_ID}."
-    )
+    assert function_call_traces, "Logging function call message not found."

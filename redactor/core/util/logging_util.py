@@ -3,7 +3,6 @@ import logging
 import threading
 import functools
 
-from uuid import uuid4
 from dotenv import load_dotenv
 
 from azure.monitor.opentelemetry import configure_azure_monitor
@@ -61,7 +60,6 @@ class LoggingUtil(metaclass=Singleton):
         Create a `LoggingUtil` instance. Only 1 instance is ever created, which
         is reused.
         """
-        self.job_id = kwargs.pop("job_id", uuid4())
         self.namespace = kwargs.pop("namespace", "redactor_logs")
         self.log_file = kwargs.pop("log_file", None)
         self.log_level = kwargs.pop("log_level", logging.DEBUG)
@@ -103,16 +101,15 @@ class LoggingUtil(metaclass=Singleton):
         """
         Log an information message
         """
-        message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"INFO: {message}\n")
-        self.logger.info(message)
+        self.raw_logs.append(f"INFO: {msg}\n")
+        self.logger.info(msg)
 
     def log_exception(self, ex: Exception):
         """
         Log an exception
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
-        message = f"{self.job_id}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+        message = f"{ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
         self.raw_logs.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
@@ -121,7 +118,7 @@ class LoggingUtil(metaclass=Singleton):
         Log an exception
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
-        message = f"{self.job_id}: {message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+        message = f"{message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
         self.raw_logs.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
@@ -129,9 +126,8 @@ class LoggingUtil(metaclass=Singleton):
         """
         Log a warning message
         """
-        message = f"{self.job_id}: {msg}"
-        self.raw_logs.append(f"WARNING: {message}\n")
-        self.logger.warning(message)
+        self.raw_logs.append(f"WARNING: {msg}\n")
+        self.logger.warning(msg)
 
     def get_log_bytes(self) -> bytes:
         return "".join(self.raw_logs).encode("utf-8")
