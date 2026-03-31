@@ -16,7 +16,6 @@ from test.util.test_case import TestCase
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
-JOB_ID = os.environ.get("RUN_ID")
 
 
 class TestIntegrationRedactionManager(TestCase):
@@ -108,12 +107,12 @@ class TestIntegrationRedactionManager(TestCase):
         io = AzureBlobIO(storage_endpoint=self.STORAGE_ENDPOINT)
         io.write(stream, container_name=self.CONTAINER_NAME, blob_path=blob_path)
         expected_write_message = (
-            f"{JOB_ID}: Writing blob '{blob_path}' to container '{self.CONTAINER_NAME}'"
+            f"Writing blob '{blob_path}' to container '{self.CONTAINER_NAME}'"
             f" in storage account '{io.storage_endpoint}'"
         )
         io.read(container_name=self.CONTAINER_NAME, blob_path=blob_path)
         expected_read_message = (
-            f"{JOB_ID}: Reading blob '{blob_path}' from container '{self.CONTAINER_NAME}'"
+            f"Reading blob '{blob_path}' from container '{self.CONTAINER_NAME}'"
             f" in storage account '{io.storage_endpoint}'"
         )
 
