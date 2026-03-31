@@ -560,6 +560,7 @@ class RedactionManager:
         }
         self.save_dict_to_blob_json(
             final_redactions_dict,
+            redaction_storage_io_inst,
             blob_path=f"{self.folder_for_job}/final_redactions.json",
         )
         LoggingUtil().log_info(
