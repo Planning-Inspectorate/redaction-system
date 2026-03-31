@@ -77,8 +77,6 @@ class RedactionManager:
                 "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
         self.runtime_errors: List[str] = []
-        # Ensure the logger's job id is set to the job id
-        LoggingUtil(job_id=self.job_id)
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
@@ -451,10 +449,6 @@ class RedactionManager:
         # Check all possible versions from version-2 to 1
         while proposed_version > 0:
             base_blob_path = f"{base_job_id}-{proposed_version}"
-            candidate_blobs = [
-                x.name
-                for x in container_client.list_blobs(name_starts_with=base_blob_path)
-            ]
             candidate_blobs = {
                 x.name: x.creation_time
                 for x in container_client.list_blobs(name_starts_with=base_blob_path)

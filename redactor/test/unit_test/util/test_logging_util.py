@@ -46,16 +46,13 @@ def get_new_logging_instance(mock_env_get, mock_uuid4, mock_configure_azure_moni
 
 @pytest.mark.nologgerfixt
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("core.util.logging_util.uuid4", return_value="some_guid")
 @patch("core.util.logging_util.configure_azure_monitor")
-def test_logging_util__init(mock_env_get, mock_uuid4, mock_configure_azure_monitor):
+def test_logging_util__init(mock_env_get, mock_configure_azure_monitor):
     Singleton._INSTANCES = {}
     logging_util_inst = LoggingUtil()
 
-    assert logging_util_inst.job_id == "some_guid"
     assert isinstance(logging_util_inst.logger, Logger)
 
-    mock_uuid4.assert_called_once()
     mock_configure_azure_monitor.assert_called_once()
 
 
@@ -91,15 +88,14 @@ def test_logging_util__log_info(mock_logger_info):
 
     Logger.info.assert_has_calls(
         [
-            call("some_guid: Logging initialised for redactor_logs."),
-            call(f"some_guid: {info_message}"),
+            call("Logging initialised for redactor_logs."),
+            call(info_message),
         ]
     )
     assert (
-        "INFO: some_guid: Logging initialised for redactor_logs.\n"
-        in logging_util_inst.raw_logs
+        "INFO: Logging initialised for redactor_logs.\n" in logging_util_inst.raw_logs
     )
-    assert f"INFO: some_guid: {info_message}"
+    assert f"INFO: {info_message}"
 
 
 @pytest.mark.nologgerfixt
@@ -114,7 +110,9 @@ def test_logging_util__log_exception(mock_logger_exception):
     stack_trace = "".join(
         traceback.TracebackException.from_exception(error_message).format()
     )
-    base_message = f"some_guid: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+    base_message = (
+        f"{error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+    )
 
     Logger.exception.assert_called_once_with(base_message)
     assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
@@ -133,7 +131,7 @@ def test_logging_util__log_exception_with_message(mock_logger_exception):
     stack_trace = "".join(
         traceback.TracebackException.from_exception(error_message).format()
     )
-    base_message = f"some_guid: {message}: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
+    base_message = f"{message}: {error_message}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
 
     Logger.exception.assert_called_once_with(base_message)
     assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs

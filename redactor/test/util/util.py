@@ -7,8 +7,6 @@ from azure.identity.aio import (
     ChainedTokenCredential,
 )
 import asyncio
-from pymupdf import Rect
-from math import isclose
 
 
 class ServiceBusUtil:
@@ -98,14 +96,3 @@ class ServiceBusUtil:
                 "redaction-process-complete", "redaction-system"
             )
         )
-
-
-def compare_rects(rect_a: Rect, rect_b: Rect):
-    if not (isinstance(rect_a, Rect) or isinstance(rect_b, Rect)):
-        return False
-    return (
-        isclose(rect_a.x0, rect_b.x0)
-        and isclose(rect_a.y0, rect_b.y0)
-        and isclose(rect_a)
-        and isclose(rect_a.y1, rect_b.y1)
-    )
