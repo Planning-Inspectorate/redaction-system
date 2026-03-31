@@ -34,43 +34,38 @@ def mock_make_job_id_unique(request):
 
 
 class TestIntegrationRedactionManager(TestCase):
+    STORAGE_ENDPOINT = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
+    BLOB_SERVICE_CLIENT = BlobServiceClient(
+        STORAGE_ENDPOINT,
+        credential=ChainedTokenCredential(
+            ManagedIdentityCredential(), AzureCliCredential()
+        ),
+    )
+    TEST_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("test")
+    REDACTION_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client(
+        "redactiondata"
+    )
+    ANALYTICS_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("analytics")
+
     def session_setup(self):
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        callback_container_client = blob_service_client.get_container_client("test")
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-        )
-        self.try_delete_blob(
-            callback_container_client,
-            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
-        )
+        files_to_cleanup = [
+            "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
+            "test__redaction__manager__try_apply__REDACTED.pdf",
+        ]
+        for file_name in files_to_cleanup:
+            self.try_delete_blob(
+                self.TEST_CONTAINER_CLIENT,
+                f"{RUN_ID}/{file_name}",
+            )
 
     def session_teardown(self):
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        callback_container_client = blob_service_client.get_container_client("test")
         files_to_delete = [
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_apply__REDACTED.pdf",
             "test__redaction__manager__try_redact__raw.pdf",
-            "test__redaction__manager__try_redact__skip_redaction__raw.pdf"
+            "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
             "test__redaction__manager__try_redact__failure.pdf",
             "test__redaction__manager__try_apply__curated.pdf",
             "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
@@ -78,7 +73,7 @@ class TestIntegrationRedactionManager(TestCase):
         ]
         for file_name in files_to_delete:
             self.try_delete_blob(
-                callback_container_client,
+                self.TEST_CONTAINER_CLIENT,
                 f"{RUN_ID}/{file_name}",
             )
 
@@ -125,20 +120,12 @@ class TestIntegrationRedactionManager(TestCase):
         - Then the original file should be downloaded from the source, and then immediately uploaded to the destination
         """
         # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
             pdf_bytes,
             overwrite=True,
@@ -176,25 +163,21 @@ class TestIntegrationRedactionManager(TestCase):
         assert response["status"] == "SUCCESS", (
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
-        blob_client = container_client.get_blob_client(
+        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
         blob_bytes = blob_client.download_blob().read()
         assert pdf_bytes == blob_bytes
         self.validate_service_bus_message_sent(guid)
-        log_container_client = blob_service_client.get_container_client("redactiondata")
-        log_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_log.txt"
         )
         assert log_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_log.txt to be in the redactiondata container, but was missing"
         )
-        metric_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
-        )
-        assert not metric_blob_client.exists(), (
-            f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
+        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_metrics.txt"
         )
         assert not metric_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt to not be in the redactiondata container, but was created"
@@ -207,20 +190,12 @@ class TestIntegrationRedactionManager(TestCase):
         - Then the file should be downloaded from the source, and the redacted file should be uploaded to the destination
         """
         # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        test_container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
             pdf_bytes,
             overwrite=True,
@@ -259,7 +234,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
 
-        blob_client = test_container_client.get_blob_client(
+        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
         )
         assert blob_client.exists()
@@ -272,13 +247,12 @@ class TestIntegrationRedactionManager(TestCase):
 
         self.validate_service_bus_message_sent(guid)
 
-        log_container_client = blob_service_client.get_container_client("redactiondata")
-        log_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_log.txt"
         )
 
-        json_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/proposed_redactions.json"
+        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/proposed_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected proposed_redactions.json to be in the redactiondata container, but was missing"
@@ -297,8 +271,8 @@ class TestIntegrationRedactionManager(TestCase):
         assert log_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/log.txt to be in the redactiondata container, but was missing"
         )
-        metric_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
+        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_metrics.txt"
         )
         assert metric_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt to be in the redactiondata container, but was missing"
@@ -310,21 +284,13 @@ class TestIntegrationRedactionManager(TestCase):
         - When I call try_redact using an invalid payload (i.e. there is a failure during processing)
         - Then error information should be written to the redactiondata container
         """
-        # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        test_container_client = blob_service_client.get_container_client("test")
+        # Upload test data to Azur
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        test_container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
             pdf_bytes,
             overwrite=True,
@@ -335,13 +301,12 @@ class TestIntegrationRedactionManager(TestCase):
         params = {"an example bad payload": None}
         response = manager.try_redact(params)
         assert response["status"] == "FAIL"
-        log_container_client = blob_service_client.get_container_client("redactiondata")
-        exception_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_exceptions.txt"
+        exception_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_exceptions.txt"
         )
         assert exception_blob_client.exists()
-        log_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/ANALYSE_log.txt"
         )
         assert log_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/ANALYSE_log.txt to be in the redactiondata container, but was missing"
@@ -349,14 +314,6 @@ class TestIntegrationRedactionManager(TestCase):
 
     def test__redaction_manager__try_apply(self):
         # Upload test data to Azure
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join(
                 "test", "resources", "pdf", "test__pdf_processor__proposed.pdf"
@@ -364,7 +321,7 @@ class TestIntegrationRedactionManager(TestCase):
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        test_container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
             pdf_bytes,
             overwrite=True,
@@ -400,7 +357,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
         )
 
-        blob_client = test_container_client.get_blob_client(
+        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
         )
         assert blob_client.exists()
@@ -413,24 +370,22 @@ class TestIntegrationRedactionManager(TestCase):
 
         self.validate_service_bus_message_sent(guid)
 
-        log_container_client = blob_service_client.get_container_client("redactiondata")
-
-        log_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/REDACT_log.txt"
+        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/REDACT_log.txt"
         )
         assert log_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/log.txt to be in the redactiondata container, but was missing"
         )
 
-        metric_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/REDACT_metrics.txt"
+        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/REDACT_metrics.txt"
         )
         assert metric_blob_client.exists(), (
             f"Expected {guid}-{MOCK_START_TIME}/REDACT_metrics.txt to be in the redactiondata container, but was missing"
         )
 
-        json_blob_client = log_container_client.get_blob_client(
-            f"{guid}-{MOCK_START_TIME}/final_redactions.json"
+        json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            f"{guid}/final_redactions.json"
         )
         assert json_blob_client.exists(), (
             "Expected final_redactions.json to be in the redactiondata container, but was missing"
@@ -444,20 +399,12 @@ class TestIntegrationRedactionManager(TestCase):
         )
 
     def test__redaction_manager__try_apply__with_analytics(self):
-        storage_endpoint = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
-        blob_service_client = BlobServiceClient(
-            storage_endpoint,
-            credential=ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            ),
-        )
-        test_container_client = blob_service_client.get_container_client("test")
         with open(
             os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
             "rb",
         ) as f:
             pdf_bytes = f.read()
-        test_container_client.upload_blob(
+        self.TEST_CONTAINER_CLIENT.upload_blob(
             f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
             pdf_bytes,
             overwrite=True,
@@ -527,10 +474,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"RedactionManager.try_apply was unsuccessful and returned message '{response['message']}'"
         )
 
-        analytics_container_client = blob_service_client.get_container_client(
-            "analytics"
-        )
-        analytics_blob_client = analytics_container_client.get_blob_client(
+        analytics_blob_client = self.ANALYTICS_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}.json"
         )
         assert analytics_blob_client.exists(), (

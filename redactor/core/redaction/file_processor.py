@@ -988,7 +988,6 @@ class PDFProcessor(FileProcessor):
             )
         return redaction_instances
 
-    @log_to_appins(log_args=False)
     def _examine_provisional_text_redaction(
         self,
         term_to_redact: str,
@@ -1343,7 +1342,7 @@ class PDFProcessor(FileProcessor):
             "image_redaction_apply_time": image_redaction_apply_time,
             "result_metrics": all_result_metrics,
             "aggregate_result_metrics": combined_metrics,
-            "unapplied_redaction_terms": unapplied_redaction_terms,
+            "unapplied_text_redaction_terms": unapplied_redaction_terms,
         }
 
         return new_file_bytes

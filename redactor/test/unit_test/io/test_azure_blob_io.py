@@ -4,6 +4,7 @@ import pytest
 # Import the module and class under test
 import core.io.azure_blob_io as azure_blob_io
 from core.io.azure_blob_io import AzureBlobIO
+from core.util.logging_util import LoggingUtil
 
 
 class DummyManagedIdentityCredential:
@@ -99,6 +100,7 @@ def test_read_returns_stream_with_downloaded_content(monkeypatch):
     # Assert: current code returns a BytesIO with data filled
     assert isinstance(out, BytesIO)
     assert out.getvalue() == b"hello world"
+    assert LoggingUtil.log_info.call_count == 1
 
 
 def test_write_passes_stream_and_blockblob(monkeypatch):
@@ -122,6 +124,7 @@ def test_write_passes_stream_and_blockblob(monkeypatch):
     # First positional arg may be the stream object; accept either stream or bytes
     arg0 = fake_blob_client.last_args[0]
     assert isinstance(arg0, (BytesIO, bytes, bytearray))
+    assert LoggingUtil.log_info.call_count == 1
 
 
 def test_init_raises_when_neither_name_nor_endpoint_provided():

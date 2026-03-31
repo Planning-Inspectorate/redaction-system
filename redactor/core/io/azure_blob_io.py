@@ -99,7 +99,8 @@ class AzureBlobIO(StorageIO):
         :return BytesIO: Blob data as a byte stream
         """
         LoggingUtil().log_info(
-            f"Reading blob '{blob_path}' from container '{container_name}' in storage account '{self.storage_endpoint}'"
+            f"Reading blob '{blob_path}' from container '{container_name}' in storage account "
+            f"'{self.storage_endpoint}'"
         )
         byte_stream = BytesIO()
         container_client = self._get_container_client(container_name)
@@ -110,6 +111,7 @@ class AzureBlobIO(StorageIO):
     def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
         """
         Write a blob to Azure Blob Storage.
+
         :param BytesIO data_bytes: Blob data as a byte stream
         :param str container_name: Name of the container
         :param str blob_path: Path to the blob within the container
@@ -117,7 +119,8 @@ class AzureBlobIO(StorageIO):
         :raises ResourceExistsError: If a blob already exists at the specified path
         """
         LoggingUtil().log_info(
-            f"Writing blob '{blob_path}' to container '{container_name}' in storage account '{self.storage_endpoint}'"
+            f"Writing blob '{blob_path}' to container '{container_name}' in storage account "
+            f"'{self.storage_endpoint}'"
         )
         try:
             blob_client = self._get_blob_client(container_name, blob_path)
