@@ -568,7 +568,9 @@ class RedactionManager:
         )
 
         # Compare proposed redactions with final redactions and save analytics
-        self.compare_and_save_redactions(final_redactions_dict)
+        self.compare_and_save_redactions(
+            final_redactions_dict, redaction_storage_io_inst
+        )
 
         # Apply the redactions to the file
         final_redaction_file_data = file_processor_inst.apply(file_data, config_cleaned)
