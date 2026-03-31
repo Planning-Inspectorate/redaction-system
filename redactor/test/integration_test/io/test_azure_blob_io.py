@@ -27,7 +27,7 @@ class TestIntegrationRedactionManager(TestCase):
     )
     CALLBACK_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("test")
     SUBFOLDER = "azure_blob_io_test"
-    FILES_TO_CLEANUP = ["sample.pdf", "a/q.bin", "to_read.pdf"]
+    FILES_TO_CLEANUP = ["sample.pdf", "a/q.bin"]
 
     def session_setup(self):
         for file in self.FILES_TO_CLEANUP:
