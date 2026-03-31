@@ -1,7 +1,7 @@
 FUNC_RECEIVER_PORT ?= 7071
 FUNC_RECEIVER_BASE_URL ?= http://localhost:$(FUNC_RECEIVER_PORT)
 FUNC_PROCESSOR_PORT ?= 7072
-FUNC_processor_BASE_URL ?= http://localhost:$(FUNC_PROCESSOR_PORT)
+FUNC_PROCESSOR_BASE_URL ?= http://localhost:$(FUNC_PROCESSOR_PORT)
 
 PERF_TOTAL ?= 5
 PERF_CONCURRENCY ?= 5
@@ -49,7 +49,7 @@ e2e: wait-processor-func
 	cd redactor && \
 		export PYTHONPATH=$$(pwd) && \
 		export E2E_FUNCTION_RECEIVER_BASE_URL=$(FUNC_RECEIVER_BASE_URL) && \
-		export E2E_FUNCTION_PROCESSOR_BASE_URL=$(FUNC_RECEIVER_BASE_URL) && \
+		export E2E_FUNCTION_PROCESSOR_BASE_URL=$(FUNC_PROCESSOR_BASE_URL) && \
 		export E2E_SKIP_REDACTION=false && \
 		pytest -m e2e -vv -rP
 

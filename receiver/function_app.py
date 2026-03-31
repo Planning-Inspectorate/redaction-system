@@ -31,8 +31,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
     logging.info(f"Request added to queue with parameters {request_params}")
     request_params["stage"] = stage
     job_id = str(uuid4())
-    if "overrideId" in request_params:
-        job_id = str(request_params.pop("overrideId"))
+    job_id = str(request_params.pop("overrideId", uuid4()))
     request_params["job_id"] = job_id
     service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
     if not service_bus_name:
@@ -63,6 +62,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
         logging.error(
             f"Failed to send the new message to the service bus queue with the following exception: {e}"
         )
+        return func.HttpResponse(json.dumps({"message": str(e)}), status_code=500)
     return func.HttpResponse(json.dumps({"id": job_id}), status_code=200)
 
 

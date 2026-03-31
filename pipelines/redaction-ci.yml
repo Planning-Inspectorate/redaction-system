@@ -261,8 +261,8 @@ extends:
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
-              export E2E_FUNCTION_RECEIVER_BASE_URL="http://localhost:7071"
-              export E2E_FUNCTION_PROCESSOR_BASE_URL="http://localhost:7072"
+              export E2E_FUNCTION_RECEIVER_BASE_URL="http://localhost:7072"
+              export E2E_FUNCTION_PROCESSOR_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_CONTAINER_NAME="test"
               export E2E_RUN_ID="ado-$(Build.BuildId)"
