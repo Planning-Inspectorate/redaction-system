@@ -190,7 +190,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
             (
                 0,
                 pymupdf.Rect(
-                    72.0, 101.452392578125, 101.31322479248047, 113.741455078125
+                    72.0, 101.452392578125, 101.31330871582031, 113.741455078125
                 ),
                 "Riker",
             ),
@@ -201,7 +201,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
                 pymupdf.Rect(
                     180.76254272460938,
                     145.0911865234375,
-                    270.5718994140625,
+                    270.5700378417969,
                     157.3802490234375,
                 ),
                 "Commander Data",
@@ -213,7 +213,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
                 pymupdf.Rect(
                     470.42864990234375,
                     101.452392578125,
-                    492.6402282714844,
+                    492.64031982421875,
                     113.741455078125,
                 ),
                 "Your Honour",
@@ -221,7 +221,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
             (
                 0,
                 pymupdf.Rect(
-                    72.0, 115.9986572265625, 110.5030746459961, 128.2877197265625
+                    72.0, 115.9986572265625, 110.50122833251953, 128.2877197265625
                 ),
                 "Your Honour",
             ),
@@ -230,7 +230,7 @@ def test__pdf_processor__examine_provisional_text_redaction():
                 pymupdf.Rect(
                     273.0046081542969,
                     217.822509765625,
-                    336.770751953125,
+                    336.7688903808594,
                     230.111572265625,
                 ),
                 "Your Honour",
@@ -251,15 +251,12 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
         document_bytes = BytesIO(f.read())
     redaction_candidates = [
         (
-            pymupdf.Rect(72.0, 101.452392578125, 101.31322479248047, 113.741455078125),
+            pymupdf.Rect(72.0, 101.452392578125, 101.31330871582031, 113.741455078125),
             "Riker",
         ),
         (
             pymupdf.Rect(
-                164.2420654296875,
-                101.452392578125,
-                203.34519958496094,
-                113.741455078125,
+                164.2420654296875, 101.452392578125, 203.3452911376953, 113.741455078125
             ),
             "Phillipa",
         ),
@@ -267,7 +264,7 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
             pymupdf.Rect(
                 180.76254272460938,
                 145.0911865234375,
-                270.5718994140625,
+                270.5700378417969,
                 157.3802490234375,
             ),
             "Commander Data",
