@@ -480,7 +480,7 @@ class PDFProcessor(FileProcessor):
         """
         annotations = cls._extract_pdf_annotations(
             file_bytes,
-            annotation_class=[pymupdf.PDF_ANNOT_REDACT, pymupdf.PDF_ANNOT_HIGHLIGHT],
+            annotation_class=None,
         )
         return cls._normalise_annotations(annotations)
 
@@ -1350,6 +1350,15 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins
     def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+        """Apply redaction annotations to all annotations in the PDF, and scrub the PDF
+        to remove any hidden content, metadata, and unreferenced objects that may contain
+        redacted information.
+
+        :param file_bytes: File bytes of the PDF to redact.
+        :param redaction_config: Dictionary of RedactionConfig objects specifying
+        the redaction rules to apply.
+        :return: The redacted PDF file bytes.
+        """
         LoggingUtil().log_info("Redacting PDF")
 
         pdf = pymupdf.open(stream=file_bytes)
@@ -1358,7 +1367,9 @@ class PDFProcessor(FileProcessor):
         redaction_time_start = time()
         for page in pdf:
             for annotation in self._extract_page_annotations(
-                page, annotation_class=pymupdf.PDF_ANNOT_HIGHLIGHT, return_annot=True
+                page,
+                annotation_class=None,  # Redact all annotation types
+                return_annot=True,
             ):
                 redaction_highlight_count += 1
                 if "rect" in annotation and annotation["rect"]:
