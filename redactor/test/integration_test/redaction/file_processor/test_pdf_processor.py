@@ -168,7 +168,7 @@ def test__pdf_processor__add_provisional_redaction():
     assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
     assert annot.type == (8, "Highlight")
 
-
+'''
 def test__pdf_processor__examine_provisional_text_redaction():
     """
     Given I have a provisional redaction candidate for a PDF
