@@ -6,6 +6,15 @@ from core.redaction.config import (
     ImageLLMTextRedactionConfig,
     LLMTextRedactionConfig,
 )
+from typing import List, Tuple
+from pymupdf import Rect
+
+
+def simplify_page_provisional_redactions(redactions: List[Tuple[int, Rect, str]]):
+    return [
+        (x, pymupdf.Rect(round(y.x0), round(y.y0), round(y.x1), round(y.x1)), z)
+        for x, y, z in redactions
+    ]
 
 
 def test__pdf_processor__extract_pdf_annotations():
@@ -160,7 +169,6 @@ def test__pdf_processor__add_provisional_redaction():
     assert annot.type == (8, "Highlight")
 
 
-'''
 def test__pdf_processor__examine_provisional_text_redaction():
     """
     Given I have a provisional redaction candidate for a PDF
@@ -239,7 +247,9 @@ def test__pdf_processor__examine_provisional_text_redaction():
         ],
     ]
 
-    assert instances_to_redact == expected_result
+    assert [simplify_page_provisional_redactions(x) for x in instances_to_redact] == [
+        simplify_page_provisional_redactions(x) for x in expected_result
+    ]
 
 
 def test__pdf_processor__examine_provisional_redactions_on_page():
@@ -278,10 +288,10 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
         [text for _, text in redaction_candidates],
         pdf_processor._extract_page_text(pdf[0]),
     )
-    assert instances_to_redact == [
-        (0, rect, term) for rect, term in redaction_candidates
-    ]
-'''
+    instances_to_redact = simplify_page_provisional_redactions(instances_to_redact)
+    assert instances_to_redact == simplify_page_provisional_redactions(
+        [(0, rect, term) for rect, term in redaction_candidates]
+    )
 
 
 def test__pdf_processor__apply_provisional_text_redactions():

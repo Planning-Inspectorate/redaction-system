@@ -552,6 +552,8 @@ class RedactionManager:
         # Apply the redactions to the file
         final_redaction_file_data = file_processor_inst.apply(file_data, config_cleaned)
         run_metrics = file_processor_inst.get_run_metrics()
+        if hasattr(file_processor_inst, "terms_found"):
+            run_metrics["redactionTerms"] = file_processor_inst.terms_found
 
         # Store a copy of the final redactions in redaction storage
         redaction_storage_io_inst.write(
