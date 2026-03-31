@@ -12,12 +12,11 @@ from azure.identity import (
 from dotenv import load_dotenv
 
 from core.io.azure_blob_io import AzureBlobIO
-from core.util.logging_util import LoggingUtil
 from test.util.test_case import TestCase
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
-JOB_ID = LoggingUtil().job_id  # Get job ID created during other tests or create new one
+JOB_ID = os.environ.get("RUN_ID")
 
 
 class TestIntegrationRedactionManager(TestCase):

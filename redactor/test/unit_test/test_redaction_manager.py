@@ -174,10 +174,9 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
     inst = RedactionManager("")
     inst.env = "dev"
     mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst.write.return_value = None
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     inst.save_dict_to_blob_json(
         redactions_dict,
+        mock_redaction_storage_io_inst,
         "blob_path.json",
     )
     mock_redaction_storage_io_inst.write.assert_called_once_with(
@@ -202,6 +201,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(IOFactory, "get", return_value=MockIO)
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
@@ -212,6 +212,7 @@ def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
     MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
 )
 @mock.patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
 @mock.patch.object(ConfigProcessor, "load_config")
@@ -220,6 +221,7 @@ def test__redaction_manager__redact(
     mock_validate_filter_config,
     mock_convert_kwargs,
     mock_redact,
+    mock_blob_write,
     mock_get_proposed_redactions,
     mock_save_dict_to_blob_json,
     mock_datetime,
@@ -227,6 +229,7 @@ def test__redaction_manager__redact(
     mock_io_write,
     mock_io_read,
     mock_io_factory_get,
+    mock_blob_init,
     mock_init,
 ):
     payload = {
@@ -255,9 +258,6 @@ def test__redaction_manager__redact(
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
     inst.env = "dev"
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst.write.return_value = None
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
@@ -289,7 +289,7 @@ def test__redaction_manager__redact(
     )
     # Sample document data should be written twice - one for the raw file,
     # and once for the proposed redactions
-    mock_redaction_storage_io_inst.write.assert_has_calls(
+    AzureBlobIO.write.assert_has_calls(
         [
             mock.call(
                 MockIO.read.return_value,
@@ -449,14 +449,7 @@ def test__redaction_manager__compare_and_save_redactions(
         json.dumps({"proposed": "redactions"}).encode("utf-8")
     )
 
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst._get_container_client.return_value = (
-        mock_container_client
-    )
-    mock_redaction_storage_io_inst._get_blob_client.return_value = mock_blob_client
-    mock_redaction_storage_io_inst.read.return_value = BytesIO(
-        json.dumps({"proposed": "redactions"}).encode("utf-8")
-    )
+    storage_io_inst = AzureBlobIO(storage_name="somestorage")
     final_redactions_dict = {"final": "redactions"}
     proposed_redactions_dict = {"proposed": "redactions"}
     comparison_output = {"some": "output"}
@@ -466,6 +459,17 @@ def test__redaction_manager__compare_and_save_redactions(
             RedactionManager,
             "_get_base_job_id_and_version",
             return_value=("job_id", 3),
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_container_client", return_value=mock_container_client
+        ),
+        mock.patch.object(
+            AzureBlobIO, "_get_blob_client", return_value=mock_blob_client
+        ),
+        mock.patch.object(
+            AzureBlobIO,
+            "read",
+            return_value=BytesIO(json.dumps(proposed_redactions_dict).encode("utf-8")),
         ),
         mock.patch.object(
             RedactionManager, "_compare_redactions", return_value=comparison_output
@@ -478,8 +482,10 @@ def test__redaction_manager__compare_and_save_redactions(
     ):
         inst = RedactionManager()
         inst.job_id = "job_id"
-        inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
-        inst.compare_and_save_redactions(final_redactions_dict)
+        inst.compare_and_save_redactions(
+            final_redactions_dict,
+            storage_io_inst,
+        )
         mock_compare_redactions.assert_called_once_with(
             proposed_redactions_dict, final_redactions_dict
         )
@@ -488,12 +494,14 @@ def test__redaction_manager__compare_and_save_redactions(
         )
         mock_save_dict_to_blob_json.assert_called_once_with(
             comparison_output,
+            storage_io_inst,
             "job_id.json",
             container_name="analytics",
         )
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(IOFactory, "get", return_value=MockIO)
 @mock.patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
 @mock.patch.object(MockIO, "write")
@@ -504,6 +512,7 @@ def test__redaction_manager__compare_and_save_redactions(
 @mock.patch.object(
     MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
 )
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
 @mock.patch.object(RedactionManager, "convert_kwargs_for_io")
 @mock.patch.object(ConfigProcessor, "validate_and_filter_config")
@@ -513,6 +522,7 @@ def test__redaction_manager__apply(
     mock_validate_filter_config,
     mock_convert_kwargs,
     mock_apply,
+    mock_blob_write,
     mock_get_final_redactions,
     mock_datetime,
     mock_save_dict_to_blob_json,
@@ -521,6 +531,7 @@ def test__redaction_manager__apply(
     mock_io_write,
     mock_io_read,
     mock_io_factory_get,
+    mock_blob_init,
     mock_init,
 ):
     payload = {
@@ -542,12 +553,10 @@ def test__redaction_manager__apply(
     ]
     mock_raw_config = {"rules": dict()}
     mock_cleaned_config = {"cleaned_rules": dict()}
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
     inst.env = "dev"
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
@@ -573,7 +582,7 @@ def test__redaction_manager__apply(
     FileProcessorFactory.get.assert_called_once_with("pdf")
     # Sample document data should be written twice - one for the raw file,
     # and once for the proposed redactions
-    mock_redaction_storage_io_inst.write.assert_has_calls(
+    AzureBlobIO.write.assert_has_calls(
         [
             mock.call(
                 MockIO.read.return_value,
@@ -629,18 +638,18 @@ def test__redaction_manager__log_exception(mock_init):
 
 
 def check__save_exception_log__azure_blob_write__single_call(
-    inst, expected_exception_message
+    job_id, expected_exception_message
 ):
-    calls = inst.redaction_storage_io_inst.write.call_args_list
+    calls = AzureBlobIO.write.call_args_list
     assert len(calls) == 1, (
         f"Expected AzureBlobIO.write to be called once, but was called {len(calls)} times"
     )
 
 
 def check__save_exception_log__azure_blob_write__data_bytes(
-    inst, expected_exception_message
+    job_id, expected_exception_message
 ):
-    calls = inst.redaction_storage_io_inst.write.call_args_list
+    calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
         logged_exception_message_bytes = call[1].get("data_bytes", None)
@@ -651,23 +660,22 @@ def check__save_exception_log__azure_blob_write__data_bytes(
 
 
 def check__save_exception_log__azure_blob_write__container_name(
-    inst, expected_exception_message
+    job_id, expected_exception_message
 ):
-    calls = inst.redaction_storage_io_inst.write.call_args_list
+    calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
         assert call[1].get("container_name", None) == "redactiondata"
 
 
 def check__save_exception_log__azure_blob_write__blob_path(
-    inst, expected_exception_message
+    job_id, expected_exception_message
 ):
-    calls = inst.redaction_storage_io_inst.write.call_args_list
+    calls = AzureBlobIO.write.call_args_list
     if calls:
         call = calls[0]
         assert (
-            call[1].get("blob_path", None)
-            == f"{inst.folder_for_job}/mystage_exceptions.txt"
+            call[1].get("blob_path", None) == f"{job_id}folder/mystage_exceptions.txt"
         )
 
 
@@ -681,7 +689,11 @@ def check__save_exception_log__azure_blob_write__blob_path(
     ],
 )
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 def test__redaction_manager__save_exception_log(
+    mock_blob_write,
+    mock_blob_init,
     mock_init,
     test_case,
 ):
@@ -689,29 +701,27 @@ def test__redaction_manager__save_exception_log(
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
     inst.env = "dev"
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst.write.return_value = None
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     inst.runtime_errors = ["some exception A", "some exception B"]
     expected_exception_message = "\n\n\n".join(inst.runtime_errors)
     inst.save_exception_log("mystage")
-    test_case(inst, expected_exception_message)
+    test_case(inst.job_id, expected_exception_message)
 
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "__init__", return_value=None)
+@mock.patch.object(AzureBlobIO, "write", return_value=None)
 def test__redaction_manager__save_exception_log__with_no_exception(
+    mock_blob_write,
+    mock_blob_init,
     mock_init,
 ):
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
     inst.env = "dev"
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst.write.return_value = None
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     inst.runtime_errors = []
     inst.save_exception_log("mystage")
-    calls = mock_redaction_storage_io_inst.write.call_args_list
+    calls = AzureBlobIO.write.call_args_list
     assert len(calls) == 0, (
         f"Expected AzureBlobIO.write to be not have been called, but was called {len(calls)} times"
     )
@@ -1163,11 +1173,8 @@ def test__redaction_manager__save_logs(
     inst.job_id = "test__redaction_manager__save_logs"
     inst.folder_for_job = f"{inst.job_id}_folder"
     inst.env = "dev"
-    mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
-    mock_redaction_storage_io_inst.write.return_value = None
-    inst.redaction_storage_io_inst = mock_redaction_storage_io_inst
     inst.save_logs("mystage")
-    mock_redaction_storage_io_inst.write.assert_called_once_with(
+    AzureBlobIO.write.assert_called_once_with(
         data_bytes=b"xyz",
         container_name="redactiondata",
         blob_path=f"{inst.folder_for_job}/mystage_log.txt",
