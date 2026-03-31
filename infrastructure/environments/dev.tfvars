@@ -1,4 +1,5 @@
 environment = "dev"
+environment_short = "dev"
 
 budget_alert_config = {
   expected_cost = 100

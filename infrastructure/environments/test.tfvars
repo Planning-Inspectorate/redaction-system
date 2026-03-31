@@ -1,4 +1,5 @@
 environment = "test"
+environment_short = "test"
 
 budget_alert_config = {
   expected_cost = 400
