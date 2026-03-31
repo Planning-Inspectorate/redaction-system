@@ -1663,7 +1663,7 @@ def test__convert_job_id_to_storage_folder_name(mock_init, test_case):
     assert expected_output == inst._convert_job_id_to_storage_folder_name(id)
 
 
-@pytest.mark.parametrize("id", [None, "a" * 41, 2])
+@pytest.mark.parametrize("id", [None, "a" * 61, 2])
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
     inst = RedactionManager()

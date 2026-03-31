@@ -65,6 +65,7 @@ def trigger_task(params: Dict[str, Any]):
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager  # noqa: F402
+
     logging.info("Request params: %s", params)
 
     job_id = params.pop("job_id")

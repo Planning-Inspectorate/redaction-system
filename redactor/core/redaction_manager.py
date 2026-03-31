@@ -462,44 +462,45 @@ class RedactionManager:
             blob_path = self._get_most_recent_blob(
                 candidate_blobs, "proposed_redactions.json"
             )
-            blob_client = container_client.get_blob_client(blob_path)
+            if blob_path:
+                blob_client = container_client.get_blob_client(blob_path)
 
-            # Read from most recent version if it exists
-            if blob_client.exists():
-                proposed_redactions_dict = json.loads(
-                    blob_client.download_blob().read().decode("utf-8")
-                )
-                if not proposed_redactions_dict:
-                    LoggingUtil().log_info(
-                        f"Proposed redactions file at '{blob_path}' is empty."
+                # Read from most recent version if it exists
+                if blob_client.exists():
+                    proposed_redactions_dict = json.loads(
+                        blob_client.download_blob().read().decode("utf-8")
                     )
-                # Compare proposed redactions with final redactions and log differences
-                redaction_analytics = self._compare_redactions(
-                    proposed_redactions_dict, final_redactions_dict
-                )
+                    if not proposed_redactions_dict:
+                        LoggingUtil().log_info(
+                            f"Proposed redactions file at '{blob_path}' is empty."
+                        )
+                    # Compare proposed redactions with final redactions and log differences
+                    redaction_analytics = self._compare_redactions(
+                        proposed_redactions_dict, final_redactions_dict
+                    )
 
-                # Save to analytics container
-                try:
+                    # Save to analytics container
+                    try:
+                        LoggingUtil().log_info(
+                            f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+                        )
+                        self.save_dict_to_blob_json(
+                            redaction_analytics,
+                            redaction_storage_io_inst,
+                            f"{base_job_id}.json",
+                            container_name="analytics",
+                        )
+                    except ResourceExistsError as e:
+                        # TODO Refine logic: should be saved, but what should the name be?
+                        LoggingUtil().log_exception_with_message(
+                            f"An analytics file for job ID '{base_job_id}' already exists",
+                            e,
+                        )
+                    return
+                else:
                     LoggingUtil().log_info(
-                        f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+                        f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
                     )
-                    self.save_dict_to_blob_json(
-                        redaction_analytics,
-                        redaction_storage_io_inst,
-                        f"{base_job_id}.json",
-                        container_name="analytics",
-                    )
-                except ResourceExistsError as e:
-                    # TODO Refine logic: should be saved, but what should the name be?
-                    LoggingUtil().log_exception_with_message(
-                        f"An analytics file for job ID '{base_job_id}' already exists",
-                        e,
-                    )
-                return
-            else:
-                LoggingUtil().log_info(
-                    f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
-                )
 
             proposed_version -= 1
 
