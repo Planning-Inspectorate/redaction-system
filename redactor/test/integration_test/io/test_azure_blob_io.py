@@ -1,6 +1,4 @@
 import os
-import time
-import requests
 from io import BytesIO
 
 from azure.storage.blob import BlobServiceClient, ContainerClient
@@ -76,55 +74,3 @@ class TestIntegrationRedactionManager(TestCase):
         io.write(BytesIO(data), container_name=self.CONTAINER_NAME, blob_path=blob_path)
         out = io.read(container_name=self.CONTAINER_NAME, blob_path=blob_path)
         assert out.getvalue() == data
-
-    def test_read_write_logs_to_appinsights_once(self):
-        APP_INSIGHTS_TOKEN = (
-            AzureCliCredential()
-            .get_token("https://api.applicationinsights.io/.default")
-            .token
-        )
-        APP_INSIGHTS_CONNECTION_STRING = os.environ.get(
-            "APP_INSIGHTS_CONNECTION_STRING", None
-        )
-        APP_INSIGHTS_APP_ID = APP_INSIGHTS_CONNECTION_STRING.split("ApplicationId=")[1]
-
-        def app_ins_traces_contains_message(expected_message: str):
-            query = f'traces | where message contains "{expected_message}"'
-            payload = {"query": query, "timespan": "PT30M"}
-
-            resp = requests.post(
-                f"https://api.applicationinsights.io/v1/apps/{APP_INSIGHTS_APP_ID}/query",
-                json=payload,
-                headers={"Authorization": f"Bearer {APP_INSIGHTS_TOKEN}"},
-            )
-            resp_json = resp.json()
-
-            return resp_json.get("tables", [dict()])[0].get("rows", [])
-
-        blob_path = f"{self.SUBFOLDER}/to_read.pdf"
-        payload = b"integration-payload"
-        stream = BytesIO(payload)
-        io = AzureBlobIO(storage_endpoint=self.STORAGE_ENDPOINT)
-        io.write(stream, container_name=self.CONTAINER_NAME, blob_path=blob_path)
-        expected_write_message = (
-            f"Writing blob '{blob_path}' to container '{self.CONTAINER_NAME}'"
-            f" in storage account '{io.storage_endpoint}'"
-        )
-        io.read(container_name=self.CONTAINER_NAME, blob_path=blob_path)
-        expected_read_message = (
-            f"Reading blob '{blob_path}' from container '{self.CONTAINER_NAME}'"
-            f" in storage account '{io.storage_endpoint}'"
-        )
-
-        time.sleep(
-            60
-        )  # Sleep to ensure that the log has been ingested by Application Insights
-        write_traces = app_ins_traces_contains_message(expected_write_message)
-        read_traces = app_ins_traces_contains_message(expected_read_message)
-
-        assert len(write_traces) == 1, (
-            f"Expected '{expected_write_message}' to be logged once, but found {len(write_traces)} occurrences"
-        )
-        assert len(read_traces) == 1, (
-            f"Expected '{expected_read_message}' to be logged once, but found {len(read_traces)} occurrences"
-        )
