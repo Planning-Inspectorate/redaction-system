@@ -174,7 +174,7 @@ class RedactionManager:
     def save_dict_to_blob_json(
         self,
         dict_to_save: Dict[str, Any],
-        storage_io: AzureBlobIO,
+        redaction_storage_io_inst: AzureBlobIO,
         blob_path: str,
         container_name: Optional[str] = "redactiondata",
         json_indent: Optional[int] = 4,
@@ -183,13 +183,13 @@ class RedactionManager:
         """Save a dictionary in JSON format to the redaction storage
 
         :param Dict[str, Any] dict_to_save: The dictionary to save
-        :param AzureBlobIO storage_io: The AzureBlobIO instance to use for saving the dictionary
+        :param AzureBlobIO redaction_storage_io_inst: An instance of the AzureBlobIO to use for accessing blob storage
         :param str blob_path: The path to save the JSON file in the blob storage
         :param Optional[str] container_name: The name of the container to save the file in (default: "redactiondata")
         :param Optional[int] json_indent: The number of spaces to use as indentation in the JSON file (default: 4)
         :param Optional[str] json_encoding: The encoding to use for the JSON file (default: "utf-8")
         """
-        storage_io.write(
+        redaction_storage_io_inst.write(
             json.dumps(
                 dict_to_save,
                 ensure_ascii=False,
@@ -222,11 +222,6 @@ class RedactionManager:
             write_details.get("properties")
         )
 
-        # Set up connection to redaction storage
-        redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
-        )
-
         # Load the data
         LoggingUtil().log_info("Reading the raw file to redact")
         read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
@@ -250,6 +245,9 @@ class RedactionManager:
 
         # Store a copy of the raw data in redaction storage before processing begins
         LoggingUtil().log_info("Saving a copy of the raw file to redact")
+        redaction_storage_io_inst = AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        )
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
@@ -424,7 +422,7 @@ class RedactionManager:
         the analytics to blob storage
 
         :param final_redactions_dict: The final redactions to compare against
-        :param redaction_storage_io_inst: The AzureBlobIO instance to use for accessing blob storage
+        :param redaction_storage_io_inst: An instance of the AzureBlobIO to use for accessing blob storage
         """
         base_job_id, version = self._get_base_job_id_and_version(self.job_id)
         LoggingUtil().log_info(
@@ -521,11 +519,6 @@ class RedactionManager:
             write_details.get("properties")
         )
 
-        # Set up connection to redaction storage
-        redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
-        )
-
         # Load the data
         read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
         file_data = read_io_inst.read(**read_storage_properties)
@@ -546,6 +539,9 @@ class RedactionManager:
         )
 
         # Store a copy of the raw data in redaction storage before processing begins
+        redaction_storage_io_inst = AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        )
         redaction_storage_io_inst.write(
             file_data,
             container_name="redactiondata",
@@ -573,8 +569,7 @@ class RedactionManager:
 
         # Compare proposed redactions with final redactions and save analytics
         self.compare_and_save_redactions(
-            final_redactions_dict,
-            redaction_storage_io_inst,
+            final_redactions_dict, redaction_storage_io_inst
         )
 
         # Apply the redactions to the file
@@ -584,6 +579,9 @@ class RedactionManager:
             run_metrics["redactionTerms"] = file_processor_inst.terms_found
 
         # Store a copy of the final redactions in redaction storage
+        redaction_storage_io_inst = AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        )
         redaction_storage_io_inst.write(
             final_redaction_file_data,
             container_name="redactiondata",
@@ -602,9 +600,10 @@ class RedactionManager:
         """
         log_bytes = LoggingUtil().get_log_bytes()
         # Dump in Azure
-        AzureBlobIO(
+        redaction_storage_io_inst = AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
-        ).write(
+        )
+        redaction_storage_io_inst.write(
             data_bytes=log_bytes,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
@@ -627,12 +626,12 @@ class RedactionManager:
         """
         if not self.runtime_errors:
             return
-        blob_io = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
-        )
         text_encoding = "utf-8"
         data_to_write = "\n\n\n".join(self.runtime_errors)
-        blob_io.write(
+        redaction_storage_io_inst = AzureBlobIO(
+            storage_name=f"pinsstredaction{self.env}uks",
+        )
+        redaction_storage_io_inst.write(
             data_bytes=data_to_write.encode(text_encoding),
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
@@ -644,9 +643,10 @@ class RedactionManager:
         """
         metric_bytes = json.dumps(metrics, indent=4, default=str).encode()
         # Dump in Azure
-        AzureBlobIO(
+        redaction_storage_io_inst = AzureBlobIO(
             storage_name=f"pinsstredaction{self.env}uks",
-        ).write(
+        )
+        redaction_storage_io_inst.write(
             data_bytes=metric_bytes,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",

@@ -10,6 +10,9 @@ from typing import Dict, Any
 import logging
 import azure.durable_functions as df
 import azure.functions as func
+from opentelemetry.metrics import get_meter_provider
+from opentelemetry.trace import get_tracer_provider
+from opentelemetry._logs import get_logger_provider
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -76,6 +79,13 @@ def trigger_task(params: Dict[str, Any]):
     if stage == "REDACT":
         logging.info("Call try_apply")
         return RedactionManager(job_id).try_apply(params)
+
+    # Shut down OpenTelemetry providers to prevent resource leaks
+    # See https://learn.microsoft.com/en-us/troubleshoot/azure/azure-monitor/app-insights/telemetry/opentelemetry-troubleshooting-python
+    get_meter_provider().shutdown()
+    get_tracer_provider().shutdown()
+    get_logger_provider().shutdown()
+
     raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
 

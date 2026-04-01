@@ -275,22 +275,10 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         """
         text_rects_to_redact = []
         words_to_redact = get_normalised_words(redaction_string)
-        LoggingUtil().log_info(
-            (
-                f"Analysing the text content of an image. The redaction string {redaction_string} has been "
-                f"normalised into the individual words {words_to_redact}"
-            )
-        )
 
         if len(words_to_redact) == 1:
             for text_at_box, bounding_box in text_rect_map:
                 normalised_words = get_normalised_words(text_at_box)
-                LoggingUtil().log_info(
-                    (
-                        "There is only 1 redaction word to redact in the image. "
-                        f"The text at box {text_at_box} has been split into the words {normalised_words}"
-                    )
-                )
                 if normalised_words:
                     normalised_text = normalised_words[0]
                     if words_to_redact[0] == normalised_text:
@@ -303,12 +291,6 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
                 # Proceed only if the first word matches
                 normalised_words = get_normalised_words(text_at_box)
-                LoggingUtil().log_info(
-                    (
-                        "Multiple redaction words to redact in the image. "
-                        f"The text at box {text_at_box} has been split into the words {normalised_words}"
-                    )
-                )
                 if normalised_words:
                     if first_word == normalised_words[0]:
                         boxes = [bounding_box]
@@ -388,11 +370,6 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                             translated_redaction,
                         )
                         if rects_found:
-                            LoggingUtil().log_info(
-                                f"Identified the following text rectangles to redact"
-                                f" for redaction string '{redaction_string}' (after "
-                                f"translation): {rects_found}"
-                            )
                             text_rects_to_redact.extend(
                                 tuple(
                                     (rect, translated_redaction) for rect in rects_found
@@ -485,10 +462,6 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     )
 
                     if len(rects_found) > 0:
-                        LoggingUtil().log_info(
-                            f"Identified the following text rectangles to redact"
-                            f" for redaction string '{redaction_string}': {rects_found}"
-                        )
                         text_rects_to_redact.extend(
                             tuple((rect, redaction_string) for rect in rects_found)
                         )

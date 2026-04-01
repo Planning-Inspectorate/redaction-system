@@ -87,10 +87,15 @@ class LoggingUtil(metaclass=Singleton):
                     "cannot initialise LoggingUtil"
                 )
 
-        # Configure OpenTelemetry to use Azure Monitor with the connection string
-        configure_azure_monitor(
-            logger_name=self.namespace, connection_string=app_insights_connection_string
-        )
+        # When running inside Azure Functions, the host already configures
+        # OpenTelemetry for Application Insights
+        # Calling configure_azure_monitor again would add a second export pipeline
+        # and duplicate every log entry
+        if not os.environ.get("FUNCTIONS_WORKER_RUNTIME"):
+            configure_azure_monitor(
+                logger_name=self.namespace,
+                connection_string=app_insights_connection_string,
+            )
 
         # Create a logger
         self.logger = logging.getLogger(self.namespace)
