@@ -5,6 +5,7 @@ import numpy as np
 
 from PIL import Image
 from io import BytesIO
+import mock
 from mock import patch, Mock, MagicMock
 from datetime import datetime
 
@@ -1322,3 +1323,21 @@ def test__pdf_processor__apply():
     assert expected_image == actual_image, (
         "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
     )
+
+
+def test_load_stopwords():
+    """
+    - Given i have a yaml file with some content
+    - When i call PDFProcessor._load_stopwords
+    - The yaml content is returned as a list
+    """
+    mock_config_file_content = """
+    stopwords:
+    - the
+    - test
+    """
+    expected_output = ["the", "test"]
+    with mock.patch(
+        "builtins.open", mock.mock_open(read_data=mock_config_file_content)
+    ):
+        assert PDFProcessor._load_stopwords("some_file") == expected_output
