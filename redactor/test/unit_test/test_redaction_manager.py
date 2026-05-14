@@ -102,7 +102,7 @@ def test__redaction_manager__validate_redact_json_payload__valid(mock_init):
         },
     }
     inst = RedactionManager("")
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     raised_exception = None
     try:
         inst.validate_redact_json_payload(payload)
@@ -117,7 +117,7 @@ def test__redaction_manager__validate_redact_json_payload__valid(mock_init):
 def test__redaction_manager__validate_redact_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     with pytest.raises(Exception):
         inst.validate_redact_json_payload(payload)
 
@@ -147,7 +147,7 @@ def test__redaction_manager__validate_apply_json_payload__valid(mock_init):
         },
     }
     inst = RedactionManager("")
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     raised_exception = None
     try:
         inst.validate_apply_json_payload(payload)
@@ -172,7 +172,7 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
         }
     ]
     inst = RedactionManager("")
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     mock_redaction_storage_io_inst = mock.MagicMock(spec=AzureBlobIO)
     inst.save_dict_to_blob_json(
         redactions_dict,
@@ -195,7 +195,7 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
 def test__redaction_manager__validate_apply_json_payload__invalid(mock_init):
     payload = {"bah": "bad"}
     inst = RedactionManager("")
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     with pytest.raises(Exception):
         inst.validate_apply_json_payload(payload)
 
@@ -257,7 +257,7 @@ def test__redaction_manager__redact(
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
@@ -556,7 +556,7 @@ def test__redaction_manager__apply(
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
@@ -629,7 +629,7 @@ def test__redaction_manager__log_exception(mock_init):
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     inst.runtime_errors = []
     some_exception = Exception(expected_exception_message)
     inst.log_exception(some_exception)
@@ -700,7 +700,7 @@ def test__redaction_manager__save_exception_log(
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     inst.runtime_errors = ["some exception A", "some exception B"]
     expected_exception_message = "\n\n\n".join(inst.runtime_errors)
     inst.save_exception_log("mystage")
@@ -718,7 +718,7 @@ def test__redaction_manager__save_exception_log__with_no_exception(
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     inst.runtime_errors = []
     inst.save_exception_log("mystage")
     calls = AzureBlobIO.write.call_args_list
@@ -916,7 +916,7 @@ def test__try_redact__successful(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
     inst.folder_for_job = "test__redaction_manager__try_redact_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     response = inst.try_redact(params)
     test_case(
@@ -969,7 +969,7 @@ def test__try_redact__param_validation_failure(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
     inst.folder_for_job = "test__redaction_manager__try_redact_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     mock_validate_json.side_effect = exception
     response = inst.try_redact(params)
@@ -1023,7 +1023,7 @@ def test__try_redact__redaction_failure(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_redact"
     inst.folder_for_job = "test__redaction_manager__try_redact_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     mock_redact.side_effect = exception
     response = inst.try_redact(params)
@@ -1081,7 +1081,7 @@ def test__try_redact__success_with_non_fatal_error(
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_redact__non_fatal_error"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     response = inst.try_redact(params)
     expected_response = {
@@ -1140,7 +1140,7 @@ def test__try_redact__fail_with_extra_non_fatal_error(
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_redact__non_fatal_error"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     mock_redact.side_effect = exception
     params = {"some_payload", ""}
     response = inst.try_redact(params)
@@ -1172,7 +1172,7 @@ def test__redaction_manager__save_logs(
     inst = RedactionManager()
     inst.job_id = "test__redaction_manager__save_logs"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     inst.save_logs("mystage")
     AzureBlobIO.write.assert_called_once_with(
         data_bytes=b"xyz",
@@ -1370,7 +1370,7 @@ def test__try_apply__successful(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     response = inst.try_apply(params)
     test_case(
@@ -1423,7 +1423,7 @@ def test__try_apply__param_validation_failure(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     mock_validate_json.side_effect = exception
     response = inst.try_apply(params)
@@ -1477,7 +1477,7 @@ def test__try_apply__apply_failure(
     inst = RedactionManager("job_id")
     inst.job_id = "test__redaction_manager__try_apply"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     mock_apply.side_effect = exception
     response = inst.try_apply(params)
@@ -1535,7 +1535,7 @@ def test__try_apply__success_with_non_fatal_error(
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_apply__non_fatal_error"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     params = {"some_payload", ""}
     response = inst.try_apply(params)
     expected_response = {
@@ -1594,7 +1594,7 @@ def test__try_apply__fail_with_extra_non_fatal_error(
     inst = RedactionManager("job_id")
     inst.job_id = "test__try_apply__non_fatal_error"
     inst.folder_for_job = f"{inst.job_id}_folder"
-    inst.storage_name = f"pinsstredactiondevuks"
+    inst.storage_name = "pinsstredactiondevuks"
     mock_apply.side_effect = exception
     params = {"some_payload", ""}
     response = inst.try_apply(params)
