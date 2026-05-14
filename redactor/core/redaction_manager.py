@@ -74,7 +74,7 @@ class RedactionManager:
         self.storage_name = os.environ.get("STORAGE_NAME", None)
         if not self.storage_name:
             raise RuntimeError(
-                "An 'STORAGE_NAME' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
+                "A 'STORAGE_NAME' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
         self.runtime_errors: List[str] = []
         LoggingUtil().log_info(
