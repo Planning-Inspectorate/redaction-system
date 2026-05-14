@@ -71,10 +71,10 @@ class RedactionManager:
     def __init__(self, job_id: str):
         self.job_id = self._make_job_id_unique(job_id)
         self.folder_for_job = self._convert_job_id_to_storage_folder_name(self.job_id)
-        self.env = os.environ.get("ENV", None)
-        if not self.env:
+        self.storage_name = os.environ.get("STORAGE_NAME", None)
+        if not self.storage_name:
             raise RuntimeError(
-                "An 'ENV' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
+                "A 'STORAGE_NAME' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
         self.runtime_errors: List[str] = []
         LoggingUtil().log_info(
@@ -246,7 +246,7 @@ class RedactionManager:
         # Store a copy of the raw data in redaction storage before processing begins
         LoggingUtil().log_info("Saving a copy of the raw file to redact")
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             file_data,
@@ -540,7 +540,7 @@ class RedactionManager:
 
         # Store a copy of the raw data in redaction storage before processing begins
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             file_data,
@@ -580,7 +580,7 @@ class RedactionManager:
 
         # Store a copy of the final redactions in redaction storage
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             final_redaction_file_data,
@@ -601,7 +601,7 @@ class RedactionManager:
         log_bytes = LoggingUtil().get_log_bytes()
         # Dump in Azure
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             data_bytes=log_bytes,
@@ -629,7 +629,7 @@ class RedactionManager:
         text_encoding = "utf-8"
         data_to_write = "\n\n\n".join(self.runtime_errors)
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             data_bytes=data_to_write.encode(text_encoding),
@@ -644,7 +644,7 @@ class RedactionManager:
         metric_bytes = json.dumps(metrics, indent=4, default=str).encode()
         # Dump in Azure
         redaction_storage_io_inst = AzureBlobIO(
-            storage_name=f"pinsstredaction{self.env}uks",
+            storage_name=self.storage_name,
         )
         redaction_storage_io_inst.write(
             data_bytes=metric_bytes,
