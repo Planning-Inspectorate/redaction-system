@@ -162,7 +162,7 @@ resource "azurerm_private_endpoint" "function_app" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
+resource "azurerm_private_endpoint" "open_ai_cognitiveservices" { # pins-pe-pins-openai-redaction-system-training-weu-cognitiveservices
   name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-cognitiveservices"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
@@ -183,7 +183,7 @@ resource "azurerm_private_endpoint" "open_ai_cognitiveservices" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "open_ai_openai" {
+resource "azurerm_private_endpoint" "open_ai_openai" { # pins-pe-pins-openai-redaction-system-training-weu-openai
   name                = "${local.org}-pe-${azurerm_cognitive_account.open_ai.name}-openai"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
@@ -204,7 +204,7 @@ resource "azurerm_private_endpoint" "open_ai_openai" {
   tags = local.tags
 }
 
-resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
+resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" { # pins-pe-pins-cv-redaction-system-training-uks-cognitiveservices
   name                = "${local.org}-pe-${azurerm_cognitive_account.computer_vision.name}-cognitiveservices"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
@@ -224,7 +224,6 @@ resource "azurerm_private_endpoint" "computer_vision_cognitiveservices" {
 
   tags = local.tags
 }
-
 
 ############################################################################
 # Network peering

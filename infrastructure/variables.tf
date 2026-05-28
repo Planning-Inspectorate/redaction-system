@@ -3,6 +3,11 @@ variable "environment" {
   type        = string
 }
 
+variable "environment_short" {
+  description = "The short name of environment to deploy to"
+  type        = string
+}
+
 variable "budget_alert_config" {
   description = "Config for setting up budget alerts"
   type = object({
