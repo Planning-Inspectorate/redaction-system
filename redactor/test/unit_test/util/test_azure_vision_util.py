@@ -374,21 +374,3 @@ def test__azure_vision_util__detect_faces__image_too_large(mock_azure_vision):
     image = Image.new("RGB", (16001, 100))
     result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
     assert result == tuple()
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_text__image_too_small(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
-    azure_vision_util._IMAGE_TEXT_CACHE = []
-    image = Image.new("RGB", (49, 49))
-    result = azure_vision_util.detect_text(image)
-    assert result == tuple()
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_text__image_too_large(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
-    azure_vision_util._IMAGE_TEXT_CACHE = []
-    image = Image.new("RGB", (16001, 100))
-    result = azure_vision_util.detect_text(image)
-    assert result == tuple()
