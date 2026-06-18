@@ -64,7 +64,7 @@ class AzureVisionUtil:
                     responses.append((image, faces))
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        "Image face detection failed with the following excepetion: ",
+                        "Image face detection failed with the following exception: ",
                         e,
                     )
         return responses
@@ -90,10 +90,16 @@ class AzureVisionUtil:
         Detect faces in the given image
 
         :param Image.Image image: The image to analyse
-        :param  floatconfidence_threshold: Confidence threshold between 0 and 1
+        :param float confidence_threshold: Confidence threshold between 0 and 1
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
+        if not self._check_image_size(image):
+            LoggingUtil().log_info(
+                "Image is too large or too small for Azure Computer Vision API. "
+                "Skipping image face detection for this image."
+            )
+            return tuple()
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -164,7 +170,7 @@ class AzureVisionUtil:
                     responses.append((image, text))
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        "Image text detection failed with the following excepetion: ",
+                        "Image text detection failed with the following exception: ",
                         e,
                     )
         return responses
@@ -194,6 +200,12 @@ class AzureVisionUtil:
         :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
+        if not self._check_image_size(image):
+            LoggingUtil().log_info(
+                "Image is too large or too small for Azure Computer Vision API. "
+                "Skipping image text detection for this image."
+            )
+            return tuple()
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -240,3 +252,38 @@ class AzureVisionUtil:
                 self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
 
         return text_detected
+
+    def _check_image_size(self, image: Image.Image) -> bool:
+        """
+        Check if the image size is within the limits of Azure Computer Vision API:
+        - The image size must be less than 20MB
+        - The image dimensions must be at least 50x50 and at most 16000x16000 pixels
+
+        :param Image.Image image: The image to check
+        :returns: True if the image size is within the limits, False otherwise
+        """
+        byte_stream = BytesIO()
+        image.save(byte_stream, format="jpeg")
+        image_bytes = byte_stream.getvalue()
+
+        if len(image_bytes) > 20 * 1024 * 1024:
+            LoggingUtil().log_info(
+                f"Image size is {len(image_bytes)} bytes, which is larger than 20MB. "
+            )
+            return False
+
+        if image.width < 50 or image.height < 50:
+            LoggingUtil().log_info(
+                f"Image dimensions are {image.width}x{image.height}, which is smaller "
+                "than 50x50 pixels."
+            )
+            return False
+
+        if image.width > 16000 or image.height > 16000:
+            LoggingUtil().log_info(
+                f"Image dimensions are {image.width}x{image.height}, which is larger "
+                "than 16000x16000 pixels."
+            )
+            return False
+
+        return True
