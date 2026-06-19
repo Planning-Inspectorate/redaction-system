@@ -2,6 +2,7 @@ from core.redaction.redactor import LLMTextRedactor
 from core.redaction.config import (
     LLMTextRedactionConfig,
 )
+from core.redaction.result import LLMTextRedactionResult
 
 
 def test__llm_text_redactor__redact():
@@ -63,3 +64,47 @@ def test__llm_text_redactor__redact():
         f"\nExpected results {expected_results}\nActual results: {redaction_strings_cleaned}"
     )
     assert match_percent >= acceptance_threshold, error_message
+
+
+def test__llm_text_redactor__redact__empty_text_returns_empty_result():
+    """
+    - Given we have config but empty text to analyse
+    - When we pass the config to the LLMTextRedactor with empty text
+    - Then the LLMTextRedactor should return an empty result without calling the LLM
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1",
+        text="",
+        system_prompt="Identify redaction strings",
+        redaction_terms=["Names"],
+    )
+    redactor_inst = LLMTextRedactor(config)
+    result = redactor_inst.redact()
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert result.redaction_strings == tuple()
+    assert result.run_metrics == {}
+
+
+def test__llm_text_redactor__redact__none_text_returns_empty_result():
+    """
+    - Given we have config but None as the text
+    - When we pass the config to the LLMTextRedactor
+    - Then the LLMTextRedactor should return an empty result without calling the LLM
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1",
+        text=None,
+        system_prompt="Identify redaction strings",
+        redaction_terms=["Names"],
+    )
+    redactor_inst = LLMTextRedactor(config)
+    result = redactor_inst.redact()
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert result.redaction_strings == tuple()
+    assert result.run_metrics == {}

@@ -79,3 +79,55 @@ def test__llm_util__analyse_text():
     assert 1 < llm_util_inst.config.max_concurrent_requests <= 32
     assert isinstance(result, LLMTextRedactionResult)
     assert set(result.redaction_strings) == {"SECRET123", "CONFIDENTIAL456"}
+
+
+def test__llm_util__analyse_text__single_chunk_sequential():
+    """
+    When there is only 1 text chunk, processing should be sequential (max_workers=1)
+    and still produce correct results.
+    """
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util_inst = LLMUtil(llm_util_config)
+
+    system_prompt = "Identify redaction strings in the text"
+    text_chunks = [
+        "This is some sample text that contains a redaction string: SECRET123.",
+    ]
+
+    result = llm_util_inst.analyse_text(
+        system_prompt,
+        text_chunks,
+    )
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert result.metadata.request_count == 1
+    assert "SECRET123" in result.redaction_strings
+
+
+def test__llm_util__analyse_text__workers_capped_by_chunk_count():
+    """
+    When max_concurrent_requests exceeds the number of chunks,
+    the actual worker count should be capped to the number of chunks.
+    """
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+        max_concurrent_requests=10,
+    )
+    llm_util_inst = LLMUtil(llm_util_config)
+
+    system_prompt = "Identify redaction strings in the text"
+    text_chunks = [
+        "This text contains SECRET123.",
+        "This text contains CONFIDENTIAL456.",
+    ]
+
+    result = llm_util_inst.analyse_text(
+        system_prompt,
+        text_chunks,
+    )
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert result.metadata.request_count == 2
+    assert set(result.redaction_strings) == {"SECRET123", "CONFIDENTIAL456"}
