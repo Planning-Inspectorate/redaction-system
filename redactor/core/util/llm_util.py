@@ -17,7 +17,12 @@ from azure.identity import (
 )
 from langchain_core.prompts import PromptTemplate
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import AzureOpenAI, RateLimitError, LengthFinishReasonError
+from openai import (
+    AzureOpenAI,
+    RateLimitError,
+    LengthFinishReasonError,
+    ContentFilterFinishReasonError,
+)
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from openai.types.chat.chat_completion import CompletionUsage
 from tiktoken import get_encoding
@@ -246,6 +251,7 @@ class LLMUtil:
                     RateLimitError,  # API rate limit exceeded
                     TimeoutError,  # Timeout while waiting for semaphore
                     LengthFinishReasonError,  # LLM response truncated due to length
+                    ContentFilterFinishReasonError,  # LLM response blocked by content filter
                 )
             ),
             retry_if_exception_message(  # LLM response parsing errors
