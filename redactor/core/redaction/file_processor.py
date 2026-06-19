@@ -314,9 +314,6 @@ class PDFProcessor(FileProcessor):
                         transform.f,
                     ),
                 )
-                LoggingUtil().log_info(
-                    f"Loaded image with the following metadata {image_metadata}"
-                )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 

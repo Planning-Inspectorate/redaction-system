@@ -414,7 +414,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         total_bounding_box_time = 0.0
         for image_to_redact, text_rect_map in image_text_rect_map:
             # Detect and analyse text in the image
-            LoggingUtil().log_info(f"image: {image_to_redact}")
+            LoggingUtil().log_info(f"Image: {image_to_redact}")
             try:
                 text_content = " ".join([x[0] for x in text_rect_map])
                 if not text_content:
