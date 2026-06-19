@@ -366,6 +366,14 @@ class LLMUtil:
             + completion_tokens * self.output_token_cost
         )
 
+    def _check_budget(self):
+        # Check budget after each request
+        if self.config.budget and self.total_cost >= self.config.budget:
+            raise RuntimeError(
+                f"Budget of £{self.config.budget:.2f} exceeded with total cost "
+                f"£{self.total_cost:.2f}. Stopping further requests."
+            )
+
     @log_to_appins
     def analyse_text(
         self,
@@ -400,44 +408,61 @@ class LLMUtil:
                 f" Setting to {self.config.max_concurrent_requests}."
             )
 
+        # Set max workers to the minimum of max_concurrent_requests and number of chunks
+        max_workers = min(self.config.max_concurrent_requests, chunk_count)
         LoggingUtil().log_info(
-            f"Starting text analysis with {self.config.max_concurrent_requests} "
+            f"Starting text analysis on {chunk_count} chunks with {max_workers} "
             "workers."
         )
-        with ThreadPoolExecutor(
-            max_workers=self.config.max_concurrent_requests
-        ) as executor:
-            # Submit tasks to the executor
-            future_to_chunk = {
-                executor.submit(
-                    self._analyse_text_chunk,
-                    system_prompt,
-                    self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
-                ): chunk
-                for chunk in text_chunks
-            }
-            for future in as_completed(future_to_chunk):
-                chunk = future_to_chunk[future]
+
+        if max_workers == 1:
+            # Process chunks sequentially if only one worker is allowed
+            for chunk in text_chunks:
+                response, redaction_strings = self._analyse_text_chunk(
+                    system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)
+                )
+                responses.append(response)
+                text_to_redact.extend(redaction_strings)
                 request_counter += 1
 
-                try:
-                    # Get redaction result for chunk and append to overall results
-                    response, redaction_strings = future.result()
-                    responses.append(response)
-                    text_to_redact.extend(redaction_strings)
-                except Exception as e:
-                    LoggingUtil().log_exception_with_message(
-                        f"Function call with chunk ID ({hash(chunk)}) generated an exception:",
-                        e,
-                    )
-
                 # Check budget after each request
-                if self.config.budget and self.total_cost >= self.config.budget:
-                    LoggingUtil().log_info(
-                        f"Budget of £{self.config.budget:.2f} exceeded with total cost "
-                        f"£{self.total_cost:.2f}. Stopping further requests."
-                    )
+                try:
+                    self._check_budget()
+                except RuntimeError as re:
+                    LoggingUtil().log_exception(re)
                     break
+        else:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit tasks to the executor
+                future_to_chunk = {
+                    executor.submit(
+                        self._analyse_text_chunk,
+                        system_prompt,
+                        self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                    ): chunk
+                    for chunk in text_chunks
+                }
+                for future in as_completed(future_to_chunk):
+                    chunk = future_to_chunk[future]
+                    request_counter += 1
+
+                    try:
+                        # Get redaction result for chunk and append to overall results
+                        response, redaction_strings = future.result()
+                        responses.append(response)
+                        text_to_redact.extend(redaction_strings)
+                    except Exception as e:
+                        LoggingUtil().log_exception_with_message(
+                            f"Error processing chunk {hash(chunk)}",
+                            e,
+                        )
+
+                    # Check budget after each request
+                    try:
+                        self._check_budget()
+                    except RuntimeError as re:
+                        LoggingUtil().log_exception(re)
+                        break
 
         # Remove duplicates
         text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))

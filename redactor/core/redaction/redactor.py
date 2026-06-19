@@ -129,6 +129,15 @@ class LLMTextRedactor(TextRedactor):
         # TODO Add LLM parameters to the config class
         self.config: LLMTextRedactionConfig
 
+        if not text_to_analyse:
+            LoggingUtil().log_info("No text to analyse, skipping LLM analysis")
+            return LLMTextRedactionResult(
+                rule_name=self.config.name,
+                run_metrics={},
+                redaction_strings=tuple(),
+                metadata={},
+            )
+
         # Create system prompt from loaded config
         system_prompt = self.config.create_system_prompt()
 
@@ -177,6 +186,13 @@ class ImageRedactor(Redactor):  # pragma: no cover
         self.config: ImageRedactionConfig
         results: List[ImageRedactionResult.Result] = []
         total_images_to_analyse = len(self.config.images)
+        if total_images_to_analyse == 0:
+            LoggingUtil().log_info("No images to analyse, skipping image analysis")
+            return ImageRedactionResult(
+                rule_name=self.config.name,
+                run_metrics={},
+                redaction_results=tuple(),
+            )
         start_time = time()
         face_detection_results = AzureVisionUtil().detect_faces_in_images(
             self.config.images, self.config.confidence_threshold
@@ -338,6 +354,13 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         self.config: ImageRedactionConfig
         results = []
         total_images_to_analyse = len(self.config.images)
+        if total_images_to_analyse == 0:
+            LoggingUtil().log_info("No images to analyse, skipping image text analysis")
+            return ImageRedactionResult(
+                rule_name=self.config.name,
+                run_metrics={},
+                redaction_results=tuple(),
+            )
         start_time = time()
         total_ocr_time = 0.0
         total_number_plate_detection_time = 0.0
@@ -423,6 +446,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         self.config: ImageLLMTextRedactionConfig
         results = []
         total_images_to_analyse = len(self.config.images)
+        if total_images_to_analyse == 0:
+            LoggingUtil().log_info("No images to analyse, skipping image text analysis")
+            return ImageRedactionResult(
+                rule_name=self.config.name,
+                run_metrics={},
+                redaction_results=tuple(),
+            )
         start_time = time()
         total_llm_analysis_time = 0.0
         total_bounding_box_time = 0.0
@@ -436,10 +466,12 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             # Detect and analyse text in the image
             LoggingUtil().log_info(f"image: {image_to_redact}")
             try:
-                LoggingUtil().log_info(
-                    f"The following text analysis was returned by AzureVisionUtil.detect_text: {text_rect_map}"
-                )
                 text_content = " ".join([x[0] for x in text_rect_map])
+                if not text_content:
+                    LoggingUtil().log_info(
+                        "No text detected in image, skipping LLM analysis"
+                    )
+                    continue
                 LoggingUtil().log_info(
                     f"The following text was extracted from an image in the PDF:\n'{text_content}'"
                 )
