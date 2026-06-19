@@ -125,3 +125,82 @@ def test__image_llm_text_redactor__redact():
         cleaned_actual_results = dataclasses.asdict(actual_results)
         cleaned_actual_results.pop("run_metrics")
         assert cleaned_expected_results == cleaned_actual_results
+
+
+def test__image_llm_text_redactor__redact__no_images_skips_analysis():
+    """
+    - Given I have a config with an empty images list
+    - When I call ImageLLMTextRedactor.redact
+    - Then it should return an empty ImageRedactionResult without calling AzureVisionUtil
+    """
+    config = ImageLLMTextRedactionConfig(
+        name="config name",
+        redactor_type="ImageLLMTextRedaction",
+        model="gpt-4.1",
+        images=[],
+        system_prompt="some system prompt",
+        redaction_terms=["rule A"],
+    )
+    with (
+        mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            AzureVisionUtil, "__init__", return_value=None
+        ) as mock_vision_init,
+        mock.patch.object(AzureVisionUtil, "detect_text_in_images") as mock_detect_text,
+    ):
+        inst = ImageLLMTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+
+    mock_vision_init.assert_not_called()
+    mock_detect_text.assert_not_called()
+    assert actual_results.rule_name == "config name"
+    assert actual_results.redaction_results == tuple()
+    assert actual_results.run_metrics == {
+        "total_image_ocr_time": 0.0,
+        "total_image_text_analysis_time": 0.0,
+        "total_images_to_analyse": 0,
+    }
+
+
+def test__image_llm_text_redactor__redact__no_text_in_image_skips_llm():
+    """
+    - Given I have images but OCR returns no text for them
+    - When I call ImageLLMTextRedactor.redact
+    - Then the LLM analysis should be skipped for images with no text
+    """
+    config = ImageLLMTextRedactionConfig(
+        name="config name",
+        redactor_type="ImageLLMTextRedaction",
+        model="gpt-4.1",
+        images=[
+            Image.new("RGB", (1000, 1000)),
+        ],
+        system_prompt="some system prompt",
+        redaction_terms=["rule A"],
+    )
+    # OCR returns empty text for the image
+    detect_text_in_images_return_value = (
+        (config.images[0], (("", (10, 10, 50, 50)),)),
+    )
+    with (
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(
+            AzureVisionUtil,
+            "detect_text_in_images",
+            return_value=detect_text_in_images_return_value,
+        ),
+        mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            ImageLLMTextRedactor,
+            "_analyse_text",
+        ) as mock_analyse_text,
+    ):
+        inst = ImageLLMTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+
+    # LLM analysis should not have been called since text_content is empty
+    mock_analyse_text.assert_not_called()
+    # No results since the image was skipped
+    assert actual_results.redaction_results == tuple()

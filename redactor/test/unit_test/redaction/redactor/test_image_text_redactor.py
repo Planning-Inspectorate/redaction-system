@@ -125,3 +125,74 @@ def test__image_text_redactor__redact():
         cleaned_actual_results = dataclasses.asdict(actual_results)
         cleaned_actual_results.pop("run_metrics")
         assert cleaned_expected_results == cleaned_actual_results
+
+
+def test__image_text_redactor__redact__no_images_skips_analysis():
+    """
+    - Given I have a config with an empty images list
+    - When I call ImageTextRedactor.redact
+    - Then it should return an empty ImageRedactionResult without calling AzureVisionUtil
+    """
+    config = ImageRedactionConfig(
+        name="config name",
+        redactor_type="ImageTextRedaction",
+        images=[],
+    )
+    with (
+        mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            ImageTextRedactor,
+            "_analyse_images",
+            return_value=([], 0.0),
+        ),
+    ):
+        inst = ImageTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+
+    assert actual_results.rule_name == "config name"
+    assert actual_results.redaction_results == tuple()
+    assert actual_results.run_metrics == {
+        "total_image_ocr_time": 0.0,
+        "total_image_text_analysis_time": 0.0,
+        "total_images_to_analyse": 0,
+    }
+
+
+def test__image_text_redactor__redact__no_text_in_image_skips_number_plate_analysis():
+    """
+    - Given I have images but OCR returns no text for them
+    - When I call ImageTextRedactor.redact
+    - Then the number plate analysis should not be called and the image should be skipped
+    """
+    config = ImageRedactionConfig(
+        name="config name",
+        redactor_type="ImageTextRedaction",
+        images=[
+            Image.new("RGB", (1000, 1000)),
+        ],
+    )
+    # OCR returns empty text for the image
+    detect_text_in_images_return_value = (
+        (config.images[0], (("", (10, 10, 50, 50)),)),
+    )
+    with (
+        mock.patch.object(
+            ImageTextRedactor,
+            "_analyse_images",
+            return_value=(detect_text_in_images_return_value, 0.0),
+        ),
+        mock.patch.object(
+            ImageTextRedactor,
+            "_get_number_plate_redactions",
+        ) as mock_get_number_plate_redactions,
+        mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
+    ):
+        inst = ImageTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+
+    # LLM analysis should not have been called since text_content is empty
+    mock_get_number_plate_redactions.assert_not_called()
+    # No results since the image was skipped
+    assert actual_results.redaction_results == tuple()

@@ -530,11 +530,11 @@ def test__llm_util__analyse_text__check_pool_size():
     ):
         llm_util.analyse_text(
             system_prompt="system prompt",
-            text_chunks=["redaction string A", "redaction string B"] * 2,
+            text_chunks=["redaction string A", "redaction string B"] * 20,
         )
 
     mock_executor_init.assert_called_once_with(max_workers=4)
-    assert mock_executor_submit.call_count == 4
+    assert mock_executor_submit.call_count == 40
     mock_executor_exit.assert_called_once()
 
 
@@ -561,14 +561,14 @@ def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
     ):
         llm_util.analyse_text(
             system_prompt="system prompt",
-            text_chunks=["redaction string A", "redaction string B"] * 2,
+            text_chunks=["redaction string A", "redaction string B"] * 20,
         )
 
     max_workers = min(32, (os.cpu_count() or 1) + 4)
     assert llm_util.config.max_concurrent_requests == max_workers
 
     mock_executor_init.assert_called_once_with(max_workers=max_workers)
-    assert mock_executor_submit.call_count == 4
+    assert mock_executor_submit.call_count == 40
     mock_executor_exit.assert_called_once()
 
 
@@ -596,3 +596,125 @@ def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
     assert (actual_result.redaction_strings == ("string A",)) or (
         actual_result.redaction_strings == ("string B",)
     )
+
+
+def test__llm_util___check_budget__raises_when_exceeded():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+        budget=10.0,
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.total_cost = 10.0
+
+    with pytest.raises(RuntimeError, match="Budget of £10.00 exceeded"):
+        llm_util._check_budget()
+
+
+def test__llm_util___check_budget__no_raise_when_under_budget():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+        budget=10.0,
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.total_cost = 5.0
+
+    # Should not raise
+    llm_util._check_budget()
+
+
+def test__llm_util___check_budget__no_raise_when_no_budget_set():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.total_cost = 99999.0
+
+    # Should not raise when no budget configured
+    llm_util._check_budget()
+
+
+def test__llm_util__analyse_text__single_chunk_sequential():
+    """When there is only 1 chunk, max_workers=1 and processing is sequential
+    (no ThreadPoolExecutor)"""
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.request_semaphore = Mock()
+    llm_util.token_semaphore = Mock()
+    llm_util.input_token_cost = 1
+    llm_util.output_token_cost = 2
+
+    with (
+        patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain,
+        patch.object(
+            ThreadPoolExecutor, "__init__", return_value=None
+        ) as mock_executor_init,
+    ):
+        mock_invoke_chain.return_value = create_mock_chat_completion(["string A"])
+        actual_result = llm_util.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["single chunk"],
+        )
+
+    # Should not have created a ThreadPoolExecutor
+    mock_executor_init.assert_not_called()
+
+    assert actual_result.redaction_strings == ("string A",)
+    assert actual_result.metadata.request_count == 1
+
+
+@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
+def test__llm_util__analyse_text__max_workers_limited_by_chunk_count():
+    """max_workers should be min(max_concurrent_requests, chunk_count)"""
+    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=10)
+    llm_util = LLMUtil(llm_util_config)
+
+    with (
+        patch.object(
+            ThreadPoolExecutor, "submit", return_value=None
+        ) as mock_executor_submit,
+        patch("core.util.llm_util.as_completed", return_value=[]),
+        patch.object(
+            ThreadPoolExecutor, "__init__", return_value=None
+        ) as mock_executor_init,
+        patch.object(
+            ThreadPoolExecutor, "__exit__", return_value=None
+        ) as mock_executor_exit,
+    ):
+        llm_util.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B", "chunk C"],  # 3 chunks < 10 workers
+        )
+
+    # max_workers should be 3 (chunk count), not 10 (max_concurrent_requests)
+    mock_executor_init.assert_called_once_with(max_workers=3)
+    assert mock_executor_submit.call_count == 3
+    mock_executor_exit.assert_called_once()
+
+
+def test__llm_util__analyse_text__sequential_budget_exceeded():
+    """Budget check in sequential path should stop processing after budget is exceeded"""
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+        budget=12.0,
+        max_concurrent_requests=1,
+    )
+    llm_util = LLMUtil(llm_util_config)
+    llm_util.input_token_cost = 1
+    llm_util.output_token_cost = 2
+
+    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
+        mock_invoke_chain.side_effect = [
+            create_mock_chat_completion(["string A"]),
+            create_mock_chat_completion(["string B"]),
+            create_mock_chat_completion(["string C"]),
+        ]
+        actual_result = llm_util.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B", "chunk C"],
+        )
+
+    # Budget of 12 is exceeded after first call (cost = 13), so only 1 chunk processed
+    assert actual_result.redaction_strings == ("string A",)
+    assert mock_invoke_chain.call_count == 1

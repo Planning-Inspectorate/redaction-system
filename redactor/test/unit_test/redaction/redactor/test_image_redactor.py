@@ -62,3 +62,34 @@ def test__image_redactor__redact():
                 cleaned_actual_results = dataclasses.asdict(actual_results)
                 cleaned_actual_results.pop("run_metrics")
                 assert cleaned_expected_results == cleaned_actual_results
+
+
+def test__image_redactor__redact__no_images_skips_analysis():
+    """
+    - Given I have a config with an empty images list
+    - When I call ImageRedactor.redact
+    - Then it should return an empty ImageRedactionResult without calling AzureVisionUtil
+    """
+    config = ImageRedactionConfig(
+        name="some image redaction config",
+        redactor_type="ImageRedaction",
+        images=[],
+    )
+    with (
+        mock.patch.object(ImageRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            AzureVisionUtil, "__init__", return_value=None
+        ) as mock_vision_init,
+        mock.patch.object(
+            AzureVisionUtil, "detect_faces_in_images"
+        ) as mock_detect_faces,
+    ):
+        inst = ImageRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+
+    mock_vision_init.assert_not_called()
+    mock_detect_faces.assert_not_called()
+    assert actual_results.rule_name == "some image redaction config"
+    assert actual_results.redaction_results == tuple()
+    assert actual_results.run_metrics == {}
