@@ -95,10 +95,6 @@ class AzureVisionUtil:
                   with confidence above the threshold
         """
         if not self._check_image_size(image):
-            LoggingUtil().log_info(
-                "Image is too large or too small for Azure Computer Vision API. "
-                "Skipping image face detection for this image."
-            )
             return tuple()
         try:
             # Check cache
@@ -269,20 +265,21 @@ class AzureVisionUtil:
         if len(image_bytes) > 20 * 1024 * 1024:
             LoggingUtil().log_info(
                 f"Image size is {len(image_bytes)} bytes, which is larger than 20MB. "
+                "Skipping image analysis for this image."
             )
             return False
 
         if image.width < 50 or image.height < 50:
             LoggingUtil().log_info(
                 f"Image dimensions are {image.width}x{image.height}, which is smaller "
-                "than 50x50 pixels."
+                "than 50x50 pixels. Skipping image analysis for this image."
             )
             return False
 
         if image.width > 16000 or image.height > 16000:
             LoggingUtil().log_info(
                 f"Image dimensions are {image.width}x{image.height}, which is larger "
-                "than 16000x16000 pixels."
+                "than 16000x16000 pixels. Skipping image analysis for this image."
             )
             return False
 
