@@ -108,15 +108,23 @@ class AzureBlobIO(StorageIO):
         blob_data.readinto(byte_stream)
         return byte_stream
 
-    def write(self, data_bytes: BytesIO, container_name: str, blob_path: str, **kwargs):
+    def write(
+        self,
+        data_bytes: BytesIO,
+        container_name: str,
+        blob_path: str,
+        overwrite: bool = False,
+        **kwargs,
+    ):
         """
         Write a blob to Azure Blob Storage.
 
         :param BytesIO data_bytes: Blob data as a byte stream
         :param str container_name: Name of the container
         :param str blob_path: Path to the blob within the container
+        :param bool overwrite: If True, overwrite an existing blob at the specified path (default: False)
 
-        :raises ResourceExistsError: If a blob already exists at the specified path
+        :raises ResourceExistsError: If a blob already exists at the specified path and overwrite is False
         """
         LoggingUtil().log_info(
             f"Writing blob '{blob_path}' to container '{container_name}' in storage account "
@@ -124,7 +132,9 @@ class AzureBlobIO(StorageIO):
         )
         try:
             blob_client = self._get_blob_client(container_name, blob_path)
-            blob_client.upload_blob(data_bytes, blob_type="BlockBlob")
+            blob_client.upload_blob(
+                data_bytes, blob_type="BlockBlob", overwrite=overwrite
+            )
         except ResourceExistsError:
             # Improve the base Azure error, which does not include helpful info
             raise ResourceExistsError(

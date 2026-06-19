@@ -1178,6 +1178,7 @@ def test__redaction_manager__save_logs(
         data_bytes=b"xyz",
         container_name="redactiondata",
         blob_path=f"{inst.folder_for_job}/mystage_log.txt",
+        overwrite=True,
     )
 
 

@@ -18,6 +18,7 @@ from math import isclose
 
 from core.redaction.config_processor import ConfigProcessor
 from core.util.logging_util import LoggingUtil
+from core.util.periodic_log_flusher import PeriodicLogFlusher
 from core.io.io_factory import IOFactory
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.service_bus_util import ServiceBusUtil
@@ -607,6 +608,7 @@ class RedactionManager:
             data_bytes=log_bytes,
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
+            overwrite=True,
         )
 
     def log_exception(self, exception: Exception):
@@ -688,6 +690,11 @@ class RedactionManager:
         status = "SUCCESS"
         message = "Redaction process complete"
         run_metrics = None
+        log_flusher = PeriodicLogFlusher(
+            storage_name=self.storage_name,
+            blob_folder=self.folder_for_job,
+            stage_name=stage,
+        )
         try:
             payload_validator(params)
             run_metrics = redaction_function(params)
@@ -696,6 +703,8 @@ class RedactionManager:
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
             fatal_error = message
+        finally:
+            log_flusher.stop()
         end_time = time()
         total_execution_time = end_time - start_time
         final_output = base_response | {
