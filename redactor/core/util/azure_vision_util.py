@@ -110,6 +110,9 @@ class AzureVisionUtil:
             byte_stream = BytesIO()
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
+            LoggingUtil().log_info(
+                "Analysing image for faces using Azure Computer Vision API..."
+            )
 
             try:
                 result = self.vision_client.analyze(
@@ -117,10 +120,14 @@ class AzureVisionUtil:
                     [VisualFeatures.PEOPLE],
                 )
             except HttpResponseError as e:
+                LoggingUtil().log_exception_with_message(
+                    "HTTP response error analysing image for faces", e
+                )
                 raise e
             except Exception as e:
-                LoggingUtil().log_info("Error analysing image for faces")
-                LoggingUtil().log_exception(e)
+                LoggingUtil().log_exception_with_message(
+                    "Error analysing image for faces", e
+                )
                 return None
 
             faces_detected = tuple(
@@ -197,10 +204,6 @@ class AzureVisionUtil:
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
         if not self._check_image_size(image):
-            LoggingUtil().log_info(
-                "Image is too large or too small for Azure Computer Vision API. "
-                "Skipping image text detection for this image."
-            )
             return tuple()
         try:
             # Check cache
@@ -215,17 +218,23 @@ class AzureVisionUtil:
             byte_stream = BytesIO()
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
-
+            LoggingUtil().log_info(
+                "Analysing image for text using Azure Computer Vision API..."
+            )
             try:
                 result = self.vision_client.analyze(
                     image_bytes,
                     [VisualFeatures.READ],
                 )
             except HttpResponseError as e:
+                LoggingUtil().log_exception_with_message(
+                    "HTTP response error analysing image for text", e
+                )
                 raise e
             except Exception as e:
-                LoggingUtil().log_info("Error analysing image for text")
-                LoggingUtil().log_exception(e)
+                LoggingUtil().log_exception_with_message(
+                    "Error analysing image for text", e
+                )
                 return None
 
             text_detected = tuple(
