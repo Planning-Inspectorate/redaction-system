@@ -908,6 +908,11 @@ class PDFProcessor(FileProcessor):
             LoggingUtil().log_info(
                 f"Examining page {page.number} for redaction candidates."
             )
+            if not page_metadata.lines:
+                LoggingUtil().log_info(
+                    f"    No text found on page {page.number}, skipping."
+                )
+                continue
             page_redaction_instances = self._examine_provisional_redactions_on_page(
                 text_to_redact,
                 page_metadata,
@@ -953,8 +958,8 @@ class PDFProcessor(FileProcessor):
         :param PDFPageMetadata page_metadata: The metadata of the page to examine
         :param PDFPageMetadata next_page_metadata: The metadata of the next page to
         examine, in case of a line break on the next page
-        :return List[Tuple[PDFPageMetadata, pymupdf.Rect, str]]: The list of valid
-            redaction instances to apply on the page. Each tuple contains the page metadata
+        :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid
+            redaction instances to apply on the page. Each tuple contains the page number
             (which may be the following page for partial redactions across line breaks),
             the bounding box to redact, and the full term being redacted.
         """
