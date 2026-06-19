@@ -94,8 +94,15 @@ class AzureVisionUtil:
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
-        if not self._check_image_size(image):
-            return tuple()
+        try:
+            valid_image = self._check_image_size(image)
+            if not valid_image:
+                return tuple()
+        except Exception as e:
+            LoggingUtil().log_exception_with_message(
+                "Error checking image size for face detection", e
+            )
+
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -268,7 +275,10 @@ class AzureVisionUtil:
         :returns: True if the image size is within the limits, False otherwise
         """
         byte_stream = BytesIO()
-        image.save(byte_stream, format="jpeg")
+        # Convert image to RGB if it's not already, as some formats may not be
+        # supported by Azure Computer Vision API
+        save_image = image.convert("RGB") if image.mode != "RGB" else image
+        save_image.save(byte_stream, format="jpeg")
         image_bytes = byte_stream.getvalue()
 
         if len(image_bytes) > 20 * 1024 * 1024:
