@@ -160,7 +160,7 @@ def test__image_llm_text_redactor__redact():
     # Mock _analyse_image_text to return results that assign redaction strings to images
     mock_analyse_result = [
         {
-            "image_to_redact": config.images[0],
+            "image": config.images[0],
             "text_rect_map": (
                 ("Klingon", (10, 10, 50, 50)),
                 ("Romulan", (100, 100, 50, 50)),
@@ -171,7 +171,7 @@ def test__image_llm_text_redactor__redact():
             "redaction_strings": ["Klingon", "Romulan"],
         },
         {
-            "image_to_redact": config.images[1],
+            "image": config.images[1],
             "text_rect_map": (
                 ("Cardassian", (30, 30, 50, 50)),
                 ("Vulcan", (4, 8, 12, 16)),
@@ -181,7 +181,7 @@ def test__image_llm_text_redactor__redact():
             "redaction_strings": ["Vulcan"],
         },
         {
-            "image_to_redact": config.images[2],
+            "image": config.images[2],
             "text_rect_map": (
                 ("Klingon", (10, 10, 50, 50)),
                 ("Klingon", (100, 100, 50, 50)),

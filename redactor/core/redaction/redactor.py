@@ -591,7 +591,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
             results.append(
                 self._create_redaction_result(
-                    text_rects_to_redact, image_result["image_to_redact"]
+                    text_rects_to_redact, image_result["image"]
                 )
             )
 
