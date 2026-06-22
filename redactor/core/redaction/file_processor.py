@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from time import time
 from datetime import datetime
 
+from core.util.azure_vision_util import check_image_size
 from core.redaction.redactor import (
     Redactor,
     TextRedactor,
@@ -297,6 +298,15 @@ class PDFProcessor(FileProcessor):
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
+
+                try:  # Check if the image is too small/large for Azure Vision to process
+                    valid_image = check_image_size(image)
+                except Exception:
+                    valid_image = True
+                    continue
+                if not valid_image:
+                    continue
+
                 image_metadata = PDFImageMetadata(
                     source_image_resolution=(
                         image_details["width"],
@@ -1093,7 +1103,10 @@ class PDFProcessor(FileProcessor):
         return redaction_instances
 
     def _apply_provisional_image_redactions(
-        self, file_bytes: BytesIO, redactions: List[ImageRedactionResult]
+        self,
+        file_bytes: BytesIO,
+        redactions: List[ImageRedactionResult],
+        pdf_images: List[PDFImageMetadata] = None,
     ):
         """
         Redact the given list of bounding boxes as provisional redactions in the
@@ -1105,15 +1118,15 @@ class PDFProcessor(FileProcessor):
         """
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
-        pdf_images = self._extract_pdf_images(file_bytes)
+        if pdf_images is None:
+            pdf_images = self._extract_pdf_images(file_bytes)
 
         redaction_candidates = [
-            metadata
+            (metadata, metadata.source_image.convert("RGB"))
             for redaction_result in redactions
             for metadata in redaction_result.redaction_results
             if metadata.redaction_boxes  # Only include candidates with bounding boxes to redact
         ]
-
         unmatched_candidates = list(redaction_candidates)
 
         for pdf_image_metadata in pdf_images:
@@ -1125,18 +1138,16 @@ class PDFProcessor(FileProcessor):
 
             pdf_image = pdf_image_metadata.image
             pdf_image_cleaned = pdf_image.convert("RGB")
-
             page = pages[pdf_image_metadata.page_number]
+
             LoggingUtil().log_info(
-                f"Attempting to apply image redaction highlights for image '{pdf_image}' "
+                f"Attempting to apply image redaction highlights for image '{pdf_image_cleaned}' "
                 f"on page {page.number} with dimensions '{page.rect}'."
             )
 
             image_transform = pdf_image_metadata.image_transform_in_pdf
-            matched_candidate = None
-            for metadata in unmatched_candidates:
-                if metadata.source_image.convert("RGB") == pdf_image_cleaned:
-                    matched_candidate = metadata
+            for metadata, converted_image in unmatched_candidates:
+                if converted_image == pdf_image_cleaned:
                     # Match found for current PDF image
                     bounding_boxes = metadata.redaction_boxes
                     redaction_names = metadata.names
@@ -1175,10 +1186,7 @@ class PDFProcessor(FileProcessor):
                                 ),
                                 e,
                             )
-                    break
-
-            if matched_candidate:
-                unmatched_candidates.remove(matched_candidate)
+                    unmatched_candidates.remove((metadata, converted_image))
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
@@ -1348,7 +1356,7 @@ class PDFProcessor(FileProcessor):
         LoggingUtil().log_info("Applying image redactions")
         image_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_image_redactions(
-            new_file_bytes, image_redaction_results
+            new_file_bytes, image_redaction_results, pdf_images=pdf_images
         )
         image_redaction_apply_time_end = time()
         image_redaction_apply_time = (

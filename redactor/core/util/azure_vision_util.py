@@ -107,8 +107,11 @@ class AzureVisionUtil:
                   with confidence above the threshold
         """
         try:
-            valid_image = self._check_image_size(image)
+            valid_image = check_image_size(image)
             if not valid_image:
+                LoggingUtil().log_info(
+                    "Skipping text detection for image due to size constraints."
+                )
                 return tuple()
         except Exception as e:
             LoggingUtil().log_exception_with_message(
@@ -232,8 +235,18 @@ class AzureVisionUtil:
         :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
-        if not self._check_image_size(image):
-            return tuple()
+        try:
+            valid_image = check_image_size(image)
+            if not valid_image:
+                LoggingUtil().log_info(
+                    "Skipping text detection for image due to size constraints."
+                )
+                return tuple()
+        except Exception as e:
+            LoggingUtil().log_exception_with_message(
+                "Error checking image size for face detection", e
+            )
+
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -287,42 +300,42 @@ class AzureVisionUtil:
 
         return text_detected
 
-    @log_to_appins
-    def _check_image_size(self, image: Image.Image) -> bool:
-        """
-        Check if the image size is within the limits of Azure Computer Vision API:
-        - The image size must be less than 20MB
-        - The image dimensions must be at least 50x50 and at most 16000x16000 pixels
 
-        :param Image.Image image: The image to check
-        :returns: True if the image size is within the limits, False otherwise
-        """
-        byte_stream = BytesIO()
-        # Convert image to RGB if it's not already, as some formats may not be
-        # supported by Azure Computer Vision API
-        save_image = image.convert("RGB") if image.mode != "RGB" else image
-        save_image.save(byte_stream, format="jpeg")
-        image_bytes = byte_stream.getvalue()
+@log_to_appins
+def check_image_size(image: Image.Image) -> bool:
+    """
+    Check if the image size is within the limits of Azure Computer Vision API:
+    - The image size must be less than 20MB
+    - The image dimensions must be at least 50x50 and at most 16000x16000 pixels
 
-        if len(image_bytes) > 20 * 1024 * 1024:
-            LoggingUtil().log_info(
-                f"Image size is {len(image_bytes)} bytes, which is larger than 20MB. "
-                "Skipping image analysis for this image."
-            )
-            return False
+    :param Image.Image image: The image to check
+    :returns: True if the image size is within the limits, False otherwise
+    """
+    byte_stream = BytesIO()
+    # Convert image to RGB if it's not already, as some formats may not be
+    # supported by Azure Computer Vision API
+    save_image = image.convert("RGB") if image.mode != "RGB" else image
+    save_image.save(byte_stream, format="jpeg")
+    image_bytes = byte_stream.getvalue()
 
-        if image.width < 50 or image.height < 50:
-            LoggingUtil().log_info(
-                f"Image dimensions are {image.width}x{image.height}, which is smaller "
-                "than 50x50 pixels. Skipping image analysis for this image."
-            )
-            return False
+    if len(image_bytes) > 20 * 1024 * 1024:
+        LoggingUtil().log_info(
+            f"Image size is {len(image_bytes)} bytes, which is larger than 20MB. "
+        )
+        return False
 
-        if image.width > 16000 or image.height > 16000:
-            LoggingUtil().log_info(
-                f"Image dimensions are {image.width}x{image.height}, which is larger "
-                "than 16000x16000 pixels. Skipping image analysis for this image."
-            )
-            return False
+    if image.width < 50 or image.height < 50:
+        LoggingUtil().log_info(
+            f"Image dimensions are {image.width}x{image.height}, which is smaller "
+            "than 50x50 pixels."
+        )
+        return False
 
-        return True
+    if image.width > 16000 or image.height > 16000:
+        LoggingUtil().log_info(
+            f"Image dimensions are {image.width}x{image.height}, which is larger "
+            "than 16000x16000 pixels."
+        )
+        return False
+
+    return True

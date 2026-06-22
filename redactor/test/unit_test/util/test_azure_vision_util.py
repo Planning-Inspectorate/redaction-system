@@ -1,7 +1,7 @@
 from mock import patch, Mock
 from typing import List
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
-from core.util.azure_vision_util import AzureVisionUtil
+from core.util.azure_vision_util import AzureVisionUtil, check_image_size
 from core.util.logging_util import LoggingUtil
 from PIL import Image
 
@@ -89,8 +89,10 @@ def test__azure_vision_util__detect_faces(mock_bytes_io):
     ]
 
     with (
-        patch.object(
-            AzureVisionUtil, "_check_image_size", return_value=True, autospec=True
+        patch(
+            "core.util.azure_vision_util.check_image_size",
+            return_value=True,
+            autospec=True,
         ),
         patch.object(
             ImageAnalysisClient, "analyze", return_value=Mock(), autospec=True
@@ -137,8 +139,8 @@ def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
         }
     ]
 
-    with patch.object(
-        AzureVisionUtil, "_check_image_size", return_value=True, autospec=True
+    with patch(
+        "core.util.azure_vision_util.check_image_size", return_value=True, autospec=True
     ):
         result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
     LoggingUtil.log_info.assert_called_with("Using cached face detection result.")
@@ -260,8 +262,10 @@ def test__azure_vision_util__detect_text(mock_bytes_io):
         patch.object(
             ImageAnalysisClient, "analyze", return_value=Mock(), autospec=True
         ) as mock_analyze,
-        patch.object(
-            AzureVisionUtil, "_check_image_size", return_value=True, autospec=True
+        patch(
+            "core.util.azure_vision_util.check_image_size",
+            return_value=True,
+            autospec=True,
         ),
     ):
         mock_analyze.return_value = MockTextAnalysisClientResult()
@@ -299,8 +303,8 @@ def test__azure_vision_util__detect_text__use_cached_result(mock_bytes_io):
         },
     ]
 
-    with patch.object(
-        AzureVisionUtil, "_check_image_size", return_value=True, autospec=True
+    with patch(
+        "core.util.azure_vision_util.check_image_size", return_value=True, autospec=True
     ):
         result = azure_vision_util.detect_text(image)
         LoggingUtil.log_info.assert_called_with("Using cached text detection result.")
@@ -309,53 +313,39 @@ def test__azure_vision_util__detect_text__use_cached_result(mock_bytes_io):
     mock_bytes_io.assert_not_called()  # Ensure no analysis was performed
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__valid_image(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__check_image_size__valid_image():
     image = Image.new("RGB", (100, 100))
-    assert azure_vision_util._check_image_size(image) is True
+    assert check_image_size(image) is True
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__too_small_width(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__check_image_size__too_small_width():
     image = Image.new("RGB", (49, 100))
-    assert azure_vision_util._check_image_size(image) is False
+    assert check_image_size(image) is False
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__too_small_height(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__check_image_size__too_small_height():
     image = Image.new("RGB", (100, 49))
-    assert azure_vision_util._check_image_size(image) is False
+    assert check_image_size(image) is False
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__too_large_width(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__check_image_size__too_large_width():
     image = Image.new("RGB", (16001, 100))
-    assert azure_vision_util._check_image_size(image) is False
+    assert check_image_size(image) is False
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__too_large_height(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__check_image_size__too_large_height():
     image = Image.new("RGB", (100, 16001))
-    assert azure_vision_util._check_image_size(image) is False
+    assert check_image_size(image) is False
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__exact_minimum(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__azure_vision_util__check_image_size__exact_minimum():
     image = Image.new("RGB", (50, 50))
-    assert azure_vision_util._check_image_size(image) is True
+    assert check_image_size(image) is True
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__check_image_size__exact_maximum(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
+def test__azure_vision_util__check_image_size__exact_maximum():
     image = Image.new("RGB", (16000, 16000))
-    assert azure_vision_util._check_image_size(image) is True
+    assert check_image_size(image) is True
 
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
