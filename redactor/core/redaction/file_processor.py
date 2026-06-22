@@ -1116,11 +1116,14 @@ class PDFProcessor(FileProcessor):
             image_transform = pdf_image_metadata.image_transform_in_pdf
 
             for redaction_result in redactions:
-                relevant_image_metadata = [
-                    metadata
-                    for metadata in redaction_result.redaction_results
-                    if metadata.source_image.convert("RGB") == pdf_image_cleaned
-                ]
+                relevant_image_metadata = []
+                for metadata in redaction_result.redaction_results:
+                    if not metadata.redaction_boxes:
+                        # No redaction boxes for this image, skip
+                        continue
+                    if metadata.source_image.convert("RGB") == pdf_image_cleaned:
+                        # Match found for current PDF image
+                        relevant_image_metadata.append(metadata)
 
                 if relevant_image_metadata:
                     for metadata in relevant_image_metadata:
@@ -1144,6 +1147,11 @@ class PDFProcessor(FileProcessor):
                                     ),
                                     pymupdf.Matrix(image_transform),
                                 )
+                            )
+                            LoggingUtil().log_info(
+                                f"Applying image redaction highlight for rect "
+                                f"'{rect_in_global_space}' on page '{page.number}' with "
+                                f"dimensions '{page.rect}'"
                             )
                             try:
                                 self._add_provisional_redaction(
@@ -1311,6 +1319,7 @@ class PDFProcessor(FileProcessor):
         )
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
+        LoggingUtil().log_info("Applying text redactions")
         text_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions
@@ -1319,8 +1328,10 @@ class PDFProcessor(FileProcessor):
         text_redaction_apply_time = (
             text_redaction_apply_time_end - text_redaction_apply_time_start
         )
+        LoggingUtil().log_info("Text redactions applied")
 
         # Apply image redactions
+        LoggingUtil().log_info("Applying image redactions")
         image_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_image_redactions(
             new_file_bytes, image_redaction_results
@@ -1329,6 +1340,7 @@ class PDFProcessor(FileProcessor):
         image_redaction_apply_time = (
             image_redaction_apply_time_end - image_redaction_apply_time_start
         )
+        LoggingUtil().log_info("Image redactions applied")
 
         unapplied_redaction_terms = [
             term for term, count in self.terms_found.items() if count == 0

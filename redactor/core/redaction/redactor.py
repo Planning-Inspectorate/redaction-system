@@ -195,17 +195,19 @@ class ImageRedactor(Redactor):  # pragma: no cover
         face_detection_results = AzureVisionUtil().detect_faces_in_images(
             self.config.images, self.config.confidence_threshold
         )
-        for face_detection_result in face_detection_results:
-            image_to_redact = face_detection_result[0]
-            faces_detected = face_detection_result[1]
-            results.append(
-                ImageRedactionResult.Result(
-                    image_dimensions=(image_to_redact.width, image_to_redact.height),
-                    source_image=image_to_redact,
-                    redaction_boxes=faces_detected,
-                    names=tuple(["Face Detected" for _ in faces_detected]),
+        for image_to_redact, faces_detected in face_detection_results:
+            if faces_detected:
+                results.append(
+                    ImageRedactionResult.Result(
+                        image_dimensions=(
+                            image_to_redact.width,
+                            image_to_redact.height,
+                        ),
+                        source_image=image_to_redact,
+                        redaction_boxes=faces_detected,
+                        names=tuple(["Face Detected" for _ in faces_detected]),
+                    )
                 )
-            )
         end_time = time()
         total_time = end_time - start_time
 
@@ -330,9 +332,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
     @classmethod
     def _create_redaction_result(
         cls, text_rects_to_redact, image_to_redact
-    ) -> ImageRedactionResult.Result:
+    ) -> ImageRedactionResult.Result | None:
         # Remove any duplicates
         text_rects_to_redact = list(dict.fromkeys(text_rects_to_redact))
+        if not text_rects_to_redact:
+            return None
 
         return ImageRedactionResult.Result(
             image_dimensions=(
@@ -358,7 +362,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         total_ocr_time += ocr_time
         return image_text_rect_map, total_ocr_time
 
-    def _get_number_plate_redactions(self, text_content, text_rect_map):
+    def _get_number_plate_redactions(
+        self, text_content, text_rect_map
+    ) -> Tuple[List[Tuple], float, float]:
         # Detect number plates using regex
         number_plate_detection_start_time = time()
         redaction_strings = self.detect_number_plates(text_content)
@@ -432,9 +438,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 total_number_plate_detection_time += number_plate_detection_time
                 total_bounding_box_time += bbox_time
 
-                results.append(
-                    self._create_redaction_result(text_rects_to_redact, image_to_redact)
+                redaction_result = self._create_redaction_result(
+                    text_rects_to_redact, image_to_redact
                 )
+                if redaction_result:
+                    results.append(redaction_result)
 
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
@@ -512,10 +520,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         llm_util = LLMUtil(self.config)
 
         # Identify redaction strings
-        llm_redaction_result = llm_util.analyse_text(
-            system_prompt,
-            text_chunks,
-        )
+        llm_redaction_result = llm_util.analyse_text(system_prompt, text_chunks)
 
         redaction_strings = llm_redaction_result.redaction_strings
         for image in image_text_content:
@@ -589,11 +594,11 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
 
             total_bounding_box_time += time() - text_analysis_start_time
 
-            results.append(
-                self._create_redaction_result(
-                    text_rects_to_redact, image_result["image"]
-                )
+            redaction_result = self._create_redaction_result(
+                text_rects_to_redact, image_result["image"]
             )
+            if redaction_result:
+                results.append(redaction_result)
 
         return ImageRedactionResult(
             rule_name=self.config.name,

@@ -27,31 +27,32 @@ def test__image_redactor__redact():
     - When I call ImageRedactor.redact
     - If the underlying analysis tool returns three bounding boxes, then these should be returned alongside metedata about the analysed image
     """
+    images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
     config = ImageRedactionConfig(
         name="some image redaction config",
         redactor_type="ImageRedaction",
-        images=[Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))],
+        images=images,
     )
-    detect_faces_side_effects = [
-        ((10, 10, 50, 50), (100, 100, 50, 50)),
-        ((30, 30, 50, 50),),
+    detect_faces_result = [
+        (images[0], ((10, 10, 50, 50), (100, 100, 50, 50))),
+        (images[1], ((30, 30, 50, 50),)),
     ]
     expected_results = ImageRedactionResult(
         rule_name="some image redaction config",
         run_metrics=dict(),
         redaction_results=tuple(
             ImageRedactionResult.Result(
-                source_image=config.images[i],
-                image_dimensions=(config.images[i].width, config.images[i].height),
+                source_image=image,
+                image_dimensions=(image.width, image.height),
                 redaction_boxes=faces_detected,
                 names=tuple("Face Detected" for _ in faces_detected),
             )
-            for i, faces_detected in enumerate(detect_faces_side_effects)
+            for i, (image, faces_detected) in enumerate(detect_faces_result)
         ),
     )
     with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
         with mock.patch.object(
-            AzureVisionUtil, "detect_faces", side_effect=detect_faces_side_effects
+            AzureVisionUtil, "detect_faces_in_images", return_value=detect_faces_result
         ):
             with mock.patch.object(ImageRedactor, "__init__", return_value=None):
                 inst = ImageRedactor()
@@ -93,3 +94,35 @@ def test__image_redactor__redact__no_images_skips_analysis():
     assert actual_results.rule_name == "some image redaction config"
     assert actual_results.redaction_results == tuple()
     assert actual_results.run_metrics == {}
+
+
+def test__image_redactor__no_faces_detected():
+    """
+    - Given I have some redaction config (containing two images)
+    - When I call ImageRedactor.redact
+    - If the underlying analysis tool returns no bounding boxes, then the redaction results should be empty
+    """
+    config = ImageRedactionConfig(
+        name="some image redaction config",
+        redactor_type="ImageRedaction",
+        images=[Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))],
+    )
+    detect_faces_result = [(config.images[0], tuple()), (config.images[1], tuple())]
+    expected_results = ImageRedactionResult(
+        rule_name="some image redaction config",
+        run_metrics=dict(),
+        redaction_results=tuple(),
+    )
+    with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
+        with mock.patch.object(
+            AzureVisionUtil, "detect_faces_in_images", return_value=detect_faces_result
+        ):
+            with mock.patch.object(ImageRedactor, "__init__", return_value=None):
+                inst = ImageRedactor()
+                inst.config = config
+                actual_results = inst.redact()
+                cleaned_expected_results = dataclasses.asdict(expected_results)
+                cleaned_expected_results.pop("run_metrics")
+                cleaned_actual_results = dataclasses.asdict(actual_results)
+                cleaned_actual_results.pop("run_metrics")
+                assert cleaned_expected_results == cleaned_actual_results

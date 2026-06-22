@@ -173,9 +173,9 @@ def test__image_text_redactor__redact__no_text_in_image_skips_number_plate_analy
         ],
     )
     # OCR returns empty text for the image
-    detect_text_in_images_return_value = (
+    detect_text_in_images_return_value = [
         (config.images[0], (("", (10, 10, 50, 50)),)),
-    )
+    ]
     with (
         mock.patch.object(
             ImageTextRedactor,
@@ -196,3 +196,50 @@ def test__image_text_redactor__redact__no_text_in_image_skips_number_plate_analy
     mock_get_number_plate_redactions.assert_not_called()
     # No results since the image was skipped
     assert actual_results.redaction_results == tuple()
+
+
+def test__image_redactor__no_number_plate_detected():
+    """
+    - Given I have some redaction config (containing two images)
+    - When I call ImageRedactor.redact
+    - If the underlying analysis tool returns no bounding boxes, then the redaction results should be empty
+    """
+    images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
+    config = ImageRedactionConfig(
+        name="some image redaction config",
+        redactor_type="ImageRedaction",
+        images=images,
+    )
+    detect_text_in_images_return_value = [
+        (images[0], (("text", (10, 10, 50, 50)),)),
+        (images[1], (("other text", (30, 30, 50, 50)),)),
+    ]
+    number_plate_redactions_result = (tuple(), 0.0, 0.0)
+    expected_results = ImageRedactionResult(
+        rule_name="some image redaction config",
+        run_metrics=dict(),
+        redaction_results=tuple(),
+    )
+    with (
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
+        mock.patch.object(
+            ImageTextRedactor,
+            "_analyse_images",
+            return_value=(detect_text_in_images_return_value, 0.0),
+        ),
+        mock.patch.object(
+            ImageTextRedactor,
+            "_get_number_plate_redactions",
+            return_value=number_plate_redactions_result,
+        ) as mock_get_number_plate_redactions,
+    ):
+        inst = ImageTextRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        assert cleaned_expected_results == cleaned_actual_results
+        assert mock_get_number_plate_redactions.call_count == 2

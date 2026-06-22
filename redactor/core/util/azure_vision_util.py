@@ -52,7 +52,12 @@ class AzureVisionUtil:
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
         responses = []
+        LoggingUtil().log_info(
+            f"Detecting faces in {len(images)} images with confidence threshold "
+            f"{confidence_threshold}..."
+        )
         with ThreadPoolExecutor(get_max_workers()) as tpe:
+            finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
@@ -62,11 +67,18 @@ class AzureVisionUtil:
                     image = ai_vision_responses_future_map[future]
                     faces = future.result()
                     responses.append((image, faces))
+                    finished_futures += 1
+                    LoggingUtil().log_info(
+                        f"Finished face detection for {finished_futures}/{len(images)} "
+                        "images."
+                    )
+
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
                         "Image face detection failed with the following exception: ",
                         e,
                     )
+        LoggingUtil().log_info(f"Finished detecting faces in {len(images)} images.")
         return responses
 
     @retry(
@@ -166,6 +178,7 @@ class AzureVisionUtil:
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
         with ThreadPoolExecutor(get_max_workers()) as tpe:
+            finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(
                     self.detect_text,
@@ -178,11 +191,17 @@ class AzureVisionUtil:
                     image = ai_vision_responses_future_map[future]
                     text = future.result()
                     responses.append((image, text))
+                    finished_futures += 1
+                    LoggingUtil().log_info(
+                        f"Finished text detection for {finished_futures}/{len(images)} "
+                        "images."
+                    )
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
                         "Image text detection failed with the following exception: ",
                         e,
                     )
+        LoggingUtil().log_info(f"Finished detecting text in {len(images)} images.")
         return responses
 
     @log_to_appins
