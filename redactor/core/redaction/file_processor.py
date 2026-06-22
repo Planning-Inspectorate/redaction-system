@@ -1107,65 +1107,79 @@ class PDFProcessor(FileProcessor):
         pages = [page for page in pdf]
         pdf_images = self._extract_pdf_images(file_bytes)
 
+        redaction_candidates = [
+            metadata
+            for redaction_result in redactions
+            for metadata in redaction_result.redaction_results
+            if metadata.redaction_boxes  # Only include candidates with bounding boxes to redact
+        ]
+
+        unmatched_candidates = list(redaction_candidates)
+
         for pdf_image_metadata in pdf_images:
+            if not unmatched_candidates:
+                LoggingUtil().log_info(
+                    "All image redaction candidates have been matched to PDF images."
+                )
+                break
+
             pdf_image = pdf_image_metadata.image
             pdf_image_cleaned = pdf_image.convert("RGB")
 
             page = pages[pdf_image_metadata.page_number]
+            LoggingUtil().log_info(
+                f"Attempting to apply image redaction highlights for image '{pdf_image}' "
+                f"on page {page.number} with dimensions '{page.rect}'."
+            )
 
             image_transform = pdf_image_metadata.image_transform_in_pdf
+            matched_candidate = None
+            for metadata in unmatched_candidates:
+                if metadata.source_image.convert("RGB") == pdf_image_cleaned:
+                    matched_candidate = metadata
+                    # Match found for current PDF image
+                    bounding_boxes = metadata.redaction_boxes
+                    redaction_names = metadata.names
 
-            for redaction_result in redactions:
-                relevant_image_metadata = []
-                for metadata in redaction_result.redaction_results:
-                    if not metadata.redaction_boxes:
-                        # No redaction boxes for this image, skip
-                        continue
-                    if metadata.source_image.convert("RGB") == pdf_image_cleaned:
-                        # Match found for current PDF image
-                        relevant_image_metadata.append(metadata)
+                    for bounding_box, redaction_name in zip(
+                        bounding_boxes, redaction_names
+                    ):
+                        untransformed_bounding_box = pymupdf.Rect(
+                            x0=bounding_box[0],
+                            y0=bounding_box[1],
+                            x1=bounding_box[2],
+                            y1=bounding_box[3],
+                        )
+                        rect_in_global_space = (
+                            self._transform_bounding_box_to_global_space(
+                                untransformed_bounding_box,
+                                pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
+                                pymupdf.Matrix(image_transform),
+                            )
+                        )
+                        LoggingUtil().log_info(
+                            f"Applying image redaction highlight for rect "
+                            f"'{rect_in_global_space}' on page {page.number} with "
+                            f"dimensions '{page.rect}'"
+                        )
+                        try:
+                            self._add_provisional_redaction(
+                                page, rect_in_global_space, name=redaction_name
+                            )
+                        except Exception as e:
+                            LoggingUtil().log_exception_with_message(
+                                (
+                                    f"Failed to apply image redaction highlight for rect "
+                                    f"'{rect_in_global_space}' on page {page.number} with "
+                                    f"dimensions '{page.rect}'"
+                                ),
+                                e,
+                            )
+                    break
 
-                if relevant_image_metadata:
-                    for metadata in relevant_image_metadata:
-                        bounding_boxes = metadata.redaction_boxes
-                        redaction_names = metadata.names
+            if matched_candidate:
+                unmatched_candidates.remove(matched_candidate)
 
-                        for bounding_box, redaction_name in zip(
-                            bounding_boxes, redaction_names
-                        ):
-                            untransformed_bounding_box = pymupdf.Rect(
-                                x0=bounding_box[0],
-                                y0=bounding_box[1],
-                                x1=bounding_box[2],
-                                y1=bounding_box[3],
-                            )
-                            rect_in_global_space = (
-                                self._transform_bounding_box_to_global_space(
-                                    untransformed_bounding_box,
-                                    pymupdf.Point(
-                                        x=pdf_image.width, y=pdf_image.height
-                                    ),
-                                    pymupdf.Matrix(image_transform),
-                                )
-                            )
-                            LoggingUtil().log_info(
-                                f"Applying image redaction highlight for rect "
-                                f"'{rect_in_global_space}' on page '{page.number}' with "
-                                f"dimensions '{page.rect}'"
-                            )
-                            try:
-                                self._add_provisional_redaction(
-                                    page, rect_in_global_space, name=redaction_name
-                                )
-                            except Exception as e:
-                                LoggingUtil().log_exception_with_message(
-                                    (
-                                        f"Failed to apply image redaction highlight for rect "
-                                        f"'{rect_in_global_space}' on page '{page.number}' with "
-                                        f"dimensions '{page.rect}'"
-                                    ),
-                                    e,
-                                )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)

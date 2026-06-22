@@ -52,11 +52,11 @@ class AzureVisionUtil:
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
         responses = []
+        max_workers = get_max_workers()
         LoggingUtil().log_info(
-            f"Detecting faces in {len(images)} images with confidence threshold "
-            f"{confidence_threshold}..."
+            f"Detecting faces in {len(images)} images using up to {max_workers} workers..."
         )
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        with ThreadPoolExecutor(max_workers) as tpe:
             finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
@@ -70,7 +70,7 @@ class AzureVisionUtil:
                     finished_futures += 1
                     LoggingUtil().log_info(
                         f"Finished face detection for {finished_futures}/{len(images)} "
-                        "images."
+                        f"images: {len(faces)} faces detected."
                     )
 
                 except Exception as e:
@@ -177,7 +177,11 @@ class AzureVisionUtil:
         responses: List[
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        max_workers = get_max_workers()
+        LoggingUtil().log_info(
+            f"Detecting text in {len(images)} images using up to {max_workers} workers..."
+        )
+        with ThreadPoolExecutor(max_workers) as tpe:
             finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(
@@ -193,8 +197,7 @@ class AzureVisionUtil:
                     responses.append((image, text))
                     finished_futures += 1
                     LoggingUtil().log_info(
-                        f"Finished text detection for {finished_futures}/{len(images)} "
-                        "images."
+                        f"Finished text detection for {finished_futures}/{len(images)} images."
                     )
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
@@ -284,6 +287,7 @@ class AzureVisionUtil:
 
         return text_detected
 
+    @log_to_appins
     def _check_image_size(self, image: Image.Image) -> bool:
         """
         Check if the image size is within the limits of Azure Computer Vision API:
