@@ -293,8 +293,11 @@ class PDFProcessor(FileProcessor):
             for image_xref in page.get_images(full=True):
                 page: pymupdf.Page = page
                 image_details = pdf.extract_image(image_xref[0])
-                transform = page.get_image_bbox(image_xref, transform=True)[1]
-                transform: pymupdf.Matrix = transform
+                bbox_result = page.get_image_bbox(image_xref, transform=True)
+                if not isinstance(bbox_result, tuple):
+                    # Image is not displayed on the page (dead entry)
+                    continue
+                transform: pymupdf.Matrix = bbox_result[1]
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)

@@ -123,6 +123,41 @@ def test__pdf_processor__extract_pdf_images():
     assert isinstance(actual_image, Image.Image)
 
 
+def test__pdf_processor__extract_pdf_images__dead_image():
+    """
+    - Given I have a PDF with a dead image entry (referenced but not displayed)
+    - When I call _extract_pdf_images
+    - Then the dead image should be skipped and not included in the result
+    """
+    mock_document = pymupdf.open()
+    mock_document.new_page()
+    image_xref = (1, 0, 100, 100, 8, "DeviceRGB", "", "Im1", "DCTDecode", 0)
+    infinite_rect = pymupdf.Rect(1, 1, -1, -1)  # Infinite rect returned for dead images
+
+    with (
+        patch("pymupdf.open", return_value=mock_document),
+        patch.object(pymupdf.Page, "get_images", return_value=[image_xref]),
+        patch.object(
+            mock_document,
+            "extract_image",
+            return_value={
+                "ext": "jpeg",
+                "width": 100,
+                "height": 100,
+                "image": Image.new("RGB", (100, 100)).tobytes(),
+            },
+        ),
+        patch.object(
+            pymupdf.Page,
+            "get_image_bbox",
+            return_value=infinite_rect,
+        ),
+    ):
+        result = PDFProcessor()._extract_pdf_images(BytesIO())
+
+    assert result == []
+
+
 def test__pdf_processor__extract_pdf_annotations():
     mock_document = pymupdf.open()
     mock_page = mock_document.new_page()
