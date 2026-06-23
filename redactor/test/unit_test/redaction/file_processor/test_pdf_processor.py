@@ -21,6 +21,16 @@ from core.util.text_util import is_english_text, get_normalised_words
 from core.redaction.exceptions import NonEnglishContentException
 
 
+def _make_pdf_with_text(text: str) -> BytesIO:
+    doc = pymupdf.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), text)
+    b = BytesIO()
+    doc.save(b)
+    b.seek(0)
+    return b
+
+
 def test__pdf_processor__get_name():
     """
     - When get_name is called
@@ -911,6 +921,51 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
     assert result == expected_result
 
 
+def test__pdf_processor__apply_provisional_text_redactions__no_text_on_page():
+    file_bytes = _make_pdf_with_text("")
+    page_metadata = create_mock_page_metadata(
+        page_number=0,
+        text_content="",
+        lines=[],
+        y0=[],
+        y1=[],
+        x0=[],
+        x1=[],
+    )
+    term = "Hello World"
+
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
+            PDFProcessor,
+            "_extract_page_text",
+            return_value=page_metadata,
+        ),
+        patch.object(
+            PDFProcessor,
+            "_get_next_page_metadata",
+            return_value=None,
+        ),
+        patch.object(
+            PDFProcessor,
+            "_examine_provisional_redactions_on_page",
+        ) as mock_examine_provisional_redactions_on_page,
+        patch.object(
+            PDFProcessor,
+            "_add_provisional_redaction",
+        ) as mock_add_provisional_redaction,
+    ):
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {term: 0}
+        pdf_processor._apply_provisional_text_redactions(
+            file_bytes,
+            [term],
+        )
+
+    mock_examine_provisional_redactions_on_page.assert_not_called()
+    mock_add_provisional_redaction.assert_not_called()
+
+
 def test__pdf_processor__match_word_to_redact_in_line():
     words_to_check = np.array(["hello", "world"], dtype=str)
     result = PDFProcessor._match_word_to_redact_in_line("hello", words_to_check)
@@ -1091,16 +1146,6 @@ def test__pdf_processor__find_potential_matches_in_line(test_case):
         assert result[-1] == expected_result, error_message
     else:
         assert result == []
-
-
-def _make_pdf_with_text(text: str) -> BytesIO:
-    doc = pymupdf.open()
-    page = doc.new_page()
-    page.insert_text((72, 72), text)
-    b = BytesIO()
-    doc.save(b)
-    b.seek(0)
-    return b
 
 
 def test__pdf_processor__redact_skips_non_english_raises_exception():

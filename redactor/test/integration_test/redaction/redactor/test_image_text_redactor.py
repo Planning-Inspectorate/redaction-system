@@ -36,3 +36,22 @@ def test__image_text_redactor__redact_number_plate():
     assert isinstance(result, ImageRedactionResult)
     assert len(result.redaction_results) == 1
     assert set(result.redaction_results[0].redaction_boxes) == set(redaction_boxes)
+
+
+def test__image_text_redactor__redact__no_images_returns_empty_result():
+    """
+    - Given I have a config with an empty images list
+    - When I call ImageTextRedactor.redact
+    - Then it should return an empty ImageRedactionResult without calling Azure Vision
+    """
+    config = ImageRedactionConfig(
+        name="config name",
+        redactor_type="ImageTextRedaction",
+        images=[],
+    )
+    redactor_inst = ImageTextRedactor(config)
+    result = redactor_inst.redact()
+
+    assert isinstance(result, ImageRedactionResult)
+    assert result.redaction_results == tuple()
+    assert result.run_metrics["total_images_to_analyse"] == 0

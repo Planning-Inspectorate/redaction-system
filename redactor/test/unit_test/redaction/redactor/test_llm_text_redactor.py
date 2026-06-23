@@ -66,3 +66,60 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
 
     mock_llm_util_init.assert_called_once_with(config)
     mock_analyse_text.assert_called_once()
+
+
+@patch.object(LLMTextRedactor, "__init__", return_value=None)
+def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
+    mock_llm_text_redaction_config_init,
+):
+    """
+    - Given I have empty text to analyse
+    - When I call LLMTextRedactor._analyse_text with empty string
+    - Then it should return an empty LLMTextRedactionResult without calling LLMUtil
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1",
+        system_prompt="some system prompt",
+        redaction_terms=["rule A"],
+    )
+
+    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
+        with patch.object(LLMUtil, "analyse_text") as mock_analyse_text:
+            LLMTextRedactor.config = config
+            result = LLMTextRedactor()._analyse_text("")
+
+    # LLMUtil should never be instantiated or called
+    mock_llm_util_init.assert_not_called()
+    mock_analyse_text.assert_not_called()
+
+    assert isinstance(result, LLMTextRedactionResult)
+    assert result.rule_name == "config name"
+    assert result.redaction_strings == tuple()
+    assert result.run_metrics == {}
+
+
+@patch.object(LLMTextRedactor, "__init__", return_value=None)
+def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
+    mock_llm_text_redaction_config_init,
+):
+    """
+    - Given text_to_analyse is None
+    - When I call LLMTextRedactor._analyse_text with None
+    - Then it should return an empty LLMTextRedactionResult without calling LLMUtil
+    """
+    config = LLMTextRedactionConfig(
+        name="config name",
+        redactor_type="LLMTextRedaction",
+        model="gpt-4.1",
+        system_prompt="some system prompt",
+        redaction_terms=["rule A"],
+    )
+
+    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
+        LLMTextRedactor.config = config
+        result = LLMTextRedactor()._analyse_text(None)
+
+    mock_llm_util_init.assert_not_called()
+    assert result.redaction_strings == tuple()

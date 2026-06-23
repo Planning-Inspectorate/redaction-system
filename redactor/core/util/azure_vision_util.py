@@ -52,7 +52,12 @@ class AzureVisionUtil:
         self, images: List[Image.Image], confidence_threshold: float = 0.5
     ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
         responses = []
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        max_workers = get_max_workers()
+        LoggingUtil().log_info(
+            f"Detecting faces in {len(images)} images using up to {max_workers} workers..."
+        )
+        with ThreadPoolExecutor(max_workers) as tpe:
+            finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
@@ -62,11 +67,18 @@ class AzureVisionUtil:
                     image = ai_vision_responses_future_map[future]
                     faces = future.result()
                     responses.append((image, faces))
+                    finished_futures += 1
+                    LoggingUtil().log_info(
+                        f"Finished face detection for {finished_futures}/{len(images)} "
+                        f"images: {len(faces)} faces detected."
+                    )
+
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        "Image face detection failed with the following excepetion: ",
+                        "Image face detection failed with the following exception: ",
                         e,
                     )
+        LoggingUtil().log_info(f"Finished detecting faces in {len(images)} images.")
         return responses
 
     @retry(
@@ -90,10 +102,17 @@ class AzureVisionUtil:
         Detect faces in the given image
 
         :param Image.Image image: The image to analyse
-        :param  floatconfidence_threshold: Confidence threshold between 0 and 1
+        :param float confidence_threshold: Confidence threshold between 0 and 1
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
+        valid_image = check_image_size(image)
+        if not valid_image:
+            LoggingUtil().log_info(
+                "Skipping text detection for image due to size constraints."
+            )
+            return tuple()
+
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -108,6 +127,9 @@ class AzureVisionUtil:
             byte_stream = BytesIO()
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
+            LoggingUtil().log_info(
+                "Analysing image for faces using Azure Computer Vision API..."
+            )
 
             try:
                 result = self.vision_client.analyze(
@@ -115,10 +137,14 @@ class AzureVisionUtil:
                     [VisualFeatures.PEOPLE],
                 )
             except HttpResponseError as e:
+                LoggingUtil().log_exception_with_message(
+                    "HTTP response error analysing image for faces", e
+                )
                 raise e
             except Exception as e:
-                LoggingUtil().log_info("Error analysing image for faces")
-                LoggingUtil().log_exception(e)
+                LoggingUtil().log_exception_with_message(
+                    "Error analysing image for faces", e
+                )
                 return None
 
             faces_detected = tuple(
@@ -149,7 +175,12 @@ class AzureVisionUtil:
         responses: List[
             Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
         ] = []
-        with ThreadPoolExecutor(get_max_workers()) as tpe:
+        max_workers = get_max_workers()
+        LoggingUtil().log_info(
+            f"Detecting text in {len(images)} images using up to {max_workers} workers..."
+        )
+        with ThreadPoolExecutor(max_workers) as tpe:
+            finished_futures = 0
             ai_vision_responses_future_map = {
                 tpe.submit(
                     self.detect_text,
@@ -162,11 +193,16 @@ class AzureVisionUtil:
                     image = ai_vision_responses_future_map[future]
                     text = future.result()
                     responses.append((image, text))
+                    finished_futures += 1
+                    LoggingUtil().log_info(
+                        f"Finished text detection for {finished_futures}/{len(images)} images."
+                    )
                 except Exception as e:
                     LoggingUtil().log_exception_with_message(
-                        "Image text detection failed with the following excepetion: ",
+                        "Image text detection failed with the following exception: ",
                         e,
                     )
+        LoggingUtil().log_info(f"Finished detecting text in {len(images)} images.")
         return responses
 
     @log_to_appins
@@ -194,6 +230,13 @@ class AzureVisionUtil:
         :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
+        valid_image = check_image_size(image)
+        if not valid_image:
+            LoggingUtil().log_info(
+                "Skipping text detection for image due to size constraints."
+            )
+            return tuple()
+
         try:
             # Check cache
             with self.CACHE_LOCK:
@@ -207,17 +250,23 @@ class AzureVisionUtil:
             byte_stream = BytesIO()
             image.save(byte_stream, format="jpeg")
             image_bytes = byte_stream.getvalue()
-
+            LoggingUtil().log_info(
+                "Analysing image for text using Azure Computer Vision API..."
+            )
             try:
                 result = self.vision_client.analyze(
                     image_bytes,
                     [VisualFeatures.READ],
                 )
             except HttpResponseError as e:
+                LoggingUtil().log_exception_with_message(
+                    "HTTP response error analysing image for text", e
+                )
                 raise e
             except Exception as e:
-                LoggingUtil().log_info("Error analysing image for text")
-                LoggingUtil().log_exception(e)
+                LoggingUtil().log_exception_with_message(
+                    "Error analysing image for text", e
+                )
                 return None
 
             text_detected = tuple(
@@ -240,3 +289,43 @@ class AzureVisionUtil:
                 self._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
 
         return text_detected
+
+
+@log_to_appins
+def check_image_size(image: Image.Image) -> bool:
+    """
+    Check if the image size is within the limits of Azure Computer Vision API:
+    - The image size must be less than 20MB
+    - The image dimensions must be at least 50x50 and at most 16000x16000 pixels
+
+    :param Image.Image image: The image to check
+    :returns: True if the image size is within the limits, False otherwise
+    """
+    byte_stream = BytesIO()
+    # Convert image to RGB if it's not already, as some formats may not be
+    # supported by Azure Computer Vision API
+    save_image = image.convert("RGB") if image.mode != "RGB" else image
+    save_image.save(byte_stream, format="jpeg")
+    image_bytes = byte_stream.getvalue()
+
+    if len(image_bytes) > 20 * 1024 * 1024:
+        LoggingUtil().log_info(
+            f"Image size is {len(image_bytes)} bytes, which is larger than 20MB. "
+        )
+        return False
+
+    if image.width < 50 or image.height < 50:
+        LoggingUtil().log_info(
+            f"Image dimensions are {image.width}x{image.height}, which is smaller "
+            "than 50x50 pixels."
+        )
+        return False
+
+    if image.width > 16000 or image.height > 16000:
+        LoggingUtil().log_info(
+            f"Image dimensions are {image.width}x{image.height}, which is larger "
+            "than 16000x16000 pixels."
+        )
+        return False
+
+    return True

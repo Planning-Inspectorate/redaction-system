@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from time import time
 from datetime import datetime
 
+from core.util.azure_vision_util import check_image_size
 from core.redaction.redactor import (
     Redactor,
     TextRedactor,
@@ -297,6 +298,12 @@ class PDFProcessor(FileProcessor):
                 file_format = image_details["ext"]  # PIL doesnt like PNG files
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
+
+                # Check if the image is too small/large for Azure Vision to process
+                valid_image = check_image_size(image)
+                if not valid_image:
+                    continue
+
                 image_metadata = PDFImageMetadata(
                     source_image_resolution=(
                         image_details["width"],
@@ -313,9 +320,6 @@ class PDFProcessor(FileProcessor):
                         transform.e,
                         transform.f,
                     ),
-                )
-                LoggingUtil().log_info(
-                    f"Loaded image with the following metadata {image_metadata}"
                 )
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
@@ -908,6 +912,11 @@ class PDFProcessor(FileProcessor):
             LoggingUtil().log_info(
                 f"Examining page {page.number} for redaction candidates."
             )
+            if not page_metadata.lines:
+                LoggingUtil().log_info(
+                    f"    No text found on page {page.number}, skipping."
+                )
+                continue
             page_redaction_instances = self._examine_provisional_redactions_on_page(
                 text_to_redact,
                 page_metadata,
@@ -953,8 +962,8 @@ class PDFProcessor(FileProcessor):
         :param PDFPageMetadata page_metadata: The metadata of the page to examine
         :param PDFPageMetadata next_page_metadata: The metadata of the next page to
         examine, in case of a line break on the next page
-        :return List[Tuple[PDFPageMetadata, pymupdf.Rect, str]]: The list of valid
-            redaction instances to apply on the page. Each tuple contains the page metadata
+        :return List[Tuple[int, pymupdf.Rect, str]]: The list of valid
+            redaction instances to apply on the page. Each tuple contains the page number
             (which may be the following page for partial redactions across line breaks),
             the bounding box to redact, and the full term being redacted.
         """
@@ -1091,7 +1100,10 @@ class PDFProcessor(FileProcessor):
         return redaction_instances
 
     def _apply_provisional_image_redactions(
-        self, file_bytes: BytesIO, redactions: List[ImageRedactionResult]
+        self,
+        file_bytes: BytesIO,
+        redactions: List[ImageRedactionResult],
+        pdf_images: List[PDFImageMetadata] = None,
     ):
         """
         Redact the given list of bounding boxes as provisional redactions in the
@@ -1103,59 +1115,74 @@ class PDFProcessor(FileProcessor):
         """
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
-        pdf_images = self._extract_pdf_images(file_bytes)
+        if pdf_images is None:
+            pdf_images = self._extract_pdf_images(file_bytes)
+        pdf_images_cleaned = [
+            pdf_image.image.convert("RGB") for pdf_image in pdf_images
+        ]
 
-        for pdf_image_metadata in pdf_images:
-            pdf_image = pdf_image_metadata.image
-            pdf_image_cleaned = pdf_image.convert("RGB")
+        redaction_candidates = [
+            (metadata, metadata.source_image.convert("RGB"))
+            for redaction_result in redactions
+            for metadata in redaction_result.redaction_results
+            if metadata.redaction_boxes  # Only include candidates with bounding boxes to redact
+        ]
 
-            page = pages[pdf_image_metadata.page_number]
+        for (
+            redaction_candidate_metadata,
+            redaction_candidate_image,
+        ) in redaction_candidates:
+            bounding_boxes = redaction_candidate_metadata.redaction_boxes
+            redaction_names = redaction_candidate_metadata.names
 
-            image_transform = pdf_image_metadata.image_transform_in_pdf
+            for pdf_image_metadata, pdf_image_cleaned in zip(
+                pdf_images, pdf_images_cleaned
+            ):
+                if redaction_candidate_image != pdf_image_cleaned:
+                    continue
 
-            for redaction_result in redactions:
-                relevant_image_metadata = [
-                    metadata
-                    for metadata in redaction_result.redaction_results
-                    if metadata.source_image.convert("RGB") == pdf_image_cleaned
-                ]
+                # Match found for redaction candidate
+                pdf_image = pdf_image_metadata.image
+                page = pages[pdf_image_metadata.page_number]
+                image_transform = pdf_image_metadata.image_transform_in_pdf
+                LoggingUtil().log_info(
+                    f"Attempting to apply image redaction highlights for image '{pdf_image}' "
+                    f"on page {page.number} with dimensions '{page.rect}'."
+                )
 
-                if relevant_image_metadata:
-                    for metadata in relevant_image_metadata:
-                        bounding_boxes = metadata.redaction_boxes
-                        redaction_names = metadata.names
+                for bounding_box, redaction_name in zip(
+                    bounding_boxes, redaction_names
+                ):
+                    untransformed_bounding_box = pymupdf.Rect(
+                        x0=bounding_box[0],
+                        y0=bounding_box[1],
+                        x1=bounding_box[2],
+                        y1=bounding_box[3],
+                    )
+                    rect_in_global_space = self._transform_bounding_box_to_global_space(
+                        untransformed_bounding_box,
+                        pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
+                        pymupdf.Matrix(image_transform),
+                    )
+                    LoggingUtil().log_info(
+                        f"Applying image redaction highlight for rect "
+                        f"'{rect_in_global_space}' on page {page.number} with "
+                        f"dimensions '{page.rect}'"
+                    )
+                    try:
+                        self._add_provisional_redaction(
+                            page, rect_in_global_space, name=redaction_name
+                        )
+                    except Exception as e:
+                        LoggingUtil().log_exception_with_message(
+                            (
+                                f"Failed to apply image redaction highlight for rect "
+                                f"'{rect_in_global_space}' on page {page.number} with "
+                                f"dimensions '{page.rect}'"
+                            ),
+                            e,
+                        )
 
-                        for bounding_box, redaction_name in zip(
-                            bounding_boxes, redaction_names
-                        ):
-                            untransformed_bounding_box = pymupdf.Rect(
-                                x0=bounding_box[0],
-                                y0=bounding_box[1],
-                                x1=bounding_box[2],
-                                y1=bounding_box[3],
-                            )
-                            rect_in_global_space = (
-                                self._transform_bounding_box_to_global_space(
-                                    untransformed_bounding_box,
-                                    pymupdf.Point(
-                                        x=pdf_image.width, y=pdf_image.height
-                                    ),
-                                    pymupdf.Matrix(image_transform),
-                                )
-                            )
-                            try:
-                                self._add_provisional_redaction(
-                                    page, rect_in_global_space, name=redaction_name
-                                )
-                            except Exception as e:
-                                LoggingUtil().log_exception_with_message(
-                                    (
-                                        f"Failed to apply image redaction highlight for rect "
-                                        f"'{rect_in_global_space}' on page '{page.number}' with "
-                                        f"dimensions '{page.rect}'"
-                                    ),
-                                    e,
-                                )
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
@@ -1309,6 +1336,7 @@ class PDFProcessor(FileProcessor):
         )
         LoggingUtil().log_info("Applying proposed redactions")
         # Apply text redactions by highlighting text to redact
+        LoggingUtil().log_info("Applying text redactions")
         text_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_text_redactions(
             file_bytes, text_redactions
@@ -1317,16 +1345,19 @@ class PDFProcessor(FileProcessor):
         text_redaction_apply_time = (
             text_redaction_apply_time_end - text_redaction_apply_time_start
         )
+        LoggingUtil().log_info("Text redactions applied")
 
         # Apply image redactions
+        LoggingUtil().log_info("Applying image redactions")
         image_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_image_redactions(
-            new_file_bytes, image_redaction_results
+            new_file_bytes, image_redaction_results, pdf_images=pdf_images
         )
         image_redaction_apply_time_end = time()
         image_redaction_apply_time = (
             image_redaction_apply_time_end - image_redaction_apply_time_start
         )
+        LoggingUtil().log_info("Image redactions applied")
 
         unapplied_redaction_terms = [
             term for term, count in self.terms_found.items() if count == 0
