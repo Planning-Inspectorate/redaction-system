@@ -1119,9 +1119,9 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         if pdf_images is None:
-            pdf_images_metadata = self._extract_pdf_images(file_bytes)
+            pdf_images = self._extract_pdf_images(file_bytes)
             pdf_images_cleaned = [
-                pdf_image.image.convert("RGB") for pdf_image in pdf_images_metadata
+                pdf_image.image.convert("RGB") for pdf_image in pdf_images
             ]
 
         redaction_candidates = [
@@ -1139,7 +1139,7 @@ class PDFProcessor(FileProcessor):
             redaction_names = redaction_candidate_metadata.names
 
             for pdf_image_metadata, pdf_image_cleaned in zip(
-                pdf_images_metadata, pdf_images_cleaned
+                pdf_images, pdf_images_cleaned
             ):
                 if redaction_candidate_image != pdf_image_cleaned:
                     continue
@@ -1185,8 +1185,6 @@ class PDFProcessor(FileProcessor):
                             ),
                             e,
                         )
-
-                    # No break because there may be multiple instances of same image in PDF
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
