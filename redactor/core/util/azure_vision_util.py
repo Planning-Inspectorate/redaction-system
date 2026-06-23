@@ -106,17 +106,12 @@ class AzureVisionUtil:
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
-        try:
-            valid_image = check_image_size(image)
-            if not valid_image:
-                LoggingUtil().log_info(
-                    "Skipping text detection for image due to size constraints."
-                )
-                return tuple()
-        except Exception as e:
-            LoggingUtil().log_exception_with_message(
-                "Error checking image size for face detection", e
+        valid_image = check_image_size(image)
+        if not valid_image:
+            LoggingUtil().log_info(
+                "Skipping text detection for image due to size constraints."
             )
+            return tuple()
 
         try:
             # Check cache
@@ -235,17 +230,12 @@ class AzureVisionUtil:
         :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
-        try:
-            valid_image = check_image_size(image)
-            if not valid_image:
-                LoggingUtil().log_info(
-                    "Skipping text detection for image due to size constraints."
-                )
-                return tuple()
-        except Exception as e:
-            LoggingUtil().log_exception_with_message(
-                "Error checking image size for face detection", e
+        valid_image = check_image_size(image)
+        if not valid_image:
+            LoggingUtil().log_info(
+                "Skipping text detection for image due to size constraints."
             )
+            return tuple()
 
         try:
             # Check cache
