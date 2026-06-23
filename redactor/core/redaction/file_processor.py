@@ -299,11 +299,8 @@ class PDFProcessor(FileProcessor):
                 image_bytes = BytesIO(image_details.get("image"))
                 image = Image.open(image_bytes)
 
-                try:  # Check if the image is too small/large for Azure Vision to process
-                    valid_image = check_image_size(image)
-                except Exception:
-                    valid_image = True
-                    continue
+                # Check if the image is too small/large for Azure Vision to process
+                valid_image = check_image_size(image)
                 if not valid_image:
                     continue
 

@@ -354,13 +354,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         if len(self.config.images) == 0:
             LoggingUtil().log_info("No images to analyse, skipping image text analysis")
             return [], 0.0
-        total_ocr_time = 0.0
         ocr_start_time = time()
         vision_util = AzureVisionUtil()
         image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
         ocr_time = time() - ocr_start_time
-        total_ocr_time += ocr_time
-        return image_text_rect_map, total_ocr_time
+        return image_text_rect_map, ocr_time
 
     def _get_number_plate_redactions(
         self, text_content, text_rect_map
