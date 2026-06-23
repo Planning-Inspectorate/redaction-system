@@ -1120,9 +1120,9 @@ class PDFProcessor(FileProcessor):
         pages = [page for page in pdf]
         if pdf_images is None:
             pdf_images = self._extract_pdf_images(file_bytes)
-            pdf_images_cleaned = [
-                pdf_image.image.convert("RGB") for pdf_image in pdf_images
-            ]
+        pdf_images_cleaned = [
+            pdf_image.image.convert("RGB") for pdf_image in pdf_images
+        ]
 
         redaction_candidates = [
             (metadata, metadata.source_image.convert("RGB"))
