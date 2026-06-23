@@ -1119,7 +1119,10 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         pages = [page for page in pdf]
         if pdf_images is None:
-            pdf_images = self._extract_pdf_images(file_bytes)
+            pdf_images_metadata = self._extract_pdf_images(file_bytes)
+            pdf_images_cleaned = [
+                pdf_image.image.convert("RGB") for pdf_image in pdf_images_metadata
+            ]
 
         redaction_candidates = [
             (metadata, metadata.source_image.convert("RGB"))
@@ -1127,66 +1130,63 @@ class PDFProcessor(FileProcessor):
             for metadata in redaction_result.redaction_results
             if metadata.redaction_boxes  # Only include candidates with bounding boxes to redact
         ]
-        unmatched_candidates = list(redaction_candidates)
 
-        for pdf_image_metadata in pdf_images:
-            if not unmatched_candidates:
+        for (
+            redaction_candidate_metadata,
+            redaction_candidate_image,
+        ) in redaction_candidates:
+            bounding_boxes = redaction_candidate_metadata.redaction_boxes
+            redaction_names = redaction_candidate_metadata.names
+
+            for pdf_image_metadata, pdf_image_cleaned in zip(
+                pdf_images_metadata, pdf_images_cleaned
+            ):
+                if redaction_candidate_image != pdf_image_cleaned:
+                    continue
+
+                # Match found for redaction candidate
+                pdf_image = pdf_image_metadata.image
+                page = pages[pdf_image_metadata.page_number]
+                image_transform = pdf_image_metadata.image_transform_in_pdf
                 LoggingUtil().log_info(
-                    "All image redaction candidates have been matched to PDF images."
+                    f"Attempting to apply image redaction highlights for image '{pdf_image}' "
+                    f"on page {page.number} with dimensions '{page.rect}'."
                 )
-                break
 
-            pdf_image = pdf_image_metadata.image
-            pdf_image_cleaned = pdf_image.convert("RGB")
-            page = pages[pdf_image_metadata.page_number]
-
-            LoggingUtil().log_info(
-                f"Attempting to apply image redaction highlights for image '{pdf_image_cleaned}' "
-                f"on page {page.number} with dimensions '{page.rect}'."
-            )
-
-            image_transform = pdf_image_metadata.image_transform_in_pdf
-            for metadata, converted_image in unmatched_candidates:
-                if converted_image == pdf_image_cleaned:
-                    # Match found for current PDF image
-                    bounding_boxes = metadata.redaction_boxes
-                    redaction_names = metadata.names
-
-                    for bounding_box, redaction_name in zip(
-                        bounding_boxes, redaction_names
-                    ):
-                        untransformed_bounding_box = pymupdf.Rect(
-                            x0=bounding_box[0],
-                            y0=bounding_box[1],
-                            x1=bounding_box[2],
-                            y1=bounding_box[3],
+                for bounding_box, redaction_name in zip(
+                    bounding_boxes, redaction_names
+                ):
+                    untransformed_bounding_box = pymupdf.Rect(
+                        x0=bounding_box[0],
+                        y0=bounding_box[1],
+                        x1=bounding_box[2],
+                        y1=bounding_box[3],
+                    )
+                    rect_in_global_space = self._transform_bounding_box_to_global_space(
+                        untransformed_bounding_box,
+                        pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
+                        pymupdf.Matrix(image_transform),
+                    )
+                    LoggingUtil().log_info(
+                        f"Applying image redaction highlight for rect "
+                        f"'{rect_in_global_space}' on page {page.number} with "
+                        f"dimensions '{page.rect}'"
+                    )
+                    try:
+                        self._add_provisional_redaction(
+                            page, rect_in_global_space, name=redaction_name
                         )
-                        rect_in_global_space = (
-                            self._transform_bounding_box_to_global_space(
-                                untransformed_bounding_box,
-                                pymupdf.Point(x=pdf_image.width, y=pdf_image.height),
-                                pymupdf.Matrix(image_transform),
-                            )
+                    except Exception as e:
+                        LoggingUtil().log_exception_with_message(
+                            (
+                                f"Failed to apply image redaction highlight for rect "
+                                f"'{rect_in_global_space}' on page {page.number} with "
+                                f"dimensions '{page.rect}'"
+                            ),
+                            e,
                         )
-                        LoggingUtil().log_info(
-                            f"Applying image redaction highlight for rect "
-                            f"'{rect_in_global_space}' on page {page.number} with "
-                            f"dimensions '{page.rect}'"
-                        )
-                        try:
-                            self._add_provisional_redaction(
-                                page, rect_in_global_space, name=redaction_name
-                            )
-                        except Exception as e:
-                            LoggingUtil().log_exception_with_message(
-                                (
-                                    f"Failed to apply image redaction highlight for rect "
-                                    f"'{rect_in_global_space}' on page {page.number} with "
-                                    f"dimensions '{page.rect}'"
-                                ),
-                                e,
-                            )
-                    unmatched_candidates.remove((metadata, converted_image))
+
+                    # No break because there may be multiple instances of same image in PDF
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
