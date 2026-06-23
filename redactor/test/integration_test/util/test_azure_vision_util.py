@@ -3,7 +3,7 @@ import os
 from PIL import Image
 from io import BytesIO
 
-from core.util.azure_vision_util import AzureVisionUtil
+from core.util.azure_vision_util import AzureVisionUtil, check_image_size
 
 
 def test__azure_vision_util__detect_faces():
@@ -276,28 +276,28 @@ def test__azure_vision_util__detect_text__use_cached_result():
     assert response == new_response
 
 
-def test__azure_vision_util__check_image_size__too_large():
+def test__check_image_size__too_large():
     with open(
         os.path.join("test", "resources", "image", "test_image_large.jpg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))
-        assert not AzureVisionUtil()._check_image_size(image)
+        assert not check_image_size(image)
 
 
-def test__azure_vision_util__check_image_size__too_small():
+def test__check_image_size__too_small():
     with open(
         os.path.join("test", "resources", "image", "test_image_small.jpg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))
-        assert not AzureVisionUtil()._check_image_size(image)
+        assert not check_image_size(image)
 
 
-def test__azure_vision_util__check_image_size__true():
+def test__check_image_size__true():
     with open(
         os.path.join("test", "resources", "image", "test_image_horizontal.jpg"),
         "rb",
     ) as f:
         image = Image.open(BytesIO(f.read()))
-        assert AzureVisionUtil()._check_image_size(image)
+        assert check_image_size(image)
