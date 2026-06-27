@@ -169,7 +169,6 @@ def test__pdf_processor__add_provisional_redaction():
     assert annot.type == (8, "Highlight")
 
 
-'''
 def test__pdf_processor__examine_provisional_text_redaction():
     """
     Given I have a provisional redaction candidate for a PDF
@@ -292,7 +291,6 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
     assert instances_to_redact == [
         (0, rect, term) for rect, term in redaction_candidates
     ]
-'''
 
 
 def test__pdf_processor__apply_provisional_text_redactions():
