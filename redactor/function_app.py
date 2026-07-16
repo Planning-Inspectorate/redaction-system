@@ -7,6 +7,7 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 
 import json
 from typing import Dict, Any
+from datetime import timedelta
 import logging
 import azure.durable_functions as df
 import azure.functions as func
@@ -52,11 +53,69 @@ def trigger_orchestrator(context: df.DurableOrchestrationContext):
     Orchestrator of the redaction process
     """
     input_params = context.get_input() | {"job_id": context.instance_id}
+    timeout_mins = input_params.get("timeoutMinutes", 180)
+
     retry_options = df.RetryOptions(1, 1)
-    result = yield context.call_activity_with_retry(
+
+    # Durable timer
+    # https://learn.microsoft.com/en-us/azure/durable-task/common/durable-task-timers
+    deadline = context.current_utc_datetime + timedelta(minutes=timeout_mins)
+    activity_task = context.call_activity_with_retry(
         "trigger_task", retry_options, input_params
     )
-    return result
+    timeout_task = context.create_timer(deadline)
+
+    winner = yield context.task_any([activity_task, timeout_task])
+    if winner == activity_task:
+        timeout_task.cancel()
+        logging.info(
+            "Orchestrator %s: activity completed before timeout (%s mins)",
+            context.instance_id,
+            timeout_mins,
+        )
+        return activity_task.result
+    else:
+        # Timeout: send failure notification via a separate activity
+        logging.info(
+            "Orchestrator %s: timeout fired after %s mins, sending failure notification",
+            context.instance_id,
+            timeout_mins,
+        )
+        error_params = {
+            "request_params": input_params,
+            "error": f"Activity timed out after {timeout_mins} minutes",
+            "job_id": context.instance_id,
+        }
+        yield context.call_activity("send_failure_notification", error_params)
+        raise TimeoutError(f"trigger_task timed out after {timeout_mins} minutes")
+
+
+# Activity
+@app.activity_trigger(input_name="params")
+def send_failure_notification(params: Dict[str, Any]):
+    """
+    Lightweight activity to send a service bus failure message when trigger_task times out or fails
+    """
+    from core.util.service_bus_util import ServiceBusUtil
+    from core.util.enum import PINSService
+
+    request_params = params["request_params"]
+
+    pins_service_raw = request_params.get("pinsService", None)
+    if not pins_service_raw:
+        return
+
+    pins_service = PINSService(pins_service_raw.upper())
+    failure_result = {
+        "parameters": request_params,
+        "stage": request_params.get("stage", "UNKNOWN"),
+        "id": params["job_id"],
+        "status": "FAIL",
+        "message": f"Activity timed out or failed: {params['error']}",
+    }
+    ServiceBusUtil().send_redaction_process_complete_message(
+        pins_service, failure_result
+    )
 
 
 # Activity
