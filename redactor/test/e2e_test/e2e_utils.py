@@ -72,11 +72,11 @@ def function_start_url(route: str = "redact") -> str:
     return url
 
 
-def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 600) -> dict:
+def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 60) -> str:
     logger.info("Triggering durable function: POST %s", start_url)
     t0 = _t0()
 
-    r = requests.post(start_url, json=payload, timeout=60)
+    r = requests.post(start_url, json=payload, timeout=timeout_s)
     logger.info("Trigger response: %s (%s)", r.status_code, _dt(t0))
     r.raise_for_status()
     data = r.json()
@@ -91,6 +91,8 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 600) -> dic
     # Wait for 60 seconds, should be more than enough time for the function to finish processing
     # Ideally we have a mechanism to check the service bus, and to check trace information, but this is tricky to set up
     time.sleep(60)
+
+    return instance_id
 
 
 def _run_az(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -208,6 +210,8 @@ def build_payload(
     try_apply_provisional: bool = True,
     rule_name: str = "default",
     file_kind: str = "pdf",
+    timeout_mins: int | None = None,
+    pins_service: str | None = None,
 ) -> dict:
     logger.info(
         "Building payload: in=%s out=%s skipRedaction=%s tryApplyProvisional=%s rule=%s kind=%s",
@@ -218,7 +222,7 @@ def build_payload(
         rule_name,
         file_kind,
     )
-    return {
+    payload: dict = {
         "tryApplyProvisionalRedactions": try_apply_provisional,
         "skipRedaction": skip_redaction,
         "configName": rule_name,
@@ -242,6 +246,11 @@ def build_payload(
             },
         },
     }
+    if timeout_mins is not None:
+        payload["timeoutMinutes"] = timeout_mins
+    if pins_service is not None:
+        payload["pinsService"] = pins_service
+    return payload
 
 
 def build_apply_payload(
