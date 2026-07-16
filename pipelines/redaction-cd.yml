@@ -11,6 +11,14 @@ parameters:
   - 'Training'
   - 'Prod'
 
+pr: none
+
+# Run when merged into main
+trigger:
+  branches:
+    include:
+      - main
+
 resources:
   repositories:
     - repository: templates

@@ -1,6 +1,10 @@
-trigger: none
-
 pr: none
+
+# Run when merged into main
+trigger:
+  branches:
+    include:
+      - main
 
 resources:
   pipelines:
