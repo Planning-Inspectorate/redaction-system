@@ -91,6 +91,12 @@ class LLMUtil:
             "input_cost": 149,
             "output_cost": 593,
         },
+        "gpt-5.6-luna": {  # need to check these values
+            "token_rate_limit": 3000000,
+            "request_rate_limit": 3000,
+            "input_cost": 149,
+            "output_cost": 593,
+        },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
@@ -232,14 +238,18 @@ class LLMUtil:
         response_format: BaseModel,
         max_completion_tokens: int = None,
     ) -> ParsedChatCompletion:
-        response = self.llm.chat.completions.parse(
-            model=self.config.model,
-            messages=api_messages,
-            temperature=self.config.temperature,
-            max_tokens=max_completion_tokens,
-            response_format=response_format,
-        )
-        return response
+        kwargs = {
+            "model": self.config.model,
+            "messages": api_messages,
+            "response_format": response_format,
+        }
+        if self.config.model == "gpt-4.1":
+            kwargs["max_tokens"] = max_completion_tokens
+            kwargs["temperature"] = self.config.temperature
+        else:
+            kwargs["max_completion_tokens"] = max_completion_tokens
+
+        return self.llm.chat.completions.parse(**kwargs)
 
     @log_to_appins
     # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
