@@ -28,10 +28,8 @@ class RedactionCase:
     fixture_pdf: str
     in_name: str
     out_name: str
-    skip_redaction: bool
     expects_output: bool
     timeout_s: int = 600
-    download_and_check: bool = True
 
 
 CASES = [
@@ -40,7 +38,6 @@ CASES = [
         fixture_pdf="name_number_email.pdf",
         in_name="name_number_email.pdf",
         out_name="name_number_email_REDACTED.pdf",
-        skip_redaction=False,
         expects_output=True,
     ),
     RedactionCase(
@@ -48,17 +45,14 @@ CASES = [
         fixture_pdf="simple_welsh_language_test.pdf",
         in_name="welsh_primary.pdf",
         out_name="welsh_primary_REDACTED.pdf",
-        skip_redaction=False,
         expects_output=False,
         timeout_s=900,
-        download_and_check=False,
     ),
     RedactionCase(
         name="English primary + some Welsh should produce output",
         fixture_pdf="english_primary_with_some_welsh_test.pdf",
         in_name="english_some_welsh.pdf",
         out_name="english_some_welsh_REDACTED.pdf",
-        skip_redaction=True,
         expects_output=True,
     ),
 ]
@@ -88,7 +82,7 @@ def _run_case(
         container_name=e2e_container_name,
         in_blob=in_blob,
         out_blob=out_blob,
-        skip_redaction=case.skip_redaction,
+        skip_redaction=False,
     )
 
     trigger_and_wait(redact_start_url, payload, timeout_s=case.timeout_s)
@@ -98,7 +92,7 @@ def _run_case(
         f"Expected output blob exists={case.expects_output} for case={case.name}"
     )
 
-    if case.expects_output and case.download_and_check:
+    if case.expects_output:
         out_file = tmp_path / Path(case.out_name).name
         az_download(e2e_storage_account, e2e_container_name, out_blob, out_file)
         assert out_file.exists()
