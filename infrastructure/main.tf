@@ -336,6 +336,22 @@ resource "azurerm_cognitive_deployment" "open_ai" {
   }
 }
 
+resource "azurerm_cognitive_deployment" "open_ai_gpt_56_luna" {
+  name                 = "gpt-5.6-luna"
+  cognitive_account_id = azurerm_cognitive_account.open_ai.id
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-5.6-luna"
+    version = "2026-07-09"
+  }
+
+  sku {
+    name     = "DataZoneStandard"
+    capacity = var.openai_quotas.gpt_56_luna
+  }
+}
+
 ############################################################################
 # Create Azure Computer Vision
 ############################################################################

@@ -15,7 +15,7 @@ def test__config_processor__process_config():
     """
     file_processor_class = PDFProcessor
     llm_text_redaction_attributes = {
-        "model": "gpt-4.1",
+        "model": "gpt-5.6-luna",
         "system_prompt": "You are a thorough assistant that extracts all of the requested terms from a given text.",
         "redaction_terms": ["People's names"],
         "constraints": [
