@@ -54,7 +54,6 @@ class RedactJsonPayloadStructure(JsonPayloadStructure):
     Validator for the payload for the web request for performing AI analysis in the redaction process
     """
 
-    tryApplyProvisionalRedactions: Optional[bool] = True
     skipRedaction: Optional[bool] = False
     configName: Optional[str] = "default"
 
@@ -759,7 +758,6 @@ class RedactionManager:
         Expected input structure
         ```
         {
-            "tryApplyProvisionalRedactions": True,
             "skipRedaction": True,
             "pinsService": "CBOS",
             "configName": "default",

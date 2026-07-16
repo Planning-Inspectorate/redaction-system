@@ -17,9 +17,10 @@ START_URL = "http://localhost:7071/api/redact"
 resp = requests.post(
     START_URL,
     json={
-        "tryApplyProvisionalRedactions": True,
+        "job_id": "test-job-id",
         "skipRedaction": True,
-        "ruleName": "default",
+        "stage": "ANALYSE",
+        "configName": "default",
         "fileKind": "pdf",
         "readDetails": {
             "storageKind": "AzureBlob",
