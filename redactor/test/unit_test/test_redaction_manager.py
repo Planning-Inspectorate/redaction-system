@@ -1166,8 +1166,9 @@ def test__try_redact__fail_with_extra_non_fatal_error(
 @mock.patch.object(AzureBlobIO, "__init__", return_value=None)
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
 @mock.patch.object(LoggingUtil, "get_log_bytes", return_value=b"xyz")
+@mock.patch.object(LoggingUtil, "clear_logs")
 def test__redaction_manager__save_logs(
-    mock_get_log_bytes, mock_blob_write, mock_blob_init, mock_init
+    mock_clear_logs, mock_get_log_bytes, mock_blob_write, mock_blob_init, mock_init
 ):
     inst = RedactionManager()
     inst.job_id = "test__redaction_manager__save_logs"
@@ -1179,6 +1180,7 @@ def test__redaction_manager__save_logs(
         container_name="redactiondata",
         blob_path=f"{inst.folder_for_job}/mystage_log.txt",
     )
+    mock_clear_logs.assert_called_once()
 
 
 def check__try_apply__successful_output(

@@ -68,6 +68,10 @@ def trigger_task(params: Dict[str, Any]):
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
     from core.redaction_manager import RedactionManager  # noqa: F402
+    from core.util.logging_util import LoggingUtil  # noqa: F402
+
+    # Clear logs from any previous invocation sharing this process
+    LoggingUtil().clear_logs()
 
     logging.info("Request params: %s", params)
 

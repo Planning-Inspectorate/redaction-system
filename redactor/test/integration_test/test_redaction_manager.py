@@ -1,5 +1,6 @@
 import os
 import json
+from core.util.logging_util import LoggingUtil
 import pymupdf
 
 from time import sleep
@@ -174,6 +175,9 @@ class TestIntegrationRedactionManager(TestCase):
         log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
             f"Expected {log_blob} to be in the redactiondata container, but was missing"
+        )
+        assert LoggingUtil().raw_logs == [], (
+            "Expected LoggingUtil().raw_logs to be empty after saving logs, but it was not"
         )
         metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
