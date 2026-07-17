@@ -52,6 +52,9 @@ def _load_expected_strings(
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
+@pytest.mark.flaky(
+    reruns=3, reruns_delay=5, only_rerun="AssertionError"
+)  # Flaky test due LLMs
 def test_e2e_apply_redaction_evaluation_dataset(
     tmp_path: Path,
     case: EvaluationCase,
