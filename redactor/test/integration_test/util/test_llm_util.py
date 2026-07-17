@@ -24,7 +24,7 @@ def test__llm_util__invoke_chain__responds():
     llm_util_inst = LLMUtil(llm_util_config)
 
     api_messages = [
-        {"role": "system", "content": "Respond with a json list"},
+        {"role": "system", "content": "Respond with a simple json list"},
         {"role": "user", "content": "Hello there"},
     ]
     response_format = SampleResultFormat
