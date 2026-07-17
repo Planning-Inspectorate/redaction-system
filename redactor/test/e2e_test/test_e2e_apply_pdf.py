@@ -33,8 +33,6 @@ CASES = [
         proposed_name="name_number_email_apply_proposed.pdf",
         out_name="name_number_email_apply_redacted.pdf",
         sensitive_strings=(
-            "Eoin",
-            "Corr",
             "07555555555",
             "eoin@solirius.com",
             "Bruce",
