@@ -608,6 +608,7 @@ class RedactionManager:
             container_name="redactiondata",
             blob_path=f"{self.folder_for_job}/{stage_name}_log.txt",
         )
+        LoggingUtil().clear_logs()
 
     def log_exception(self, exception: Exception):
         """

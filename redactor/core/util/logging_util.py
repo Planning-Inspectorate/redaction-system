@@ -137,6 +137,12 @@ class LoggingUtil(metaclass=Singleton):
     def get_log_bytes(self) -> bytes:
         return "".join(self.raw_logs).encode("utf-8")
 
+    def clear_logs(self) -> None:
+        """
+        Clear all accumulated logs.
+        """
+        self.raw_logs.clear()
+
 
 def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):
     """
