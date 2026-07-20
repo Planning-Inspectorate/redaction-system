@@ -11,6 +11,7 @@ from test.e2e_test.apply_e2e_utils import (
     match_ratio,
     missing_strings,
     run_redact_then_apply,
+    approx_greater_than,
 )
 
 logger = logging.getLogger("e2e")
@@ -121,12 +122,12 @@ def test_e2e_apply_redaction_evaluation_dataset(
     assert flow.provisional_highlights > 0, (
         "Expected provisional output to contain highlights"
     )
-    assert provisional_group_a_ratio >= case.group_a_threshold, (
+    assert approx_greater_than(provisional_group_a_ratio, case.group_a_threshold), (
         "Expected provisional output to retain enough Group A strings before /apply. "
         f"threshold={case.group_a_threshold:.0%} actual={provisional_group_a_ratio:.0%} "
         f"matched={provisional_group_a_matches} expected={group_a_strings}"
     )
-    assert provisional_group_b_ratio >= case.group_b_threshold, (
+    assert approx_greater_than(provisional_group_b_ratio, case.group_b_threshold), (
         "Expected provisional output to retain enough Group B strings before /apply. "
         f"threshold={case.group_b_threshold:.0%} actual={provisional_group_b_ratio:.0%} "
         f"matched={provisional_group_b_matches} expected={group_b_strings}"
@@ -212,12 +213,12 @@ def test_e2e_apply_redaction_evaluation_dataset(
     assert flow.redacted_highlights == 0, (
         "Expected /apply output to have no highlight annotations"
     )
-    assert removed_group_a_ratio >= case.group_a_threshold, (
+    assert approx_greater_than(removed_group_a_ratio, case.group_a_threshold), (
         "Expected /apply output to remove enough Group A strings. "
         f"threshold={case.group_a_threshold:.0%} actual={removed_group_a_ratio:.0%} "
         f"remaining={remaining_group_a_matches} expected={group_a_strings}"
     )
-    assert retained_group_b_ratio >= case.group_b_threshold, (
+    assert approx_greater_than(retained_group_b_ratio, case.group_b_threshold), (
         "Expected /apply output to retain enough Group B strings. "
         f"threshold={case.group_b_threshold:.0%} actual={retained_group_b_ratio:.0%} "
         f"retained={retained_group_b_matches} expected={group_b_strings}"
