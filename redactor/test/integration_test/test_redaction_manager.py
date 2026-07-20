@@ -179,7 +179,7 @@ class TestIntegrationRedactionManager(TestCase):
         assert LoggingUtil().raw_logs == [], (
             "Expected LoggingUtil().raw_logs to be empty after saving logs, but it was not"
         )
-        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
+        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.json"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
             metric_blob
         )
@@ -275,7 +275,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
 
-        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.txt"
+        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.json"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
             metric_blob
         )
@@ -384,7 +384,7 @@ class TestIntegrationRedactionManager(TestCase):
             f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
 
-        metric_blob = f"{guid}-{MOCK_START_TIME}/REDACT_metrics.txt"
+        metric_blob = f"{guid}-{MOCK_START_TIME}/REDACT_metrics.json"
         metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
             metric_blob
         )

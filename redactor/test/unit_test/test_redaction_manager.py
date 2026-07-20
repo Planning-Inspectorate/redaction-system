@@ -1677,12 +1677,12 @@ def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
 def test__get_most_recent_blob(mock_init):
     candidate_blobs = {
         "827df6d4-1-12345/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0),
-        "827df6d4-1-12345/ANALYSE_metrics.txt": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-12345/ANALYSE_metrics.json": datetime(2026, 3, 12, 0, 0, 1),
         "827df6d4-1-12345/proposed.pdf": datetime(2026, 3, 12, 0, 0, 1),
         "827df6d4-1-12345/proposed_redactions.json": datetime(2026, 3, 12, 0, 0, 0),
         "827df6d4-1-12345/raw.pdf": datetime(2026, 3, 12, 0, 0, 0),
         "827df6d4-1-23456/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1),
-        "827df6d4-1-23456/ANALYSE_metrics.txt": datetime(2026, 3, 12, 0, 0, 1),
+        "827df6d4-1-23456/ANALYSE_metrics.json": datetime(2026, 3, 12, 0, 0, 1),
         "827df6d4-1-23456/proposed.pdf": datetime(2026, 3, 12, 0, 0, 1),
         "827df6d4-1-23456/proposed_redactions.json": datetime(2026, 3, 12, 0, 0, 1),
         "827df6d4-1-23456/raw.pdf": datetime(2026, 3, 12, 0, 0, 1),
