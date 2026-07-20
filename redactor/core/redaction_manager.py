@@ -650,7 +650,7 @@ class RedactionManager:
         redaction_storage_io_inst.write(
             data_bytes=metric_bytes,
             container_name="redactiondata",
-            blob_path=f"{self.folder_for_job}/{stage_name}_metrics.txt",
+            blob_path=f"{self.folder_for_job}/{stage_name}_metrics.json",
         )
 
     def send_service_bus_completion_message(
