@@ -72,7 +72,69 @@ def function_start_url(route: str = "redact") -> str:
     return url
 
 
+def _processor_orchestrator_url() -> Optional[str]:
+    """
+    If E2E_FUNCTION_PROCESSOR_BASE_URL is set, return the Durable Functions
+    orchestrator URL for directly triggering the processor (bypassing Service Bus).
+    """
+    base = _env("E2E_FUNCTION_PROCESSOR_BASE_URL")
+    if not base:
+        return None
+    return f"{base.rstrip('/')}/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
+
+
+def _route_to_stage(start_url: str) -> str:
+    """Map the receiver route in start_url to the stage the processor expects."""
+    if "/api/apply" in start_url:
+        return "REDACT"
+    return "ANALYSE"
+
+
 def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 60) -> str:
+    processor_url = _processor_orchestrator_url()
+    if processor_url:
+        # Bypass receiver + Service Bus: call the processor orchestrator directly
+        stage = _route_to_stage(start_url)
+        orchestrator_payload = {**payload, "stage": stage}
+        logger.info(
+            "Triggering processor orchestrator directly: POST %s (stage=%s)",
+            processor_url,
+            stage,
+        )
+        t0 = _t0()
+        r = requests.post(processor_url, json=orchestrator_payload, timeout=60)
+        logger.info("Orchestrator response: %s (%s)", r.status_code, _dt(t0))
+        r.raise_for_status()
+        data = r.json()
+        instance_id = data.get("id") or data.get("instanceId") or "<unknown>"
+        logger.info("Orchestration started: id=%s", instance_id)
+
+        # Poll the status URL until the orchestration completes
+        status_url = data.get("statusQueryGetUri")
+        if status_url:
+            deadline = time.time() + timeout_s
+            while time.time() < deadline:
+                time.sleep(5)
+                status_r = requests.get(status_url, timeout=30)
+                if status_r.status_code == 200:
+                    status_data = status_r.json()
+                    runtime_status = status_data.get("runtimeStatus", "")
+                    if runtime_status in ("Completed", "Failed", "Terminated"):
+                        logger.info(
+                            "Orchestration %s finished with status: %s (%s)",
+                            instance_id,
+                            runtime_status,
+                            _dt(t0),
+                        )
+                        return instance_id
+            logger.warning(
+                "Orchestration %s did not complete within %ds", instance_id, timeout_s
+            )
+        else:
+            # No status URL; fall back to fixed wait
+            time.sleep(80)
+        return instance_id
+
     logger.info("Triggering durable function: POST %s", start_url)
     t0 = _t0()
 
