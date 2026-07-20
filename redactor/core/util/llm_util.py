@@ -8,7 +8,7 @@ from tenacity.retry import (
     retry_any,
 )
 from tenacity import retry, wait_random_exponential, stop_after_attempt
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from dotenv import load_dotenv
 from azure.identity import (
     ChainedTokenCredential,
@@ -262,6 +262,7 @@ class LLMUtil:
                     TimeoutError,  # Timeout while waiting for semaphore
                     LengthFinishReasonError,  # LLM response truncated due to length
                     ContentFilterFinishReasonError,  # LLM response blocked by content filter
+                    ValidationError,  # LLM response could not be parsed into expected format
                 )
             ),
             retry_if_exception_message(  # LLM response parsing errors
