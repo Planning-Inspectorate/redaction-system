@@ -1286,8 +1286,9 @@ class PDFProcessor(FileProcessor):
         redaction_results: List[RedactionResult] = []
         text_analysis_total_time = 0.0
         image_analysis_total_time = 0.0
+
         # Apply each redaction rule
-        LoggingUtil().log_info("Analysing PDF to identify redactions")
+        text_redaction_summary: Dict[str, Any] = {}
         for rule_to_apply in redaction_rules_to_apply:
             LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
             redaction_time_start = time()
@@ -1296,6 +1297,11 @@ class PDFProcessor(FileProcessor):
             redaction_time = redaction_time_end - redaction_time_start
             if issubclass(redaction_result.__class__, TextRedactionResult):
                 text_analysis_total_time += redaction_time
+                text_redaction_summary[redaction_result.rule_name] = {
+                    "redaction_strings": redaction_result.redaction_strings,
+                    "n_proposed": len(redaction_result.redaction_strings),
+                    "n_applied": len(redaction_result.redaction_strings),
+                }
             elif issubclass(redaction_result.__class__, ImageRedactionResult):
                 image_analysis_total_time += redaction_time
             LoggingUtil().log_info(
@@ -1333,11 +1339,12 @@ class PDFProcessor(FileProcessor):
             ) as e:
                 LoggingUtil().log_exception(e)
                 raise e
+
         all_result_metrics = {x.rule_name: x.run_metrics for x in redaction_results}
         combined_metrics = self.combine_run_metrics(
             [x.run_metrics for x in redaction_results]
         )
-        LoggingUtil().log_info("Applying proposed redactions")
+
         # Apply text redactions by highlighting text to redact
         LoggingUtil().log_info("Applying text redactions")
         text_redaction_apply_time_start = time()
@@ -1365,6 +1372,10 @@ class PDFProcessor(FileProcessor):
         unapplied_redaction_terms = [
             term for term, count in self.terms_found.items() if count == 0
         ]
+        for term in unapplied_redaction_terms:
+            for result in text_redaction_summary:
+                if term in text_redaction_summary[result]["redaction_strings"]:
+                    text_redaction_summary[result]["n_applied"] -= 1
 
         self.run_metrics = {
             "pdf_text_extraction_time": pdf_text_extraction_time,
@@ -1377,6 +1388,7 @@ class PDFProcessor(FileProcessor):
             "result_metrics": all_result_metrics,
             "aggregate_result_metrics": combined_metrics,
             "unapplied_text_redaction_terms": unapplied_redaction_terms,
+            "text_redaction_summary": text_redaction_summary,
         }
 
         return new_file_bytes
