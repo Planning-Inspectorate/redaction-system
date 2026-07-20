@@ -58,7 +58,7 @@ def _find_failure_message_for_job(messages, job_id: str) -> dict | None:
     for msg in messages:
         body = json.loads(str(msg))
         msg_id = body.get("id", "")
-        if msg_id == job_id and body.get("status") == "FAIL":
+        if msg_id.startswith(job_id) and body.get("status") == "FAIL":
             return body
     return None
 
