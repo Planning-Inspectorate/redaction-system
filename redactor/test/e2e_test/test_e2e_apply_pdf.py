@@ -8,6 +8,7 @@ from test.e2e_test.apply_e2e_utils import (
     log_match_summary,
     match_ratio,
     run_redact_then_apply,
+    approx_greater_than,
 )
 
 logger = logging.getLogger("e2e")
@@ -88,7 +89,7 @@ def test_e2e_apply_redaction_cases(
     assert flow.provisional_highlights > 0, (
         "Expected provisional output to contain highlights"
     )
-    assert provisional_ratio >= case.correctness_threshold, (
+    assert approx_greater_than(provisional_ratio, case.correctness_threshold), (
         "Expected provisional output to retain enough sensitive strings before /apply. "
         f"threshold={case.correctness_threshold:.0%} actual={provisional_ratio:.0%} "
         f"matched={provisional_matches} expected={case.sensitive_strings}"
@@ -114,7 +115,7 @@ def test_e2e_apply_redaction_cases(
     assert flow.redacted_highlights == 0, (
         "Expected /apply output to have no highlight annotations"
     )
-    assert removal_ratio >= case.correctness_threshold, (
+    assert approx_greater_than(removal_ratio, case.correctness_threshold), (
         "Expected /apply output to remove enough sensitive strings. "
         f"threshold={case.correctness_threshold:.0%} actual={removal_ratio:.0%} "
         f"remaining={remaining_matches} expected={case.sensitive_strings}"

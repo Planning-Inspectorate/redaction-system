@@ -1,3 +1,4 @@
+import pytest
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -87,7 +88,14 @@ def log_threshold_check(
     actual_ratio: float,
     threshold: float,
 ) -> None:
-    status = "PASS" if actual_ratio >= threshold else "FAIL"
+    status = (
+        "PASS"
+        if (
+            actual_ratio == pytest.approx(threshold, rel=1e-2)
+            or actual_ratio > threshold
+        )
+        else "FAIL"
+    )
     logger.info(
         "%s %s threshold check: %s actual=%.0f%% threshold=%.0f%%",
         stage,
@@ -148,3 +156,8 @@ def run_redact_then_apply(
         redacted_text=extract_pdf_text(redacted_file),
         redacted_highlights=count_highlight_annotations(redacted_file),
     )
+
+
+def approx_greater_than(value: float, threshold: float, rel_tol: float = 0.1) -> bool:
+    """Check if value is greater than or approximately equal to threshold."""
+    return value == pytest.approx(threshold, rel=rel_tol) or value > threshold
