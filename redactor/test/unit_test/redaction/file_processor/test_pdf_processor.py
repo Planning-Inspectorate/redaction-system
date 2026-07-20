@@ -16,6 +16,7 @@ from core.redaction.file_processor import (
 )
 from core.redaction.result import (
     ImageRedactionResult,
+    TextRedactionResult,
 )
 from core.util.text_util import is_english_text, get_normalised_words
 from core.redaction.exceptions import NonEnglishContentException
@@ -1402,3 +1403,128 @@ def test__pdf_processor__apply():
     assert expected_image == actual_image, (
         "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
     )
+
+
+def test__pdf_processor__redact__run_metrics():
+    """
+    - Given I have a PDF with English text
+    - When I call redact with a text redaction rule
+    - Then run_metrics should contain all expected timing and summary keys
+    """
+    file_bytes = _make_pdf_with_text(
+        "Hello World this is a test document with English text content"
+    )
+
+    mock_text_result = TextRedactionResult(
+        rule_name="test_rule",
+        run_metrics={"tokens_used": 10},
+        redaction_strings=("Hello", "World"),
+    )
+
+    mock_redactor = Mock()
+    mock_redactor.redact.return_value = mock_text_result
+
+    mock_redaction_config = Mock()
+    mock_redaction_config.redactor_type = "llm_text"
+    mock_redaction_config.text = None
+    mock_redaction_config.images = None
+
+    with (
+        patch.object(PDFProcessor, "_extract_pdf_images", return_value=[]),
+        patch.object(PDFProcessor, "_extract_unique_pdf_images", return_value=[]),
+        patch.object(
+            PDFProcessor,
+            "_apply_provisional_text_redactions",
+            return_value=file_bytes,
+        ),
+        patch.object(
+            PDFProcessor,
+            "_apply_provisional_image_redactions",
+            return_value=file_bytes,
+        ),
+        patch(
+            "core.redaction.file_processor.RedactorFactory.get",
+            return_value=lambda config: mock_redactor,
+        ),
+    ):
+        processor = PDFProcessor()
+        processor.redact(file_bytes, {"redaction_rules": [mock_redaction_config]})
+        run_metrics = processor.get_run_metrics()
+
+    assert run_metrics is not None
+    # Check all expected keys are present
+    expected_keys = {
+        "pdf_text_extraction_time",
+        "pdf_image_extraction_time",
+        "text_analysis_total_time",
+        "image_analysis_total_time",
+        "analysis_total_time",
+        "text_redaction_apply_time",
+        "image_redaction_apply_time",
+        "result_metrics",
+        "aggregate_result_metrics",
+        "unapplied_text_redaction_terms",
+        "text_redaction_summary",
+    }
+    assert set(run_metrics.keys()) == expected_keys
+
+    # Check timing values are non-negative floats
+    timing_keys = [
+        "pdf_text_extraction_time",
+        "pdf_image_extraction_time",
+        "text_analysis_total_time",
+        "image_analysis_total_time",
+        "analysis_total_time",
+        "text_redaction_apply_time",
+        "image_redaction_apply_time",
+    ]
+    for key in timing_keys:
+        assert isinstance(run_metrics[key], float)
+        assert run_metrics[key] >= 0
+
+    # Check analysis_total_time is the sum of text and image analysis
+    assert run_metrics["analysis_total_time"] == pytest.approx(
+        run_metrics["text_analysis_total_time"]
+        + run_metrics["image_analysis_total_time"]
+    )
+
+    # Check result_metrics contains the rule
+    assert "test_rule" in run_metrics["result_metrics"]
+    assert run_metrics["result_metrics"]["test_rule"] == {"tokens_used": 10}
+
+    # Check text_redaction_summary
+    assert "test_rule" in run_metrics["text_redaction_summary"]
+    assert run_metrics["text_redaction_summary"]["test_rule"]["redaction_strings"] == (
+        "Hello",
+        "World",
+    )
+    assert run_metrics["text_redaction_summary"]["test_rule"]["n_proposed"] == 2
+
+
+def test__pdf_processor__apply__run_metrics():
+    """
+    - Given I have a PDF with highlight annotations (proposed redactions)
+    - When I call apply
+    - Then run_metrics should contain redaction_time and scrub_time as non-negative floats
+    """
+    with open(
+        os.path.join(
+            "test",
+            "resources",
+            "pdf",
+            "test__pdf_processor__text_and_image_proposed.pdf",
+        ),
+        "rb",
+    ) as f:
+        curated_doc_bytes = BytesIO(f.read())
+
+    processor = PDFProcessor()
+    processor.apply(curated_doc_bytes, dict())
+    run_metrics = processor.get_run_metrics()
+
+    assert run_metrics is not None
+    assert set(run_metrics.keys()) == {"redaction_time", "scrub_time"}
+    assert isinstance(run_metrics["redaction_time"], float)
+    assert isinstance(run_metrics["scrub_time"], float)
+    assert run_metrics["redaction_time"] >= 0
+    assert run_metrics["scrub_time"] >= 0
