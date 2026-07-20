@@ -44,10 +44,10 @@ def test__config_processor__process_config():
         ],
         "provisional_redactions": None,
     }
-    loaded_config = ConfigProcessor.load_config("default")
+    loaded_config = ConfigProcessor.load_config("basic")
     actual_parsed_config = ConfigProcessor.validate_and_filter_config(
         loaded_config, file_processor_class
     )
     for expected_rule in expected_parsed_config["redaction_rules"]:
         assert expected_rule in actual_parsed_config["redaction_rules"]
-    assert actual_parsed_config["provisional_redactions"] is None
+    assert actual_parsed_config["provisional_redactions"] == []

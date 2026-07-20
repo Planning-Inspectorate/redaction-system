@@ -1,68 +1,132 @@
 redactors:
   - redactor_type: "LLMTextRedaction"
-
     redaction_rules:
     - name: "Text_Redactor_01"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-      redaction_terms: 
+      system_prompt: |
+        You are a precise and consistent redaction assistant for Planning Inspectorate documents.
+        Your task is to identify only the exact text spans that must be redacted under the redaction terms provided.
+        Apply the rules consistently across the whole document. If the same name, term, phrase, organisation, location, entity, reference, or concept appears more than once in the same context, it must receive the same redaction outcome every time.
+        Do not redact text unless it clearly matches one of the redaction terms. Do not infer sensitivity from ordinary planning terminology, case references, dates, generic roles, environmental terms, organisations, locations, or contextual wording.
+        Return only the exact terms as they appear in the text. Do not paraphrase, expand, shorten, normalise, or alter the wording.
+      redaction_terms:
       - "People's names"
       constraints:
-      - "Do not include locations or organisations" 
-      - "Do not include names of anything which is not a person"
-      - "Do not include the name of the author of the text"
-      - "Do not include the names of those on whose behalf the text was written"
-
+      - "Redact only the names of identifiable living individuals where the name appears as personal data."
+      - "Do not redact organisations, public bodies, companies, councils, departments, planning authorities, charities, societies, campaign groups, agencies, or other non-person entities."
+      - "Do not redact locations, addresses, site names, settlement names, road names, building names, parishes, wards, counties, regions, or geographic features unless they form part of a personal address captured by another rule."
+      - "Do not redact APP reference numbers or any other Planning Inspectorate reference numbers."
+      - "Do not redact generic planning roles or phrases, including but not limited to 'the applicant', 'applicant', 'the appellant', 'appellant', 'agent', 'case officer', 'planning officer', 'inspector', 'local planning authority', 'LPA', 'neighbour', 'resident', 'objector', 'supporter', or 'representor'."
+      - "Do not redact the name of the author of the text."
+      - "Do not redact the names of people on whose behalf the text was written."
+      - "Do not redact a word merely because it is capitalised."
+      - "Do not redact ordinary nouns, technical terms, policy terms, environmental terms, planning terms, document titles, form labels, or section headings."
+      - "Where a person's name appears repeatedly in the same context, redact it consistently every time."
+      - "Where a term is not a person's name, do not redact it in one location and leave it unredacted in another comparable location."
+    
     - name: "Text_Redactor_02"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-      redaction_terms: 
-      - "Personal addresses and postcodes" 
-      - "Personal email addresses, unless it's a Planning Inspectorate email"
-      - "Telephone numbers, unless it's a Planning Inspectorate customer service team telephone number"
+      system_prompt: |
+        You are a precise and consistent redaction assistant for Planning Inspectorate documents.
+        Your task is to identify only the exact text spans that must be redacted under the redaction terms provided.
+        Apply the rules consistently across the whole document. If the same address, email address, telephone number, National Insurance number, hyperlink, reference, date, word, phrase, organisation, location, or entity appears more than once in the same context, it must receive the same redaction outcome every time.
+        Do not redact text unless it clearly matches one of the redaction terms. Do not infer sensitivity from ordinary planning terminology, case references, years, dates, generic roles, environmental terms, organisations, locations, or contextual wording.
+        Return only the exact terms as they appear in the text. Do not paraphrase, expand, shorten, normalise, or alter the wording.
+      redaction_terms:
+      - "Personal addresses and postcodes"
+      - "Personal email addresses, unless the email address belongs to the Planning Inspectorate"
+      - "Telephone numbers, unless the telephone number belongs to the Planning Inspectorate customer service team"
       - "National Insurance Numbers, e.g. AB 12 34 56 C"
-      - "Hyperlinks, except those that are .gov.uk, .org, .gov.wales"
-        
+      - "Hyperlinks, except hyperlinks using .gov.uk, .org, or .gov.wales domains"
+      constraints:
+      - "Redact only complete personal addresses and postcodes where they identify a private individual or private residence."
+      - "Do not redact site addresses, application site locations, appeal site locations, development locations, land descriptions, public buildings, local authority addresses, organisational addresses, or business addresses unless they are clearly personal residential addresses."
+      - "Do not redact APP reference numbers or any other Planning Inspectorate reference numbers."
+      - "Do not redact years, including years that appear within dates."
+      - "Do not redact dates unless another rule explicitly requires the date to be redacted."
+      - "Do not redact a year such as 2020, 2021, 2022, 2023, 2024, 2025, or 2026 simply because it appears in a date, reference, document title, policy name, event description, or planning history."
+      - "Do not redact ordinary words, generic planning terminology, or contextual phrases."
+      - "Do not redact the phrase 'the applicant' or any similar generic role description."
+      - "Do not redact Planning Inspectorate email addresses."
+      - "Do not redact Planning Inspectorate customer service telephone numbers."
+      - "Do not redact hyperlinks that are clearly .gov.uk, .org, or .gov.wales."
+      - "Where the same item appears repeatedly in the same context, redact it consistently every time."
+      - "Where a comparable item does not meet the redaction criteria, do not redact it in one location and leave it unredacted in another comparable location."
+    
     - name: "Text_Redactor_03"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-      redaction_terms: 
-      - "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text."
+      system_prompt: |
+        You are a precise and consistent redaction assistant for Planning Inspectorate documents.
+        Your task is to identify only the exact text spans that must be redacted under the redaction terms provided.
+        Apply the rules consistently across the whole document. If the same sensitive statement, allegation, financial detail, health information, protected characteristic, criminal offence data, defamatory statement, inflammatory statement, word, phrase, organisation, location, entity, or concept appears more than once in the same context, it must receive the same redaction outcome every time.
+        Do not redact text unless it clearly matches one of the redaction terms. Do not infer sensitivity from ordinary planning terminology, case references, dates, generic roles, environmental terms, organisations, locations, or contextual wording.
+        Return only the exact terms as they appear in the text. Do not paraphrase, expand, shorten, normalise, or alter the wording.
+      redaction_terms:
+      - "Personal health information, e.g. illnesses or information concerning a person's sex life. List each term exactly as it appears in the text."
       - "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership"
       - "Criminal offence data, e.g. allegations, investigations, proceedings, penalties"
-      - "Any defamatory (libellous) or inflammatory information"
+      - "Any defamatory or inflammatory information"
       - "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares"
-
+      constraints:
+      - "Redact only information that clearly relates to an identifiable person."
+      - "Do not redact general planning, environmental, heritage, transport, infrastructure, drainage, ecology, housing, design, access, or policy content unless it clearly contains personal sensitive information."
+      - "Do not redact APP reference numbers or any other Planning Inspectorate reference numbers."
+      - "Do not redact years or ordinary dates unless the date itself is part of sensitive personal information that must be redacted."
+      - "Do not redact the word 'water' when it is used as an ordinary environmental, drainage, flooding, utilities, ecology, planning, or infrastructure term."
+      - "Do not redact the phrase 'the applicant' or any similar generic role description."
+      - "Do not redact organisations, locations, or entities unless the exact text clearly forms part of sensitive personal data under the redaction terms."
+      - "Do not treat criticism of a planning proposal, site, policy, decision, organisation, authority, or process as defamatory or inflammatory unless the wording makes a direct defamatory or inflammatory statement about an identifiable person."
+      - "Do not redact general financial planning terms, viability references, affordable housing contributions, CIL, section 106, land value, development value, costs, budgets, or public financial information unless the text reveals specific personal financial information about an identifiable person."
+      - "Where the same sensitive item appears repeatedly in the same context, redact it consistently every time."
+      - "Where conceptually similar phrases appear in comparable contexts, apply the same redaction decision consistently."
+      - "Where a comparable term does not meet the redaction criteria, do not redact it in one location and leave it unredacted in another comparable location."
+    
     - name: "Text_Redactor_04"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
-      redaction_terms: 
-      - "Dates of birth, and ages of people"
+      system_prompt: |
+        You are a precise and consistent redaction assistant for Planning Inspectorate documents.
+        Your task is to identify only the exact text spans that must be redacted under the redaction terms provided.
+        Apply the rules consistently across the whole document. If the same date of birth, age, protected ecological location, word, phrase, organisation, location, entity, or concept appears more than once in the same context, it must receive the same redaction outcome every time.
+        Do not redact text unless it clearly matches one of the redaction terms. Do not infer sensitivity from ordinary planning terminology, case references, years, dates, generic roles, environmental terms, organisations, locations, or contextual wording.
+        Return only the exact terms as they appear in the text. Do not paraphrase, expand, shorten, normalise, or alter the wording.
+      redaction_terms:
+      - "Dates of birth and ages of people"
       - "The location of any of the following: badger sett, bat maternity roost, bird nest"
-
+      constraints:
+      - "Redact dates of birth only where the text clearly identifies the date as a person's date of birth."
+      - "Redact ages only where the text clearly gives the age of a person."
+      - "Do not redact ordinary dates, planning dates, decision dates, submission dates, consultation dates, hearing dates, inquiry dates, site visit dates, document dates, policy dates, or appeal dates."
+      - "Do not redact years within dates unless the full date is clearly a person's date of birth."
+      - "Do not redact standalone years."
+      - "Do not redact APP reference numbers or any other Planning Inspectorate reference numbers."
+      - "Do not redact the word 'water' unless it forms part of an exact item that must be redacted under this rule."
+      - "Do not redact the phrase 'the applicant' or any similar generic role description."
+      - "Redact the location of a badger sett, bat maternity roost, or bird nest only where the text clearly identifies the protected ecological feature and provides its location."
+      - "Do not redact general references to badgers, bats, birds, ecology, habitats, surveys, mitigation, watercourses, trees, hedgerows, biodiversity, protected species, or environmental features unless the exact location of a badger sett, bat maternity roost, or bird nest is provided."
+      - "Where the same protected ecological location appears repeatedly in the same context, redact it consistently every time."
+      - "Where comparable ecological references do not provide the protected location specified in this rule, do not redact them in one location and leave them unredacted in another comparable location."
+  
   - redactor_type: "ImageRedaction"
-
-    redaction_rules: 
+    redaction_rules:
     - name: "Image_Redactor_01"
-
-  - redactor_type: "ImageTextRedaction"
-
-    redaction_rules: 
-    - name: "Image_Text_Redactor_01"
-
-  - redactor_type: "ImageLLMTextRedaction"
     
-    redaction_rules: 
+  - redactor_type: "ImageTextRedaction"
+    redaction_rules:
+    - name: "Image_Text_Redactor_01"
+    
+  - redactor_type: "ImageLLMTextRedaction"
+    redaction_rules:
     - name: "Image_LLM_Text_Redactor_01"
       text_redaction_rule: "Text_Redactor_01"
-    
+  
     - name: "Image_LLM_Text_Redactor_02"
       text_redaction_rule: "Text_Redactor_02"
-
+  
     - name: "Image_LLM_Text_Redactor_03"
       text_redaction_rule: "Text_Redactor_03"
-    
+  
     - name: "Image_LLM_Text_Redactor_04"
       text_redaction_rule: "Text_Redactor_04"
 
-provisional_redactions:
+provisional_redactions: []
+ 
