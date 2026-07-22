@@ -89,6 +89,7 @@ def test__llm_util____init__():
     llm_util = LLMUtil(llm_util_config)
 
     assert llm_util.config.token_rate_limit == 2000
+    assert llm_util.config.token_encoding_name == "cl100k_base"
 
     assert llm_util.input_token_cost == 149 * 0.000001
     assert llm_util.output_token_cost == 593 * 0.000001
