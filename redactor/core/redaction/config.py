@@ -17,7 +17,7 @@ class LLMUtilConfig(BaseModel):
     """Number of tokens allowed per minute. Defaults to 20% of model max TPM."""
     max_concurrent_requests: Optional[int] = None
     """Number of concurrent requests to allow. Assigns the number of threads."""
-    token_encoding_name: Optional[str] = "cl100k_base"
+    token_encoding_name: Optional[str] = None
     """The token encoding name to use for estimating token counts"""
     n: Optional[int] = 1
     """Number of completions to generate per prompt"""
@@ -27,6 +27,16 @@ class LLMUtilConfig(BaseModel):
     """The timeout in seconds for acquiring tokens from the token semaphore"""
     request_timeout: Optional[float] = 60.0
     """The timeout in seconds for acquiring request semaphore"""
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if self.token_encoding_name is None:
+            if self.model.startswith("gpt-5") or self.model.startswith("gpt-4o"):
+                self.token_encoding_name = "o200k_base"
+            elif self.model.startswith("gpt-4") or self.model.startswith("gpt-3.5"):
+                self.token_encoding_name = "cl100k_base"
+            else:
+                self.token_encoding_name = "p50k_base"
 
 
 class RedactionConfig(BaseModel):

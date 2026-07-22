@@ -70,17 +70,6 @@ def update_max_tokens(retry_state):
 class LLMUtil:
     """
     Class that handles the interaction with a large-language model hosted on Azure
-
-    :param model: The OpenAI model to use
-    :param max_tokens: The maximum number of tokens per minute to generate in a
-    single completion
-    :param temperature: The temperature to use for the LLM
-    :param request_rate_limit: The maximum number of requests per minute, which
-    the number of concurrent requests is limited to
-    :param token_rate_limit: The maximum number of tokens per minute
-    :param n: The number of completions to generate per request
-    :param token_encoding_name: The name of the token encoding to use for counting tokens.
-    Defaults to `cl100k_base` for GPT-4
     """
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
