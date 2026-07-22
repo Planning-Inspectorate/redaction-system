@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import platform
 import subprocess
 import time
 from urllib.parse import urlsplit, urlunsplit
@@ -169,7 +170,13 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 60) -> str:
 def _run_az(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     logger.debug("Running: %s", " ".join(cmd))
     try:
-        return subprocess.run(cmd, check=True, capture_output=True, text=True)
+        return subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+            shell=(platform.system() == "Windows"),
+        )
     except subprocess.CalledProcessError as e:
         logger.error("AZ command failed: %s", " ".join(cmd))
         logger.error("STDOUT:\n%s", e.stdout)
