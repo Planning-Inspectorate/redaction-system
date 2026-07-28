@@ -4,7 +4,7 @@ import os
 import re
 import traceback
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from math import isclose
 from string import punctuation
 from time import time
@@ -279,7 +279,7 @@ class RedactionManager:
             self.save_dict_to_blob_json(
                 {
                     "jobID": self.job_id,
-                    "date": datetime.now(tz=datetime.timezone.utc).date().isoformat(),
+                    "date": datetime.now(tz=UTC).date().isoformat(),
                     "fileName": read_storage_properties.get("blob_path", ""),
                     "proposedRedactions": proposed_redactions_dict,
                 },
@@ -552,7 +552,7 @@ class RedactionManager:
         # Store the final redactions in JSON format for analytics
         final_redactions_dict = {
             "jobID": self.job_id,
-            "date": datetime.now(tz=datetime.timezone.utc).date().isoformat(),
+            "date": datetime.now(tz=UTC).date().isoformat(),
             "fileName": read_storage_properties.get("blob_path", ""),
             "finalRedactions": file_processor_inst.get_final_redactions(file_data),
         }

@@ -2,6 +2,7 @@ import os
 from io import BytesIO
 from typing import ClassVar
 
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import (
     AzureCliCredential,
     ChainedTokenCredential,
@@ -43,7 +44,10 @@ class TestIntegrationRedactionManager(TestCase):
             )
 
     def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
-        container_client.delete_blob(blob_path)
+        try:
+            container_client.delete_blob(blob_path)
+        except ResourceNotFoundError:
+            pass
 
     def test_end_to_end_write_then_read_with_direct_endpoint(self):
         io = AzureBlobIO(storage_endpoint=self.STORAGE_ENDPOINT)

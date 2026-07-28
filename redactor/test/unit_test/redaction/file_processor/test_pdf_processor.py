@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
 
@@ -294,7 +294,7 @@ def test__pdf_processor__extract_pdf_annotations__highlight_only():
 def test__pdf_processor__get_proposed_redactions():
     creation_date = "D:20260103123456+01'00'"
     creation_timestamp = datetime(
-        year=2026, month=1, day=3, hour=12, minute=34, second=56
+        year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
     )
     annotations = (
         {
@@ -380,7 +380,7 @@ def test__pdf_processor__get_proposed_redactions__malformed_pdf_date():
     """
     creation_date = "D:20260103123456"
     creation_timestamp = datetime(
-        year=2026, month=1, day=3, hour=12, minute=34, second=56
+        year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
     )
     annotations = (
         {
@@ -643,7 +643,7 @@ def test__pdf_processor__extract_page_text():
 
 def create_mock_page_metadata(
     page_number,
-    text_content: str = None,
+    text_content: str | None = None,
     lines=None,
     y0=None,
     y1=None,
@@ -1319,15 +1319,15 @@ def test__pdf_processor__apply_provisional_image_redactions():
     ) as f:
         expected_provisional_redaction_bytes = BytesIO(f.read())
     pdf = pymupdf.open(stream=document_bytes)
-    source_image = [
+    source_image = next(
         Image.open(BytesIO(pdf.extract_image(image[0]).get("image")))
         for page in pdf
         for image in page.get_images(full=True)
-    ][0]
+    )
     redactions = [
         ImageRedactionResult(
             rule_name="test__pdf_processor__apply_provisional_image_redactions",
-            run_metrics=dict(),
+            run_metrics={},
             redaction_results=(
                 ImageRedactionResult.Result(
                     image_dimensions=(100, 100),
@@ -1387,7 +1387,7 @@ def test__pdf_processor__apply():
         "rb",
     ) as f:
         expected_redacted_doc_bytes = BytesIO(f.read())
-    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, dict())
+    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, {})
     expected_redacted_doc = pymupdf.open(stream=expected_redacted_doc_bytes)
     actual_redacted_doc = pymupdf.open(stream=actual_redacted_doc_bytes)
     expected_missing_words = {"Riker)", "Phillipa)"}
@@ -1529,7 +1529,7 @@ def test__pdf_processor__apply__run_metrics():
         curated_doc_bytes = BytesIO(f.read())
 
     processor = PDFProcessor()
-    processor.apply(curated_doc_bytes, dict())
+    processor.apply(curated_doc_bytes, {})
     run_metrics = processor.get_run_metrics()
 
     assert run_metrics is not None
