@@ -5,6 +5,7 @@ azure-identity==1.25.1
 azure-monitor-opentelemetry==1.8.3
 azure-storage-blob==12.23.1
 azure-servicebus==7.14.3
+click>=8.1.0  # Override Ubuntu 22.04 system click (8.0.x) which crashes in Azure Functions worker on Python 3.13
 coverage==7.12.0
 filelock==3.25.2
 langchain==1.1.0

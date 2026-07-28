@@ -45,6 +45,17 @@ extends:
             clean: true
           - checkout: templates
 
+          - script: |
+              set -e
+              sudo add-apt-repository ppa:deadsnakes/ppa -y
+              sudo apt-get update
+              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
+              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
+              python3 -m ensurepip --upgrade
+              python3 -m pip install --force-reinstall --no-binary cffi cffi
+              python3 --version
+            displayName: 'Install Python 3.13'
+
           # Azure auth: this pattern works (no string embedding)
           - template: ../steps/azure_auth.yml@templates
             parameters:

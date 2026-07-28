@@ -94,7 +94,7 @@ def test_logging_util__log_info(mock_logger_info):
     assert (
         "INFO: Logging initialised for redactor_logs.\n" in logging_util_inst.raw_logs
     )
-    assert f"INFO: {info_message}" in logging_util_inst.raw_logs
+    assert f"INFO: {info_message}\n" in logging_util_inst.raw_logs
 
 
 @pytest.mark.nologgerfixt
