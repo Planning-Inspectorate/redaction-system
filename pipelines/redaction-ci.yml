@@ -47,8 +47,8 @@ extends:
               cd redaction-system
               python3 -m pip install ruff
               export PYTHONPATH=$(pwd)
-              python3 -m ruff check redactor
-              python3 -m ruff format --check redactor
+              python3 -m ruff check
+              python3 -m ruff format --check
             displayName: 'Python code style check'
 
       - name: RunTestsJob
