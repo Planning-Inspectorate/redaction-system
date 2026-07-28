@@ -95,14 +95,14 @@ def trigger_orchestrator(context: df.DurableOrchestrationContext):
 
 # Activity
 @app.activity_trigger(input_name="params")
-def send_failure_notification(params: dict[str, Any]):
+def send_failure_notification(params):
     """
     Lightweight activity to send a service bus failure message when trigger_task times out or fails
     """
     from core.util.enum import PINSService
     from core.util.service_bus_util import ServiceBusUtil
 
-    request_params = params["request_params"]
+    request_params: dict[str, Any] = params["request_params"]
 
     pins_service_raw = request_params.get("pinsService", None)
     if not pins_service_raw:
@@ -123,7 +123,7 @@ def send_failure_notification(params: dict[str, Any]):
 
 # Activity
 @app.activity_trigger(input_name="params")
-def trigger_task(params: dict[str, Any]):
+def trigger_task(params):
     """
     Task which completes the redaction process
     """

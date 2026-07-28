@@ -42,6 +42,18 @@ extends:
         steps:
           - checkout: self
             clean: true
+
+          - script: |
+              set -e
+              sudo add-apt-repository ppa:deadsnakes/ppa -y
+              sudo apt-get update
+              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
+              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
+              python3 -m ensurepip --upgrade
+              python3 -m pip install --force-reinstall --no-binary cffi cffi
+              python3 --version
+            displayName: 'Install Python 3.13'
+
           - script: |
               set -e
               cd redaction-system
@@ -55,7 +67,20 @@ extends:
         steps:
           - checkout: self
             clean: true
+
           - checkout: templates
+
+          - script: |
+              set -e
+              sudo add-apt-repository ppa:deadsnakes/ppa -y
+              sudo apt-get update
+              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
+              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
+              python3 -m ensurepip --upgrade
+              python3 -m pip install --force-reinstall --no-binary cffi cffi
+              python3 --version
+            displayName: 'Install Python 3.13'
+
           - template: ../steps/azure_auth.yml@templates
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
@@ -100,10 +125,10 @@ extends:
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-          - task: NodeTool@0
+          - task: UseNode@1
             displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
             inputs:
-              versionSpec: '20.x'
+              version: '20.x'
 
           - script: |
               set -e
@@ -183,7 +208,7 @@ extends:
               JSON
 
               echo "Starting Functions host..."
-              nohup func start --python --port 7072 --verbose > ../func-host.log 2>&1 &
+              nohup func start --python --port 7072 --verbose > ../func-host-receiver.log 2>&1 &
               echo $! > ../func-host.pid
 
               echo "Waiting for Functions host (/admin/host/status)..."
@@ -196,7 +221,7 @@ extends:
               done
 
               echo "Functions host did not become ready. Last 200 lines:"
-              tail -n 200 ../func-host.log || true
+              tail -n 200 ../func-host-receiver.log || true
               exit 1
             displayName: 'Start local Azure Functions receiver host (background) + wait'
           - script: |
@@ -239,7 +264,7 @@ extends:
               JSON
 
               echo "Starting Functions host (orchestrator + activity only, no Service Bus trigger)..."
-              nohup func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host.log 2>&1 &
+              nohup func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host-processor.log 2>&1 &
               echo $! > ../func-host.pid
 
               echo "Waiting for Functions host (/admin/host/status)..."
@@ -252,7 +277,7 @@ extends:
               done
 
               echo "Functions host did not become ready. Last 200 lines:"
-              tail -n 200 ../func-host.log || true
+              tail -n 200 ../func-host-processor.log || true
               exit 1
             displayName: 'Start local Azure Functions processor host (background) + wait'
 
@@ -271,6 +296,15 @@ extends:
 
               python3 -m pytest -m e2e -vv -rP --junitxml=junit/e2e_test_results.xml
             displayName: 'Run e2e tests'
+
+          - script: |
+              echo "=== PROCESSOR FUNCTION HOST LOG (last 300 lines) ==="
+              tail -n 300 redaction-system/func-host-processor.log || true
+              echo ""
+              echo "=== RECEIVER FUNCTION HOST LOG (last 100 lines) ==="
+              tail -n 100 redaction-system/func-host-receiver.log || true
+            displayName: 'Dump function host logs'
+            condition: always()
 
           - script: |
               set +e
