@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from time import time
 from typing import Any, ClassVar
@@ -412,9 +412,7 @@ class PDFProcessor(FileProcessor):
             return None
 
         try:
-            return datetime.strptime(digits[:14], "%Y%m%d%H%M%S").replace(
-                tzinfo=datetime.timezone.utc
-            )
+            return datetime.strptime(digits[:14], "%Y%m%d%H%M%S").replace(tzinfo=UTC)
         except ValueError:
             return None
 

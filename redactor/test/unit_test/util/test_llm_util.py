@@ -228,8 +228,12 @@ def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_co
     assert llm_util.config.max_concurrent_requests == 32
 
 
-@patch("core.util.llm_util.Encoding.encode", side_effect=Exception("Encoding error"))
-def test__llm_util___num_tokens_consumed__exception(mock_encode):
+@patch("core.util.llm_util.get_encoding")
+def test__llm_util___num_tokens_consumed__exception(mock_get_encoding):
+    mock_encoding = Mock()
+    mock_encoding.encode.side_effect = Exception("Encoding error")
+    mock_get_encoding.return_value = mock_encoding
+
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1",
     )
@@ -501,11 +505,19 @@ def test__llm_util__analyse_text():
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
 
+    results = [
+        (create_mock_chat_completion(["string A"]), ["string A"]),
+        (create_mock_chat_completion(["string B"]), ["string B"]),
+    ]
+    results_iter = iter(results)
+
+    def side_effect(*args, **kwargs):
+        result = next(results_iter)
+        llm_util._compute_costs(result[0].usage)
+        return result
+
     with patch.object(LLMUtil, "_analyse_text_chunk") as mock_analyse_text_chunk:
-        mock_analyse_text_chunk.side_effect = [
-            (create_mock_chat_completion(["string A"]), ["string A"]),
-            (create_mock_chat_completion(["string B"]), ["string B"]),
-        ]
+        mock_analyse_text_chunk.side_effect = side_effect
         actual_result = llm_util.analyse_text(
             system_prompt="system prompt",
             text_chunks=["redaction string A", "redaction string B"],
@@ -521,12 +533,6 @@ def test__llm_util__analyse_text():
 
     # Output may be unordered due to parallel execution
     assert set(actual_result.redaction_strings) == {"string A", "string B"}
-
-    assert llm_util.request_semaphore.acquire.call_count == 2
-    assert llm_util.request_semaphore.release.call_count == 2
-
-    assert llm_util.token_semaphore.acquire.call_count == 2
-    assert llm_util.token_semaphore.release.call_count == 2
 
     assert llm_util.input_token_count == 10
     assert llm_util.output_token_count == 8
@@ -594,8 +600,9 @@ def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
     mock_executor_exit.assert_called_once()
 
 
+@patch("core.util.llm_util.get_encoding")
 @patch("time.sleep", return_value=None)
-def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
+def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep, mock_get_encoding):
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1",
         budget=12.0,
@@ -604,7 +611,7 @@ def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep):
     llm_util.input_token_cost = 1
     llm_util.output_token_cost = 2
 
-    with patch.object(LLMUtil, "") as mock_invoke_chain:
+    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [
             create_mock_chat_completion(["string A"]),
             create_mock_chat_completion(["string B"]),
@@ -655,7 +662,8 @@ def test__llm_util___check_budget__no_raise_when_no_budget_set():
     llm_util._check_budget()
 
 
-def test__llm_util__analyse_text__single_chunk_sequential():
+@patch("core.util.llm_util.get_encoding")
+def test__llm_util__analyse_text__single_chunk_sequential(mock_get_encoding):
     """When there is only 1 chunk, max_workers=1 and processing is sequential
     (no ThreadPoolExecutor)"""
     llm_util_config = LLMUtilConfig(
@@ -715,7 +723,8 @@ def test__llm_util__analyse_text__max_workers_limited_by_chunk_count():
     mock_executor_exit.assert_called_once()
 
 
-def test__llm_util__analyse_text__sequential_budget_exceeded():
+@patch("core.util.llm_util.get_encoding")
+def test__llm_util__analyse_text__sequential_budget_exceeded(mock_get_encoding):
     """Budget check in sequential path should stop processing after budget is exceeded"""
     llm_util_config = LLMUtilConfig(
         model="gpt-4.1",

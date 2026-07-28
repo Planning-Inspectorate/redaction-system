@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest import mock
 
@@ -169,9 +169,7 @@ def test__redaction_manager__save_dict_to_blob_json(mock_init):
             "proposedRedaction": "something",
             "annotatedText": "something",
             "rect": (0, 0, 1, 1),
-            "creationDate": datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
-            .date()
-            .isoformat(),
+            "creationDate": datetime(2024, 1, 1, tzinfo=UTC).date().isoformat(),
             "isRedactionCandidate": True,
         }
     ]
@@ -265,7 +263,7 @@ def test__redaction_manager__redact(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
-    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
     inst.redact(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -320,7 +318,7 @@ def test__redaction_manager__redact(
     assert len(calls) == 1
     assert calls[0].args[0] == {
         "jobID": inst.job_id,
-        "date": datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).date().isoformat(),
+        "date": datetime(2024, 1, 1, tzinfo=UTC).date().isoformat(),
         "fileName": "",
         "proposedRedactions": MockRedactor.get_proposed_redactions.return_value,
     }
@@ -349,9 +347,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "redact me",
                         "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": datetime(
-                            2024, 1, 1, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 1, tzinfo=UTC)
                         .date()
                         .isoformat(),
                         "isRedactionCandidate": True,
@@ -361,9 +357,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "something else",
                         "annotatedText": "something else",
                         "rect": [6, 6, 7, 7],
-                        "creationDate": datetime(
-                            2024, 1, 1, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 1, tzinfo=UTC)
                         .date()
                         .isoformat(),
                         "isRedactionCandidate": True,
@@ -373,9 +367,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "do not redact",
                         "annotatedText": "do not redact!",
                         "rect": [2, 2, 3, 3],
-                        "creationDate": datetime(
-                            2024, 1, 1, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 1, tzinfo=UTC)
                         .date()
                         .isoformat(),
                         "isRedactionCandidate": True,
@@ -385,9 +377,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "please redact",
                         "annotatedText": "please redact",
                         "rect": [7, 7, 8, 8],
-                        "creationDate": datetime(
-                            2023, 12, 31, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2023, 12, 31, tzinfo=UTC)
                         .date()
                         .isoformat(),
                         "isRedactionCandidate": False,
@@ -409,9 +399,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "redact me",
                         "annotatedText": "(redact me)",
                         "rect": [0, 0, 1, 1],
-                        "creationDate": datetime(
-                            2024, 1, 1, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 1, tzinfo=UTC)
                         .date()
                         .isoformat(),
                     },
@@ -420,9 +408,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "something else",
                         "annotatedText": "something else",
                         "rect": [6, 6, 7, 7],
-                        "creationDate": datetime(
-                            2024, 1, 1, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 1, tzinfo=UTC)
                         .date()
                         .isoformat(),
                     },
@@ -431,9 +417,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "please redact",
                         "annotatedText": "please redact",
                         "rect": [7, 7, 8, 8],
-                        "creationDate": datetime(
-                            2023, 12, 31, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2023, 12, 31, tzinfo=UTC)
                         .date()
                         .isoformat(),
                     },
@@ -442,9 +426,7 @@ def test__redaction_manager__compare_redactions():
                         "proposedRedaction": "another redaction",
                         "annotatedText": "another redaction",
                         "rect": [9, 9, 10, 10],
-                        "creationDate": datetime(
-                            2024, 1, 2, tzinfo=datetime.timezone.utc
-                        )
+                        "creationDate": datetime(2024, 1, 2, tzinfo=UTC)
                         .date()
                         .isoformat(),
                     },
@@ -596,7 +578,7 @@ def test__redaction_manager__apply(
     mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
     mock_load_config.return_value = mock_raw_config
     mock_validate_filter_config.return_value = mock_cleaned_config
-    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
     inst.apply(payload)
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -643,7 +625,7 @@ def test__redaction_manager__apply(
     assert len(calls) == 1
     assert calls[0].args[0] == {
         "jobID": inst.job_id,
-        "date": datetime(2024, 1, 1, tzinfo=datetime.timezone.utc).date().isoformat(),
+        "date": datetime(2024, 1, 1, tzinfo=UTC).date().isoformat(),
         "fileName": "",
         "finalRedactions": mock_get_final_redactions.return_value,
     }
@@ -848,7 +830,7 @@ def check__try_redact__validate_redact_json_payload__not_called(
     mock_save_logs,
     mock_save_exception,
 ):
-    not mock_validate_json.assert_called()
+    mock_validate_json.assert_not_called()
 
 
 def check__try_redact__redact__called(
@@ -882,7 +864,7 @@ def check__try_redact__redact__not_called(
     mock_save_logs,
     mock_save_exception,
 ):
-    not mock_redact.assert_called()
+    mock_redact.assert_not_called()
 
 
 def check__try_redact__log_exception__called(
@@ -916,7 +898,7 @@ def check__try_redact__log_exception__not_called(
     mock_save_logs,
     mock_save_exception,
 ):
-    not mock_log_exception.assert_called()
+    mock_log_exception.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1715,18 +1697,24 @@ def test__convert_job_id_to_storage_folder_name__with_invalid_id(mock_init, id):
 
 @mock.patch.object(RedactionManager, "__init__", return_value=None)
 def test__get_most_recent_blob(mock_init):
-    tz = datetime.timezone.utc
+    tz = UTC
     candidate_blobs = {
         "827df6d4-1-12345/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0, tzinfo=tz),
         "827df6d4-1-12346/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0, tzinfo=tz),
         "827df6d4-1-12347/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0, tzinfo=tz),
         "827df6d4-1-12348/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 0, tzinfo=tz),
         "827df6d4-1-12345/raw.pdf": datetime(2026, 3, 12, 0, 0, 0, tzinfo=tz),
+        "827df6d4-1-12345/proposed_redactions.json": datetime(
+            2026, 3, 12, 0, 0, 0, tzinfo=tz
+        ),
         "827df6d4-1-23456/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1, tzinfo=tz),
         "827df6d4-1-23457/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1, tzinfo=tz),
         "827df6d4-1-23458/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1, tzinfo=tz),
         "827df6d4-1-23459/ANALYSE_log.txt": datetime(2026, 3, 12, 0, 0, 1, tzinfo=tz),
         "827df6d4-1-23450/raw.pdf": datetime(2026, 3, 12, 0, 0, 1, tzinfo=tz),
+        "827df6d4-1-23456/proposed_redactions.json": datetime(
+            2026, 3, 12, 0, 0, 1, tzinfo=tz
+        ),
     }
     target_file = "proposed_redactions.json"
     inst = RedactionManager()
