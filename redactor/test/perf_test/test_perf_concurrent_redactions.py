@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import statistics
 import subprocess
@@ -10,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 import pytest
@@ -22,8 +23,6 @@ from redactor.test.e2e_test.e2e_utils import (
     build_payload,
     function_start_url,
 )
-
-import logging
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -99,7 +98,9 @@ def _repo_root() -> Path:
 
 
 def _run_id() -> str:
-    return os.getenv("E2E_RUN_ID") or datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    return os.getenv("E2E_RUN_ID") or datetime.now(tz=datetime.timezone.utc).strftime(
+        "%Y%m%d-%H%M%S"
+    )
 
 
 # ----------------------------
@@ -107,7 +108,7 @@ def _run_id() -> str:
 # ----------------------------
 
 
-def _percentiles(values: List[float]) -> Dict[str, float]:
+def _percentiles(values: list[float]) -> dict[str, float]:
     xs = sorted(values)
 
     def p(q: float) -> float:
@@ -141,7 +142,7 @@ def _az_list_blobs_prefix(
     container_name: str,
     prefix: str,
     limit: int = 200,
-) -> List[str]:
+) -> list[str]:
     """
     Best-effort listing of blobs under a prefix.
     Returns a list of blob names (possibly empty). Never raises.
@@ -171,7 +172,7 @@ def _az_list_blobs_prefix(
 
         lines = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
         return lines[:limit]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return [f"<<az blob list exception: {e}>>"]
 
 
@@ -219,13 +220,13 @@ class PerfResult:
     runtime_status: str
     seconds: float
     checked_blob_exists: bool
-    out_blob_exists: Optional[bool]
-    poll_url: Optional[str]
-    instance_id: Optional[str]
-    durable_status: Optional[dict]
-    diagnostics: Optional[str] = None
-    error: Optional[str] = None
-    downloaded_to: Optional[str] = None
+    out_blob_exists: bool | None
+    poll_url: str | None
+    instance_id: str | None
+    durable_status: dict | None
+    diagnostics: str | None = None
+    error: str | None = None
+    downloaded_to: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -233,7 +234,7 @@ class PerfResult:
         return self.outcome != Outcome.TEST_FAIL
 
 
-def _summarise_durable_status(status: Optional[dict]) -> dict:
+def _summarise_durable_status(status: dict | None) -> dict:
     if not status:
         return {}
     keys = [
@@ -292,7 +293,7 @@ async def _poll_until_done(
     poll_s: float,
 ) -> dict:
     deadline = time.time() + timeout_s
-    last_status: Optional[dict] = None
+    last_status: dict | None = None
     while time.time() < deadline:
         r = await client.get(poll_url, timeout=60)
 
@@ -323,7 +324,7 @@ async def _poll_until_done(
     )
 
 
-def _is_app_failure_from_status(durable_status: Optional[dict]) -> bool:
+def _is_app_failure_from_status(durable_status: dict | None) -> bool:
     """
     Decide if this run failed due to the *app* (acceptable), even if runtimeStatus == Completed.
     We use:
@@ -342,10 +343,7 @@ def _is_app_failure_from_status(durable_status: Optional[dict]) -> bool:
         return True
 
     out = durable_status.get("output") or {}
-    if isinstance(out, dict) and out.get("status") == "FAIL":
-        return True
-
-    return False
+    return isinstance(out, dict) and out.get("status") == "FAIL"
 
 
 async def _run_one(
@@ -364,9 +362,9 @@ async def _run_one(
     tmp_dir: Path,
 ) -> PerfResult:
     t0 = time.perf_counter()
-    poll_url: Optional[str] = None
-    instance_id: Optional[str] = None
-    durable_status: Optional[dict] = None
+    poll_url: str | None = None
+    instance_id: str | None = None
+    durable_status: dict | None = None
 
     try:
         start = await _trigger_start(client, start_url, payload)
@@ -431,9 +429,9 @@ async def _run_one(
                 ),
             )
 
-        out_exists: Optional[bool] = None
-        diagnostics: Optional[str] = None
-        downloaded_to: Optional[str] = None
+        out_exists: bool | None = None
+        diagnostics: str | None = None
+        downloaded_to: str | None = None
 
         # For successful app runs, validate blob existence (sampled)
         if do_exists_check:
@@ -505,7 +503,7 @@ async def _run_one(
                         out_file,
                     )
                     downloaded_to = str(out_file)
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     return PerfResult(
                         outcome=Outcome.TEST_FAIL,
                         runtime_status=runtime_status,
@@ -540,7 +538,7 @@ async def _run_one(
             downloaded_to=downloaded_to,
         )
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         elapsed = time.perf_counter() - t0
         # Anything unexpected in the harness is test-side
         return PerfResult(
@@ -581,7 +579,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     # ----------------------------
     # Prepare jobs
     # ----------------------------
-    jobs: List[Dict[str, Any]] = []
+    jobs: list[dict[str, Any]] = []
     for i in range(PERF_TOTAL):
         idx = f"{i:05d}"
         in_blob = f"perf/{run_id}/in/{idx}.pdf"
@@ -607,7 +605,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
             }
         )
 
-    async def run_all() -> List[PerfResult]:
+    async def run_all() -> list[PerfResult]:
         limits = httpx.Limits(
             max_connections=max(50, PERF_CONCURRENCY * 4),
             max_keepalive_connections=max(20, PERF_CONCURRENCY * 2),
@@ -617,7 +615,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
             sem = asyncio.Semaphore(PERF_CONCURRENCY)
 
-            async def wrapped(job: Dict[str, Any]) -> PerfResult:
+            async def wrapped(job: dict[str, Any]) -> PerfResult:
                 async with sem:
                     i = int(job["i"])
                     do_exists_check = PERF_EXISTS_SAMPLE_EVERY > 0 and (

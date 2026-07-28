@@ -1,13 +1,12 @@
-from mock import patch
-
-from core.redaction.redactor import LLMTextRedactor
+from unittest.mock import patch
 
 from core.redaction.config import (
-    RedactionConfig,
     LLMTextRedactionConfig,
+    RedactionConfig,
 )
-from core.util.llm_util import LLMUtil
+from core.redaction.redactor import LLMTextRedactor
 from core.redaction.result import LLMTextRedactionResult
+from core.util.llm_util import LLMUtil
 
 
 def test__llm_text_redactor__get_name():
@@ -46,7 +45,7 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     )
     mock_llm_result = LLMTextRedactionResult(
         rule_name="",
-        run_metrics=dict(),
+        run_metrics={},
         redaction_strings=[],
         metadata=LLMTextRedactionResult.LLMResultMetadata(
             request_count=0,
@@ -57,12 +56,14 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
         ),
     )
 
-    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
-        with patch.object(
+    with (
+        patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init,
+        patch.object(
             LLMUtil, "analyse_text", return_value=mock_llm_result
-        ) as mock_analyse_text:
-            LLMTextRedactor.config = config
-            LLMTextRedactor()._analyse_text("some text to analyse")
+        ) as mock_analyse_text,
+    ):
+        LLMTextRedactor.config = config
+        LLMTextRedactor()._analyse_text("some text to analyse")
 
     mock_llm_util_init.assert_called_once_with(config)
     mock_analyse_text.assert_called_once()
@@ -85,10 +86,12 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
         redaction_terms=["rule A"],
     )
 
-    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
-        with patch.object(LLMUtil, "analyse_text") as mock_analyse_text:
-            LLMTextRedactor.config = config
-            result = LLMTextRedactor()._analyse_text("")
+    with (
+        patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init,
+        patch.object(LLMUtil, "analyse_text") as mock_analyse_text,
+    ):
+        LLMTextRedactor.config = config
+        result = LLMTextRedactor()._analyse_text("")
 
     # LLMUtil should never be instantiated or called
     mock_llm_util_init.assert_not_called()
@@ -96,7 +99,7 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
 
     assert isinstance(result, LLMTextRedactionResult)
     assert result.rule_name == "config name"
-    assert result.redaction_strings == tuple()
+    assert result.redaction_strings == ()
     assert result.run_metrics == {}
 
 
@@ -122,4 +125,4 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
         result = LLMTextRedactor()._analyse_text(None)
 
     mock_llm_util_init.assert_not_called()
-    assert result.redaction_strings == tuple()
+    assert result.redaction_strings == ()

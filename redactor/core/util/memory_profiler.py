@@ -1,8 +1,8 @@
-import tracemalloc
-from datetime import datetime
+import os
 import threading
 import time
-import os
+import tracemalloc
+from datetime import datetime
 
 
 class MemoryProfiler:
@@ -20,10 +20,14 @@ class MemoryProfiler:
 
     def _profile_memory(self):
         while self.running:
-            now = datetime.now().replace(microsecond=0).isoformat()
+            now = (
+                datetime.now(tz=datetime.timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+            )
             snapshot = tracemalloc.take_snapshot()
             snapshot.dump(os.path.join("memoryProfile", f"{now}.snapshot"))
-            for i in range(0, self.trace_delay):
+            for i in range(self.trace_delay):
                 time.sleep(1)
                 if not self.running:
                     break

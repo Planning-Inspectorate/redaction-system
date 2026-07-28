@@ -1,12 +1,12 @@
-import os
-import logging
-import threading
 import functools
-
-from dotenv import load_dotenv
+import logging
+import os
+import threading
+import traceback
+from typing import ClassVar
 
 from azure.monitor.opentelemetry import configure_azure_monitor
-import traceback
+from dotenv import load_dotenv
 
 load_dotenv(verbose=True)
 
@@ -21,7 +21,7 @@ class Singleton(type):
     Thread safety based on https://stackoverflow.com/questions/51896862/how-to-create-singleton-class-with-arguments-in-python
     """
 
-    _INSTANCES = {}
+    _INSTANCES: ClassVar[dict] = {}
     _SINGLETON_LOCK = threading.Lock()
 
     def __call__(cls, *args, **kwargs):
@@ -29,9 +29,7 @@ class Singleton(type):
             with cls._SINGLETON_LOCK:
                 if cls not in cls._INSTANCES:
                     # Create and initialise the singleton instance
-                    cls._INSTANCES[cls] = super(Singleton, cls).__call__(
-                        cls, *args, **kwargs
-                    )
+                    cls._INSTANCES[cls] = super().__call__(cls, *args, **kwargs)
         return cls._INSTANCES[cls]
 
 
@@ -187,7 +185,7 @@ def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):
                 logger.log_exception_with_message(
                     f"Exception raised in function {func.__name__}:", e
                 )
-                raise e
+                raise
 
         return wrapper
 

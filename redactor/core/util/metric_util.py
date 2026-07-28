@@ -1,22 +1,22 @@
-from typing import List, Dict, Any
+from typing import Any
 
 
 class MetricUtil:
     @classmethod
-    def combine_run_metrics(cls, run_metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def combine_run_metrics(cls, run_metrics: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Aggregate numeric metrics together to across a list of run metrics.
         Non-numeric metrics are dropped
         """
-        combined = dict()
+        combined = {}
         all_available_metrics = [
-            metric for dictionary in run_metrics for metric in dictionary.keys()
+            metric for dictionary in run_metrics for metric in dictionary
         ]
         for metric in all_available_metrics:
             running_total = None
             for dictionary in run_metrics:
                 new_value = dictionary.get(metric, None)
-                if isinstance(new_value, int) or isinstance(new_value, float):
+                if isinstance(new_value, (int, float)):
                     if running_total is None:
                         running_total = new_value
                     else:

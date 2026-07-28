@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 
 from test.e2e_test.apply_e2e_utils import (
+    approx_greater_than,
     log_match_summary,
     log_threshold_check,
     match_ratio,
     missing_strings,
     run_redact_then_apply,
-    approx_greater_than,
 )
 
 logger = logging.getLogger("e2e")

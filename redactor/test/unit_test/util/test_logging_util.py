@@ -1,12 +1,12 @@
-import pytest
 import time
-
-from unittest.mock import patch, call
-from logging import Logger, getLogger
+import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from logging import Logger, getLogger
+from unittest.mock import call, patch
+
+import pytest
 
 from core.util.logging_util import LoggingUtil, Singleton, log_to_appins
-import traceback
 
 
 @pytest.mark.nologgerfixt
@@ -94,7 +94,7 @@ def test_logging_util__log_info(mock_logger_info):
     assert (
         "INFO: Logging initialised for redactor_logs.\n" in logging_util_inst.raw_logs
     )
-    assert f"INFO: {info_message}"
+    assert f"INFO: {info_message}" in logging_util_inst.raw_logs
 
 
 @pytest.mark.nologgerfixt
@@ -187,7 +187,7 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
     args_repr = []
     kwargs_repr = []
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         my_function_with_exception()
 
     LoggingUtil.log_info.assert_called_once_with(

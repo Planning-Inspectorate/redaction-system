@@ -1,4 +1,5 @@
 from io import BytesIO
+
 import pytest
 
 from core.io.storage_io import StorageIO

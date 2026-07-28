@@ -1,9 +1,9 @@
-import pytest
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 import pymupdf
+import pytest
 
 from test.e2e_test.e2e_utils import (
     az_blob_exists,

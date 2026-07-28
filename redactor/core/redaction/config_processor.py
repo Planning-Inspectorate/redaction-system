@@ -1,15 +1,14 @@
-import os
 import json
-
+import os
 from copy import deepcopy
+from typing import Any
+
 from yaml import safe_load
 
-from typing import Type, List, Any, Dict
-
-from core.redaction.redactor import RedactorFactory
-from core.redaction.exceptions import InvalidRedactionConfigException
 from core.redaction.config import RedactionConfig
+from core.redaction.exceptions import InvalidRedactionConfigException
 from core.redaction.file_processor import FileProcessor
+from core.redaction.redactor import RedactorFactory
 
 
 class ConfigProcessor:
@@ -20,7 +19,7 @@ class ConfigProcessor:
 
     @classmethod
     def validate_and_parse_redaction_config(
-        cls, redaction_config: List[Dict[str, Any]]
+        cls, redaction_config: list[dict[str, Any]]
     ):
         """
         Validate that all of the given config is valid and convert the config
@@ -96,7 +95,7 @@ class ConfigProcessor:
 
     @classmethod
     def convert_to_redaction_config(
-        cls, config: Dict[str, Any], redaction_config_class: Type[RedactionConfig]
+        cls, config: dict[str, Any], redaction_config_class: type[RedactionConfig]
     ):
         """
         Validate that the given config is valid for the given redaction config
@@ -113,8 +112,8 @@ class ConfigProcessor:
     @classmethod
     def filter_redaction_config(
         cls,
-        redaction_config: List[RedactionConfig],
-        file_processor_class: Type[FileProcessor],
+        redaction_config: list[RedactionConfig],
+        file_processor_class: type[FileProcessor],
     ):
         """
         Remove the RedactionConfig items that are not applicable to the given
@@ -140,7 +139,7 @@ class ConfigProcessor:
 
     @classmethod
     def validate_and_filter_config(
-        cls, config: Dict[str, Any], file_processor_class: Type[FileProcessor]
+        cls, config: dict[str, Any], file_processor_class: type[FileProcessor]
     ):
         """
         Validate the given config and filter it down to only contain the config

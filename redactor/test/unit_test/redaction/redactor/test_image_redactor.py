@@ -1,16 +1,18 @@
-from core.redaction.redactor import (
-    ImageRedactor,
-)
-from core.util.azure_vision_util import AzureVisionUtil
+import dataclasses
+from unittest import mock
+
+from PIL import Image
+
 from core.redaction.config import (
     ImageRedactionConfig,
+)
+from core.redaction.redactor import (
+    ImageRedactor,
 )
 from core.redaction.result import (
     ImageRedactionResult,
 )
-from PIL import Image
-import mock
-import dataclasses
+from core.util.azure_vision_util import AzureVisionUtil
 
 
 def test__image_redactor__get_name():
@@ -39,7 +41,7 @@ def test__image_redactor__redact():
     ]
     expected_results = ImageRedactionResult(
         rule_name="some image redaction config",
-        run_metrics=dict(),
+        run_metrics={},
         redaction_results=tuple(
             ImageRedactionResult.Result(
                 source_image=image,
@@ -50,19 +52,21 @@ def test__image_redactor__redact():
             for i, (image, faces_detected) in enumerate(detect_faces_result)
         ),
     )
-    with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
-        with mock.patch.object(
+    with (
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(
             AzureVisionUtil, "detect_faces_in_images", return_value=detect_faces_result
-        ):
-            with mock.patch.object(ImageRedactor, "__init__", return_value=None):
-                inst = ImageRedactor()
-                inst.config = config
-                actual_results = inst.redact()
-                cleaned_expected_results = dataclasses.asdict(expected_results)
-                cleaned_expected_results.pop("run_metrics")
-                cleaned_actual_results = dataclasses.asdict(actual_results)
-                cleaned_actual_results.pop("run_metrics")
-                assert cleaned_expected_results == cleaned_actual_results
+        ),
+        mock.patch.object(ImageRedactor, "__init__", return_value=None),
+    ):
+        inst = ImageRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        assert cleaned_expected_results == cleaned_actual_results
 
 
 def test__image_redactor__redact__no_images_skips_analysis():
@@ -92,7 +96,7 @@ def test__image_redactor__redact__no_images_skips_analysis():
     mock_vision_init.assert_not_called()
     mock_detect_faces.assert_not_called()
     assert actual_results.rule_name == "some image redaction config"
-    assert actual_results.redaction_results == tuple()
+    assert actual_results.redaction_results == ()
     assert actual_results.run_metrics == {}
 
 
@@ -107,22 +111,24 @@ def test__image_redactor__no_faces_detected():
         redactor_type="ImageRedaction",
         images=[Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))],
     )
-    detect_faces_result = [(config.images[0], tuple()), (config.images[1], tuple())]
+    detect_faces_result = [(config.images[0], ()), (config.images[1], ())]
     expected_results = ImageRedactionResult(
         rule_name="some image redaction config",
-        run_metrics=dict(),
-        redaction_results=tuple(),
+        run_metrics={},
+        redaction_results=(),
     )
-    with mock.patch.object(AzureVisionUtil, "__init__", return_value=None):
-        with mock.patch.object(
+    with (
+        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
+        mock.patch.object(
             AzureVisionUtil, "detect_faces_in_images", return_value=detect_faces_result
-        ):
-            with mock.patch.object(ImageRedactor, "__init__", return_value=None):
-                inst = ImageRedactor()
-                inst.config = config
-                actual_results = inst.redact()
-                cleaned_expected_results = dataclasses.asdict(expected_results)
-                cleaned_expected_results.pop("run_metrics")
-                cleaned_actual_results = dataclasses.asdict(actual_results)
-                cleaned_actual_results.pop("run_metrics")
-                assert cleaned_expected_results == cleaned_actual_results
+        ),
+        mock.patch.object(ImageRedactor, "__init__", return_value=None),
+    ):
+        inst = ImageRedactor()
+        inst.config = config
+        actual_results = inst.redact()
+        cleaned_expected_results = dataclasses.asdict(expected_results)
+        cleaned_expected_results.pop("run_metrics")
+        cleaned_actual_results = dataclasses.asdict(actual_results)
+        cleaned_actual_results.pop("run_metrics")
+        assert cleaned_expected_results == cleaned_actual_results

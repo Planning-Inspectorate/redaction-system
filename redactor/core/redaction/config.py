@@ -1,31 +1,31 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field
-from core.util.types import PydanticImage
 from langchain_core.prompts import PromptTemplate
+from pydantic import BaseModel, Field
+
+from core.util.types import PydanticImage
 
 
 class LLMUtilConfig(BaseModel):
     model: str
     """The LLM model to use"""
-    max_tokens: Optional[int] = 1000
+    max_tokens: int | None = 1000
     """Maximum number of tokens per completion"""
-    temperature: Optional[float] = 0.5
+    temperature: float | None = 0.5
     """LLM sampling temperature"""
-    request_rate_limit: Optional[int] = None
+    request_rate_limit: int | None = None
     """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
-    token_rate_limit: Optional[int] = None
+    token_rate_limit: int | None = None
     """Number of tokens allowed per minute. Defaults to 20% of model max TPM."""
-    max_concurrent_requests: Optional[int] = None
+    max_concurrent_requests: int | None = None
     """Number of concurrent requests to allow. Assigns the number of threads."""
-    token_encoding_name: Optional[str] = None
+    token_encoding_name: str | None = None
     """The token encoding name to use for estimating token counts"""
-    n: Optional[int] = 1
+    n: int | None = 1
     """Number of completions to generate per prompt"""
-    budget: Optional[float] = None
+    budget: float | None = None
     """The budget in GBP for LLM usage"""
-    token_timeout: Optional[float] = 60.0
+    token_timeout: float | None = 60.0
     """The timeout in seconds for acquiring tokens from the token semaphore"""
-    request_timeout: Optional[float] = 60.0
+    request_timeout: float | None = 60.0
     """The timeout in seconds for acquiring request semaphore"""
 
     def __init__(self, **data):
@@ -46,16 +46,16 @@ class RedactionConfig(BaseModel):
 
 
 class TextRedactionConfig(RedactionConfig):
-    text: Optional[str] = None
+    text: str | None = None
     """The source text to redact"""
 
 
 class LLMTextRedactionConfigBase(RedactionConfig, LLMUtilConfig):
     system_prompt: str
     """The system prompt for the LLM"""
-    redaction_terms: List[str]
+    redaction_terms: list[str]
     """A list of redaction rule strings to apply"""
-    constraints: List[str] = None
+    constraints: list[str] = None
     """A list of constraint strings to apply"""
     output_format: str = (
         "<OutputFormat> You respond in JSON format. You return the "
@@ -67,7 +67,7 @@ class LLMTextRedactionConfigBase(RedactionConfig, LLMUtilConfig):
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
     def create_system_prompt(self) -> str:
-        system_prompt_list: List[str] = []
+        system_prompt_list: list[str] = []
         # Add the system role and redaction_terms to redact
         system_prompt_list.append(xml_format(self.system_prompt, "SystemRole"))
         system_prompt_list.append(
@@ -109,9 +109,9 @@ def xml_format(input: str | list, format_string: str, as_list: bool = False) -> 
 
 
 class ImageRedactionConfig(RedactionConfig):
-    images: Optional[List[PydanticImage]] = None
+    images: list[PydanticImage] | None = None
     """The images to redact"""
-    confidence_threshold: Optional[float] = Field(0.5, ge=0.0, le=1.0)
+    confidence_threshold: float | None = Field(0.5, ge=0.0, le=1.0)
     """Confidence threshold between 0 and 1 for detections"""
 
 

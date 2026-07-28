@@ -1,28 +1,29 @@
-import os
 import json
-from core.util.logging_util import LoggingUtil
-import pymupdf
-
+import os
 from time import sleep
+from unittest import mock
+
+import pymupdf
+import pytest
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
 from core.redaction_manager import RedactionManager
-from test.util.util import ServiceBusUtil
+from core.util.logging_util import LoggingUtil
 from test.util.test_case import TestCase
-from azure.identity import (
-    AzureCliCredential,
-    ManagedIdentityCredential,
-    ChainedTokenCredential,
-)
-import pytest
-import mock
-
+from test.util.util import ServiceBusUtil
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
 RUN_ID = os.environ.get("RUN_ID")
 MOCK_START_TIME = 12345
+
+logger = LoggingUtil().logger
 
 
 @pytest.fixture(autouse=True)
@@ -80,14 +81,18 @@ class TestIntegrationRedactionManager(TestCase):
 
         try:
             ServiceBusUtil().receive_service_bus_complete_messages()
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to clear service bus messages during teardown, but continuing"
+            )
 
     def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
         try:
             container_client.delete_blob(blob_path)
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "Failed to delete blob '%s' during teardown, but continuing", blob_path
+            )
 
     def extract_pdf_highlights(self, pdf_bytes: bytes):
         pdf = pymupdf.open(stream=pdf_bytes)
@@ -100,7 +105,7 @@ class TestIntegrationRedactionManager(TestCase):
         while current_wait_time < max_wait_time:
             try:
                 new_messages = ServiceBusUtil().extract_service_bus_complete_messages()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 new_messages = []
             new_messages = [str(x) for x in new_messages]
             relevant_messages = [x for x in new_messages if run_id in x]

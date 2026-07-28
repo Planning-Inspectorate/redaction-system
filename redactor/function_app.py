@@ -6,16 +6,19 @@ https://learn.microsoft.com/en-us/azure/azure-functions/durable/quickstart-pytho
 """
 
 import json
-from typing import Dict, Any
-from datetime import timedelta
 import logging
+from datetime import timedelta
+from typing import Any
+
 import azure.durable_functions as df
 import azure.functions as func
+from opentelemetry._logs import get_logger_provider
 from opentelemetry.metrics import get_meter_provider
 from opentelemetry.trace import get_tracer_provider
-from opentelemetry._logs import get_logger_provider
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+
+logger = logging.getLogger(__name__)
 
 
 # An HTTP-triggered function with a Durable Functions client binding
@@ -31,19 +34,19 @@ async def trigger(
     """
     Service Bus trigger for redaction tasks
     """
-    request_params: Dict[str, Any] = json.loads(
+    request_params: dict[str, Any] = json.loads(
         received_message.get_body().decode("utf-8")
     )
-    logging.info("request params: %s", request_params)
+    logger.info("request params: %s", request_params)
     job_id = request_params.pop("job_id", None)
     if not job_id:
         message = "'job_id' property missing from service bus message"
-        logging.error(message)
+        logger.error(message)
         raise ValueError(message)
     job_id = await client.start_new(
         "trigger_orchestrator", client_input=request_params, instance_id=job_id
     )
-    logging.info(f"Started orchestration with ID = '{job_id}'")
+    logger.info(f"Started orchestration with ID = '{job_id}'")
 
 
 # Orchestrator
@@ -68,7 +71,7 @@ def trigger_orchestrator(context: df.DurableOrchestrationContext):
     winner = yield context.task_any([activity_task, timeout_task])
     if winner == activity_task:
         timeout_task.cancel()
-        logging.info(
+        logger.info(
             "Orchestrator %s: activity completed before timeout (%s mins)",
             context.instance_id,
             timeout_mins,
@@ -76,7 +79,7 @@ def trigger_orchestrator(context: df.DurableOrchestrationContext):
         return activity_task.result
     else:
         # Timeout: send failure notification via a separate activity
-        logging.info(
+        logger.info(
             "Orchestrator %s: timeout fired after %s mins, sending failure notification",
             context.instance_id,
             timeout_mins,
@@ -92,12 +95,12 @@ def trigger_orchestrator(context: df.DurableOrchestrationContext):
 
 # Activity
 @app.activity_trigger(input_name="params")
-def send_failure_notification(params: Dict[str, Any]):
+def send_failure_notification(params: dict[str, Any]):
     """
     Lightweight activity to send a service bus failure message when trigger_task times out or fails
     """
-    from core.util.service_bus_util import ServiceBusUtil
     from core.util.enum import PINSService
+    from core.util.service_bus_util import ServiceBusUtil
 
     request_params = params["request_params"]
 
@@ -120,27 +123,27 @@ def send_failure_notification(params: Dict[str, Any]):
 
 # Activity
 @app.activity_trigger(input_name="params")
-def trigger_task(params: Dict[str, Any]):
+def trigger_task(params: dict[str, Any]):
     """
     Task which completes the redaction process
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from core.redaction_manager import RedactionManager  # noqa: F402
-    from core.util.logging_util import LoggingUtil  # noqa: F402
+    from core.redaction_manager import RedactionManager
+    from core.util.logging_util import LoggingUtil
 
     # Clear logs from any previous invocation sharing this process
     LoggingUtil().clear_logs()
 
-    logging.info("Request params: %s", params)
+    logger.info("Request params: %s", params)
 
     job_id = params.pop("job_id")
     stage = params["stage"]
     if stage == "ANALYSE":
-        logging.info("Call try_redact")
+        logger.info("Call try_redact")
         return RedactionManager(job_id).try_redact(params)
     if stage == "REDACT":
-        logging.info("Call try_apply")
+        logger.info("Call try_apply")
         return RedactionManager(job_id).try_apply(params)
 
     # Shut down OpenTelemetry providers to prevent resource leaks

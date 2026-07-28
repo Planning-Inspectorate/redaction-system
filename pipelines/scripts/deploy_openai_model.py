@@ -1,9 +1,7 @@
 import argparse
-import subprocess
 import json
-from typing import Dict
 import logging
-
+import subprocess
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -73,7 +71,7 @@ class FoundryModelDeployer:
         command_output_json = json.loads(command_output)
         return command_output_json
 
-    def deploy_model(self, model_json: Dict[str, str]):
+    def deploy_model(self, model_json: dict[str, str]):
         """
         Deploy a mdel using the supplied config.
         """
@@ -93,6 +91,8 @@ class FoundryModelDeployer:
         return command_output_json
 
     def deploy_models(self):
+        logger = logging.getLogger(__name__)
+
         all_deployed_models = self.get_all_model_deployments()
         all_deployed_model_names = [x["name"] for x in all_deployed_models]
         models_map = {model["model-name"]: model for model in MODELS}
@@ -111,12 +111,14 @@ class FoundryModelDeployer:
             models_map[model_name]
             for model_name in model_names_to_create | model_names_to_update
         ]
-        logging.info("The following models have already been deployed")
-        logging.info(json.dumps(all_deployed_models, indent=4))
-        logging.info("The following deployed models will be created")
-        logging.info(json.dumps(list(model_names_to_create), indent=4))
-        logging.info("The following deployed models will be updated")
-        logging.info(json.dumps(list(model_names_to_update), indent=4))
+
+        logger.info("The following models have already been deployed")
+        logger.info(json.dumps(all_deployed_models, indent=4))
+        logger.info("The following deployed models will be created")
+        logger.info(json.dumps(list(model_names_to_create), indent=4))
+        logger.info("The following deployed models will be updated")
+        logger.info(json.dumps(list(model_names_to_update), indent=4))
+
         for model in models_to_deploy:
             self.deploy_model(model)
 

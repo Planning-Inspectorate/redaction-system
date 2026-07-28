@@ -1,12 +1,11 @@
 import os
-import requests
-import pytest
 import time
 
+import pytest
+import requests
 from azure.identity import AzureCliCredential
 
 from core.util.logging_util import log_to_appins
-
 
 APP_INSIGHTS_TOKEN = (
     AzureCliCredential().get_token("https://api.applicationinsights.io/.default").token
@@ -26,7 +25,7 @@ def app_ins_traces_contains_message(expected_message: str):
     )
     resp_json = resp.json()
 
-    return resp_json.get("tables", [dict()])[0].get("rows", [])
+    return resp_json.get("tables", [{}])[0].get("rows", [])
 
 
 @pytest.fixture(autouse=True, scope="module")

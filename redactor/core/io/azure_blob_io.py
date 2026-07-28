@@ -1,15 +1,16 @@
 from io import BytesIO
 from typing import Any
+
+from azure.core.exceptions import ResourceExistsError
 from azure.identity import (
     AzureCliCredential,
-    ManagedIdentityCredential,
     ChainedTokenCredential,
+    ManagedIdentityCredential,
 )
-from azure.storage.blob import BlobServiceClient, ContainerClient, BlobClient
-from azure.core.exceptions import ResourceExistsError
+from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 
-from core.util.logging_util import LoggingUtil
 from core.io.storage_io import StorageIO
+from core.util.logging_util import LoggingUtil
 
 
 class AzureBlobIO(StorageIO):
@@ -18,7 +19,10 @@ class AzureBlobIO(StorageIO):
     """
 
     def __init__(
-        self, storage_name: str = None, storage_endpoint: str = None, **kwargs: Any
+        self,
+        storage_name: str | None = None,
+        storage_endpoint: str | None = None,
+        **kwargs: Any,
     ) -> None:
         """
         Initialise Azure Blob Storage I/O handler.

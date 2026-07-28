@@ -1,5 +1,5 @@
-from typing import Tuple, List, Dict, Union
 from dataclasses import dataclass, field
+
 from PIL.Image import Image
 from pydantic import BaseModel
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class RedactionResult:
     rule_name: str
     """The name of the redaction rule that generated the result"""
-    run_metrics: Dict[str, Union[int, float, str]]
+    run_metrics: dict[str, int | float | str]
     """Any analytical metrics for the result"""
 
 
@@ -16,24 +16,24 @@ class RedactionResult:
 class ImageRedactionResult(RedactionResult):
     @dataclass(frozen=True)
     class Result:
-        image_dimensions: Tuple[int, int]
+        image_dimensions: tuple[int, int]
         """The dimensions of the image"""
         source_image: Image
         """The source image"""
-        redaction_boxes: Tuple[Tuple[int, int, int, int]] = field(
+        redaction_boxes: tuple[tuple[int, int, int, int]] = field(
             default_factory=lambda: ()
         )
         """The list redaction boxes to draw on the image, in the image's local space. This is of the form (top left corner x, top left corner y, width, height)"""
-        names: Tuple[str] = field(default_factory=lambda: ())
+        names: tuple[str] = field(default_factory=lambda: ())
         """The list of names associated with the redaction boxes"""
 
-    redaction_results: Tuple[Result]
+    redaction_results: tuple[Result]
     """A list of ImageRedactionResult.Result objects"""
 
 
 @dataclass(frozen=True)
 class TextRedactionResult(RedactionResult):
-    redaction_strings: Tuple[str] = field(default_factory=lambda: [])
+    redaction_strings: tuple[str] = field(default_factory=list)
     """The list of strings to redact"""
 
 
@@ -52,4 +52,4 @@ class LLMTextRedactionResult(TextRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: List[str]
+    redaction_strings: list[str]

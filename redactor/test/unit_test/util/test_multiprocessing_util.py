@@ -1,7 +1,8 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pytest
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 
 

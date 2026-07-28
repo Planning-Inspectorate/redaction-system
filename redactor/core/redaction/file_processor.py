@@ -1,42 +1,43 @@
+import dataclasses
 import json
 import re
-import pymupdf
-import dataclasses
-import numpy as np
-
-from typing import Set, Type, List, Any, Dict, Tuple, Generator
-from numpy.typing import NDArray
 from abc import ABC, abstractmethod
+from collections.abc import Generator
+from datetime import datetime
 from io import BytesIO
+from time import time
+from typing import Any, ClassVar
+
+import numpy as np
+import pymupdf
+from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel, Field
-from time import time
-from datetime import datetime
 
-from core.util.azure_vision_util import check_image_size
-from core.redaction.redactor import (
-    Redactor,
-    TextRedactor,
-    ImageRedactor,
-    RedactorFactory,
-)
+from core.redaction.config import RedactionConfig
 from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
     FileProcessorNameNotFoundException,
-    UnprocessedRedactionResultException,
     NonEnglishContentException,
     NothingToRedactException,
+    UnprocessedRedactionResultException,
 )
-from core.redaction.config import RedactionConfig
+from core.redaction.redactor import (
+    ImageRedactor,
+    Redactor,
+    RedactorFactory,
+    TextRedactor,
+)
 from core.redaction.result import (
+    ImageRedactionResult,
     RedactionResult,
     TextRedactionResult,
-    ImageRedactionResult,
 )
-from core.util.text_util import is_english_text, get_normalised_words, normalise_text
+from core.util.azure_vision_util import check_image_size
 from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.types import PydanticImage
 from core.util.metric_util import MetricUtil
+from core.util.text_util import get_normalised_words, is_english_text, normalise_text
+from core.util.types import PydanticImage
 
 
 class FileProcessor(ABC):
@@ -54,13 +55,12 @@ class FileProcessor(ABC):
         :return str: A unique name for the FileProcessor implementation class.
         This should correspond to a subtype of a mime type returned by libmagic
         """
-        pass
 
-    def get_run_metrics(self) -> Dict[str, Any]:
+    def get_run_metrics(self) -> dict[str, Any]:
         return self.run_metrics
 
     @abstractmethod
-    def redact(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def redact(self, file_bytes: BytesIO, redaction_config: dict[str, Any]) -> BytesIO:
         """
         Add provisional redactions to the provided document
 
@@ -69,10 +69,9 @@ class FileProcessor(ABC):
         to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
-        pass
 
     @abstractmethod
-    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def apply(self, file_bytes: BytesIO, redaction_config: dict[str, Any]) -> BytesIO:
         """
         Convert provisional redactions to real redactions
 
@@ -81,20 +80,18 @@ class FileProcessor(ABC):
         to the document
         :return BytesIO: The redacted file content as a bytes stream
         """
-        pass
 
     @classmethod
     @abstractmethod
-    def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
+    def get_applicable_redactors(cls) -> set[type[Redactor]]:
         """
         Return the redactors that are allowed to be applied to the FileProcessor
 
         :return Set[type[Redactor]]: The redactors that can be applied
         """
-        pass
 
     @classmethod
-    def combine_run_metrics(cls, run_metrics: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def combine_run_metrics(cls, run_metrics: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Aggregate numeric metrics together to across a list of run metrics.
         Non-numeric metrics are dropped
@@ -103,27 +100,25 @@ class FileProcessor(ABC):
         return combined | MetricUtil.combine_run_metrics(run_metrics)
 
     @abstractmethod
-    def get_proposed_redactions(cls) -> List[Dict[str, Any]]:
+    def get_proposed_redactions(cls) -> list[dict[str, Any]]:
         """
         Return the proposed redactions.
 
         :return List[Dict[str, Any]]: The proposed redactions
         """
-        pass
 
     @classmethod
     @abstractmethod
-    def get_final_redactions(cls) -> List[Dict[str, Any]]:
+    def get_final_redactions(cls) -> list[dict[str, Any]]:
         """
         Return the final redactions.
 
         :return List[Dict[str, Any]]: The final redactions
         """
-        pass
 
 
 class PDFImageMetadata(BaseModel):
-    source_image_resolution: Tuple[float, float]
+    source_image_resolution: tuple[float, float]
     """The dimensions of the source image"""
     file_format: str
     """The format of the image"""
@@ -131,7 +126,7 @@ class PDFImageMetadata(BaseModel):
     """The image content"""
     page_number: int
     """The page the image belongs to (0-indexed)"""
-    image_transform_in_pdf: Tuple[float, float, float, float, float, float]
+    image_transform_in_pdf: tuple[float, float, float, float, float, float]
     """The transform of the instance of the image in the PDF, represented as a pymupdf.Matrix"""
 
 
@@ -144,9 +139,9 @@ class PDFLineMetadata(BaseModel):
     """The y0 coordinate of the line's bounding box"""
     y1: float = None
     """The y1 coordinate of the line's bounding box"""
-    x0: Tuple[float, ...] = ()
+    x0: tuple[float, ...] = ()
     """The x0 coordinates of the words in the line"""
-    x1: Tuple[float, ...] = ()
+    x1: tuple[float, ...] = ()
     """The x1 coordinates of the words in the line"""
 
     class Config:
@@ -178,7 +173,7 @@ class PDFPageMetadata(BaseModel):
     page_number: int
     """The page the image belongs to (0-indexed)"""
     """The text content of the page"""
-    lines: List[PDFLineMetadata] = []
+    lines: list[PDFLineMetadata] = []
     """The metadata for the text content of the page"""
     raw_text: str
     """The full text content of the page"""
@@ -189,7 +184,7 @@ class PDFProcessor(FileProcessor):
     Class for managing the redaction of PDF documents
     """
 
-    terms_found: Dict[str, int] = {}
+    terms_found: ClassVar[dict[str, int]] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -288,10 +283,9 @@ class PDFProcessor(FileProcessor):
         :return List[PDFImageMetadata]: The metadata for the images of the PDF
         """
         pdf = pymupdf.open(stream=file_bytes)
-        image_metadata_list: List[PDFImageMetadata] = []
+        image_metadata_list: list[PDFImageMetadata] = []
         for page_number, page in enumerate(pdf):
             for image_xref in page.get_images(full=True):
-                page: pymupdf.Page = page
                 image_details = pdf.extract_image(image_xref[0])
                 bbox_result = page.get_image_bbox(image_xref, transform=True)
                 if not isinstance(bbox_result, tuple):
@@ -327,7 +321,7 @@ class PDFProcessor(FileProcessor):
                 image_metadata_list.append(image_metadata)
         return image_metadata_list
 
-    def _extract_unique_pdf_images(self, image_metadata: List[PDFImageMetadata]):
+    def _extract_unique_pdf_images(self, image_metadata: list[PDFImageMetadata]):
         """
         Process a list of PDFImageMetadata to only contain the unique images. A PDF may have an image repeated many times, for example in the header of
         each page
@@ -349,7 +343,7 @@ class PDFProcessor(FileProcessor):
         page: pymupdf.Page,
         annotation_class: Any = None,
         return_annot: bool = False,
-    ) -> Generator[Dict[str, Any], None, None]:
+    ) -> Generator[dict[str, Any]]:
         """
         Extract the annotations from a PDF page. If annotation_class is provided, only
         annotations of that class will be extracted.
@@ -389,7 +383,7 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _extract_pdf_annotations(
         cls, file_bytes: BytesIO, **kwargs
-    ) -> Tuple[Dict[str, Any]]:
+    ) -> tuple[dict[str, Any]]:
         """
         Extract the annotations from the given PDF as a list of dictionaries containing the annotation details
 
@@ -401,9 +395,7 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
         annotations = []
         for page in pdf:
-            page_annotations = []
-            for annot_info in cls._extract_page_annotations(page, **kwargs):
-                page_annotations.append(annot_info)
+            page_annotations = list(cls._extract_page_annotations(page, **kwargs))
             annotations.append(
                 {"page_number": page.number, "annotations": page_annotations}
             )
@@ -420,15 +412,17 @@ class PDFProcessor(FileProcessor):
             return None
 
         try:
-            return datetime.strptime(digits[:14], "%Y%m%d%H%M%S")
+            return datetime.strptime(digits[:14], "%Y%m%d%H%M%S").replace(
+                tzinfo=datetime.timezone.utc
+            )
         except ValueError:
             return None
 
     @classmethod
     def _normalise_annotations(
         cls,
-        annotations: Tuple[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        annotations: tuple[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         annotations_list = []
         for page in annotations:
             page_dict = {
@@ -455,7 +449,7 @@ class PDFProcessor(FileProcessor):
         return annotations_list
 
     @classmethod
-    def get_proposed_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+    def get_proposed_redactions(cls, file_bytes: BytesIO) -> list[dict[str, Any]]:
         """
         Get the proposed redactions from the given PDF as a list of dictionaries containing
         the annotation details. Redactions proposed by _apply_provisional_text_redactions will
@@ -473,7 +467,7 @@ class PDFProcessor(FileProcessor):
         return cls._normalise_annotations(annotations)
 
     @classmethod
-    def get_final_redactions(cls, file_bytes: BytesIO) -> List[Dict[str, Any]]:
+    def get_final_redactions(cls, file_bytes: BytesIO) -> list[dict[str, Any]]:
         """
         Get the final redactions from the given PDF as a list of dictionaries containing
         the annotation details. Redactions proposed by _apply_provisional_text_redactions will
@@ -494,10 +488,10 @@ class PDFProcessor(FileProcessor):
     @classmethod
     def _check_subsequent_words(
         cls,
-        normalised_words_to_redact: List[str],
+        normalised_words_to_redact: list[str],
         words_to_check: NDArray[np.str_],
         index: int,
-    ) -> Tuple[List[str], int]:
+    ) -> tuple[list[str], int]:
         """
         Given the index of a word in the line matching the first word to redact, check
         whether the subsequent words in the line match the subsequent words to redact.
@@ -544,8 +538,8 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _check_partial_match_before_hyphen(
-        cls, normalised_words_to_redact: List[str], words_to_check: NDArray[np.str_]
-    ) -> Tuple[str, int, int]:
+        cls, normalised_words_to_redact: list[str], words_to_check: NDArray[np.str_]
+    ) -> tuple[str, int, int]:
         """
         Given that the term to  redact contains a hyphen, check for potential partial
         matches of the term on the given line where part of the term before a hyphen is matched.
@@ -588,20 +582,23 @@ class PDFProcessor(FileProcessor):
                 start_index = len(words_to_check) - 1 - len(preceding_words)
                 words_to_compare = words_to_check[start_index:-1]
                 # Don't compare if lengths mismatch or start before sentence (won't be a match)
-                if start_index >= 0 and len(preceding_words) == len(words_to_compare):
-                    if np.all(preceding_words == words_to_compare):
-                        return (
-                            " ".join(preceding_words + [last_word_on_line]),
-                            start_index,
-                            len(words_to_check) - 1,
-                        )
+                if (
+                    start_index >= 0
+                    and len(preceding_words) == len(words_to_compare)
+                    and np.all(preceding_words == words_to_compare)
+                ):
+                    return (
+                        " ".join(preceding_words + [last_word_on_line]),
+                        start_index,
+                        len(words_to_check) - 1,
+                    )
 
         return None
 
     @classmethod
     def _match_word_to_redact_in_line(
         cls, word: str, words_to_check: NDArray[np.str_]
-    ) -> List[int]:
+    ) -> list[int]:
         """
         Find the indices of words in the line that match the word to redact.
 
@@ -619,8 +616,8 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _find_potential_matches_in_line(
-        cls, normalised_words_to_redact: List[str], words_to_check: NDArray[np.str_]
-    ) -> List[Tuple[str, int, int]]:
+        cls, normalised_words_to_redact: list[str], words_to_check: NDArray[np.str_]
+    ) -> list[tuple[str, int, int]]:
         """
         Find potential matches in the given line for the given text redaction candidate.
         Returns exact matches for single-word candidates and multi-word candidates on
@@ -689,7 +686,7 @@ class PDFProcessor(FileProcessor):
 
     @classmethod
     def _add_provisional_redaction(
-        cls, page: pymupdf.Page, rect: pymupdf.Rect, name: str = None
+        cls, page: pymupdf.Page, rect: pymupdf.Rect, name: str | None = None
     ):
         """
         Add an annotation to the PDF page as a provisional redaction.
@@ -714,12 +711,12 @@ class PDFProcessor(FileProcessor):
 
     def _check_partial_redaction_across_line_breaks(
         self,
-        normalised_words_to_redact: List[str],
+        normalised_words_to_redact: list[str],
         partial_term_found: str,
         line_checked: PDFLineMetadata,
         page_metadata: PDFPageMetadata,
         next_page_metadata: PDFPageMetadata = None,
-    ) -> List[Tuple[int, PDFLineMetadata, int]]:
+    ) -> list[tuple[int, PDFLineMetadata, int]]:
         """
         Given that a partial redaction term has been found on the current line, check
         whether the remaining part of the term to redact can be found on the next line
@@ -829,12 +826,12 @@ class PDFProcessor(FileProcessor):
 
     def _construct_line_broken_redaction_instance(
         self,
-        results: List[Tuple[int, PDFLineMetadata, int]],
+        results: list[tuple[int, PDFLineMetadata, int]],
         term_to_redact: str,
         first_line: PDFLineMetadata,
         page_number: int,
         start_index: int,
-    ) -> List[Tuple[int, pymupdf.Rect, str]]:
+    ) -> list[tuple[int, pymupdf.Rect, str]]:
         """
         Construct the provisional redaction instance for a partial redaction across line breaks.
 
@@ -887,7 +884,7 @@ class PDFProcessor(FileProcessor):
 
     @log_to_appins(log_args=False)
     def _apply_provisional_text_redactions(
-        self, file_bytes: BytesIO, text_to_redact: List[str]
+        self, file_bytes: BytesIO, text_to_redact: list[str]
     ):
         """
         Redact the given list of redaction strings as provisional redactions in
@@ -940,10 +937,8 @@ class PDFProcessor(FileProcessor):
             f"{[term for term in text_to_redact if self.terms_found[term] == 0]}"
         )
 
-        n_highlights = 0
         for page_to_redact, rect, term in redaction_instances:
             self._add_provisional_redaction(pdf[page_to_redact], rect, name=term)
-            n_highlights += 1
 
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
@@ -953,10 +948,10 @@ class PDFProcessor(FileProcessor):
     @log_to_appins(log_args=False)
     def _examine_provisional_redactions_on_page(
         self,
-        text_to_redact: List[str],
+        text_to_redact: list[str],
         page_metadata: PDFPageMetadata,
         next_page_metadata: PDFPageMetadata = None,
-    ) -> List[Tuple[int, pymupdf.Rect, str]]:
+    ) -> list[tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
         valid redactions (i.e. full matches or partial matches across line breaks).
@@ -1005,7 +1000,7 @@ class PDFProcessor(FileProcessor):
         term_to_redact: str,
         page_metadata: PDFPageMetadata,
         next_page_metadata: PDFPageMetadata = None,
-    ) -> List[Tuple[int, pymupdf.Rect, str]]:
+    ) -> list[tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidate is valid, i.e., a full
         match or a partial match across line breaks.
@@ -1105,8 +1100,8 @@ class PDFProcessor(FileProcessor):
     def _apply_provisional_image_redactions(
         self,
         file_bytes: BytesIO,
-        redactions: List[ImageRedactionResult],
-        pdf_images: List[PDFImageMetadata] = None,
+        redactions: list[ImageRedactionResult],
+        pdf_images: list[PDFImageMetadata] | None = None,
     ):
         """
         Redact the given list of bounding boxes as provisional redactions in the
@@ -1176,7 +1171,7 @@ class PDFProcessor(FileProcessor):
                         self._add_provisional_redaction(
                             page, rect_in_global_space, name=redaction_name
                         )
-                    except Exception as e:
+                    except ValueError as e:
                         LoggingUtil().log_exception_with_message(
                             (
                                 f"Failed to apply image redaction highlight for rect "
@@ -1232,7 +1227,7 @@ class PDFProcessor(FileProcessor):
     def redact(
         self,
         file_bytes: BytesIO,
-        redaction_config: Dict[str, Any],
+        redaction_config: dict[str, Any],
     ) -> BytesIO:
         """
         Redact the given PDF file bytes according to the redaction configuration.
@@ -1265,30 +1260,30 @@ class PDFProcessor(FileProcessor):
         image_extraction_time = image_extraction_time_end - image_extraction_time_start
 
         # Generate list of redaction rules from config
-        redaction_rules: List[RedactionConfig] = redaction_config.get(
+        redaction_rules: list[RedactionConfig] = redaction_config.get(
             "redaction_rules", []
         )
 
         # Attach text and images to redaction configs
-        for redaction_config in redaction_rules:
-            if hasattr(redaction_config, "text"):
-                redaction_config.text = pdf_text
-            if hasattr(redaction_config, "images"):
-                redaction_config.images = self._extract_unique_pdf_images(pdf_images)
+        for rule in redaction_rules:
+            if hasattr(rule, "text"):
+                rule.text = pdf_text
+            if hasattr(rule, "images"):
+                rule.images = self._extract_unique_pdf_images(pdf_images)
 
         # Generate list of rules to apply
-        redaction_rules_to_apply: List[Redactor] = [
+        redaction_rules_to_apply: list[Redactor] = [
             RedactorFactory.get(rule.redactor_type)(rule) for rule in redaction_rules
         ]
 
         # Generate redactions
         # TODO convert back to a set
-        redaction_results: List[RedactionResult] = []
+        redaction_results: list[RedactionResult] = []
         text_analysis_total_time = 0.0
         image_analysis_total_time = 0.0
 
         # Apply each redaction rule
-        text_redaction_summary: Dict[str, Any] = {}
+        text_redaction_summary: dict[str, Any] = {}
         for rule_to_apply in redaction_rules_to_apply:
             LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
             redaction_time_start = time()
@@ -1311,7 +1306,7 @@ class PDFProcessor(FileProcessor):
             redaction_results.append(redaction_result)
         LoggingUtil().log_info("PDF analysis complete")
         # Separate out text and image redaction results
-        text_redaction_results: List[TextRedactionResult] = [
+        text_redaction_results: list[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         ]
         text_redactions = [
@@ -1319,7 +1314,7 @@ class PDFProcessor(FileProcessor):
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
-        image_redaction_results: List[ImageRedactionResult] = [
+        image_redaction_results: list[ImageRedactionResult] = [
             x
             for x in redaction_results
             if issubclass(x.__class__, ImageRedactionResult)
@@ -1373,8 +1368,8 @@ class PDFProcessor(FileProcessor):
             term for term, count in self.terms_found.items() if count == 0
         ]
         for term in unapplied_redaction_terms:
-            for result in text_redaction_summary:
-                if term in text_redaction_summary[result]["redaction_strings"]:
+            for result, summary in text_redaction_summary.items():
+                if term in summary["redaction_strings"]:
                     text_redaction_summary[result]["n_applied"] -= 1
 
         self.run_metrics = {
@@ -1394,7 +1389,7 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     @log_to_appins
-    def apply(self, file_bytes: BytesIO, redaction_config: Dict[str, Any]) -> BytesIO:
+    def apply(self, file_bytes: BytesIO, redaction_config: dict[str, Any]) -> BytesIO:
         """Apply redaction annotations to all annotations in the PDF, and scrub the PDF
         to remove any hidden content, metadata, and unreferenced objects that may contain
         redacted information.
@@ -1417,7 +1412,7 @@ class PDFProcessor(FileProcessor):
                 return_annot=True,
             ):
                 redaction_highlight_count += 1
-                if "rect" in annotation and annotation["rect"]:
+                if annotation.get("rect"):
                     # Use the rect generated from the vertices if it exists, since
                     # this will have preserved the position of the highlight applied more accurately
                     annotation_rect = annotation["rect"]
@@ -1463,19 +1458,19 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     @classmethod
-    def get_applicable_redactors(cls) -> Set[Type[Redactor]]:
+    def get_applicable_redactors(cls) -> set[type[Redactor]]:
         return {TextRedactor, ImageRedactor}
 
 
 class FileProcessorFactory:
-    PROCESSORS: Set[Type[FileProcessor]] = {PDFProcessor}
+    PROCESSORS: ClassVar[set[type[FileProcessor]]] = {PDFProcessor}
 
     @classmethod
     def _validate_processor_types(cls):
         """
         Validate the PROCESSORS and return a map of type_name: Type[FileProcessor]
         """
-        name_map: Dict[str, List[Type[FileProcessor]]] = dict()
+        name_map: dict[str, list[type[FileProcessor]]] = {}
         for processor_type in cls.PROCESSORS:
             type_name = processor_type.get_name()
             if type_name in name_map:
@@ -1491,7 +1486,7 @@ class FileProcessorFactory:
         return {k: v[0] for k, v in name_map.items()}
 
     @classmethod
-    def get(cls, processor_type: str) -> Type[FileProcessor]:
+    def get(cls, processor_type: str) -> type[FileProcessor]:
         """
         Return the FileProcessor class that is identified by the provided type
         name
@@ -1506,7 +1501,7 @@ class FileProcessorFactory:
             the underlying config defined in FileProcessorFactory.PROCESSORS
         """
         if not isinstance(processor_type, str):
-            raise ValueError(
+            raise TypeError(
                 "FileProcessorFactory.get expected a str, but got a "
                 f"'{type(processor_type)}'"
             )
@@ -1519,5 +1514,5 @@ class FileProcessorFactory:
         return name_map[processor_type]
 
     @classmethod
-    def get_all(cls) -> Set[Type[FileProcessor]]:
+    def get_all(cls) -> set[type[FileProcessor]]:
         return cls.PROCESSORS

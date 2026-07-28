@@ -1,12 +1,12 @@
-from core.redaction.redactor import RedactorFactory
-from core.redaction.redactor import Redactor
-from core.redaction.exceptions import (
-    RedactorNameNotFoundException,
-    DuplicateRedactorNameException,
-)
-import pytest
-import mock
+from unittest import mock
 
+import pytest
+
+from core.redaction.exceptions import (
+    DuplicateRedactorNameException,
+    RedactorNameNotFoundException,
+)
+from core.redaction.redactor import Redactor, RedactorFactory
 
 """
 Create some mock redactor classes for testing
@@ -62,13 +62,15 @@ def test__redactor_factory__validate_redactor_types__with_duplicate_names():
     - When we call _validate_redactor_types
     - Then a DuplicateRedactorNameException exception should be raised
     """
-    with mock.patch.object(
-        RedactorFactory,
-        "REDACTOR_TYPES",
-        [MockRedactorA, MockRedactorB, MockRedactorC, MockRedactorD],
+    with (
+        mock.patch.object(
+            RedactorFactory,
+            "REDACTOR_TYPES",
+            [MockRedactorA, MockRedactorB, MockRedactorC, MockRedactorD],
+        ),
+        pytest.raises(DuplicateRedactorNameException),
     ):
-        with pytest.raises(DuplicateRedactorNameException):
-            RedactorFactory._validate_redactor_types()
+        RedactorFactory._validate_redactor_types()
 
 
 def test__redactor_factory__get__successful():
@@ -91,11 +93,15 @@ def test__redactor_factory__get__name_not_found():
     - When we call get() with a redactor name that is not defined in any of our Redactor classes
     - Then a RedactorNameNotFoundException exception should be raised
     """
-    with mock.patch.object(
-        RedactorFactory, "REDACTOR_TYPES", [MockRedactorA, MockRedactorB, MockRedactorC]
+    with (
+        mock.patch.object(
+            RedactorFactory,
+            "REDACTOR_TYPES",
+            [MockRedactorA, MockRedactorB, MockRedactorC],
+        ),
+        pytest.raises(RedactorNameNotFoundException),
     ):
-        with pytest.raises(RedactorNameNotFoundException):
-            RedactorFactory.get("redactorD")
+        RedactorFactory.get("redactorD")
 
 
 def test__redactor_factory__get__invalid_input():
@@ -103,8 +109,12 @@ def test__redactor_factory__get__invalid_input():
     - When I call redactor factory with an input that is not a string
     - Then a value error should be raised to alert the user about invalid input
     """
-    with mock.patch.object(
-        RedactorFactory, "REDACTOR_TYPES", [MockRedactorA, MockRedactorB, MockRedactorC]
+    with (
+        mock.patch.object(
+            RedactorFactory,
+            "REDACTOR_TYPES",
+            [MockRedactorA, MockRedactorB, MockRedactorC],
+        ),
+        pytest.raises(TypeError),
     ):
-        with pytest.raises(ValueError):
-            RedactorFactory.get(1)
+        RedactorFactory.get(1)

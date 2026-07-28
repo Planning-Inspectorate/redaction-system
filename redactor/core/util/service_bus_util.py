@@ -1,17 +1,19 @@
-from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusMessage
-from azure.identity.aio import (
-    AzureCliCredential,
-    ManagedIdentityCredential,
-    ChainedTokenCredential,
-)
-from core.util.enum import PINSService
-from typing import Dict, Any
-from datetime import timedelta
-from concurrent.futures import ThreadPoolExecutor
-import os
 import asyncio
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from typing import Any
+
+from azure.identity.aio import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
+from azure.servicebus import ServiceBusMessage
+from azure.servicebus.aio import ServiceBusClient
+
+from core.util.enum import PINSService
 
 
 class ServiceBusUtil:
@@ -20,7 +22,7 @@ class ServiceBusUtil:
     """
 
     async def _send_message(
-        self, topic_name: str, pins_service: PINSService, payload: Dict[str, Any]
+        self, topic_name: str, pins_service: PINSService, payload: dict[str, Any]
     ):
         """
         Asynchronously send messages to the service bus
@@ -56,13 +58,16 @@ class ServiceBusUtil:
                     )
                     await sender.send_messages([message])
                 # Close credential when no longer needed.
-            except Exception:
-                raise
+            except ValueError as e:
+                raise RuntimeError(
+                    f"Failed to send message to service bus topic '{topic_name}' for "
+                    f"service '{service_name}': {e}"
+                ) from e
             finally:
                 await credential.close()
 
     def send_redaction_process_complete_message(
-        self, pins_service: PINSService, payload: Dict[str, Any]
+        self, pins_service: PINSService, payload: dict[str, Any]
     ):
         """
         Send a message to the `redaction-process-complete` topic on the service bus

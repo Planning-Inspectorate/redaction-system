@@ -1,25 +1,25 @@
 import os
+from datetime import datetime
+from io import BytesIO
+from unittest.mock import MagicMock, Mock, patch
+
+import numpy as np
 import pymupdf
 import pytest
-import numpy as np
-
 from PIL import Image
-from io import BytesIO
-from mock import patch, Mock, MagicMock
-from datetime import datetime
 
+from core.redaction.exceptions import NonEnglishContentException
 from core.redaction.file_processor import (
-    PDFProcessor,
     PDFImageMetadata,
-    PDFPageMetadata,
     PDFLineMetadata,
+    PDFPageMetadata,
+    PDFProcessor,
 )
 from core.redaction.result import (
     ImageRedactionResult,
     TextRedactionResult,
 )
-from core.util.text_util import is_english_text, get_normalised_words
-from core.redaction.exceptions import NonEnglishContentException
+from core.util.text_util import get_normalised_words, is_english_text
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
@@ -685,18 +685,20 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks():
     term = "Hello World"
     normalised_words_to_redact = get_normalised_words(term)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
             PDFProcessor,
             "_check_subsequent_words",
             return_value=(["world"], 0),
-        ):
-            match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-                normalised_words_to_redact,
-                "hello",
-                page_metadata.lines[0],
-                page_metadata,
-            )
+        ),
+    ):
+        match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+            normalised_words_to_redact,
+            "hello",
+            page_metadata.lines[0],
+            page_metadata,
+        )
     expected_result = [(0, page_metadata.lines[1], 0)]
 
     assert match_result == expected_result
@@ -715,18 +717,20 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
     term = "Hello World"
     normalised_words_to_redact = get_normalised_words(term)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
             PDFProcessor,
             "_check_subsequent_words",
             side_effect=[(["hello"], 0), ([], -1)],
-        ):
-            result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-                normalised_words_to_redact,
-                "hello",
-                page_metadata.lines[0],
-                page_metadata,
-            )
+        ),
+    ):
+        result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+            normalised_words_to_redact,
+            "hello",
+            page_metadata.lines[0],
+            page_metadata,
+        )
 
     assert result == []
 
@@ -744,18 +748,20 @@ def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks(
     term = "This is line broken"
     normalised_words_to_redact = get_normalised_words(term)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
             PDFProcessor,
             "_find_potential_matches_in_line",
             side_effect=[([("this", 0, 0)]), [("is", 0, 0)], []],
-        ):
-            result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-                normalised_words_to_redact,
-                "this",
-                page_metadata.lines[0],
-                page_metadata,
-            )
+        ),
+    ):
+        result = PDFProcessor()._check_partial_redaction_across_line_breaks(
+            normalised_words_to_redact,
+            "this",
+            page_metadata.lines[0],
+            page_metadata,
+        )
 
     assert result == [(0, page_metadata.lines[1], 1), (0, page_metadata.lines[2], 0)]
 
@@ -773,16 +779,18 @@ def test__pdf_processor__examine_provisional_text_redaction():
     term = "Hello"
     rect = pymupdf.Rect(0, 0, 10, 10)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
             PDFProcessor,
             "_find_potential_matches_in_line",
             return_value=([("hello", 0, 0)]),
-        ):
-            result = PDFProcessor()._examine_provisional_text_redaction(
-                "Hello",
-                page_metadata,
-            )
+        ),
+    ):
+        result = PDFProcessor()._examine_provisional_text_redaction(
+            "Hello",
+            page_metadata,
+        )
 
     assert result == [(page_metadata.page_number, rect, term)]
 
@@ -826,24 +834,24 @@ def test__pdf_processor__examine_provisional_text_redaction__line_break():
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with (
-            patch.object(
-                PDFProcessor,
-                "_check_partial_redaction_across_line_breaks",
-                return_value=[(0, page_metadata.lines[1], 0)],
-            ),
-            patch.object(
-                PDFProcessor,
-                "_find_potential_matches_in_line",
-                side_effect=[[("hello", 0, 0)], []],
-            ),
-        ):
-            pdf_processor = PDFProcessor()
-            result = pdf_processor._examine_provisional_text_redaction(
-                term,
-                page_metadata,
-            )
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
+            PDFProcessor,
+            "_check_partial_redaction_across_line_breaks",
+            return_value=[(0, page_metadata.lines[1], 0)],
+        ),
+        patch.object(
+            PDFProcessor,
+            "_find_potential_matches_in_line",
+            side_effect=[[("hello", 0, 0)], []],
+        ),
+    ):
+        pdf_processor = PDFProcessor()
+        result = pdf_processor._examine_provisional_text_redaction(
+            term,
+            page_metadata,
+        )
 
     assert result == [
         (page_metadata.page_number, rect, term),
@@ -865,24 +873,24 @@ def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_bre
     rect = pymupdf.Rect(0, 0, 10, 10)
     next_rect = pymupdf.Rect(0, 20, 10, 30)
 
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with (
-            patch.object(
-                PDFProcessor,
-                "_check_partial_redaction_across_line_breaks",
-                return_value=[(0, page_metadata.lines[1], 0)],
-            ),
-            patch.object(
-                PDFProcessor,
-                "_find_potential_matches_in_line",
-                side_effect=[[("something", 0, 0)], []],
-            ),
-        ):
-            pdf_processor = PDFProcessor()
-            result = pdf_processor._examine_provisional_text_redaction(
-                term,
-                page_metadata,
-            )
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
+            PDFProcessor,
+            "_check_partial_redaction_across_line_breaks",
+            return_value=[(0, page_metadata.lines[1], 0)],
+        ),
+        patch.object(
+            PDFProcessor,
+            "_find_potential_matches_in_line",
+            side_effect=[[("something", 0, 0)], []],
+        ),
+    ):
+        pdf_processor = PDFProcessor()
+        result = pdf_processor._examine_provisional_text_redaction(
+            term,
+            page_metadata,
+        )
 
     assert result == [
         (page_metadata.page_number, rect, term),
@@ -941,18 +949,20 @@ def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock
         [(0, rect, term), (0, next_rect, term)],
         [],
     ]
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        with patch.object(
+    with (
+        patch.object(PDFProcessor, "__init__", return_value=None),
+        patch.object(
             PDFProcessor,
             "_examine_provisional_text_redaction",
             side_effect=side_effects,
-        ):
-            pdf_processor = PDFProcessor()
-            pdf_processor.terms_found = {term: 0}
-            result = pdf_processor._examine_provisional_redactions_on_page(
-                [term],
-                page_metadata,
-            )
+        ),
+    ):
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {term: 0}
+        result = pdf_processor._examine_provisional_redactions_on_page(
+            [term],
+            page_metadata,
+        )
 
     assert result == expected_result
 

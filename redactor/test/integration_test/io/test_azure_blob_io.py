@@ -1,12 +1,13 @@
 import os
 from io import BytesIO
+from typing import ClassVar
 
-from azure.storage.blob import BlobServiceClient, ContainerClient
 from azure.identity import (
     AzureCliCredential,
-    ManagedIdentityCredential,
     ChainedTokenCredential,
+    ManagedIdentityCredential,
 )
+from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
 from core.io.azure_blob_io import AzureBlobIO
@@ -27,7 +28,7 @@ class TestIntegrationRedactionManager(TestCase):
     )
     CALLBACK_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("test")
     SUBFOLDER = "azure_blob_io_test"
-    FILES_TO_CLEANUP = ["sample.pdf", "a/q.bin"]
+    FILES_TO_CLEANUP: ClassVar[list[str]] = ["sample.pdf", "a/q.bin"]
 
     def session_setup(self):
         for file in self.FILES_TO_CLEANUP:
@@ -42,10 +43,7 @@ class TestIntegrationRedactionManager(TestCase):
             )
 
     def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
-        try:
-            container_client.delete_blob(blob_path)
-        except Exception:
-            pass
+        container_client.delete_blob(blob_path)
 
     def test_end_to_end_write_then_read_with_direct_endpoint(self):
         io = AzureBlobIO(storage_endpoint=self.STORAGE_ENDPOINT)

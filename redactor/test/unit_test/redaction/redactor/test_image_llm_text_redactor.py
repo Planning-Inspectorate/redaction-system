@@ -1,14 +1,16 @@
-from core.redaction.redactor import (
-    ImageLLMTextRedactor,
-)
-from core.util.llm_util import LLMUtil
+import dataclasses
+from unittest import mock
+
+from PIL import Image
+
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
 )
+from core.redaction.redactor import (
+    ImageLLMTextRedactor,
+)
 from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
-from PIL import Image
-import mock
-import dataclasses
+from core.util.llm_util import LLMUtil
 
 
 def test__image_redactor__get_name():
@@ -54,7 +56,7 @@ def test__image_llm_text_redactor___analyse_image_text():
     ]
     mock_llm_result = LLMTextRedactionResult(
         rule_name="config name",
-        run_metrics=dict(),
+        run_metrics={},
         redaction_strings=("Klingon", "Romulan", "Vulcan"),
         metadata=LLMTextRedactionResult.LLMResultMetadata(
             input_token_count=80, output_token_count=20, total_token_count=100
@@ -193,7 +195,7 @@ def test__image_llm_text_redactor__redact():
     ]
     expected_results = ImageRedactionResult(
         rule_name="config name",
-        run_metrics=dict(),
+        run_metrics={},
         redaction_results=(
             ImageRedactionResult.Result(
                 image_dimensions=(1000, 1000),
@@ -276,7 +278,7 @@ def test__image_llm_text_redactor__redact__no_images_skips_analysis():
 
     mock_analyse_image_text.assert_not_called()
     assert actual_results.rule_name == "config name"
-    assert actual_results.redaction_results == tuple()
+    assert actual_results.redaction_results == ()
     assert actual_results.run_metrics == {
         "total_image_ocr_time": 0.0,
         "total_image_text_analysis_time": 0.0,
@@ -321,7 +323,7 @@ def test__image_llm_text_redactor__redact__no_text_in_images_skips_llm():
         actual_results = inst.redact()
 
     mock_analyse_image_text.assert_called_once()
-    assert actual_results.redaction_results == tuple()
+    assert actual_results.redaction_results == ()
 
 
 def test__image_llm_text_redactor__no_redaction_strings():
@@ -361,8 +363,8 @@ def test__image_llm_text_redactor__no_redaction_strings():
     ]
     expected_results = ImageRedactionResult(
         rule_name="config name",
-        run_metrics=dict(),
-        redaction_results=tuple(),
+        run_metrics={},
+        redaction_results=(),
     )
     with (
         mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),

@@ -1,12 +1,11 @@
 import os
+from io import BytesIO
+from unittest import mock
 
 from PIL import Image
-from io import BytesIO
 
-import mock
-
-from core.redaction.redactor import ImageLLMTextRedactor
 from core.redaction.config import ImageLLMTextRedactionConfig
+from core.redaction.redactor import ImageLLMTextRedactor
 from core.redaction.result import ImageRedactionResult
 
 
@@ -28,7 +27,7 @@ def test__image_llm_text_redactor__redact__no_images_returns_empty_result():
     result = redactor_inst.redact()
 
     assert isinstance(result, ImageRedactionResult)
-    assert result.redaction_results == tuple()
+    assert result.redaction_results == ()
     assert result.run_metrics["total_images_to_analyse"] == 0
 
 
