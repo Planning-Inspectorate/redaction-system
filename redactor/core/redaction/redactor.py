@@ -1,36 +1,33 @@
 import json
 import re
-
 from abc import ABC, abstractmethod
-from typing import Type, List, Dict, Tuple, Any
 from itertools import chain
+from time import time
+from typing import Any, ClassVar
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from core.redaction.config import (
+    ImageLLMTextRedactionConfig,
+    ImageRedactionConfig,
+    LLMTextRedactionConfig,
     RedactionConfig,
     TextRedactionConfig,
-    LLMTextRedactionConfig,
-    ImageRedactionConfig,
-    ImageLLMTextRedactionConfig,
 )
-from core.redaction.result import (
-    LLMTextRedactionResult,
-    ImageRedactionResult,
-    RedactionResult,
-)
-from core.redaction.exceptions import (
-    IncorrectRedactionConfigClassException,
-)
-from core.util.llm_util import LLMUtil
-from core.util.azure_vision_util import AzureVisionUtil
 from core.redaction.exceptions import (
     DuplicateRedactorNameException,
+    IncorrectRedactionConfigClassException,
     RedactorNameNotFoundException,
 )
+from core.redaction.result import (
+    ImageRedactionResult,
+    LLMTextRedactionResult,
+    RedactionResult,
+)
+from core.util.azure_vision_util import AzureVisionUtil
+from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.text_util import get_normalised_words
-from time import time
 
 
 class Redactor(ABC):
@@ -54,15 +51,13 @@ class Redactor(ABC):
         """
         :return str: A unique name for the Redactor implementation class
         """
-        pass
 
     @classmethod
     @abstractmethod
-    def get_redaction_config_class(cls) -> Type[RedactionConfig]:
+    def get_redaction_config_class(cls) -> type[RedactionConfig]:
         """
         :return: The RedactionConfig class that this Redactor expects
         """
-        pass
 
     @classmethod
     def _validate_redaction_config(cls, config: RedactionConfig) -> bool:
@@ -90,7 +85,6 @@ class Redactor(ABC):
         :returns RedactionResult: A RedactionResult that holds the result of the
         redaction
         """
-        pass
 
 
 class TextRedactor(Redactor):
@@ -133,7 +127,7 @@ class LLMTextRedactor(TextRedactor):
             return LLMTextRedactionResult(
                 rule_name=self.config.name,
                 run_metrics={},
-                redaction_strings=tuple(),
+                redaction_strings=(),
                 metadata={},
             )
 
@@ -182,14 +176,14 @@ class ImageRedactor(Redactor):  # pragma: no cover
 
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
-        results: List[ImageRedactionResult.Result] = []
+        results: list[ImageRedactionResult.Result] = []
         total_images_to_analyse = len(self.config.images)
         if total_images_to_analyse == 0:
             LoggingUtil().log_info("No images to analyse, skipping image analysis")
             return ImageRedactionResult(
                 rule_name=self.config.name,
                 run_metrics={},
-                redaction_results=tuple(),
+                redaction_results=(),
             )
         start_time = time()
         face_detection_results = AzureVisionUtil().detect_faces_in_images(
@@ -225,14 +219,17 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
     """Redactors that redact text content in an image"""
 
     # Translations to account for common OCR misreads of 0s and 1s
-    OCR_TRANSLATIONS = [str.maketrans("01", "OI"), str.maketrans("OI", "01")]
+    OCR_TRANSLATIONS: ClassVar[list[dict[int, int]]] = [
+        str.maketrans("01", "OI"),
+        str.maketrans("OI", "01"),
+    ]
 
     @classmethod
     def get_name(cls) -> str:
         return "ImageTextRedaction"
 
     @classmethod
-    def detect_number_plates(cls, text_to_analyse: str) -> Tuple[str]:
+    def detect_number_plates(cls, text_to_analyse: str) -> tuple[str]:
         """
         Detect number plates in the given text
 
@@ -275,9 +272,9 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
     @classmethod
     def examine_redaction_boxes(
         cls,
-        text_rect_map: List[Tuple[str, Tuple[int, int, int, int]]],
+        text_rect_map: list[tuple[str, tuple[int, int, int, int]]],
         redaction_string: str,
-    ) -> List[Tuple[int, int, int, int]]:
+    ) -> list[tuple[int, int, int, int]]:
         """
         Examine the text rectangles and return the bounding boxes that correspond
         to the given redaction string. If it's a multi-term redaction string, then
@@ -307,25 +304,24 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
                 # Proceed only if the first word matches
                 normalised_words = get_normalised_words(text_at_box)
-                if normalised_words:
-                    if first_word == normalised_words[0]:
-                        boxes = [bounding_box]
-                        i_copy = i
-                        # Check subsequent words
-                        while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
-                            word = words_to_redact_copy.pop(0)
-                            next_text, next_bounding_box = text_rect_map[i_copy + 1]
-                            text_normalised_words = get_normalised_words(next_text)
-                            if text_normalised_words:
-                                text_normalised = text_normalised_words[0]
-                                if word == text_normalised:
-                                    boxes.append(next_bounding_box)
-                                    if not words_to_redact_copy:
-                                        # All words matched
-                                        text_rects_to_redact.extend(boxes)
-                                    i_copy += 1
-                                else:
-                                    continue
+                if normalised_words and first_word == normalised_words[0]:
+                    boxes = [bounding_box]
+                    i_copy = i
+                    # Check subsequent words
+                    while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
+                        word = words_to_redact_copy.pop(0)
+                        next_text, next_bounding_box = text_rect_map[i_copy + 1]
+                        text_normalised_words = get_normalised_words(next_text)
+                        if text_normalised_words:
+                            text_normalised = text_normalised_words[0]
+                            if word == text_normalised:
+                                boxes.append(next_bounding_box)
+                                if not words_to_redact_copy:
+                                    # All words matched
+                                    text_rects_to_redact.extend(boxes)
+                                i_copy += 1
+                            else:
+                                continue
 
         return text_rects_to_redact
 
@@ -350,7 +346,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             ),
         )
 
-    def _analyse_images(self) -> Tuple[List[Tuple], float]:
+    def _analyse_images(self) -> tuple[list[tuple], float]:
         if len(self.config.images) == 0:
             LoggingUtil().log_info("No images to analyse, skipping image text analysis")
             return [], 0.0
@@ -362,7 +358,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
     def _get_number_plate_redactions(
         self, text_content, text_rect_map
-    ) -> Tuple[List[Tuple], float, float]:
+    ) -> tuple[list[tuple], float, float]:
         # Detect number plates using regex
         number_plate_detection_start_time = time()
         redaction_strings = self.detect_number_plates(text_content)
@@ -411,7 +407,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                     "total_image_text_analysis_time": round(time() - start_time, 2),
                     "total_image_ocr_time": round(total_ocr_time, 2),
                 },
-                redaction_results=tuple(),
+                redaction_results=(),
             )
 
         total_number_plate_detection_time = 0.0
@@ -442,7 +438,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 if redaction_result:
                     results.append(redaction_result)
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 LoggingUtil().log_exception_with_message(
                     "Error analysing image for text redaction:", e
                 )
@@ -479,8 +475,8 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         return ImageLLMTextRedactionConfig
 
     def _analyse_image_text(
-        self, image_text_rect_map: List[Tuple[str, Tuple[int, int, int, int]]]
-    ) -> List[Dict[str, Any]]:
+        self, image_text_rect_map: list[tuple[str, tuple[int, int, int, int]]]
+    ) -> list[dict[str, Any]]:
         self.config: LLMTextRedactionConfig
 
         text_content = [
@@ -502,13 +498,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         ]
         # Flatten the text chunks from all images into a single list of unique chunks
         text_chunks = list(
-            set(
-                [
-                    chunk
-                    for image in image_text_content
-                    for chunk in image["text_chunks"]
-                ]
-            )
+            {chunk for image in image_text_content for chunk in image["text_chunks"]}
         )
 
         # Create system prompt from loaded config
@@ -552,7 +542,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     "total_image_text_analysis_time": round(time() - start_time, 2),
                     "total_image_ocr_time": round(total_ocr_time, 2),
                 },
-                redaction_results=tuple(),
+                redaction_results=(),
             )
 
         llm_analysis_start_time = time()
@@ -568,7 +558,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                     "total_image_ocr_time": round(total_ocr_time, 2),
                     "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
                 },
-                redaction_results=tuple(),
+                redaction_results=(),
             )
 
         total_bounding_box_time = 0.0
@@ -618,7 +608,7 @@ class RedactorFactory:
     Class for generating Redactor classes by name
     """
 
-    REDACTOR_TYPES: List[Type[Redactor]] = [
+    REDACTOR_TYPES: ClassVar[list[type[Redactor]]] = [
         LLMTextRedactor,
         ImageRedactor,
         ImageTextRedactor,
@@ -631,7 +621,7 @@ class RedactorFactory:
         """
         Validate the REDACTOR_TYPES and return a map of type_name: Redactor
         """
-        name_map: Dict[str, List[Type[Redactor]]] = dict()
+        name_map: dict[str, list[type[Redactor]]] = {}
         for redactor_type in cls.REDACTOR_TYPES:
             type_name = redactor_type.get_name()
             if type_name in name_map:
@@ -647,7 +637,7 @@ class RedactorFactory:
         return {k: v[0] for k, v in name_map.items()}
 
     @classmethod
-    def get(cls, redactor_type: str) -> Type[Redactor]:
+    def get(cls, redactor_type: str) -> type[Redactor]:
         """
         Return the Redactor that is identified by the provided type name
 
@@ -659,7 +649,7 @@ class RedactorFactory:
         found
         """
         if not isinstance(redactor_type, str):
-            raise ValueError(
+            raise TypeError(
                 f"RedactorFactory.get expected a str, but got a {type(redactor_type)}"
             )
         name_map = cls._validate_redactor_types()

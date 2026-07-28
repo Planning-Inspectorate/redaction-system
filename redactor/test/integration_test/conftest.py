@@ -1,4 +1,8 @@
-from test.util.conftest_util import configure_session, session_setup, session_teardown  # noqa: F401
+from test.util.conftest_util import (  # noqa: F401
+    configure_session,
+    session_setup,
+    session_teardown,
+)
 
 
 def pytest_configure():

@@ -1,7 +1,7 @@
-from core.redaction.redactor import LLMTextRedactor
 from core.redaction.config import (
     LLMTextRedactionConfig,
 )
+from core.redaction.redactor import LLMTextRedactor
 from core.redaction.result import LLMTextRedactionResult
 
 
@@ -84,7 +84,7 @@ def test__llm_text_redactor__redact__empty_text_returns_empty_result():
     result = redactor_inst.redact()
 
     assert isinstance(result, LLMTextRedactionResult)
-    assert result.redaction_strings == tuple()
+    assert result.redaction_strings == ()
     assert result.run_metrics == {}
 
 
@@ -106,5 +106,5 @@ def test__llm_text_redactor__redact__none_text_returns_empty_result():
     result = redactor_inst.redact()
 
     assert isinstance(result, LLMTextRedactionResult)
-    assert result.redaction_strings == tuple()
+    assert result.redaction_strings == ()
     assert result.run_metrics == {}

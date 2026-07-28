@@ -1,10 +1,10 @@
-from typing import List
+import threading
 from string import punctuation
-from langdetect import detect_langs, DetectorFactory
+from unicodedata import category
+
+from langdetect import DetectorFactory, detect_langs
 from langdetect.lang_detect_exception import LangDetectException
 from unidecode import unidecode
-from unicodedata import category
-import threading
 
 _LANGDETECT_LOCK = threading.Lock()
 
@@ -70,7 +70,7 @@ def normalise_text(text: str) -> str:
     return normalise_punctuation_unidecode(text).lower().strip().strip(punctuation)
 
 
-def get_normalised_words(text: str) -> List[str]:
+def get_normalised_words(text: str) -> list[str]:
     """
     Normalise the given text into a list of words for redaction matching
 

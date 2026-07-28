@@ -1,9 +1,10 @@
-from mock import patch, Mock
-from typing import List
+from unittest.mock import Mock, patch
+
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
+from PIL import Image
+
 from core.util.azure_vision_util import AzureVisionUtil, check_image_size
 from core.util.logging_util import LoggingUtil
-from PIL import Image
 
 
 def MockImageAnalysisClientResult(people):
@@ -12,9 +13,13 @@ def MockImageAnalysisClientResult(people):
     return mock_result
 
 
+class ImageReturnedError(Exception):
+    pass
+
+
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
 
     def mock_detect_faces(inst, image, confidence):
         if image == images[0]:
@@ -44,14 +49,14 @@ def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
 
     def mock_detect_faces(inst, image, confidence):
         if image == images[0]:
             return "a"
         if image == images[1]:
             # This element should not be returned
-            raise Exception("Some exception")
+            raise ImageReturnedError("Some exception")
         if image == images[2]:
             return "c"
         if image == images[3]:
@@ -160,11 +165,11 @@ def MockTextAnalysisClientResult():
             self.bounding_polygon = bounding_box
 
     class MockLine:
-        def __init__(self, words: List[MockWord]):
+        def __init__(self, words: list[MockWord]):
             self.words = words
 
     class MockBlock:
-        def __init__(self, lines: List[MockLine]):
+        def __init__(self, lines: list[MockLine]):
             self.lines = lines
 
     mock_result.read.blocks = [
@@ -195,7 +200,7 @@ def MockTextAnalysisClientResult():
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
 
     def mock_detect_text(inst, image):
         if image == images[0]:
@@ -225,7 +230,7 @@ def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
 def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(0, 5)]
+    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
 
     def mock_detect_text(inst, image):
         if image == images[0]:
@@ -234,7 +239,7 @@ def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vi
             return "b"
         if image == images[2]:
             # This element should not be returned
-            raise Exception("Some exception")
+            raise ImageReturnedError("Some exception")
         if image == images[3]:
             return "d"
         if image == images[4]:
@@ -354,7 +359,7 @@ def test__azure_vision_util__detect_faces__image_too_small(mock_azure_vision):
     azure_vision_util._IMAGE_FACE_CACHE = []
     image = Image.new("RGB", (49, 49))
     result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-    assert result == tuple()
+    assert result == ()
 
 
 @patch.object(AzureVisionUtil, "__init__", return_value=None)
@@ -363,4 +368,4 @@ def test__azure_vision_util__detect_faces__image_too_large(mock_azure_vision):
     azure_vision_util._IMAGE_FACE_CACHE = []
     image = Image.new("RGB", (16001, 100))
     result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-    assert result == tuple()
+    assert result == ()

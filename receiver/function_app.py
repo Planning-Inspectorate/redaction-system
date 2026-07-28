@@ -1,26 +1,33 @@
-from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusMessage
+import json
+import logging
+import os
+from datetime import timedelta
+from typing import Any
+from uuid import uuid4
+
+import azure.functions as func
 from azure.identity.aio import (
     AzureCliCredential,
-    ManagedIdentityCredential,
     ChainedTokenCredential,
+    ManagedIdentityCredential,
 )
-import azure.functions as func
-import logging
-import json
-import os
-from uuid import uuid4
-from typing import Dict, Any
-from datetime import timedelta
+from azure.servicebus import ServiceBusMessage
+from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.exceptions import (
+    MessageSizeExceededError,
+    OperationTimeoutError,
+    ServiceBusError,
+)
 
 app = func.FunctionApp()
 
 
 async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
+    logger = logging.getLogger(__name__)
     try:
-        request_params: Dict[str, Any] = req.get_json()
+        request_params: dict[str, Any] = req.get_json()
     except ValueError:
-        logging.error("Request had no valid json content")
+        logger.info("Request had no valid json content")
         return func.HttpResponse(
             json.dumps(
                 {
@@ -28,15 +35,13 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
                 }
             )
         )
-    logging.info(f"Request added to queue with parameters {request_params}")
+    logger.info(f"Request added to queue with parameters {request_params}")
     request_params["stage"] = stage
     job_id = str(request_params.pop("overrideId", uuid4()))
     request_params["job_id"] = job_id
     service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
     if not service_bus_name:
-        logging.error(
-            "AZURE_SERVICE_BUS_NAMESPACE variable not set in the function app"
-        )
+        logger.error("AZURE_SERVICE_BUS_NAMESPACE variable not set in the function app")
         raise RuntimeError(
             "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
         )
@@ -49,7 +54,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
             credential=credential,
             logging_enable=True,
         ) as service_bus_client:
-            logging.info("Adding message to service bus queue")
+            logger.info("Adding message to service bus queue")
             async with service_bus_client.get_queue_sender(
                 "redaction-internal-queue"
             ) as sender:
@@ -57,8 +62,8 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
                     json.dumps(request_params), time_to_live=timedelta(days=1)
                 )
                 await sender.send_messages([message])
-    except Exception as e:
-        logging.error(
+    except (OperationTimeoutError, MessageSizeExceededError, ServiceBusError) as e:
+        logger.error(
             f"Failed to send the new message to the service bus queue with the following exception: {e}"
         )
         return func.HttpResponse(json.dumps({"message": str(e)}), status_code=500)

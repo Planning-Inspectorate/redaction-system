@@ -1,10 +1,11 @@
-from core.io.storage_io import StorageIO
+from typing import ClassVar
+
 from core.io.azure_blob_io import AzureBlobIO
-from typing import Type, List
+from core.io.storage_io import StorageIO
 
 
 class IOFactory:
-    AVAILABLE_IO_KINDS: List[Type[StorageIO]] = [AzureBlobIO]
+    AVAILABLE_IO_KINDS: ClassVar[list[type[StorageIO]]] = [AzureBlobIO]
 
     @classmethod
     def get(cls, storage_kind: str):

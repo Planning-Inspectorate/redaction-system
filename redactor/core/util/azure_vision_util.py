@@ -1,23 +1,24 @@
 import os
-from typing import List, Dict, Tuple
-from PIL import Image
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
-from dotenv import load_dotenv
-from tenacity.retry import retry_if_exception
-from tenacity import retry, wait_random_exponential, stop_after_attempt
+from threading import Lock
+from typing import ClassVar
+
 from azure.ai.vision.imageanalysis import ImageAnalysisClient
 from azure.ai.vision.imageanalysis.models import VisualFeatures
-from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.multiprocessing_util import get_max_workers
+from azure.core.exceptions import HttpResponseError
 from azure.identity import (
+    AzureCliCredential,
     ChainedTokenCredential,
     ManagedIdentityCredential,
-    AzureCliCredential,
 )
-from azure.core.exceptions import HttpResponseError
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock
+from dotenv import load_dotenv
+from PIL import Image
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity.retry import retry_if_exception
 
+from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.multiprocessing_util import get_max_workers
 
 load_dotenv(verbose=True)
 
@@ -28,12 +29,11 @@ def handle_last_retry_error(retry_state):
         f"All retry attempts failed: {retry_state.outcome.exception()}\n"
         "Returning None for this image."
     )
-    return None
 
 
 class AzureVisionUtil:
-    _IMAGE_TEXT_CACHE: List[Dict[Image.Image, Tuple]] = []
-    _IMAGE_FACE_CACHE: List[Dict[Image.Image, Tuple]] = []
+    _IMAGE_TEXT_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
+    _IMAGE_FACE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
     CACHE_LOCK = Lock()
 
     def __init__(self):
@@ -49,8 +49,8 @@ class AzureVisionUtil:
         )
 
     def detect_faces_in_images(
-        self, images: List[Image.Image], confidence_threshold: float = 0.5
-    ) -> List[Tuple[Image.Image, Tuple[Tuple[int, int, int, int]]]]:
+        self, images: list[Image.Image], confidence_threshold: float = 0.5
+    ) -> list[tuple[Image.Image, tuple[tuple[int, int, int, int]]]]:
         responses = []
         max_workers = get_max_workers()
         LoggingUtil().log_info(
@@ -73,7 +73,7 @@ class AzureVisionUtil:
                         f"images: {len(faces)} faces detected."
                     )
 
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LoggingUtil().log_exception_with_message(
                         "Image face detection failed with the following exception: ",
                         e,
@@ -97,7 +97,7 @@ class AzureVisionUtil:
     )
     def detect_faces(
         self, image: Image.Image, confidence_threshold: float = 0.5
-    ) -> Tuple[Tuple[int, int, int, int], ...]:
+    ) -> tuple[tuple[int, int, int, int], ...]:
         """
         Detect faces in the given image
 
@@ -111,7 +111,7 @@ class AzureVisionUtil:
             LoggingUtil().log_info(
                 "Skipping text detection for image due to size constraints."
             )
-            return tuple()
+            return ()
 
         try:
             # Check cache
@@ -140,8 +140,8 @@ class AzureVisionUtil:
                 LoggingUtil().log_exception_with_message(
                     "HTTP response error analysing image for faces", e
                 )
-                raise e
-            except Exception as e:
+                raise
+            except Exception as e:  # noqa: BLE001
                 LoggingUtil().log_exception_with_message(
                     "Error analysing image for faces", e
                 )
@@ -171,9 +171,9 @@ class AzureVisionUtil:
         )
 
     @log_to_appins
-    def detect_text_in_images(self, images: List[Image.Image]):
-        responses: List[
-            Tuple[Image.Image, Tuple[Tuple[str, Tuple[int, int, int, int]]]]
+    def detect_text_in_images(self, images: list[Image.Image]):
+        responses: list[
+            tuple[Image.Image, tuple[tuple[str, tuple[int, int, int, int]]]]
         ] = []
         max_workers = get_max_workers()
         LoggingUtil().log_info(
@@ -197,7 +197,7 @@ class AzureVisionUtil:
                     LoggingUtil().log_info(
                         f"Finished text detection for {finished_futures}/{len(images)} images."
                     )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     LoggingUtil().log_exception_with_message(
                         "Image text detection failed with the following exception: ",
                         e,
@@ -222,7 +222,7 @@ class AzureVisionUtil:
     )
     def detect_text(
         self, image: Image.Image
-    ) -> Tuple[Tuple[str, Tuple[int, int, int, int]]]:
+    ) -> tuple[tuple[str, tuple[int, int, int, int]]]:
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
 
@@ -235,7 +235,7 @@ class AzureVisionUtil:
             LoggingUtil().log_info(
                 "Skipping text detection for image due to size constraints."
             )
-            return tuple()
+            return ()
 
         try:
             # Check cache
@@ -262,8 +262,8 @@ class AzureVisionUtil:
                 LoggingUtil().log_exception_with_message(
                     "HTTP response error analysing image for text", e
                 )
-                raise e
-            except Exception as e:
+                raise
+            except Exception as e:  # noqa: BLE001
                 LoggingUtil().log_exception_with_message(
                     "Error analysing image for text", e
                 )

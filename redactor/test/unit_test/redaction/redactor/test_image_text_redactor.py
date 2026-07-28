@@ -1,16 +1,18 @@
-from core.redaction.redactor import (
-    ImageTextRedactor,
-)
-from core.util.azure_vision_util import AzureVisionUtil
+import dataclasses
+from unittest import mock
+
+from PIL import Image
+
 from core.redaction.config import (
     ImageRedactionConfig,
+)
+from core.redaction.redactor import (
+    ImageTextRedactor,
 )
 from core.redaction.result import (
     ImageRedactionResult,
 )
-from PIL import Image
-import mock
-import dataclasses
+from core.util.azure_vision_util import AzureVisionUtil
 
 
 def test__image_text_redactor__get_name():
@@ -114,7 +116,7 @@ def test__image_text_redactor__redact():
         mock.patch.object(
             ImageTextRedactor,
             "detect_number_plates",
-            return_value=tuple(["AB12 CDE"]),
+            return_value=("AB12 CDE",),
         ),
     ):
         inst = ImageTextRedactor()
@@ -151,7 +153,7 @@ def test__image_text_redactor__redact__no_images_skips_analysis():
         actual_results = inst.redact()
 
     assert actual_results.rule_name == "config name"
-    assert actual_results.redaction_results == tuple()
+    assert actual_results.redaction_results == ()
     assert actual_results.run_metrics == {
         "total_image_ocr_time": 0.0,
         "total_image_text_analysis_time": 0.0,
@@ -195,7 +197,7 @@ def test__image_text_redactor__redact__no_text_in_image_skips_number_plate_analy
     # LLM analysis should not have been called since text_content is empty
     mock_get_number_plate_redactions.assert_not_called()
     # No results since the image was skipped
-    assert actual_results.redaction_results == tuple()
+    assert actual_results.redaction_results == ()
 
 
 def test__image_redactor__no_number_plate_detected():
@@ -214,11 +216,11 @@ def test__image_redactor__no_number_plate_detected():
         (images[0], (("text", (10, 10, 50, 50)),)),
         (images[1], (("other text", (30, 30, 50, 50)),)),
     ]
-    number_plate_redactions_result = (tuple(), 0.0, 0.0)
+    number_plate_redactions_result = ((), 0.0, 0.0)
     expected_results = ImageRedactionResult(
         rule_name="some image redaction config",
-        run_metrics=dict(),
-        redaction_results=tuple(),
+        run_metrics={},
+        redaction_results=(),
     )
     with (
         mock.patch.object(AzureVisionUtil, "__init__", return_value=None),

@@ -1,12 +1,12 @@
 from typing import Annotated, Any
-from pydantic_core import core_schema
+
+from PIL.Image import Image
 from pydantic import (
     GetCoreSchemaHandler,
     GetJsonSchemaHandler,
 )
 from pydantic.json_schema import JsonSchemaValue
-from PIL.Image import Image
-
+from pydantic_core import core_schema
 
 # This is baed on https://docs.pydantic.dev/latest/concepts/types/#handling-third-party-types
 

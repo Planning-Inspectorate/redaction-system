@@ -1,16 +1,16 @@
-import pymupdf
 from io import BytesIO
 
-from core.redaction.file_processor import PDFProcessor
+import pymupdf
+from pymupdf import Rect
+
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
     LLMTextRedactionConfig,
 )
-from typing import List, Tuple
-from pymupdf import Rect
+from core.redaction.file_processor import PDFProcessor
 
 
-def simplify_page_provisional_redactions(redactions: List[Tuple[int, Rect, str]]):
+def simplify_page_provisional_redactions(redactions: list[tuple[int, Rect, str]]):
     return [
         (x, pymupdf.Rect(round(y.x0), round(y.y0), round(y.x1), round(y.x1)), z)
         for x, y, z in redactions
@@ -383,7 +383,7 @@ def test__pdf_processor__apply_provisional_text_redactions__partial_match():
     for word in ["criteria", "with", "servitude", "sits", "waiting"]:
         assert word not in actual_annotated_text
 
-    assert set(actual_annotated_text) == set(["it"])
+    assert set(actual_annotated_text) == {"it"}
 
 
 def test__pdf_processor__apply_provisional_text_redactions__line_break():
@@ -424,8 +424,10 @@ def test__pdf_processor__apply_provisional_text_redactions__multi_line_break():
     with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
         document_bytes = BytesIO(f.read())
     redaction_strings = [
-        "It could significantly redefine the boundaries of personal liberty and freedom,"
-        " expanding them for some, savagely curtailing them for others."
+        (
+            "It could significantly redefine the boundaries of personal liberty and freedom,"
+            " expanding them for some, savagely curtailing them for others."
+        )
     ]
 
     redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
@@ -463,7 +465,6 @@ def test__pdf_processor__redact():
         "you",
         "he",
         "him",
-        "you",
         "he's",
         "them",
     }
@@ -533,7 +534,6 @@ def test__pdf_processor__redact__image_text():
         "you",
         "he",
         "him",
-        "you",
         "he's",
         "them",
     }

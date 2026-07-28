@@ -1,28 +1,28 @@
 # import magic  # Cannot use magic in the Azure function yet due to needing to build via ACR. This will be added in the future
-import os
 import json
+import os
 import re
 import traceback
+from collections.abc import Callable
+from datetime import datetime
+from math import isclose
+from string import punctuation
+from time import time
+from typing import Any
 
-from pydantic import BaseModel
+from azure.core.exceptions import ResourceExistsError
 from dotenv import load_dotenv
-from typing import Dict, Any, List, Optional, Callable, Tuple
+from pydantic import BaseModel
+
+from core.io.azure_blob_io import AzureBlobIO
+from core.io.io_factory import IOFactory
+from core.redaction.config_processor import ConfigProcessor
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
-from azure.core.exceptions import ResourceExistsError
-from datetime import datetime
-from time import time
-from string import punctuation
-from math import isclose
-
-from core.redaction.config_processor import ConfigProcessor
-from core.util.logging_util import LoggingUtil
-from core.io.io_factory import IOFactory
-from core.io.azure_blob_io import AzureBlobIO
-from core.util.service_bus_util import ServiceBusUtil
 from core.util.enum import PINSService
-
+from core.util.logging_util import LoggingUtil
+from core.util.service_bus_util import ServiceBusUtil
 
 load_dotenv(verbose=True, override=True)
 
@@ -34,19 +34,19 @@ class JsonPayloadStructure(BaseModel):
 
     class ReadDetails(BaseModel):
         storageKind: str
-        teamEmail: Optional[str]
-        properties: Dict[str, Any]
+        teamEmail: str | None
+        properties: dict[str, Any]
 
     class WriteDetails(BaseModel):
         storageKind: str
-        properties: Dict[str, Any]
+        properties: dict[str, Any]
 
-    pinsService: Optional[PINSService] = None
+    pinsService: PINSService | None = None
     fileKind: str
     readDetails: ReadDetails = None
     writeDetails: WriteDetails = None
-    metadata: Optional[Dict[str, Any]] = None
-    overrideId: Optional[str] = None
+    metadata: dict[str, Any] | None = None
+    overrideId: str | None = None
 
 
 class RedactJsonPayloadStructure(JsonPayloadStructure):
@@ -54,17 +54,15 @@ class RedactJsonPayloadStructure(JsonPayloadStructure):
     Validator for the payload for the web request for performing AI analysis in the redaction process
     """
 
-    tryApplyProvisionalRedactions: Optional[bool] = True
-    skipRedaction: Optional[bool] = False
-    configName: Optional[str] = "default"
+    tryApplyProvisionalRedactions: bool | None = True
+    skipRedaction: bool | None = False
+    configName: str | None = "default"
 
 
 class ApplyJsonPayloadStructure(JsonPayloadStructure):
     """
     Validator for the payload for the web request for applying redactions in the redaction process
     """
-
-    pass
 
 
 class RedactionManager:
@@ -76,7 +74,7 @@ class RedactionManager:
             raise RuntimeError(
                 "A 'STORAGE_NAME' environment variable has not been set - please ensure this is set wherever RedactionManager is running"
             )
-        self.runtime_errors: List[str] = []
+        self.runtime_errors: list[str] = []
         LoggingUtil().log_info(
             f"Storage folder for run with id '{self.job_id}' is '{self.folder_for_job}'"
         )
@@ -100,14 +98,14 @@ class RedactionManager:
         if job_id is None:
             raise ValueError("Job ID cannot be None")
         if not isinstance(job_id, str):
-            raise ValueError(f"Job ID must be a string, but was a {type(job_id)}")
+            raise TypeError(f"Job ID must be a string, but was a {type(job_id)}")
         if len(job_id) > 60:
             raise ValueError(
                 f"Job ID must be at most 60 characters, but was '{job_id}' which is {len(job_id)} characters"
             )
         return self._clean_job_id(job_id)
 
-    def _get_base_job_id_and_version(self, job_id: str) -> Tuple[str, str]:
+    def _get_base_job_id_and_version(self, job_id: str) -> tuple[str, str]:
         """
         Get the base job ID and version number from the job ID submitted.
 
@@ -142,7 +140,7 @@ class RedactionManager:
 
         return self._clean_job_id(job_id), None
 
-    def convert_kwargs_for_io(self, some_parameters: Dict[str, Any]):
+    def convert_kwargs_for_io(self, some_parameters: dict[str, Any]):
         """
         Process the input dictionary which contains camel case keys into a dictionary with snake case keys
         """
@@ -151,11 +149,11 @@ class RedactionManager:
             for k, v in some_parameters.items()
         }
 
-    def validate_redact_json_payload(self, payload: Dict[str, Any]):
+    def validate_redact_json_payload(self, payload: dict[str, Any]):
         model_inst = RedactJsonPayloadStructure(**payload)
         RedactJsonPayloadStructure.model_validate(model_inst)
 
-    def validate_apply_json_payload(self, payload: Dict[str, Any]):
+    def validate_apply_json_payload(self, payload: dict[str, Any]):
         model_inst = ApplyJsonPayloadStructure(**payload)
         ApplyJsonPayloadStructure.model_validate(model_inst)
 
@@ -173,12 +171,12 @@ class RedactionManager:
 
     def save_dict_to_blob_json(
         self,
-        dict_to_save: Dict[str, Any],
+        dict_to_save: dict[str, Any],
         redaction_storage_io_inst: AzureBlobIO,
         blob_path: str,
-        container_name: Optional[str] = "redactiondata",
-        json_indent: Optional[int] = 4,
-        json_encoding: Optional[str] = "utf-8",
+        container_name: str | None = "redactiondata",
+        json_indent: int | None = 4,
+        json_encoding: str | None = "utf-8",
     ):
         """Save a dictionary in JSON format to the redaction storage
 
@@ -200,7 +198,7 @@ class RedactionManager:
             blob_path=blob_path,
         )
 
-    def redact(self, params: Dict[str, Any]):
+    def redact(self, params: dict[str, Any]):
         """
         Perform a redaction using the supplied parameters
         """
@@ -209,16 +207,16 @@ class RedactionManager:
         )
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
-        read_details: Dict[str, Any] = params.get("readDetails")
+        read_details: dict[str, Any] = params.get("readDetails")
         read_torage_kind = read_details.get("storageKind")
-        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        read_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             read_details.get("properties")
         )
         skip_redaction = params.get("skipRedaction", False)
 
-        write_details: Dict[str, Any] = params.get("writeDetails")
+        write_details: dict[str, Any] = params.get("writeDetails")
         write_storage_kind = write_details.get("storageKind")
-        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        write_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             write_details.get("properties")
         )
 
@@ -281,7 +279,7 @@ class RedactionManager:
             self.save_dict_to_blob_json(
                 {
                     "jobID": self.job_id,
-                    "date": datetime.now().date().isoformat(),
+                    "date": datetime.now(tz=datetime.timezone.utc).date().isoformat(),
                     "fileName": read_storage_properties.get("blob_path", ""),
                     "proposedRedactions": proposed_redactions_dict,
                 },
@@ -312,9 +310,9 @@ class RedactionManager:
     @classmethod
     def _compare_redactions(
         cls,
-        proposed_redactions_dict: Dict[str, Any],
-        final_redactions_dict: Dict[str, Any],
-    ) -> Dict[str, Any]:
+        proposed_redactions_dict: dict[str, Any],
+        final_redactions_dict: dict[str, Any],
+    ) -> dict[str, Any]:
         output_dict = {
             "redactDate": proposed_redactions_dict.get("date", None),
             "applyDate": final_redactions_dict.get("date", None),
@@ -403,7 +401,7 @@ class RedactionManager:
         return output_dict
 
     def _get_most_recent_blob(
-        self, blob_map: Dict[str, datetime], filename_suffix: str
+        self, blob_map: dict[str, datetime], filename_suffix: str
     ):
         blob_map_filtered = {
             k: v for k, v in blob_map.items() if k.endswith(filename_suffix)
@@ -414,7 +412,7 @@ class RedactionManager:
 
     def compare_and_save_redactions(
         self,
-        final_redactions_dict: Dict[str, Any],
+        final_redactions_dict: dict[str, Any],
         redaction_storage_io_inst: AzureBlobIO,
     ):
         """
@@ -501,21 +499,21 @@ class RedactionManager:
             f" and versions up to '{proposed_version}'. Skipping analytics for this file."
         )
 
-    def apply(self, params: Dict[str, Any]):
+    def apply(self, params: dict[str, Any]):
         """
         Apply any redactions to a file that has already been analysed
         """
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
-        read_details: Dict[str, Any] = params.get("readDetails")
+        read_details: dict[str, Any] = params.get("readDetails")
         read_torage_kind = read_details.get("storageKind")
-        read_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        read_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             read_details.get("properties")
         )
 
-        write_details: Dict[str, Any] = params.get("writeDetails")
+        write_details: dict[str, Any] = params.get("writeDetails")
         write_storage_kind = write_details.get("storageKind")
-        write_storage_properties: Dict[str, Any] = self.convert_kwargs_for_io(
+        write_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             write_details.get("properties")
         )
 
@@ -554,7 +552,7 @@ class RedactionManager:
         # Store the final redactions in JSON format for analytics
         final_redactions_dict = {
             "jobID": self.job_id,
-            "date": datetime.now().date().isoformat(),
+            "date": datetime.now(tz=datetime.timezone.utc).date().isoformat(),
             "fileName": read_storage_properties.get("blob_path", ""),
             "finalRedactions": file_processor_inst.get_final_redactions(file_data),
         }
@@ -638,7 +636,7 @@ class RedactionManager:
             blob_path=f"{self.folder_for_job}/{stage_name}_exceptions.txt",
         )
 
-    def save_metrics(self, stage_name: str, metrics: Dict[str, Any]):
+    def save_metrics(self, stage_name: str, metrics: dict[str, Any]):
         """
         Save the given metrics to blob storage
         """
@@ -654,7 +652,7 @@ class RedactionManager:
         )
 
     def send_service_bus_completion_message(
-        self, request_params: Dict[str, Any], redaction_result: Dict[str, Any]
+        self, request_params: dict[str, Any], redaction_result: dict[str, Any]
     ):
         """
         Send a message to the complete topic in the service bus
@@ -669,8 +667,8 @@ class RedactionManager:
 
     def _try_process(
         self,
-        params: Dict[str, Any],
-        base_response: Dict[str, Any],
+        params: dict[str, Any],
+        base_response: dict[str, Any],
         payload_validator: Callable,
         redaction_function: Callable,
     ):
@@ -692,7 +690,7 @@ class RedactionManager:
         try:
             payload_validator(params)
             run_metrics = redaction_function(params)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.log_exception(e)
             status = "FAIL"
             message = f"Redaction process failed with the following error: {e}"
@@ -707,14 +705,14 @@ class RedactionManager:
         }
         try:
             self.send_service_bus_completion_message(params, final_output)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.log_exception(e)
             non_fatal_errors.append(
                 f"Failed to submit a service bus message with the following error: {e}"
             )
         try:
             self.save_logs(stage)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             self.log_exception(e)
             non_fatal_errors.append(
                 f"Failed to write logs with the following error: {e}"
@@ -722,13 +720,13 @@ class RedactionManager:
         if run_metrics:
             try:
                 self.save_metrics(stage, run_metrics)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 non_fatal_errors.append(
                     f"Failed to write metrics with the following error: {e}"
                 )
         try:
             self.save_exception_log(stage)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             non_fatal_errors.append(
                 f"Failed to write an exception log with the following error: {e}"
             )
@@ -753,7 +751,7 @@ class RedactionManager:
         }
         return final_output
 
-    def try_redact(self, params: Dict[str, Any]):
+    def try_redact(self, params: dict[str, Any]):
         """
         Perform redaction using the provided parameters, and write exception details to storage/app insights if there is an error
 
@@ -795,7 +793,7 @@ class RedactionManager:
             params, base_response, self.validate_redact_json_payload, self.redact
         )
 
-    def try_apply(self, params: Dict[str, Any]):
+    def try_apply(self, params: dict[str, Any]):
         """
         Apply redaction highlights using the provided parameters, and write exception details to storage/app insights if there is an error
 

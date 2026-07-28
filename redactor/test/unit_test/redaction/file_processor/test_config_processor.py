@@ -1,11 +1,13 @@
+from unittest import mock
+
+import pytest
+
 from core.redaction.config import (
     RedactionConfig,
 )
-from core.redaction.file_processor import FileProcessor
 from core.redaction.config_processor import ConfigProcessor
+from core.redaction.file_processor import FileProcessor
 from core.redaction.redactor import Redactor, RedactorFactory
-import mock
-import pytest
 
 
 class FileProcessorInst(FileProcessor):
@@ -222,22 +224,26 @@ def test__config_processor__validate_and_filter_config():
         ],
         "other_property": [],
     }
-    with mock.patch.object(
-        ConfigProcessor,
-        "validate_and_parse_redaction_config",
-        return_value=[RedactionConfigInstA(name="redaction rule A", redactor_type="A")],
-    ):
-        with mock.patch.object(
+    with (
+        mock.patch.object(
+            ConfigProcessor,
+            "validate_and_parse_redaction_config",
+            return_value=[
+                RedactionConfigInstA(name="redaction rule A", redactor_type="A")
+            ],
+        ),
+        mock.patch.object(
             ConfigProcessor,
             "filter_redaction_config",
             return_value=[
                 RedactionConfigInstA(name="redaction rule A", redactor_type="A")
             ],
-        ):
-            actual_output = ConfigProcessor.validate_and_filter_config(
-                config, file_processor_class
-            )
-            assert expected_output == actual_output
+        ),
+    ):
+        actual_output = ConfigProcessor.validate_and_filter_config(
+            config, file_processor_class
+        )
+        assert expected_output == actual_output
 
 
 def test__config_processor__validate_and_pars_config__unknown_text_redaction_rule():
@@ -268,9 +274,11 @@ def test__config_processor__validate_and_pars_config__unknown_text_redaction_rul
         ],
     }
 
-    with mock.patch.object(RedactionConfig, "__init__", return_value=None):
-        with pytest.raises(Exception) as excinfo:
-            ConfigProcessor.validate_and_filter_config(config, file_processor_class)
+    with (
+        mock.patch.object(RedactionConfig, "__init__", return_value=None),
+        pytest.raises(Exception) as excinfo,
+    ):
+        ConfigProcessor.validate_and_filter_config(config, file_processor_class)
 
     assert "references unknown text_redaction_rule" in str(excinfo.value)
 
@@ -313,5 +321,5 @@ def test__config_processor__convert_to_redaction_config__with_invalid_config():
         property_b: int
 
     config = {"redactor_type": "A", "property_a": 1, "bah": 2}
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017
         ConfigProcessor.convert_to_redaction_config(config, ConfigInst)

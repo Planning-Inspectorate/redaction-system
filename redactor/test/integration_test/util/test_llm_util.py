@@ -1,13 +1,29 @@
-from core.util.llm_util import LLMUtil
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
 
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import LLMTextRedactionResult
+from core.util.llm_util import LLMUtil
 
 
 class SampleResultFormat(BaseModel):
     some_strings: list[str]
+
+
+def test__llm_util___num_tokens_consumed():
+    llm_util_config = LLMUtilConfig(
+        model="gpt-4.1",
+    )
+    llm_util = LLMUtil(llm_util_config)
+    system_prompt = "This is a system prompt."
+    user_prompt = "This is a user prompt."
+
+    num_tokens = llm_util._num_tokens_consumed(
+        llm_util.create_api_message(system_prompt, user_prompt)
+    )
+    assert (
+        num_tokens == 1024
+    )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
 
 
 def test__llm_util__invoke_chain__responds():

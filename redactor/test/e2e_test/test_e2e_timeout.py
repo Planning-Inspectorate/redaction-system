@@ -72,7 +72,7 @@ def _poll_for_failure_message(
     while elapsed < max_wait_s:
         try:
             messages = sb_util.extract_service_bus_complete_messages()
-        except Exception:
+        except Exception:  # noqa: BLE001
             messages = []
         logger.info(
             "Poll: found %d messages on completion topic (elapsed=%ds)",
@@ -100,7 +100,7 @@ def _get_all_message_summaries() -> list[dict]:
             for msg in messages
             if (body := json.loads(str(msg)))
         ]
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return [{"error": str(e)}]
 
 

@@ -1,14 +1,15 @@
-from test.util.test_case import TestCase
-from filelock import FileLock
-from uuid import uuid4
-from typing import List, Type
-import time
-import os
-import logging
-import pytest
-import sys
-import inspect
 import importlib
+import inspect
+import logging
+import os
+import sys
+import time
+from uuid import uuid4
+
+import pytest
+from filelock import FileLock
+
+from test.util.test_case import TestCase
 
 
 def quiet_azure_noise_early():
@@ -40,6 +41,7 @@ def quiet_azure_noise_early():
 
 
 _CONFIGURED = False
+logger = logging.getLogger(__name__)
 
 
 def configure_session():
@@ -51,7 +53,7 @@ def configure_session():
     if "RUN_ID" not in os.environ:
         run_id = str(uuid4())[:8]
         os.environ["RUN_ID"] = str(run_id)
-    logging.info(f"Running with run_id='{os.environ['RUN_ID']}'")
+    logger.info(f"Running with run_id='{os.environ['RUN_ID']}'")
     import_all_testing_modules()
 
 
@@ -103,11 +105,11 @@ def extract_all_test_cases():
         obj
         for module in test_modules
         for name, obj in inspect.getmembers(sys.modules[module])
-        if inspect.isclass(obj) and issubclass(obj, TestCase) and not obj == TestCase
+        if inspect.isclass(obj) and issubclass(obj, TestCase) and obj != TestCase
     }
 
 
-def process_arguments(session) -> List[Type[TestCase]]:
+def process_arguments(session) -> list[type[TestCase]]:
     """
     Process the pytest invocation parameters to return a list of test cases whos
     module setup/teardown functions need to be called
@@ -132,18 +134,16 @@ def process_arguments(session) -> List[Type[TestCase]]:
     }
     matched_modules = []
     for directory in directory_args:
-        matches = [
-            module for module in test_case_module_map.keys() if directory in module
-        ]
+        matches = [module for module in test_case_module_map if directory in module]
         matched_modules += matches
     return [test_case_module_map[directory] for directory in set(matched_modules)]
 
 
 def _session_setup_task(session):
-    logging.info("Setting up pytest session for tests")
+    logger.info("Setting up pytest session for tests")
     # Test-specific resources
     for test_case in process_arguments(session):
-        logging.info("    Running setup for " + test_case.__module__)
+        logger.info("    Running setup for " + test_case.__module__)
         test_case().session_setup()
 
 
@@ -167,18 +167,18 @@ def session_setup(tmp_path_factory, worker_id, request):
                 fn.write_text("Complete")
             except KeyboardInterrupt:
                 sys.exit()
-            except Exception as e:
+            except Exception:
                 fn.write_text("Failed")
-                raise e
+                raise
 
 
 def _session_teardown_task(session):
-    logging.info("Tearing down pytest session for tests")
+    logger.info("Tearing down pytest session for tests")
     for test_case in process_arguments(session):
-        logging.info("    Running teardown for " + test_case.__module__)
+        logger.info("    Running teardown for " + test_case.__module__)
         t0 = time.perf_counter()
         test_case().session_teardown()
-        logging.info(
+        logger.info(
             "    Teardown complete for %s (%.2fs)",
             test_case.__module__,
             time.perf_counter() - t0,
@@ -186,7 +186,7 @@ def _session_teardown_task(session):
 
     # Best-effort: stop OTel providers if they exist
     try:
-        from opentelemetry import trace, metrics
+        from opentelemetry import metrics, trace
 
         tp = trace.get_tracer_provider()
         mp = metrics.get_meter_provider()
@@ -198,8 +198,8 @@ def _session_teardown_task(session):
         shutdown = getattr(mp, "shutdown", None)
         if callable(shutdown):
             shutdown()
-    except Exception:
-        pass
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Failed to shutdown OTel providers: {e}")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -226,8 +226,8 @@ def session_teardown(tmp_path_factory, worker_id, request):
         last_worker = (
             number_of_completed_workers >= request.config.workerinput["workercount"]
         )
-    logging.info("Num tests: " + str(num_tests))
-    logging.info("completed workers count: " + str(number_of_completed_workers))
-    logging.info("Last worker: " + str(last_worker))
+    logger.info("Num tests: " + str(num_tests))
+    logger.info("completed workers count: " + str(number_of_completed_workers))
+    logger.info("Last worker: " + str(last_worker))
     if last_worker:
         _session_teardown_task(request.session)

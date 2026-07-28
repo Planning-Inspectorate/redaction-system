@@ -5,7 +5,6 @@ import logging
 import os
 import subprocess
 import time
-from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 import requests
@@ -21,7 +20,7 @@ def _dt(t0: float) -> str:
     return f"{(time.perf_counter() - t0):.2f}s"
 
 
-def _env(name: str, default: Optional[str] = None) -> Optional[str]:
+def _env(name: str, default: str | None = None) -> str | None:
     v = os.environ.get(name)
     return v if v not in (None, "") else default
 
@@ -72,7 +71,7 @@ def function_start_url(route: str = "redact") -> str:
     return url
 
 
-def _processor_orchestrator_url() -> Optional[str]:
+def _processor_orchestrator_url() -> str | None:
     """
     If E2E_FUNCTION_PROCESSOR_BASE_URL is set, return the Durable Functions
     orchestrator URL for directly triggering the processor (bypassing Service Bus).

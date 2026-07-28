@@ -1,42 +1,41 @@
+import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Semaphore
+from typing import ClassVar
 
-from typing import List
-from tenacity.retry import (
-    retry_if_exception_type,
-    retry_if_exception_message,
-    retry_any,
-)
-from tenacity import retry, wait_random_exponential, stop_after_attempt
-from pydantic import BaseModel, ValidationError
-from dotenv import load_dotenv
 from azure.identity import (
+    AzureCliCredential,
     ChainedTokenCredential,
     ManagedIdentityCredential,
-    AzureCliCredential,
 )
+from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import (
     AzureOpenAI,
-    RateLimitError,
-    LengthFinishReasonError,
     ContentFilterFinishReasonError,
+    LengthFinishReasonError,
+    RateLimitError,
 )
-from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from openai.types.chat.chat_completion import CompletionUsage
+from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
+from pydantic import BaseModel, ValidationError
+from tenacity import retry, stop_after_attempt, wait_random_exponential
+from tenacity.retry import (
+    retry_any,
+    retry_if_exception_message,
+    retry_if_exception_type,
+)
 from tiktoken import get_encoding
-from threading import Semaphore
 
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import (
-    LLMTextRedactionResult,
     LLMRedactionResultFormat,
+    LLMTextRedactionResult,
 )
-from core.util.logging_util import log_to_appins, LoggingUtil
+from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
-import json
-
 
 load_dotenv(verbose=True)
 
@@ -47,7 +46,6 @@ def handle_last_retry_error(retry_state):
         f"All retry attempts failed: {retry_state.outcome.exception()}\n"
         "Returning None for this chunk."
     )
-    return None
 
 
 @log_to_appins
@@ -73,7 +71,7 @@ class LLMUtil:
     """
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
-    OPENAI_MODELS = {
+    OPENAI_MODELS: ClassVar[dict[str, dict[str, int]]] = {
         "gpt-4.1": {
             "token_rate_limit": 1000000,
             "request_rate_limit": 1000,
@@ -176,7 +174,7 @@ class LLMUtil:
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
 
-    def _set_workers(self, n: int = None) -> int:
+    def _set_workers(self, n: int | None = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
         self.config.max_concurrent_requests = get_max_workers(n)
@@ -205,7 +203,7 @@ class LLMUtil:
 
             total_tokens = n_tokens + completion_tokens
             return total_tokens
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             LoggingUtil().log_exception_with_message(
                 "An error occurred while counting tokens:", e
             )
@@ -215,7 +213,7 @@ class LLMUtil:
         self,
         system_prompt: str,
         user_prompt: str,
-    ) -> List[dict]:
+    ) -> list[dict]:
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -225,7 +223,7 @@ class LLMUtil:
         self,
         api_messages: str,
         response_format: BaseModel,
-        max_completion_tokens: int = None,
+        max_completion_tokens: int | None = None,
     ) -> ParsedChatCompletion:
         kwargs = {
             "model": self.config.model,
@@ -274,8 +272,8 @@ class LLMUtil:
         self,
         system_prompt: str,
         user_prompt: str,
-        max_completion_tokens: int = None,
-    ) -> tuple[ParsedChatCompletion, List[str]]:
+        max_completion_tokens: int | None = None,
+    ) -> tuple[ParsedChatCompletion, list[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
         chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
@@ -308,7 +306,7 @@ class LLMUtil:
                     f"{chunk_hash_string} Timeout while waiting for tokens to be released :",
                     te,
                 )
-                raise te
+                raise
 
             # Invoke LLM
             try:
@@ -338,14 +336,14 @@ class LLMUtil:
                     usage = lfe.completion.usage
                 else:
                     usage = None
-                raise lfe
+                raise
             except Exception as e:
                 LoggingUtil().log_exception_with_message(
                     f"{chunk_hash_string} An error occurred while processing the chunk:",
                     e,
                 )
                 usage = None
-                raise e
+                raise
             finally:
                 # Update token counts and costs
                 self._compute_costs(usage)
@@ -384,7 +382,7 @@ class LLMUtil:
     def analyse_text(
         self,
         system_prompt: str,
-        text_chunks: List[str],
+        text_chunks: list[str],
     ) -> LLMTextRedactionResult:
         """Analyse multiple text chunks for redaction in parallel using the LLM.
 
@@ -404,7 +402,7 @@ class LLMUtil:
         # Initialise LLM interface
         request_counter = 0
         text_to_redact = []
-        responses: List[ParsedChatCompletion] = []
+        responses: list[ParsedChatCompletion] = []
 
         # Check max concurrent requests
         if self.config.max_concurrent_requests > 32:
@@ -457,7 +455,7 @@ class LLMUtil:
                         response, redaction_strings = future.result()
                         responses.append(response)
                         text_to_redact.extend(redaction_strings)
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         LoggingUtil().log_exception_with_message(
                             f"Error processing chunk {hash(chunk)}",
                             e,

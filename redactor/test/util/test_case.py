@@ -11,22 +11,18 @@ class TestCase:
         """
         Called once before testing begins
         """
-        pass
 
     def session_teardown(self):
         """
         Called once after all tests have finished
         """
-        pass
 
     def setup(self):
         """
         Called before each test
         """
-        pass
 
     def teardown(self):
         """
         Called after each test
         """
-        pass

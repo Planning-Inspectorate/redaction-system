@@ -1,6 +1,9 @@
-from core.redaction.file_processor import FileProcessor, FileProcessorFactory
+from unittest import mock
+
 import pytest
-import mock
+
+from core.redaction.exceptions import FileProcessorNameNotFoundException
+from core.redaction.file_processor import FileProcessor, FileProcessorFactory
 
 
 class FileProcessorA(FileProcessor):
@@ -33,23 +36,27 @@ def test__file_processor_factory__get(expected_name: str):
 
 
 def test__file_processor_factory__get__invalid_input():
-    with mock.patch.object(
-        FileProcessorFactory,
-        "PROCESSORS",
-        {FileProcessorA, FileProcessorB, FileProcessorC},
+    with (
+        mock.patch.object(
+            FileProcessorFactory,
+            "PROCESSORS",
+            {FileProcessorA, FileProcessorB, FileProcessorC},
+        ),
+        pytest.raises(TypeError),
     ):
-        with pytest.raises(Exception):
-            FileProcessorFactory.get(1)
+        FileProcessorFactory.get(1)
 
 
 def test__file_processor_factory__get__missing_name():
-    with mock.patch.object(
-        FileProcessorFactory,
-        "PROCESSORS",
-        {FileProcessorA, FileProcessorB, FileProcessorC},
+    with (
+        mock.patch.object(
+            FileProcessorFactory,
+            "PROCESSORS",
+            {FileProcessorA, FileProcessorB, FileProcessorC},
+        ),
+        pytest.raises(FileProcessorNameNotFoundException),
     ):
-        with pytest.raises(Exception):
-            FileProcessorFactory.get("bah")
+        FileProcessorFactory.get("bah")
 
 
 def test__file_processor_factory__get__all_unique():
@@ -72,13 +79,15 @@ def test__file_processor_factory__get__all_unique():
 
 
 def test__file_processor_factory__validate_processor_types__with_duplicate_type():
-    with mock.patch.object(
-        FileProcessorFactory,
-        "PROCESSORS",
-        {FileProcessorA, FileProcessorB, FileProcessorADuplicate},
+    with (
+        mock.patch.object(
+            FileProcessorFactory,
+            "PROCESSORS",
+            {FileProcessorA, FileProcessorB, FileProcessorADuplicate},
+        ),
+        pytest.raises(TypeError),
     ):
-        with pytest.raises(Exception):
-            FileProcessorFactory.get("A")
+        FileProcessorFactory.get("A")
 
 
 def test__file_processor_factory__get_all():

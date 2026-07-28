@@ -1,8 +1,9 @@
 from io import BytesIO
+
 import pytest
 
 # Import the module and class under test
-import core.io.azure_blob_io as azure_blob_io
+from core.io import azure_blob_io
 from core.io.azure_blob_io import AzureBlobIO
 from core.util.logging_util import LoggingUtil
 

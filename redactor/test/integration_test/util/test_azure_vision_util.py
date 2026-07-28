@@ -1,7 +1,7 @@
 import os
+from io import BytesIO
 
 from PIL import Image
-from io import BytesIO
 
 from core.util.azure_vision_util import AzureVisionUtil, check_image_size
 

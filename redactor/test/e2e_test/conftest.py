@@ -2,15 +2,18 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
 
 import pytest
 
 from test.e2e_test.e2e_utils import function_start_url
-from test.util.conftest_util import configure_session, session_setup, session_teardown  # noqa: F401
+from test.util.conftest_util import (  # noqa: F401
+    configure_session,
+    session_setup,
+    session_teardown,
+)
 
 
-def _env(name: str, default: Optional[str] = None) -> Optional[str]:
+def _env(name: str, default: str | None = None) -> str | None:
     v = os.environ.get(name)
     return v if v not in (None, "") else default
 

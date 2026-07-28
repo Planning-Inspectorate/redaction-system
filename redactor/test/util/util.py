@@ -1,12 +1,13 @@
+import asyncio
 import os
-from azure.servicebus.aio import ServiceBusClient
-from azure.servicebus import ServiceBusReceiveMode
+
 from azure.identity.aio import (
     AzureCliCredential,
-    ManagedIdentityCredential,
     ChainedTokenCredential,
+    ManagedIdentityCredential,
 )
-import asyncio
+from azure.servicebus import ServiceBusReceiveMode
+from azure.servicebus.aio import ServiceBusClient
 
 
 class ServiceBusUtil:
@@ -46,9 +47,9 @@ class ServiceBusUtil:
                     return all_messages
                 # Close credential when no longer needed.
             except Exception:
-                raise
-            finally:
                 await credential.close()
+                raise
+            await credential.close()
 
     async def _consume_service_bus_messages(self, topic_name: str, subscription: str):
         # Note: The sync API/SDKs do not seem to work - this must be done asynchronously
@@ -79,9 +80,9 @@ class ServiceBusUtil:
                     for message in new_messages:
                         await receiver.complete_message(message)
             except Exception:
-                raise
-            finally:
                 await credential.close()
+                raise
+            await credential.close()
 
     def extract_service_bus_complete_messages(self):
         return asyncio.run(

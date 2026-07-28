@@ -1,6 +1,6 @@
 import time
-import requests
 
+import requests
 
 """
 Use this script to send a HTTP request to the function app running on localhost
