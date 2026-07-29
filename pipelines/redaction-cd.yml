@@ -90,7 +90,10 @@ extends:
               - script: |
                   set -e
                   cd $(Build.SourcesDirectory)/redactor
-                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip .
+                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip . \
+                    -x "test/*" \
+                    -x "__pycache__/*" \
+                    -x "*/__pycache__/*"
                 displayName: 'Archive top level files'
               
               # Publish the zip file as an artifact to be used further in the pipeline.
