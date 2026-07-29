@@ -266,21 +266,35 @@ def test__image_text_redactor__redact__with_analysis_failure():
                 redaction_boxes=(
                     (0, 0, config.images[0].width, config.images[0].height),
                 ),
-                names=(None,),
+                names=("Text Detection Failed",),
             ),
         ),
     )
+    mock_analyse_image_return_value = (
+        [
+            (
+                config.images[0],
+                (
+                    (
+                        "TEXT DETECTION FAILED",
+                        (0, 0, config.images[0].width, config.images[0].height),
+                    ),
+                ),
+            ),
+        ],
+        0.0,
+    )
     with (
         mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
         mock.patch.object(
-            AzureVisionUtil, "detect_text", side_effect=Exception("Some exception")
+            ImageTextRedactor,
+            "_analyse_images",
+            return_value=mock_analyse_image_return_value,
         ),
         mock.patch.object(
             ImageTextRedactor,
-            "detect_number_plates",
-            return_value=(["AB12 CDE"]),
-        ),
+            "_get_number_plate_redactions",
+        ) as mock_get_number_plate_redactions,
     ):
         inst = ImageTextRedactor()
         inst.config = config
@@ -291,5 +305,7 @@ def test__image_text_redactor__redact__with_analysis_failure():
         cleaned_actual_results = dataclasses.asdict(actual_results)
         cleaned_actual_results.pop("run_metrics")
         actual_redaction_boxes = cleaned_actual_results.pop("redaction_results")
+
         assert cleaned_expected_results == cleaned_actual_results
+        mock_get_number_plate_redactions.assert_not_called()
         compare_unashable_lists(expected_redaction_boxes, actual_redaction_boxes)

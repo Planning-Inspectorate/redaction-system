@@ -1288,6 +1288,7 @@ class PDFProcessor(FileProcessor):
             redaction_result = rule_to_apply.redact()
             redaction_time_end = time()
             redaction_time = redaction_time_end - redaction_time_start
+
             if issubclass(redaction_result.__class__, TextRedactionResult):
                 text_analysis_total_time += redaction_time
                 text_redaction_summary[redaction_result.rule_name] = {
@@ -1297,12 +1298,15 @@ class PDFProcessor(FileProcessor):
                 }
             elif issubclass(redaction_result.__class__, ImageRedactionResult):
                 image_analysis_total_time += redaction_time
+
             LoggingUtil().log_info(
                 f"The redactor {rule_to_apply} yielded the following result: "
                 f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
             )
             redaction_results.append(redaction_result)
+
         LoggingUtil().log_info("PDF analysis complete")
+
         # Separate out text and image redaction results
         text_redaction_results: list[TextRedactionResult] = [
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
@@ -1312,11 +1316,19 @@ class PDFProcessor(FileProcessor):
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
+        # Ensure all redaction strings are unique
+        text_redactions = list(set(text_redactions))
+
         image_redaction_results: list[ImageRedactionResult] = [
             x
             for x in redaction_results
             if issubclass(x.__class__, ImageRedactionResult)
         ]
+        # Ensure all image redaction results are unique
+        unique_image_redaction_results = []
+        for result in image_redaction_results:
+            if result not in unique_image_redaction_results:
+                unique_image_redaction_results.append(result)
 
         # Ensure all redaction results have a mechanism to be applied
         unapplied_redaction_results = [
@@ -1354,7 +1366,7 @@ class PDFProcessor(FileProcessor):
         LoggingUtil().log_info("Applying image redactions")
         image_redaction_apply_time_start = time()
         new_file_bytes = self._apply_provisional_image_redactions(
-            new_file_bytes, image_redaction_results, pdf_images=pdf_images
+            new_file_bytes, unique_image_redaction_results, pdf_images=pdf_images
         )
         image_redaction_apply_time_end = time()
         image_redaction_apply_time = (

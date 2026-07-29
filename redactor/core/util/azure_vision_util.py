@@ -48,9 +48,27 @@ class AzureVisionUtil:
             endpoint=self.azure_endpoint, credential=credential
         )
 
+    @staticmethod
+    def _create_failed_redaction_output(
+        image_to_redact: Image.Image, is_text: bool = False
+    ) -> tuple[Image.Image, tuple] | tuple[Image.Image, tuple[str, tuple]]:
+        """
+        Create a redaction result that covers the entire image, for cases where analysis
+        against the image raised an exception
+        """
+        if is_text:
+            return (
+                image_to_redact,
+                (
+                    "TEXT DETECTION FAILED",
+                    (0, 0, image_to_redact.width, image_to_redact.height),
+                ),
+            )
+        return (image_to_redact, (0, 0, image_to_redact.width, image_to_redact.height))
+
     def detect_faces_in_images(
         self, images: list[Image.Image], confidence_threshold: float = 0.5
-    ) -> list[tuple[Image.Image, None | tuple[tuple[int, int, int, int]]]]:
+    ) -> list[tuple[Image.Image, tuple[tuple]]]:
         responses = []
         max_workers = get_max_workers()
         LoggingUtil().log_info(
@@ -62,9 +80,9 @@ class AzureVisionUtil:
                 tpe.submit(self.detect_faces, image, confidence_threshold): image
                 for image in images
             }
+
             for future in as_completed(ai_vision_responses_future_map):
                 image = ai_vision_responses_future_map[future]
-                faces = None
                 try:
                     faces = future.result()
                     responses.append((image, faces))
@@ -73,12 +91,16 @@ class AzureVisionUtil:
                         f"Finished face detection for {finished_futures}/{len(images)} "
                         f"images: {len(faces)} faces detected."
                     )
-
                 except Exception as e:  # noqa: BLE001
                     LoggingUtil().log_exception_with_message(
                         "Image face detection failed with the following exception: ",
                         e,
                     )
+                    # If face detection fails for any reason, redact the full image
+                    responses.append(
+                        self._create_failed_redaction_output(image, is_text=False)
+                    )
+
         LoggingUtil().log_info(f"Finished detecting faces in {len(images)} images.")
         return responses
 
@@ -98,7 +120,7 @@ class AzureVisionUtil:
     )
     def detect_faces(
         self, image: Image.Image, confidence_threshold: float = 0.5
-    ) -> tuple[tuple[int, int, int, int], ...]:
+    ) -> tuple[tuple[float, float, float, float], ...]:
         """
         Detect faces in the given image
 
@@ -142,11 +164,6 @@ class AzureVisionUtil:
                     "HTTP response error analysing image for faces", e
                 )
                 raise
-            except Exception as e:  # noqa: BLE001
-                LoggingUtil().log_exception_with_message(
-                    "Error analysing image for faces", e
-                )
-                return None
 
             faces_detected = tuple(
                 {
@@ -172,10 +189,10 @@ class AzureVisionUtil:
         )
 
     @log_to_appins
-    def detect_text_in_images(self, images: list[Image.Image]):
-        responses: list[
-            tuple[Image.Image, tuple[tuple[str, tuple[int, int, int, int]]]]
-        ] = []
+    def detect_text_in_images(
+        self, images: list[Image.Image]
+    ) -> list[tuple[Image.Image, tuple[tuple[str, tuple]]]]:
+        responses = []
         max_workers = get_max_workers()
         LoggingUtil().log_info(
             f"Detecting text in {len(images)} images using up to {max_workers} workers..."
@@ -189,9 +206,9 @@ class AzureVisionUtil:
                 ): image
                 for image in images
             }
+
             for future in as_completed(ai_vision_responses_future_map):
                 image = ai_vision_responses_future_map[future]
-                text = None
                 try:
                     text = future.result()
                     responses.append((image, text))
@@ -204,6 +221,11 @@ class AzureVisionUtil:
                         "Image text detection failed with the following exception: ",
                         e,
                     )
+                    # If text detection fails for any reason, redact the full image
+                    responses.append(
+                        self._create_failed_redaction_output(image, is_text=True)
+                    )
+
         LoggingUtil().log_info(f"Finished detecting text in {len(images)} images.")
         return responses
 
@@ -224,12 +246,12 @@ class AzureVisionUtil:
     )
     def detect_text(
         self, image: Image.Image
-    ) -> tuple[tuple[str, tuple[int, int, int, int]]]:
+    ) -> tuple[tuple[str, tuple[float, float, float, float]]]:
         """
         Return all text content of the given image, as a 2D tuple of <word, bounding box>
 
         :param Image.Image image: The image to analyse
-        :return Tuple[Tuple[str, Tuple[int, int, int, int]], ...]: The text content
+        :return Tuple[Tuple[str, Tuple[float, float, float, float]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
         valid_image = check_image_size(image)
@@ -265,11 +287,6 @@ class AzureVisionUtil:
                     "HTTP response error analysing image for text", e
                 )
                 raise
-            except Exception as e:  # noqa: BLE001
-                LoggingUtil().log_exception_with_message(
-                    "Error analysing image for text", e
-                )
-                return None
 
             text_detected = tuple(
                 (

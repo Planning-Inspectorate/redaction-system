@@ -413,13 +413,30 @@ def test__image_llm_text_redactor__redact__with_image_analysis_failure():
         ],
     )
 
-    def mock_detect_text(inst, image):
-        if image == config.images[0]:
-            raise Exception("Some exception")  # noqa: TRY002
-        if image == config.images[1]:
-            return (("Cardassian", (30, 30, 50, 50)), ("Vulcan", (4, 8, 12, 16)))
-        else:
-            return (("Klingon", (10, 10, 50, 50)), ("Klingon", (100, 100, 50, 50)))
+    def mock_analyse_images(inst):
+        images = inst.config.images
+        return (
+            (
+                (
+                    images[0],
+                    (
+                        (
+                            "TEXT DETECTION FAILED",
+                            (0, 0, images[0].width, images[0].height),
+                        ),
+                    ),
+                ),
+                (
+                    images[1],
+                    (("Cardassian", (30, 30, 50, 50)), ("Vulcan", (4, 8, 12, 16))),
+                ),
+                (
+                    images[2],
+                    (("Klingon", (10, 10, 50, 50)), ("Klingon", (100, 100, 50, 50))),
+                ),
+            ),
+            0.5,
+        )
 
     expected_results = ImageRedactionResult(
         rule_name="config name",
@@ -429,7 +446,7 @@ def test__image_llm_text_redactor__redact__with_image_analysis_failure():
                 image_dimensions=(1000, 1000),
                 source_image=config.images[0],
                 redaction_boxes=((0, 0, 1000, 1000),),
-                names=(None,),
+                names=("Text Detection Failed",),
             ),
             ImageRedactionResult.Result(
                 image_dimensions=(200, 100),
@@ -448,123 +465,53 @@ def test__image_llm_text_redactor__redact__with_image_analysis_failure():
             ),
         ),
     )
-    mock_text_redaction_result = LLMTextRedactionResult(
-        rule_name="config name",
-        run_metrics={},
-        redaction_strings=("Klingon", "Romulan", "Vulcan"),
-        metadata=LLMTextRedactionResult.LLMResultMetadata(
-            input_token_count=80, output_token_count=20, total_token_count=100
-        ),
-    )
-    with (
-        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "detect_text", mock_detect_text),
-        mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
-        mock.patch.object(
-            ImageLLMTextRedactor,
-            "_analyse_text",
-            return_value=mock_text_redaction_result,
-        ),
-    ):
-        inst = ImageLLMTextRedactor()
-        inst.config = config
-        actual_results = inst.redact()
-        cleaned_expected_results = dataclasses.asdict(expected_results)
-        cleaned_expected_results.pop("run_metrics")
-        expected_redaction_boxes = cleaned_expected_results.pop("redaction_results")
-        cleaned_actual_results = dataclasses.asdict(actual_results)
-        cleaned_actual_results.pop("run_metrics")
-        actual_redaction_boxes = cleaned_actual_results.pop("redaction_results")
-        assert cleaned_expected_results == cleaned_actual_results
-        compare_unashable_lists(expected_redaction_boxes, actual_redaction_boxes)
-
-
-def test__image_llm_text_redactor__redact__with_text_analysis_failure():
-    """
-    - Given I have two images which we imagine contains some text
-    - When I call redact and one of the image analysis raises an exception during LLM analysis
-    - Then the full image bounding box should be returned for the failing image
-    """
-    config = ImageLLMTextRedactionConfig(
-        name="config name",
-        redactor_type="ImageLLMTextRedaction",
-        model="gpt-4.1",
-        images=[
-            Image.new("RGB", (1000, 1000)),
-            Image.new("RGB", (200, 100)),
-            Image.new("RGB", (500, 500)),
-        ],
-        system_prompt="some system prompt",
-        redaction_terms=[
-            "rule A",
-            "rule B",
-            "rule C",
-        ],
-    )
-
-    def mock_detect_text(inst, image):
-        if image == config.images[0]:
-            return (
+    mock_text_analysis_result = (
+        {
+            "image": config.images[0],
+            "text_rect_map": (("TEXT DETECTION FAILED", (0, 0, 1000, 1000)),),
+            "text_content": "TEXT DETECTION FAILED",
+            "text_chunks": ["TEXT DETECTION FAILED"],
+            "redaction_strings": [],
+        },
+        {
+            "image": config.images[1],
+            "text_rect_map": (
+                ("Cardassian", (30, 30, 50, 50)),
+                ("Vulcan", (4, 8, 12, 16)),
+            ),
+            "text_content": "Cardassian Vulcan",
+            "text_chunks": ["Cardassian Vulcan"],
+            "redaction_strings": ["Vulcan"],
+        },
+        {
+            "image": config.images[2],
+            "text_rect_map": (
                 ("Klingon", (10, 10, 50, 50)),
-                ("Romulan", (100, 100, 50, 50)),
-                ("Jem'Hadar", (1, 2, 3, 4)),
-            )
-        if image == config.images[1]:
-            return (("Cardassian", (30, 30, 50, 50)), ("Vulcan", (4, 8, 12, 16)))
-        else:
-            return (("Klingon", (10, 10, 50, 50)), ("Klingon", (100, 100, 50, 50)))
-
-    expected_results = ImageRedactionResult(
-        rule_name="config name",
-        run_metrics={},
-        redaction_results=(
-            ImageRedactionResult.Result(
-                image_dimensions=(1000, 1000),
-                source_image=config.images[0],
-                redaction_boxes=(
-                    (10, 10, 50, 50),
-                    (100, 100, 50, 50),
-                ),
-                names=("Klingon", "Romulan"),
+                ("Klingon", (100, 100, 50, 50)),
             ),
-            ImageRedactionResult.Result(
-                image_dimensions=(200, 100),
-                source_image=config.images[1],
-                redaction_boxes=((4, 8, 12, 16),),
-                names=("Vulcan",),
-            ),
-            ImageRedactionResult.Result(
-                image_dimensions=(500, 500),
-                source_image=config.images[2],
-                redaction_boxes=((0, 0, 500, 500),),
-                names=(None,),
-            ),
-        ),
+            "text_content": "Klingon Klingon",
+            "text_chunks": ["Klingon Klingon"],
+            "redaction_strings": ["Klingon"],
+        },
     )
-
-    def mock_analyse_text(inst, text_to_analyse, **kwargs):
-        # Mimic a case where the LLM returns the full chunk content due to an exception
-        # Each word found by OCR is joined together by " "
-        redaction_strings = ("Klingon", "Romulan", "Vulcan")
-        if text_to_analyse == "Klingon Klingon":
-            redaction_strings = "Klingon Klingon"
-        return LLMTextRedactionResult(
-            rule_name="config name",
-            run_metrics={},
-            redaction_strings=redaction_strings,
-            metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=80, output_token_count=20, total_token_count=100
-            ),
-        )
+    mock_redaction_boxes_result = [
+        [(4, 8, 12, 16)],
+        [(10, 10, 50, 50), (100, 100, 50, 50)],
+    ]
 
     with (
         mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "detect_text", mock_detect_text),
+        mock.patch.object(ImageLLMTextRedactor, "_analyse_images", mock_analyse_images),
         mock.patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
         mock.patch.object(
             ImageLLMTextRedactor,
-            "_analyse_text",
-            mock_analyse_text,
+            "_analyse_image_text",
+            return_value=mock_text_analysis_result,
+        ),
+        mock.patch.object(
+            ImageLLMTextRedactor,
+            "examine_redaction_boxes",
+            side_effect=mock_redaction_boxes_result,
         ),
     ):
         inst = ImageLLMTextRedactor()

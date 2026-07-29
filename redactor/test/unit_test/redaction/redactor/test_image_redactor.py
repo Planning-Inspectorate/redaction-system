@@ -18,6 +18,10 @@ def test__image_redactor__get_redaction_config_class():
     assert ImageRedactor.get_redaction_config_class() == ImageRedactionConfig
 
 
+class ImageAnalysisError(Exception):
+    pass
+
+
 def test__image_redactor__redact():
     """
     - Given I have some redaction config (containing two images)
@@ -95,7 +99,7 @@ def test__image_redactor__redact__no_images_skips_analysis():
     assert actual_results.run_metrics == {}
 
 
-def test__image_redactor__no_faces_detected():
+def test__image_redactor__redact__no_faces_detected():
     """
     - Given I have some redaction config (containing two images)
     - When I call ImageRedactor.redact
@@ -142,10 +146,14 @@ def test__image_redactor__redact__with_analysis_failure():
         images=[images[0], images[1]],
     )
 
-    def detect_faces_side_effects(inst, image, confidence):
-        if image == images[0]:
-            raise Exception("Some exception")  # noqa: TRY002
-        return ((30, 30, 50, 50),)
+    def detect_faces_side_effects(inst, images, confidence):
+        return [
+            (
+                images[0],
+                ((0, 0, images[0].width, images[0].height),),
+            ),  # Full image redaction for exception
+            (images[1], ((30, 30, 50, 50),)),  # Normal detection for second image
+        ]
 
     expected_results = ImageRedactionResult(
         rule_name="some image redaction config",
@@ -158,7 +166,7 @@ def test__image_redactor__redact__with_analysis_failure():
                 redaction_boxes=(
                     (0, 0, config.images[0].width, config.images[0].height),
                 ),
-                names=("Face Detected",),
+                names=("Face Detection Failed",),
             ),
             ImageRedactionResult.Result(
                 source_image=config.images[1],
@@ -170,7 +178,9 @@ def test__image_redactor__redact__with_analysis_failure():
     )
     with (
         mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "detect_faces", detect_faces_side_effects),
+        mock.patch.object(
+            AzureVisionUtil, "detect_faces_in_images", detect_faces_side_effects
+        ),
         mock.patch.object(ImageRedactor, "__init__", return_value=None),
     ):
         inst = ImageRedactor()
