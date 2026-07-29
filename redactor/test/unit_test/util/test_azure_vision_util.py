@@ -14,7 +14,7 @@ def MockImageAnalysisClientResult(people):
     return mock_result
 
 
-class ImageReturnedError(Exception):
+class ImageAnalysisError(Exception):
     pass
 
 
@@ -55,7 +55,7 @@ def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_v
             return "a"
         if image == images[1]:
             # This element should not be returned
-            raise ImageReturnedError("Some exception")
+            raise ImageAnalysisError("Some exception")
         if image == images[2]:
             return "c"
         if image == images[3]:
@@ -67,7 +67,10 @@ def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_v
         actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
         expected_results = [
             (images[0], "a"),
-            (images[1], None),
+            (
+                images[1],
+                (0, 0, images[1].width, images[1].height),
+            ),  # Full image redaction for exception
             (images[2], "c"),
             (images[3], "d"),
             (images[4], "e"),
@@ -235,7 +238,7 @@ def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vi
             return "b"
         if image == images[2]:
             # This element should not be returned
-            raise ImageReturnedError("Some exception")
+            raise ImageAnalysisError("Some exception")
         if image == images[3]:
             return "d"
         if image == images[4]:
@@ -246,7 +249,13 @@ def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vi
         expected_results = [
             (images[0], "a"),
             (images[1], "b"),
-            (images[2], None),
+            (
+                images[2],
+                (
+                    "TEXT DETECTION FAILED",
+                    (0, 0, images[2].width, images[2].height),
+                ),
+            ),
             (images[3], "d"),
             (images[4], "e"),
         ]
