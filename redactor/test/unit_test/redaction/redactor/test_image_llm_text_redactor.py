@@ -280,9 +280,11 @@ def test__image_llm_text_redactor__redact__no_images_skips_analysis():
     assert actual_results.rule_name == "config name"
     assert actual_results.redaction_results == ()
     assert actual_results.run_metrics == {
+        "total_images_to_analyse": 0,
         "total_image_ocr_time": 0.0,
         "total_image_text_analysis_time": 0.0,
-        "total_images_to_analyse": 0,
+        "total_image_llm_analysis_time": 0.0,
+        "total_image_text_bounding_box_matching_time": 0.0,
     }
 
 
