@@ -1029,6 +1029,102 @@ def test__pdf_processor__check_subsequent_words():
     assert result == expected_result
 
 
+def test__pdf_processor__match_word_to_redact_in_line__suffix_fused_word():
+    """A first word fused to a preceding word is matched only when allow_suffix is set."""
+    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
+    # Without allow_suffix the fused word is not matched
+    assert PDFProcessor._match_word_to_redact_in_line("monica", words_to_check) == []
+    # With allow_suffix the fused word is matched
+    assert PDFProcessor._match_word_to_redact_in_line(
+        "monica", words_to_check, allow_suffix=True
+    ) == [0]
+
+
+def test__pdf_processor__match_word_to_redact_in_line__suffix_short_word_guarded():
+    """A short word (< MIN_JOINED_BOUNDARY_LENGTH) must not match as a fused suffix."""
+    words_to_check = np.array(["byof", "cowan"], dtype=str)
+    assert (
+        PDFProcessor._match_word_to_redact_in_line(
+            "of", words_to_check, allow_suffix=True
+        )
+        == []
+    )
+
+
+def test__pdf_processor__check_subsequent_words__first_word_suffix():
+    """The first word of a term may match a token it is fused to as a suffix."""
+    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
+    result = PDFProcessor._check_subsequent_words(
+        get_normalised_words("Monica Cowan"),
+        words_to_check,
+        0,
+        allow_first_suffix=True,
+        allow_last_prefix=True,
+    )
+    assert result == (["somethingmonica", "cowan"], 1)
+
+
+def test__pdf_processor__check_subsequent_words__last_word_prefix():
+    """The last word of a term may match a token it is fused to as a prefix."""
+    words_to_check = np.array(["christine", "watts-hughgeneva"], dtype=str)
+    result = PDFProcessor._check_subsequent_words(
+        get_normalised_words("christine watts-hugh"),
+        words_to_check,
+        0,
+        allow_first_suffix=True,
+        allow_last_prefix=True,
+    )
+    assert result == (["christine", "watts-hughgeneva"], 1)
+
+
+def test__pdf_processor__check_subsequent_words__boundary_disabled_by_default():
+    """Boundary matching must not occur unless explicitly enabled."""
+    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
+    result = PDFProcessor._check_subsequent_words(
+        get_normalised_words("Monica Cowan"), words_to_check, 0
+    )
+    assert result == ([], -1)
+
+
+def test__pdf_processor__check_subsequent_words__inner_word_must_match_exactly():
+    """Inner words are never boundary-matched; a non-matching inner word breaks the match."""
+    words_to_check = np.array(["alpha", "betaX", "gamma"], dtype=str)
+    result = PDFProcessor._check_subsequent_words(
+        get_normalised_words("alpha beta gamma"),
+        words_to_check,
+        0,
+        allow_first_suffix=True,
+        allow_last_prefix=True,
+    )
+    assert result == (["alpha"], 0)
+
+
+@pytest.mark.parametrize(
+    "token, word, expected",
+    [
+        ("somethingmonica", "monica", True),  # Fused suffix, long enough
+        ("byof", "of", False),  # Too short (< min length)
+        ("monica", "monica", False),  # Identical token is not a fused suffix
+        ("monicasomething", "monica", False),  # Word is a prefix, not a suffix
+    ],
+)
+def test__pdf_processor__token_has_boundary_suffix(token, word, expected):
+    assert PDFProcessor._token_has_boundary_suffix(token, word) is expected
+
+
+@pytest.mark.parametrize(
+    "token, word, expected",
+    [
+        ("watts-hughgeneva", "watts-hugh", True),  # Fused prefix, long enough
+        ("ofby", "of", False),  # Too short (< min length)
+        ("cowan", "cowan", False),  # Identical token is not a fused prefix
+        ("somethingcowan", "cowan", False),  # Word is a suffix, not a prefix
+    ],
+)
+def test__pdf_processor__token_has_boundary_prefix(token, word, expected):
+    assert PDFProcessor._token_has_boundary_prefix(token, word) is expected
+
+
 def test__pdf_processor__check_partial_match_before_hyphen():
     term_to_redact = "Something-else"
     words_to_check = np.array(["something"], dtype=str)
@@ -1155,6 +1251,37 @@ def test__pdf_processor__check_partial_match_before_hyphen__not_line_broken():
             "Mary Hugh-Williams",
             True,
         ),  # Hyphenated word at line break with preceding word
+        # --- Boundary matching for words fused by a missing space ---
+        (
+            "somethingMonica Cowan",
+            "Monica Cowan",
+            True,
+        ),  # First word fused to a preceding word (suffix match)
+        (
+            "christine watts-hughGeneva",
+            "christine watts-hugh",
+            True,
+        ),  # Last word fused to a following word (prefix match)
+        (
+            "Sweden",
+            "Eden",
+            False,
+        ),  # Single-word term must not match as a suffix inside a larger word
+        (
+            "Edenbridge",
+            "Eden",
+            False,
+        ),  # Single-word term must not match as a prefix inside a larger word
+        (
+            "johnsmith",
+            "smith",
+            False,
+        ),  # Single-word term never fuses even when long enough
+        (
+            "byof cowan",
+            "of cowan",
+            False,
+        ),  # Short boundary word (< min length) must not fuse-match
     ],
 )
 def test__pdf_processor__find_potential_matches_in_line(test_case):
