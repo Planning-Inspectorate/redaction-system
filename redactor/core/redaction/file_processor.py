@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator
 from datetime import UTC, datetime
 from io import BytesIO
-from time import time
 from typing import Any, ClassVar
 
 import numpy as np
@@ -35,7 +34,7 @@ from core.redaction.result import (
 )
 from core.util.azure_vision_util import check_image_size
 from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.metric_util import MetricUtil
+from core.util.metric_util import MetricUtil, TimerUtil
 from core.util.text_util import get_normalised_words, is_english_text, normalise_text
 from core.util.types import PydanticImage
 
@@ -46,7 +45,7 @@ class FileProcessor(ABC):
     """
 
     def __init__(self):
-        self.run_metrics = None
+        self.run_metrics = {}
 
     @classmethod
     @abstractmethod
@@ -1236,15 +1235,13 @@ class PDFProcessor(FileProcessor):
         :return: The redacted PDF file bytes.
         """
         # Extract text from PDF
-        pdf_text_extraction_time_start = time()
-        pdf_text = self._extract_pdf_text(file_bytes)
-        pdf_text_extraction_time_end = time()
-        pdf_text_extraction_time = (
-            pdf_text_extraction_time_end - pdf_text_extraction_time_start
-        )
+        with TimerUtil() as timer:
+            pdf_text = self._extract_pdf_text(file_bytes)
+        self.run_metrics["pdf_text_extraction_time"] = timer.elapsed_time
         LoggingUtil().log_info(
             f"The following text was extracted from the PDF:\n'{pdf_text}'"
         )
+
         if pdf_text and not is_english_text(pdf_text):
             exception = NonEnglishContentException(
                 "Language check: non-English or insufficient English content "
@@ -1252,10 +1249,10 @@ class PDFProcessor(FileProcessor):
             )
             LoggingUtil().log_exception(exception)
             raise exception
-        image_extraction_time_start = time()
-        pdf_images = self._extract_pdf_images(file_bytes)
-        image_extraction_time_end = time()
-        image_extraction_time = image_extraction_time_end - image_extraction_time_start
+
+        with TimerUtil() as timer:
+            pdf_images = self._extract_pdf_images(file_bytes)
+        self.run_metrics["pdf_image_extraction_time"] = timer.elapsed_time
 
         # Generate list of redaction rules from config
         redaction_rules: list[RedactionConfig] = redaction_config.get(
@@ -1277,27 +1274,26 @@ class PDFProcessor(FileProcessor):
         # Generate redactions
         # TODO convert back to a set
         redaction_results: list[RedactionResult] = []
-        text_analysis_total_time = 0.0
-        image_analysis_total_time = 0.0
+        self.run_metrics["text_analysis_total_time"] = 0.0
+        self.run_metrics["image_analysis_total_time"] = 0.0
 
         # Apply each redaction rule
         text_redaction_summary: dict[str, Any] = {}
         for rule_to_apply in redaction_rules_to_apply:
             LoggingUtil().log_info(f"Running redaction rule {rule_to_apply}")
-            redaction_time_start = time()
-            redaction_result = rule_to_apply.redact()
-            redaction_time_end = time()
-            redaction_time = redaction_time_end - redaction_time_start
+            with TimerUtil() as timer:
+                redaction_result = rule_to_apply.redact()
+            redaction_time = timer.elapsed_time
 
             if issubclass(redaction_result.__class__, TextRedactionResult):
-                text_analysis_total_time += redaction_time
+                self.run_metrics["text_analysis_total_time"] += redaction_time
                 text_redaction_summary[redaction_result.rule_name] = {
                     "redaction_strings": redaction_result.redaction_strings,
                     "n_proposed": len(redaction_result.redaction_strings),
                     "n_applied": len(redaction_result.redaction_strings),
                 }
             elif issubclass(redaction_result.__class__, ImageRedactionResult):
-                image_analysis_total_time += redaction_time
+                self.run_metrics["image_analysis_total_time"] += redaction_time
 
             LoggingUtil().log_info(
                 f"The redactor {rule_to_apply} yielded the following result: "
@@ -1305,6 +1301,10 @@ class PDFProcessor(FileProcessor):
             )
             redaction_results.append(redaction_result)
 
+        self.run_metrics["analysis_total_time"] = (
+            self.run_metrics["text_analysis_total_time"]
+            + self.run_metrics["image_analysis_total_time"]
+        )
         LoggingUtil().log_info("PDF analysis complete")
 
         # Separate out text and image redaction results
@@ -1345,56 +1345,39 @@ class PDFProcessor(FileProcessor):
                 LoggingUtil().log_exception(e)
                 raise e
 
-        all_result_metrics = {x.rule_name: x.run_metrics for x in redaction_results}
-        combined_metrics = self.combine_run_metrics(
+        self.run_metrics["result_metrics"] = {
+            x.rule_name: x.run_metrics for x in redaction_results
+        }
+        self.run_metrics["aggregate_result_metrics"] = self.combine_run_metrics(
             [x.run_metrics for x in redaction_results]
         )
 
         # Apply text redactions by highlighting text to redact
         LoggingUtil().log_info("Applying text redactions")
-        text_redaction_apply_time_start = time()
-        new_file_bytes = self._apply_provisional_text_redactions(
-            file_bytes, text_redactions
-        )
-        text_redaction_apply_time_end = time()
-        text_redaction_apply_time = (
-            text_redaction_apply_time_end - text_redaction_apply_time_start
-        )
+        with TimerUtil() as timer:
+            new_file_bytes = self._apply_provisional_text_redactions(
+                file_bytes, text_redactions
+            )
+        self.run_metrics["text_redaction_apply_time"] = timer.elapsed_time
         LoggingUtil().log_info("Text redactions applied")
 
         # Apply image redactions
         LoggingUtil().log_info("Applying image redactions")
-        image_redaction_apply_time_start = time()
-        new_file_bytes = self._apply_provisional_image_redactions(
-            new_file_bytes, unique_image_redaction_results, pdf_images=pdf_images
-        )
-        image_redaction_apply_time_end = time()
-        image_redaction_apply_time = (
-            image_redaction_apply_time_end - image_redaction_apply_time_start
-        )
+        with TimerUtil() as timer:
+            new_file_bytes = self._apply_provisional_image_redactions(
+                new_file_bytes, unique_image_redaction_results, pdf_images=pdf_images
+            )
+        self.run_metrics["image_redaction_apply_time"] = timer.elapsed_time
         LoggingUtil().log_info("Image redactions applied")
 
-        unapplied_redaction_terms = [
+        self.run_metrics["unapplied_text_redaction_terms"] = [
             term for term, count in self.terms_found.items() if count == 0
         ]
-        for term in unapplied_redaction_terms:
+        for term in self.run_metrics["unapplied_text_redaction_terms"]:
             for result, summary in text_redaction_summary.items():
                 if term in summary["redaction_strings"]:
                     text_redaction_summary[result]["n_applied"] -= 1
-
-        self.run_metrics = {
-            "pdf_text_extraction_time": pdf_text_extraction_time,
-            "pdf_image_extraction_time": image_extraction_time,
-            "text_analysis_total_time": text_analysis_total_time,
-            "image_analysis_total_time": image_analysis_total_time,
-            "analysis_total_time": text_analysis_total_time + image_analysis_total_time,
-            "text_redaction_apply_time": text_redaction_apply_time,
-            "image_redaction_apply_time": image_redaction_apply_time,
-            "result_metrics": all_result_metrics,
-            "aggregate_result_metrics": combined_metrics,
-            "unapplied_text_redaction_terms": unapplied_redaction_terms,
-            "text_redaction_summary": text_redaction_summary,
-        }
+        self.run_metrics["text_redaction_summary"] = text_redaction_summary
 
         return new_file_bytes
 
@@ -1414,57 +1397,54 @@ class PDFProcessor(FileProcessor):
         pdf = pymupdf.open(stream=file_bytes)
 
         redaction_highlight_count = 0
-        redaction_time_start = time()
-        for page in pdf:
-            for annotation in self._extract_page_annotations(
-                page,
-                annotation_class=None,  # Redact all annotation types
-                return_annot=True,
-            ):
-                redaction_highlight_count += 1
-                if annotation.get("rect"):
-                    # Use the rect generated from the vertices if it exists, since
-                    # this will have preserved the position of the highlight applied more accurately
-                    annotation_rect = annotation["rect"]
-                else:
-                    # If the rect is not available, use the bounding box of the annotation vertices instead
-                    annotation_rect = annotation["annot"].rect
-                page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
-                page.delete_annot(annotation["annot"])
-                page.clean_contents(True)
+        with TimerUtil() as timer:
+            for page in pdf:
+                for annotation in self._extract_page_annotations(
+                    page,
+                    annotation_class=None,  # Redact all annotation types
+                    return_annot=True,
+                ):
+                    redaction_highlight_count += 1
+                    if annotation.get("rect"):
+                        # Use the rect generated from the vertices if it exists, since
+                        # this will have preserved the position of the highlight applied more accurately
+                        annotation_rect = annotation["rect"]
+                    else:
+                        # If the rect is not available, use the bounding box of the annotation vertices instead
+                        annotation_rect = annotation["annot"].rect
+                    page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
+                    page.delete_annot(annotation["annot"])
+                    page.clean_contents(True)
 
             page.apply_redactions()
-
-        redaction_time_end = time()
-        redaction_time = redaction_time_end - redaction_time_start
+        self.run_metrics["redaction_time"] = timer.elapsed_time
 
         if redaction_highlight_count == 0:
             raise NothingToRedactException(
                 "No annotations were found in the PDF - please confirm that this is correct"
             )
 
-        scrub_time_start = time()
-        pdf.scrub(
-            attached_files=True,
-            clean_pages=True,
-            embedded_files=True,
-            hidden_text=True,
-            javascript=True,
-            metadata=True,
-            redactions=True,
-            redact_images=1,
-            remove_links=True,
-            reset_fields=True,
-            reset_responses=True,
-            thumbnails=True,
-            xml_metadata=True,
-        )
-        scrub_time_end = time()
-        scrub_time = scrub_time_end - scrub_time_start
+        with TimerUtil() as timer:
+            pdf.scrub(
+                attached_files=True,
+                clean_pages=True,
+                embedded_files=True,
+                hidden_text=True,
+                javascript=True,
+                metadata=True,
+                redactions=True,
+                redact_images=1,
+                remove_links=True,
+                reset_fields=True,
+                reset_responses=True,
+                thumbnails=True,
+                xml_metadata=True,
+            )
+        self.run_metrics["scrub_time"] = timer.elapsed_time
+
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
-        self.run_metrics = {"redaction_time": redaction_time, "scrub_time": scrub_time}
         return new_file_bytes
 
     @classmethod

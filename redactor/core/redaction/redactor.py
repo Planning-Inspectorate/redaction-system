@@ -2,7 +2,6 @@ import json
 import re
 from abc import ABC, abstractmethod
 from itertools import chain
-from time import time
 from typing import Any, ClassVar
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -28,6 +27,7 @@ from core.redaction.result import (
 from core.util.azure_vision_util import AzureVisionUtil
 from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.metric_util import TimerUtil
 from core.util.text_util import get_normalised_words
 
 
@@ -186,35 +186,36 @@ class ImageRedactor(Redactor):  # pragma: no cover
                 run_metrics={},
                 redaction_results=(),
             )
-        start_time = time()
-        face_detection_results = AzureVisionUtil().detect_faces_in_images(
-            self.config.images, self.config.confidence_threshold
-        )
-        for image_to_redact, faces_detected in face_detection_results:
-            # If image analysis failed, the full image will be returned
-            full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
-            if len(faces_detected) == 1 and faces_detected[0] == full_image_box:
-                faces_detected = (full_image_box,)
-                names = ("Face Detection Failed",)
-            elif len(faces_detected) == 0:
-                continue
-            else:
-                names = tuple(["Face Detected" for _ in faces_detected])
-            results.append(
-                ImageRedactionResult.Result(
-                    image_dimensions=(image_to_redact.width, image_to_redact.height),
-                    source_image=image_to_redact,
-                    redaction_boxes=faces_detected,
-                    names=names,
-                )
+        with TimerUtil() as timer:
+            face_detection_results = AzureVisionUtil().detect_faces_in_images(
+                self.config.images, self.config.confidence_threshold
             )
-        end_time = time()
-        total_time = end_time - start_time
+            for image_to_redact, faces_detected in face_detection_results:
+                # If image analysis failed, the full image will be returned
+                full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
+                if len(faces_detected) == 1 and faces_detected[0] == full_image_box:
+                    faces_detected = (full_image_box,)
+                    names = ("Face Detection Failed",)
+                elif len(faces_detected) == 0:
+                    continue
+                else:
+                    names = tuple(["Face Detected" for _ in faces_detected])
+                results.append(
+                    ImageRedactionResult.Result(
+                        image_dimensions=(
+                            image_to_redact.width,
+                            image_to_redact.height,
+                        ),
+                        source_image=image_to_redact,
+                        redaction_boxes=faces_detected,
+                        names=names,
+                    )
+                )
 
         return ImageRedactionResult(
             rule_name=self.config.name,
             run_metrics={
-                "total_image_analysis_time": round(total_time, 2),
+                "total_image_analysis_time": timer.elapsed_time,
                 "total_images_to_analyse": total_images_to_analyse,
             },
             redaction_results=tuple(results),
@@ -360,35 +361,34 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         if len(self.config.images) == 0:
             LoggingUtil().log_info("No images to analyse, skipping image text analysis")
             return [], 0.0
-        ocr_start_time = time()
-        vision_util = AzureVisionUtil()
-        image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
-        ocr_time = time() - ocr_start_time
-        return image_text_rect_map, ocr_time
+        with TimerUtil() as timer:
+            vision_util = AzureVisionUtil()
+            image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
+        return image_text_rect_map, timer.elapsed_time
 
     def _get_number_plate_redactions(
         self, text_content, text_rect_map
     ) -> tuple[list[tuple], float, float]:
         # Detect number plates using regex
-        number_plate_detection_start_time = time()
-        redaction_strings = self.detect_number_plates(text_content)
-        number_plate_detection_time = time() - number_plate_detection_start_time
+        with TimerUtil() as timer:
+            redaction_strings = self.detect_number_plates(text_content)
+        number_plate_detection_time = timer.elapsed_time
 
         # Identify text rectangles to redact based on redaction strings
-        text_analysis_start_time = time()
         text_rects_to_redact = []
-        for redaction_string in redaction_strings:
-            for translation in self.OCR_TRANSLATIONS:
-                translated_redaction = redaction_string.translate(translation)
-                rects_found = self.examine_redaction_boxes(
-                    text_rect_map,
-                    translated_redaction,
-                )
-                if rects_found:
-                    text_rects_to_redact.extend(
-                        tuple((rect, translated_redaction) for rect in rects_found)
+        with TimerUtil() as timer:
+            for redaction_string in redaction_strings:
+                for translation in self.OCR_TRANSLATIONS:
+                    translated_redaction = redaction_string.translate(translation)
+                    rects_found = self.examine_redaction_boxes(
+                        text_rect_map,
+                        translated_redaction,
                     )
-        bbox_time = time() - text_analysis_start_time
+                    if rects_found:
+                        text_rects_to_redact.extend(
+                            tuple((rect, translated_redaction) for rect in rects_found)
+                        )
+        bbox_time = timer.elapsed_time
 
         return (
             text_rects_to_redact,
@@ -403,88 +403,85 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         results = []
         total_images_to_analyse = len(self.config.images)
 
-        start_time = time()
-        image_text_rect_map, total_ocr_time = self._analyse_images()
+        with TimerUtil() as timer:
+            image_text_rect_map, total_ocr_time = self._analyse_images()
 
-        if not image_text_rect_map:
-            LoggingUtil().log_info(
-                "No text detected in any images, skipping LLM analysis"
-            )
-            return ImageRedactionResult(
-                rule_name=self.config.name,
-                run_metrics={
-                    "total_images_to_analyse": total_images_to_analyse,
-                    "total_image_text_analysis_time": round(time() - start_time, 2),
-                    "total_image_ocr_time": round(total_ocr_time, 2),
-                },
-                redaction_results=(),
-            )
-
-        total_number_plate_detection_time = 0.0
-        total_bounding_box_time = 0.0
-        for image_to_redact, text_rect_map in image_text_rect_map:
-            # If image analysis failed, the full image will be returned
-            full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
-            if len(text_rect_map) == 1 and text_rect_map[0] == (
-                "TEXT DETECTION FAILED",
-                full_image_box,
-            ):
+            if not image_text_rect_map:
+                timer.__exit__(None, None, None)
                 LoggingUtil().log_info(
-                    "Text detection failed for image, redacting full image"
+                    "No text detected in any images, skipping LLM analysis"
                 )
-                results.append(
-                    ImageRedactionResult.Result(
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                        redaction_boxes=(full_image_box,),
-                        names=("Text Detection Failed",),
-                    )
+                return ImageRedactionResult(
+                    rule_name=self.config.name,
+                    run_metrics={
+                        "total_images_to_analyse": total_images_to_analyse,
+                        "total_image_text_analysis_time": timer.elapsed_time,
+                        "total_image_ocr_time": total_ocr_time,
+                    },
+                    redaction_results=(),
                 )
-                continue
 
-            try:
-                text_content = " ".join([x[0] for x in text_rect_map]).strip()
-                if not text_content:
+            total_number_plate_detection_time = 0.0
+            total_bounding_box_time = 0.0
+            for image_to_redact, text_rect_map in image_text_rect_map:
+                # If image analysis failed, the full image will be returned
+                full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
+                if len(text_rect_map) == 1 and text_rect_map[0] == (
+                    "TEXT DETECTION FAILED",
+                    full_image_box,
+                ):
                     LoggingUtil().log_info(
-                        "No text detected in image, skipping LLM analysis"
+                        "Text detection failed for image, redacting full image"
+                    )
+                    results.append(
+                        ImageRedactionResult.Result(
+                            image_dimensions=(
+                                image_to_redact.width,
+                                image_to_redact.height,
+                            ),
+                            source_image=image_to_redact,
+                            redaction_boxes=(full_image_box,),
+                            names=("Text Detection Failed",),
+                        )
                     )
                     continue
-                LoggingUtil().log_info(
-                    f"The following text was extracted from the image: '{text_content}'"
-                )
 
-                text_rects_to_redact, number_plate_detection_time, bbox_time = (
-                    self._get_number_plate_redactions(text_content, text_rect_map)
-                )
-                total_number_plate_detection_time += number_plate_detection_time
-                total_bounding_box_time += bbox_time
+                try:
+                    text_content = " ".join([x[0] for x in text_rect_map]).strip()
+                    if not text_content:
+                        LoggingUtil().log_info(
+                            "No text detected in image, skipping LLM analysis"
+                        )
+                        continue
+                    LoggingUtil().log_info(
+                        f"The following text was extracted from the image: '{text_content}'"
+                    )
 
-                redaction_result = self._create_redaction_result(
-                    text_rects_to_redact, image_to_redact
-                )
-                if redaction_result:
-                    results.append(redaction_result)
+                    text_rects_to_redact, number_plate_detection_time, bbox_time = (
+                        self._get_number_plate_redactions(text_content, text_rect_map)
+                    )
+                    total_number_plate_detection_time += number_plate_detection_time
+                    total_bounding_box_time += bbox_time
 
-            except Exception as e:  # noqa: BLE001
-                LoggingUtil().log_exception_with_message(
-                    "Error analysing image for text redaction:", e
-                )
+                    redaction_result = self._create_redaction_result(
+                        text_rects_to_redact, image_to_redact
+                    )
+                    if redaction_result:
+                        results.append(redaction_result)
+
+                except Exception as e:  # noqa: BLE001
+                    LoggingUtil().log_exception_with_message(
+                        "Error analysing image for text redaction:", e
+                    )
 
         return ImageRedactionResult(
             rule_name=self.config.name,
             run_metrics={
                 "total_images_to_analyse": total_images_to_analyse,
-                "total_image_text_analysis_time": round(time() - start_time, 2),
-                "total_image_ocr_time": round(total_ocr_time, 2),
-                "total_image_number_plate_detection_time": round(
-                    total_number_plate_detection_time, 2
-                ),
-                "total_image_text_bounding_box_matching_time": round(
-                    total_bounding_box_time, 2
-                ),
+                "total_image_text_analysis_time": timer.elapsed_time,
+                "total_image_ocr_time": total_ocr_time,
+                "total_image_number_plate_detection_time": total_number_plate_detection_time,
+                "total_image_text_bounding_box_matching_time": total_bounding_box_time,
             },
             redaction_results=tuple(results),
         )
@@ -563,112 +560,90 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         # Initialisation
         self.config: ImageLLMTextRedactionConfig
         results = []
-        total_images_to_analyse = len(self.config.images)
-        run_metrics = {
-            "total_images_to_analyse": total_images_to_analyse,
-            "total_image_ocr_time": 0.0,
-            "total_image_llm_analysis_time": 0.0,
-            "total_image_text_analysis_time": 0.0,
-            "total_image_text_bounding_box_matching_time": 0.0,
-        }
+        run_metrics = {}
+        run_metrics["total_images_to_analyse"] = len(self.config.images)
 
-        start_time = time()
-        image_text_rect_map, total_ocr_time = self._analyse_images()
-        run_metrics.update(
-            {
-                "total_image_ocr_time": round(total_ocr_time, 2),
-            }
-        )
+        with TimerUtil() as timer:
+            image_text_rect_map, total_ocr_time = self._analyse_images()
+            run_metrics["total_image_ocr_time"] = total_ocr_time
 
-        if not image_text_rect_map:
-            run_metrics.update(
-                {
-                    "total_image_text_analysis_time": round(total_ocr_time, 2),
-                }
-            )
-            LoggingUtil().log_info(
-                "No text detected in any images, skipping LLM analysis"
-            )
-            return ImageRedactionResult(
-                rule_name=self.config.name,
-                run_metrics=run_metrics,
-                redaction_results=(),
-            )
-
-        llm_analysis_start_time = time()
-        image_text_redaction_results = self._analyse_image_text(image_text_rect_map)
-        llm_analysis_end_time = time()
-        run_metrics.update(
-            {
-                "total_image_llm_analysis_time": round(
-                    llm_analysis_end_time - llm_analysis_start_time, 2
-                ),
-                "total_image_text_analysis_time": round(
-                    llm_analysis_end_time - start_time, 2
-                ),
-            }
-        )
-
-        if not image_text_redaction_results:
-            return ImageRedactionResult(
-                rule_name=self.config.name,
-                run_metrics=run_metrics,
-                redaction_results=(),
-            )
-
-        total_bounding_box_time = 0.0
-        for image_result in image_text_redaction_results:
-            image_to_redact = image_result["image"]
-            text_rect_map = image_result["text_rect_map"]
-            text_content = image_result["text_content"]
-
-            # If the image couldn't be analysed, mark the whole image for redaction
-            if len(text_rect_map) == 1 and text_content == "TEXT DETECTION FAILED":
+            if not image_text_rect_map:
+                timer.__exit__(None, None, None)
+                run_metrics["total_image_text_analysis_time"] = timer.elapsed_time
                 LoggingUtil().log_info(
-                    "Text detection failed for image, redacting full image"
+                    "No text detected in any images, skipping LLM analysis"
                 )
-                results.append(
-                    ImageRedactionResult.Result(
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                        redaction_boxes=(text_rect_map[0][1],),
-                        names=("Text Detection Failed",),
+                return ImageRedactionResult(
+                    rule_name=self.config.name,
+                    run_metrics=run_metrics,
+                    redaction_results=(),
+                )
+
+            with TimerUtil() as llm_timer:
+                image_text_redaction_results = self._analyse_image_text(
+                    image_text_rect_map
+                )
+            run_metrics["total_image_llm_analysis_time"] = llm_timer.elapsed_time
+
+            if not image_text_redaction_results:
+                timer.__exit__(None, None, None)
+                run_metrics["total_image_text_analysis_time"] = timer.elapsed_time
+                return ImageRedactionResult(
+                    rule_name=self.config.name,
+                    run_metrics=run_metrics,
+                    redaction_results=(),
+                )
+
+            total_bounding_box_time = 0.0
+            for image_result in image_text_redaction_results:
+                image_to_redact = image_result["image"]
+                text_rect_map = image_result["text_rect_map"]
+                text_content = image_result["text_content"]
+
+                # If the image couldn't be analysed, mark the whole image for redaction
+                if len(text_rect_map) == 1 and text_content == "TEXT DETECTION FAILED":
+                    LoggingUtil().log_info(
+                        "Text detection failed for image, redacting full image"
                     )
-                )
-                continue
-
-            # Identify text rectangles to redact based on redaction strings
-            text_analysis_start_time = time()
-            text_rects_to_redact = []
-            for redaction_string in image_result["redaction_strings"]:
-                rects_found = self.examine_redaction_boxes(
-                    text_rect_map,
-                    redaction_string,
-                )
-
-                if len(rects_found) > 0:
-                    text_rects_to_redact.extend(
-                        tuple((rect, redaction_string) for rect in rects_found)
+                    results.append(
+                        ImageRedactionResult.Result(
+                            image_dimensions=(
+                                image_to_redact.width,
+                                image_to_redact.height,
+                            ),
+                            source_image=image_to_redact,
+                            redaction_boxes=(text_rect_map[0][1],),
+                            names=("Text Detection Failed",),
+                        )
                     )
+                    continue
 
-            total_bounding_box_time += time() - text_analysis_start_time
+                # Identify text rectangles to redact based on redaction strings
+                with TimerUtil() as text_analysis_timer:
+                    text_rects_to_redact = []
+                    for redaction_string in image_result["redaction_strings"]:
+                        rects_found = self.examine_redaction_boxes(
+                            text_rect_map,
+                            redaction_string,
+                        )
 
-            redaction_result = self._create_redaction_result(
-                text_rects_to_redact, image_result["image"]
-            )
-            if redaction_result:
-                results.append(redaction_result)
+                        if len(rects_found) > 0:
+                            text_rects_to_redact.extend(
+                                tuple((rect, redaction_string) for rect in rects_found)
+                            )
+                total_bounding_box_time += text_analysis_timer.elapsed_time
 
-        run_metrics.update(
-            {
-                "total_image_text_bounding_box_matching_time": round(
-                    total_bounding_box_time, 2
+                redaction_result = self._create_redaction_result(
+                    text_rects_to_redact, image_result["image"]
                 )
-            }
+                if redaction_result:
+                    results.append(redaction_result)
+
+        run_metrics["total_image_text_bounding_box_matching_time"] = (
+            total_bounding_box_time
         )
+        run_metrics["total_image_text_analysis_time"] = timer.elapsed_time
+
         return ImageRedactionResult(
             rule_name=self.config.name,
             run_metrics=run_metrics,

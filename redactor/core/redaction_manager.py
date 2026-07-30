@@ -680,27 +680,27 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
+        from core.util.metric_util import TimerUtil
+
         stage = base_response["stage"]
-        start_time = time()
-        fatal_error = None
-        non_fatal_errors = []
-        status = "SUCCESS"
-        message = "Redaction process complete"
-        run_metrics = None
-        try:
-            payload_validator(params)
-            run_metrics = redaction_function(params)
-        except Exception as e:  # noqa: BLE001
-            self.log_exception(e)
-            status = "FAIL"
-            message = f"Redaction process failed with the following error: {e}"
-            fatal_error = message
-        end_time = time()
-        total_execution_time = end_time - start_time
+        with TimerUtil() as timer:
+            fatal_error = None
+            non_fatal_errors = []
+            status = "SUCCESS"
+            message = "Redaction process complete"
+            run_metrics = None
+            try:
+                payload_validator(params)
+                run_metrics = redaction_function(params)
+            except Exception as e:  # noqa: BLE001
+                self.log_exception(e)
+                status = "FAIL"
+                message = f"Redaction process failed with the following error: {e}"
+                fatal_error = message
         final_output = base_response | {
             "status": status,
             "message": message,
-            "execution_time_seconds": total_execution_time,
+            "execution_time_seconds": timer.elapsed_time,
             "run_metrics": run_metrics,
         }
         try:
@@ -746,7 +746,7 @@ class RedactionManager:
         final_output = base_response | {
             "status": status,
             "message": message,
-            "execution_time_seconds": total_execution_time,
+            "execution_time_seconds": timer.elapsed_time,
             "run_metrics": run_metrics,
         }
         return final_output

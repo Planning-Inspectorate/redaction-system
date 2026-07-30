@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import os
 import time
@@ -35,6 +36,7 @@ from core.redaction.result import (
     LLMTextRedactionResult,
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
+from core.util.metric_util import TimerUtil
 from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
@@ -393,73 +395,43 @@ class LLMUtil:
         word_count = sum(
             len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
         )
-        start_time = time.time()
-        chunk_hashes = [{"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks]
-        LoggingUtil().log_info(
-            f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
-        )
-
-        # Initialise LLM interface
-        request_counter = 0
-        text_to_redact = []
-        responses: list[ParsedChatCompletion] = []
-
-        # Check max concurrent requests
-        if self.config.max_concurrent_requests > 32:
-            self._set_workers(self.config.max_concurrent_requests)
+        with TimerUtil() as timer:
+            chunk_hashes = [
+                {"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks
+            ]
             LoggingUtil().log_info(
-                "Max concurrent requests exceeds maximum."
-                f" Setting to {self.config.max_concurrent_requests}."
+                f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
             )
 
-        # Set max workers to the minimum of max_concurrent_requests and number of chunks
-        max_workers = min(self.config.max_concurrent_requests, chunk_count)
-        LoggingUtil().log_info(
-            f"Starting text analysis on {chunk_count} chunks with {max_workers} "
-            "workers."
-        )
+            # Initialise LLM interface
+            request_counter = 0
+            text_to_redact = []
+            responses: list[ParsedChatCompletion] = []
 
-        if max_workers == 1:
-            # Process chunks sequentially if only one worker is allowed
-            for chunk in text_chunks:
-                response, redaction_strings = self._analyse_text_chunk(
-                    system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)
+            # Check max concurrent requests
+            if self.config.max_concurrent_requests > 32:
+                self._set_workers(self.config.max_concurrent_requests)
+                LoggingUtil().log_info(
+                    "Max concurrent requests exceeds maximum."
+                    f" Setting to {self.config.max_concurrent_requests}."
                 )
-                responses.append(response)
-                text_to_redact.extend(redaction_strings)
-                request_counter += 1
 
-                # Check budget after each request
-                try:
-                    self._check_budget()
-                except RuntimeError as re:
-                    LoggingUtil().log_exception(re)
-                    break
-        else:
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # Submit tasks to the executor
-                future_to_chunk = {
-                    executor.submit(
-                        self._analyse_text_chunk,
-                        system_prompt,
-                        self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
-                    ): chunk
-                    for chunk in text_chunks
-                }
-                for future in as_completed(future_to_chunk):
-                    chunk = future_to_chunk[future]
+            # Set max workers to the minimum of max_concurrent_requests and number of chunks
+            max_workers = min(self.config.max_concurrent_requests, chunk_count)
+            LoggingUtil().log_info(
+                f"Starting text analysis on {chunk_count} chunks with {max_workers} "
+                "workers."
+            )
+
+            if max_workers == 1:
+                # Process chunks sequentially if only one worker is allowed
+                for chunk in text_chunks:
+                    response, redaction_strings = self._analyse_text_chunk(
+                        system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)
+                    )
+                    responses.append(response)
+                    text_to_redact.extend(redaction_strings)
                     request_counter += 1
-
-                    try:
-                        # Get redaction result for chunk and append to overall results
-                        response, redaction_strings = future.result()
-                        responses.append(response)
-                        text_to_redact.extend(redaction_strings)
-                    except Exception as e:  # noqa: BLE001
-                        LoggingUtil().log_exception_with_message(
-                            f"Error processing chunk {hash(chunk)}",
-                            e,
-                        )
 
                     # Check budget after each request
                     try:
@@ -467,33 +439,62 @@ class LLMUtil:
                     except RuntimeError as re:
                         LoggingUtil().log_exception(re)
                         break
+            else:
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    # Submit tasks to the executor
+                    future_to_chunk = {
+                        executor.submit(
+                            self._analyse_text_chunk,
+                            system_prompt,
+                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                        ): chunk
+                        for chunk in text_chunks
+                    }
+                    for future in as_completed(future_to_chunk):
+                        chunk = future_to_chunk[future]
+                        request_counter += 1
 
-        # Remove duplicates
-        text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
+                        try:
+                            # Get redaction result for chunk and append to overall results
+                            response, redaction_strings = future.result()
+                            responses.append(response)
+                            text_to_redact.extend(redaction_strings)
+                        except Exception as e:  # noqa: BLE001
+                            LoggingUtil().log_exception_with_message(
+                                f"Error processing chunk {hash(chunk)}",
+                                e,
+                            )
+
+                        # Check budget after each request
+                        try:
+                            self._check_budget()
+                        except RuntimeError as re:
+                            LoggingUtil().log_exception(re)
+                            break
+
+            # Remove duplicates
+            text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
 
         # Collect metrics
+        metadata = LLMTextRedactionResult.LLMResultMetadata(
+            request_count=request_counter,
+            input_token_count=self.input_token_count,
+            output_token_count=self.output_token_count,
+            total_token_count=self.input_token_count + self.output_token_count,
+            total_cost=self.total_cost,
+        )
+        run_metrics = {
+            "llm_analysis_time": timer.elapsed_time,
+            "llm_character_count": character_count,
+            "llm_approx_text_word_count": word_count,
+            "llm_text_chunk_count": chunk_count,
+            "llm_metadata": dataclasses.asdict(metadata),
+        }
         result = LLMTextRedactionResult(
             rule_name="",
-            run_metrics={
-                "llm_analysis_time": round(time.time() - start_time, 2),
-                "llm_character_count": character_count,
-                "llm_approx_text_word_count": word_count,
-                "llm_text_chunk_count": chunk_count,
-                "llm_request_count": request_counter,
-                "llm_input_token_count": self.input_token_count,
-                "llm_output_token_count": self.output_token_count,
-                "llm_total_token_count": self.input_token_count
-                + self.output_token_count,
-                "llm_total_cost": self.total_cost,
-            },
+            run_metrics=run_metrics,
             redaction_strings=text_to_redact_cleaned,
-            metadata=LLMTextRedactionResult.LLMResultMetadata(
-                request_count=request_counter,
-                input_token_count=self.input_token_count,
-                output_token_count=self.output_token_count,
-                total_token_count=self.input_token_count + self.output_token_count,
-                total_cost=self.total_cost,
-            ),
+            metadata=metadata,
         )
 
         return result
