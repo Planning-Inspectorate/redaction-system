@@ -1,34 +1,32 @@
 azure-ai-vision-imageanalysis==1.0.0
-azure-functions==1.24.0
-azure-functions-durable==1.4.0
-azure-identity==1.25.1
-azure-monitor-opentelemetry==1.8.3
-azure-storage-blob==12.23.1
+azure-functions==2.2.0
+azure-functions-durable==1.6.0
+azure-identity==1.25.3
+azure-monitor-opentelemetry==1.8.9
+azure-storage-blob==12.30.0
 azure-servicebus==7.14.3
 click>=8.1.0  # Override Ubuntu 22.04 system click (8.0.x) which crashes in Azure Functions worker on Python 3.13
-coverage==7.12.0
-filelock==3.25.2
-langchain==1.1.0
-langchain-text-splitters==1.0.0
+coverage==7.15.2
+filelock==3.32.2
+langchain==1.3.14
+langchain-text-splitters==1.1.2
 langdetect==1.0.9
-mock==5.2.0
-openai==2.8.1
-pillow==12.0.0
-pre-commit==4.5.1
-pydantic==2.12.5
-pypdf>=4.0.0
+openai==2.50.0
+pillow==12.3.0
+pre-commit==4.6.1
+pydantic==2.13.4
 python-dotenv==1.2.2
 # Prefer python-magic-bin on Windows (bundles libmagic); use python-magic elsewhere
-python-magic-bin==0.4.14; sys_platform == "win32"
-python-magic==0.4.27; sys_platform != "win32"
-PyMuPDF==1.27.2
-pytest==9.0.1
+# python-magic-bin==0.4.14; sys_platform == "win32"
+# python-magic==0.4.27; sys_platform != "win32"
+PyMuPDF==1.28.0
+pytest==9.1.1
 pytest-xdist==3.8.0
-pytest-cov==7.0.0
-pytest-rerunfailures==16.1
+pytest-cov==7.1.0
+pytest-rerunfailures==16.4
 PyYAML==6.0.3
 ruff==0.16.0
-tiktoken==0.12.0
+tiktoken==0.13.0
 unidecode==1.4.0
 StrEnum==0.4.15  # Not ideal, but this is needed due to compatibility issues between ADO agents and the Function App
-numpy==2.2.6
+numpy==2.5.1
