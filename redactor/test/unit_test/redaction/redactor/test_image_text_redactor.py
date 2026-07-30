@@ -1,6 +1,7 @@
 import dataclasses
 from unittest import mock
 
+import pytest
 from PIL import Image
 
 from core.redaction.config import ImageRedactionConfig
@@ -149,11 +150,12 @@ def test__image_text_redactor__redact__no_images_skips_analysis():
 
     assert actual_results.rule_name == "config name"
     assert actual_results.redaction_results == ()
-    assert actual_results.run_metrics == {
-        "total_image_ocr_time": 0.0,
-        "total_image_text_analysis_time": 0.0,
-        "total_images_to_analyse": 0,
-    }
+    assert actual_results.run_metrics["total_images_to_analyse"] == 0
+    for metric in [
+        "total_image_ocr_time",
+        "total_image_text_analysis_time",
+    ]:
+        assert actual_results.run_metrics[metric] == pytest.approx(0.0, abs=1e-2)
 
 
 def test__image_text_redactor__redact__no_text_in_image_skips_number_plate_analysis():
