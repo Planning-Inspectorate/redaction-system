@@ -527,37 +527,55 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         self.config: ImageLLMTextRedactionConfig
         results = []
         total_images_to_analyse = len(self.config.images)
+        run_metrics = {
+            "total_images_to_analyse": total_images_to_analyse,
+            "total_image_ocr_time": 0.0,
+            "total_image_llm_analysis_time": 0.0,
+            "total_image_text_analysis_time": 0.0,
+            "total_image_text_bounding_box_matching_time": 0.0,
+        }
 
         start_time = time()
         image_text_rect_map, total_ocr_time = self._analyse_images()
+        run_metrics.update(
+            {
+                "total_image_ocr_time": round(total_ocr_time, 2),
+            }
+        )
 
         if not image_text_rect_map:
+            run_metrics.update(
+                {
+                    "total_image_text_analysis_time": round(total_ocr_time, 2),
+                }
+            )
             LoggingUtil().log_info(
                 "No text detected in any images, skipping LLM analysis"
             )
             return ImageRedactionResult(
                 rule_name=self.config.name,
-                run_metrics={
-                    "total_images_to_analyse": total_images_to_analyse,
-                    "total_image_text_analysis_time": round(time() - start_time, 2),
-                    "total_image_ocr_time": round(total_ocr_time, 2),
-                },
+                run_metrics=run_metrics,
                 redaction_results=(),
             )
 
         llm_analysis_start_time = time()
         image_text_redaction_results = self._analyse_image_text(image_text_rect_map)
-        total_llm_analysis_time = time() - llm_analysis_start_time
+        llm_analysis_end_time = time()
+        run_metrics.update(
+            {
+                "total_image_llm_analysis_time": round(
+                    llm_analysis_end_time - llm_analysis_start_time, 2
+                ),
+                "total_image_text_analysis_time": round(
+                    llm_analysis_end_time - start_time, 2
+                ),
+            }
+        )
 
         if not image_text_redaction_results:
             return ImageRedactionResult(
                 rule_name=self.config.name,
-                run_metrics={
-                    "total_images_to_analyse": total_images_to_analyse,
-                    "total_image_text_analysis_time": round(time() - start_time, 2),
-                    "total_image_ocr_time": round(total_ocr_time, 2),
-                    "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
-                },
+                run_metrics=run_metrics,
                 redaction_results=(),
             )
 
@@ -588,17 +606,16 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
             if redaction_result:
                 results.append(redaction_result)
 
-        return ImageRedactionResult(
-            rule_name=self.config.name,
-            run_metrics={
-                "total_images_to_analyse": total_images_to_analyse,
-                "total_image_text_analysis_time": round(time() - start_time, 2),
-                "total_image_ocr_time": round(total_ocr_time, 2),
-                "total_image_llm_analysis_time": round(total_llm_analysis_time, 2),
+        run_metrics.update(
+            {
                 "total_image_text_bounding_box_matching_time": round(
                     total_bounding_box_time, 2
-                ),
-            },
+                )
+            }
+        )
+        return ImageRedactionResult(
+            rule_name=self.config.name,
+            run_metrics=run_metrics,
             redaction_results=tuple(results),
         )
 
