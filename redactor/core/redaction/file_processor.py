@@ -39,6 +39,12 @@ from core.util.types import PydanticImage
 from core.util.metric_util import MetricUtil
 
 
+# Minimum length of a redaction term's boundary word to allow it to match when
+# fused to an adjacent word by a missing space (e.g. "somethingMonica"). This
+# guards against matching short words that legitimately appear inside larger words.
+MIN_JOINED_BOUNDARY_LENGTH = 4
+
+
 class FileProcessor(ABC):
     """
     Abstract class that supports the redaction of files
@@ -497,6 +503,8 @@ class PDFProcessor(FileProcessor):
         normalised_words_to_redact: List[str],
         words_to_check: NDArray[np.str_],
         index: int,
+        allow_first_suffix: bool = False,
+        allow_last_prefix: bool = False,
     ) -> Tuple[List[str], int]:
         """
         Given the index of a word in the line matching the first word to redact, check
@@ -505,6 +513,10 @@ class PDFProcessor(FileProcessor):
         :param List[str] normalised_words_to_redact: The list of normalised words to redact
         :param NDArray[np.str_] words_to_check: The words in the line to check for matches
         :param int index: The index of the first word to redact in the line
+        :param bool allow_first_suffix: Allow the first word of the term to match a token
+            that ends with the word (i.e. a preceding word was fused to it by a missing space)
+        :param bool allow_last_prefix: Allow the last word of the term to match a token
+            that starts with the word (i.e. a following word was fused to it by a missing space)
 
         :return List[str], int: The list of words in the line that match the words to redact,
             and the index of the last word matched. If a full match was not found, the index will be -1.
@@ -516,35 +528,71 @@ class PDFProcessor(FileProcessor):
         if max_possible_match == 0:
             return [], -1
 
-        words_slice = words_to_check[index : index + max_possible_match]
-        words_to_redact_array = np.array(
-            normalised_words_to_redact[:max_possible_match], dtype=str
-        )
+        last_term_word_index = len(normalised_words_to_redact) - 1
+        candidate_words: List[str] = []
+        for offset in range(max_possible_match):
+            token = str(words_to_check[index + offset])
+            word = normalised_words_to_redact[offset]
 
-        matches = np.logical_or(
-            words_slice == words_to_redact_array,
-            np.char.rstrip(np.char.rstrip(words_slice, "s"), "'")
-            == words_to_redact_array,
-        )
+            if cls._token_matches_word(token, word):
+                candidate_words.append(token)
+                continue
 
-        # Find the longest consecutive sequence of matches from the start
-        if not matches[0]:
+            # Boundary matching for fused words (missing spaces)
+            is_first_word = offset == 0
+            is_last_word = offset == last_term_word_index
+            if (
+                is_first_word
+                and allow_first_suffix
+                and cls._token_has_boundary_suffix(token, word)
+            ):
+                candidate_words.append(token)
+                continue
+            if (
+                is_last_word
+                and allow_last_prefix
+                and cls._token_has_boundary_prefix(token, word)
+            ):
+                candidate_words.append(token)
+                return candidate_words, index + offset
+
+            break
+
+        if not candidate_words:
             return [], -1
 
-        # Find first False (not a complete match), or use the length of matches if all are True
-        match_length = np.argmin(matches) if not np.all(matches) else len(matches)
-
-        if match_length == 0:
-            return [], -1
-
-        candidate_words = words_slice[:match_length].tolist()
-        end_index = index + match_length - 1
-
+        end_index = index + len(candidate_words) - 1
         return candidate_words, end_index
 
-    @classmethod
+    @staticmethod
+    def _token_matches_word(token: str, word: str) -> bool:
+        """Return True if the token matches the word exactly, allowing for a
+        trailing plural 's' or possessive apostrophe."""
+        return token == word or token.rstrip("s").rstrip("'") == word
+
+    @staticmethod
+    def _token_has_boundary_suffix(token: str, word: str) -> bool:
+        """Return True if the token ends with the word due to a missing space
+        before the word (e.g. token 'somethingmonica' for word 'monica')."""
+        return (
+            len(word) >= MIN_JOINED_BOUNDARY_LENGTH
+            and token != word
+            and token.endswith(word)
+        )
+
+    @staticmethod
+    def _token_has_boundary_prefix(token: str, word: str) -> bool:
+        """Return True if the token starts with the word due to a missing space
+        after the word (e.g. token 'watts-hughsomething' for word 'watts-hugh')."""
+        return (
+            len(word) >= MIN_JOINED_BOUNDARY_LENGTH
+            and token != word
+            and token.startswith(word)
+        )
+
+    @staticmethod
     def _check_partial_match_before_hyphen(
-        cls, normalised_words_to_redact: List[str], words_to_check: NDArray[np.str_]
+        normalised_words_to_redact: List[str], words_to_check: NDArray[np.str_]
     ) -> Tuple[str, int, int]:
         """
         Given that the term to  redact contains a hyphen, check for potential partial
@@ -598,24 +646,34 @@ class PDFProcessor(FileProcessor):
 
         return None
 
-    @classmethod
+    @staticmethod
     def _match_word_to_redact_in_line(
-        cls, word: str, words_to_check: NDArray[np.str_]
+        word: str,
+        words_to_check: NDArray[np.str_],
+        allow_suffix: bool = False,
     ) -> List[int]:
         """
         Find the indices of words in the line that match the word to redact.
 
         :param str word: The word to redact
         :param NDArray[np.str_] words_to_check: The words in the line to check for matches
+        :param bool allow_suffix: Also match tokens that end with the word (i.e. a
+            preceding word was fused to it by a missing space). Only enabled for the
+            first word of multi-word terms, and guarded by a minimum word length.
 
         :return List[int]: The indices of words in the line that match the word to redact
         """
-        return np.where(
-            np.logical_or(
-                words_to_check == word,
-                np.char.rstrip(np.char.rstrip(words_to_check, "s"), "'") == word,
+        matches = np.logical_or(
+            words_to_check == word,
+            np.char.rstrip(np.char.rstrip(words_to_check, "s"), "'") == word,
+        )
+        if allow_suffix and len(word) >= MIN_JOINED_BOUNDARY_LENGTH:
+            suffix_matches = np.logical_and(
+                np.char.endswith(words_to_check, word),
+                words_to_check != word,
             )
-        )[0].tolist()
+            matches = np.logical_or(matches, suffix_matches)
+        return np.where(matches)[0].tolist()
 
     @classmethod
     def _find_potential_matches_in_line(
@@ -632,16 +690,18 @@ class PDFProcessor(FileProcessor):
         :return List[Tuple[str, int, int]]: A list of matches found. Each tuple
             contains the text found, and the start and end index of the match in the line.
         """
-        # Find matches for the first word
+        is_multi_word = len(normalised_words_to_redact) > 1
+        # Find matches for the first word. For multi-word terms, allow the first word
+        # to match a token it has been fused to by a missing space (e.g. "somethingMonica").
         matching_indices = cls._match_word_to_redact_in_line(
-            normalised_words_to_redact[0], words_to_check
+            normalised_words_to_redact[0], words_to_check, allow_suffix=is_multi_word
         )
 
         matches = []
         # Get the term found for each matching index
         if matching_indices:
             # Single term redaction: check for exact match with words in line
-            if len(normalised_words_to_redact) == 1:
+            if not is_multi_word:
                 matches.extend(
                     [
                         (words_to_check[index], index, index)
@@ -649,10 +709,16 @@ class PDFProcessor(FileProcessor):
                     ]
                 )
             else:  # Multi-word redaction
-                # Check subsequent words to redact for each first matching index
+                # Check subsequent words to redact for each first matching index.
+                # Allow the outer boundary words to match tokens fused to adjacent
+                # words by missing spaces; inner words must match exactly.
                 for index in matching_indices:
                     candidate_words, end_index = cls._check_subsequent_words(
-                        normalised_words_to_redact, words_to_check, index
+                        normalised_words_to_redact,
+                        words_to_check,
+                        index,
+                        allow_first_suffix=True,
+                        allow_last_prefix=True,
                     )
                     matches.append((" ".join(candidate_words), index, end_index))
 
@@ -666,9 +732,9 @@ class PDFProcessor(FileProcessor):
 
         return matches
 
-    @classmethod
+    @staticmethod
     def _construct_pdf_rect(
-        cls, line: PDFLineMetadata, start_index: int, end_index: int
+        line: PDFLineMetadata, start_index: int, end_index: int
     ) -> pymupdf.Rect:
         """
         Construct the bounding box for the words in the line between the start and
@@ -687,9 +753,9 @@ class PDFProcessor(FileProcessor):
             line.y1,
         )
 
-    @classmethod
+    @staticmethod
     def _add_provisional_redaction(
-        cls, page: pymupdf.Page, rect: pymupdf.Rect, name: str = None
+        page: pymupdf.Page, rect: pymupdf.Rect, name: str = None
     ):
         """
         Add an annotation to the PDF page as a provisional redaction.
@@ -1315,7 +1381,7 @@ class PDFProcessor(FileProcessor):
             x for x in redaction_results if issubclass(x.__class__, TextRedactionResult)
         ]
         text_redactions = [
-            redaction_string
+            " ".join(redaction_string.split("\n"))
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
