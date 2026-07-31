@@ -531,10 +531,19 @@ def test__redaction_manager__compare_and_save_redactions(
     MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
 )
 @mock.patch.object(AzureBlobIO, "write", return_value=None)
-@mock.patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
-@mock.patch.object(RedactionManager, "convert_kwargs_for_io")
-@mock.patch.object(ConfigProcessor, "validate_and_filter_config")
-@mock.patch.object(ConfigProcessor, "load_config")
+@mock.patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), True))
+@mock.patch.object(
+    RedactionManager,
+    "convert_kwargs_for_io",
+    side_effect=[
+        {"property_example_a": "value"},
+        {"property_example_b": "value"},
+    ],
+)
+@mock.patch.object(
+    ConfigProcessor, "validate_and_filter_config", return_value={"cleaned_rules": {}}
+)
+@mock.patch.object(ConfigProcessor, "load_config", return_value={"rules": {}})
 def test__redaction_manager__apply(
     mock_load_config,
     mock_validate_filter_config,
@@ -552,6 +561,8 @@ def test__redaction_manager__apply(
     mock_blob_init,
     mock_init,
 ):
+    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
+
     payload = {
         "fileKind": "pdf",
         "readDetails": {
@@ -565,21 +576,13 @@ def test__redaction_manager__apply(
             "properties": {"propertyExampleB": "value"},
         },
     }
-    convert_kwargs_for_io_side_effects = [
-        {"property_example_a": "value"},
-        {"property_example_b": "value"},
-    ]
-    mock_raw_config = {"rules": {}}
-    mock_cleaned_config = {"cleaned_rules": {}}
+
     inst = RedactionManager("job_id")
     inst.job_id = "inst"
     inst.folder_for_job = "instfolder"
     inst.storage_name = "pinsstredactiondevuks"
-    mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
-    mock_load_config.return_value = mock_raw_config
-    mock_validate_filter_config.return_value = mock_cleaned_config
-    mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
     inst.apply(payload)
+
     # Read and write properties should be converted to snake case
     RedactionManager.convert_kwargs_for_io.assert_has_calls(
         [
@@ -587,6 +590,7 @@ def test__redaction_manager__apply(
             mock.call({"propertyExampleB": "value"}),
         ]
     )
+
     # Read and write storage IO should be fetched, based on the specified storage kind in the payload
     IOFactory.get.assert_has_calls(
         [
@@ -594,10 +598,14 @@ def test__redaction_manager__apply(
             mock.call("writeStorageKind"),
         ]
     )
+
     # Data should be read once, using read config in the payload
     MockIO.read.assert_called_once_with(property_example_a="value")
+
     # File processor should be loaded based on the payload
+
     FileProcessorFactory.get.assert_called_once_with("pdf")
+
     # Sample document data should be written twice - one for the raw file,
     # and once for the proposed redactions
     AzureBlobIO.write.assert_has_calls(
@@ -608,18 +616,21 @@ def test__redaction_manager__apply(
                 blob_path=f"{inst.folder_for_job}/curated.pdf",
             ),
             mock.call(
-                MockRedactor.apply.return_value,
+                MockRedactor.apply.return_value[0],
                 container_name="redactiondata",
                 blob_path=f"{inst.folder_for_job}/redacted.pdf",
             ),
         ]
     )
+
     # Redact should be called once on the read file, using the loaded config
     MockRedactor.apply.assert_called_once_with(
         MockIO.read.return_value,
         ConfigProcessor.validate_and_filter_config.return_value,
     )
-    # Final redactions should be retrieved from the file processor, and saved to blob storage with the correct metadata
+
+    # Final redactions should be retrieved from the file processor, and saved to blob
+    # storage with the correct metadata
     MockRedactor.get_final_redactions.assert_called_once_with(MockIO.read.return_value)
     calls = RedactionManager.save_dict_to_blob_json.call_args_list
     assert len(calls) == 1
@@ -632,11 +643,13 @@ def test__redaction_manager__apply(
     assert (
         calls[0].kwargs["blob_path"] == f"{inst.folder_for_job}/final_redactions.json"
     )
+
     # Compare and save redactions should be called once with the final redactions
     mock_compare_and_save_redactions.assert_called_once()
+
     # Data should be written back to the specified write address in the payload
     MockIO.write.assert_called_once_with(
-        MockRedactor.apply.return_value,
+        MockRedactor.apply.return_value[0],
         property_example_b="value",
     )
 

@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from core.io.azure_blob_io import AzureBlobIO
 from core.io.io_factory import IOFactory
 from core.redaction.config_processor import ConfigProcessor
+from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -208,7 +209,7 @@ class RedactionManager:
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: dict[str, Any] = params.get("readDetails")
-        read_torage_kind = read_details.get("storageKind")
+        read_storage_kind = read_details.get("storageKind")
         read_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             read_details.get("properties")
         )
@@ -222,7 +223,7 @@ class RedactionManager:
 
         # Load the data
         LoggingUtil().log_info("Reading the raw file to redact")
-        read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
+        read_io_inst = IOFactory.get(read_storage_kind)(**read_storage_properties)
         file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
 
@@ -499,14 +500,17 @@ class RedactionManager:
             f" and versions up to '{proposed_version}'. Skipping analytics for this file."
         )
 
-    def apply(self, params: dict[str, Any]):
+    def apply(self, params: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """
         Apply any redactions to a file that has already been analysed
+
+        :return tuple[dict[str, Any], bool]: The run metrics and a boolean indicating
+        whether redactions were applied
         """
         config_name = params.get("configName", "default")
         file_kind = params.get("fileKind")
         read_details: dict[str, Any] = params.get("readDetails")
-        read_torage_kind = read_details.get("storageKind")
+        read_storage_kind = read_details.get("storageKind")
         read_storage_properties: dict[str, Any] = self.convert_kwargs_for_io(
             read_details.get("properties")
         )
@@ -518,7 +522,7 @@ class RedactionManager:
         )
 
         # Load the data
-        read_io_inst = IOFactory.get(read_torage_kind)(**read_storage_properties)
+        read_io_inst = IOFactory.get(read_storage_kind)(**read_storage_properties)
         file_data = read_io_inst.read(**read_storage_properties)
         file_data.seek(0)
 
@@ -571,7 +575,9 @@ class RedactionManager:
         )
 
         # Apply the redactions to the file
-        final_redaction_file_data = file_processor_inst.apply(file_data, config_cleaned)
+        final_redaction_file_data, redactions_applied = file_processor_inst.apply(
+            file_data, config_cleaned
+        )
         run_metrics = file_processor_inst.get_run_metrics()
         if hasattr(file_processor_inst, "terms_found"):
             run_metrics["redactionTerms"] = file_processor_inst.terms_found
@@ -590,7 +596,14 @@ class RedactionManager:
         # Write the data back to the sender's desired location
         write_io_inst = IOFactory.get(write_storage_kind)(**write_storage_properties)
         write_io_inst.write(final_redaction_file_data, **write_storage_properties)
-        return run_metrics
+
+        # Raise if no redactions were applied
+        if not redactions_applied:
+            raise NothingToRedactException(
+                "No annotations were found in the PDF - please confirm that this is correct"
+            )
+
+        return run_metrics, redactions_applied
 
     def save_logs(self, stage_name: str):
         """
