@@ -673,7 +673,10 @@ class TestApply:
         ) as f:
             expected_redacted_doc_bytes = BytesIO(f.read())
 
-        actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, {})
+        actual_redacted_doc_bytes, redactions_applied = PDFProcessor().apply(
+            curated_doc_bytes, {}
+        )
+        assert redactions_applied is True
 
         # Compare the text content of the redacted document to the expected redacted document
         expected_redacted_doc = pymupdf.open(stream=expected_redacted_doc_bytes)
@@ -721,6 +724,44 @@ class TestApply:
         actual_image = Image.open(temp_bytes)
         assert expected_image == actual_image, (
             "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
+        )
+
+    def test_scrubs_pdf_with_nothing_to_redact(self):
+        with open(
+            os.path.join(
+                "test",
+                "resources",
+                "pdf",
+                "test__pdf_processor__source.pdf",
+            ),
+            "rb",
+        ) as f:
+            raw_doc_bytes = BytesIO(f.read())
+
+        actual_redacted_doc_bytes, redactions_applied = PDFProcessor().apply(
+            raw_doc_bytes, {}
+        )
+        assert redactions_applied is False
+
+        # Compare the text content of the redacted document to the expected redacted document
+        actual_redacted_doc = pymupdf.open(stream=actual_redacted_doc_bytes)
+        # Compare the metadata of the redacted document to the expected redacted document
+        expected_metadata = {
+            "format": "PDF 1.4",
+            "title": "",
+            "author": "",
+            "subject": "",
+            "keywords": "",
+            "creator": "",
+            "producer": "",
+            "creationDate": "",
+            "modDate": "",
+            "trapped": "",
+            "encryption": None,
+        }
+        assert expected_metadata == actual_redacted_doc.metadata, (
+            "Expected the metadata in the pdf to have been scrubbed, but it was not. "
+            f"Expected: {expected_metadata}, Actual: {actual_redacted_doc.metadata}"
         )
 
     def test_saves_run_metrics(self):

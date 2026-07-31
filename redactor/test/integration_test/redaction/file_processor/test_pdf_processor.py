@@ -633,7 +633,7 @@ def test__pdf_processor__apply():
     assert provisional_redactions, (
         "test__pdf_processor__apply requires a document that has provisional redactions - there were none found in the document"
     )
-    redacted_file_bytes = PDFProcessor().apply(
+    redacted_file_bytes, redactions_applied = PDFProcessor().apply(
         provisional_redaction_file_bytes,
         {
             "redaction_rules": [
@@ -654,15 +654,39 @@ def test__pdf_processor__apply():
             ]
         },
     )
+
     # Extract text from source and final documents
     with open("test/resources/pdf/test__pdf_processor__redacted.pdf", "rb") as f:
         expected_redacted_document_bytes = BytesIO(f.read())
-    expected_redacted_document_text = "\n".join(
-        page.get_text()
-        for page in pymupdf.open(stream=expected_redacted_document_bytes)
-    )
+        expected_redacted_document_text = "\n".join(
+            page.get_text()
+            for page in pymupdf.open(stream=expected_redacted_document_bytes)
+        )
+
     redacted_document = pymupdf.open(stream=redacted_file_bytes)
     actual_redacted_document_text = "\n".join(
         page.get_text() for page in redacted_document
     )
+
+    # Compare the text of the redacted document to the expected redacted document
     assert expected_redacted_document_text == actual_redacted_document_text
+    assert redactions_applied is True
+
+    # Compare the metadata of the redacted document to the expected redacted document
+    expected_metadata = {
+        "format": "PDF 1.4",
+        "title": "",
+        "author": "",
+        "subject": "",
+        "keywords": "",
+        "creator": "",
+        "producer": "",
+        "creationDate": "",
+        "modDate": "",
+        "trapped": "",
+        "encryption": None,
+    }
+    assert expected_metadata == redacted_document.metadata, (
+        "Expected the metadata in the pdf to have been scrubbed, but it was not. "
+        f"Expected: {expected_metadata}, Actual: {redacted_document.metadata}"
+    )
