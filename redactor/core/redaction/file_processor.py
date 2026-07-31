@@ -14,7 +14,6 @@ from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
     FileProcessorNameNotFoundException,
     NonEnglishContentException,
-    NothingToRedactException,
     UnprocessedRedactionResultException,
 )
 from core.redaction.redactor import (
@@ -69,14 +68,17 @@ class FileProcessor(ABC):
         """
 
     @abstractmethod
-    def apply(self, file_bytes: BytesIO, redaction_config: dict[str, Any]) -> BytesIO:
+    def apply(
+        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
+    ) -> tuple[BytesIO, bool]:
         """
         Convert provisional redactions to real redactions
 
         :param BytesIO file_bytes: The file content as a bytes stream
         :param dict[str, Any] redaction_config: The redaction config to apply
         to the document
-        :return BytesIO: The redacted file content as a bytes stream
+        :return tuple[BytesIO, bool]: The redacted file content as a bytes stream and a
+        boolean indicating whether redactions were applied
         """
 
     @classmethod
@@ -640,7 +642,9 @@ class PDFProcessor(FileProcessor):
         return new_file_bytes
 
     @log_to_appins
-    def apply(self, file_bytes: BytesIO, redaction_config: dict[str, Any]) -> BytesIO:
+    def apply(
+        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
+    ) -> tuple[BytesIO, bool]:
         """Apply redaction annotations to all annotations in the PDF, and scrub the PDF
         to remove any hidden content, metadata, and unreferenced objects that may contain
         redacted information.
@@ -648,7 +652,8 @@ class PDFProcessor(FileProcessor):
         :param file_bytes: File bytes of the PDF to redact.
         :param redaction_config: Dictionary of RedactionConfig objects specifying
         the redaction rules to apply.
-        :return: The redacted PDF file bytes.
+        :return: A tuple containing the redacted PDF file bytes and a boolean indicating
+        whether redactions were applied.
         """
         LoggingUtil().log_info("Redacting PDF")
 
@@ -678,9 +683,12 @@ class PDFProcessor(FileProcessor):
         self.run_metrics["redaction_time"] = timer.elapsed_time
 
         if redaction_highlight_count == 0:
-            raise NothingToRedactException(
-                "No annotations were found in the PDF - please confirm that this is correct"
+            redactions_applied = False
+            LoggingUtil().log_info(
+                "No annotations were found in the PDF and no redactions were applied."
             )
+        else:
+            redactions_applied = True
 
         with TimerUtil() as timer:
             pdf.scrub(
@@ -703,7 +711,7 @@ class PDFProcessor(FileProcessor):
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
-        return new_file_bytes
+        return new_file_bytes, redactions_applied
 
     @classmethod
     def get_applicable_redactors(cls) -> set[type[Redactor]]:

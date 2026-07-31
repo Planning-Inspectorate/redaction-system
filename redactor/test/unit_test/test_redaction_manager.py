@@ -572,7 +572,7 @@ class TestApply:
             mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
             yield
 
-    @patch.object(MockRedactor, "apply", return_value=BytesIO(b"abc"))
+    @patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), True))
     def test_apply(self, mock_apply):
         payload = {
             "fileKind": "pdf",
@@ -627,7 +627,7 @@ class TestApply:
                     blob_path=f"{inst.folder_for_job}/curated.pdf",
                 ),
                 call(
-                    MockRedactor.apply.return_value,
+                    MockRedactor.apply.return_value[0],
                     container_name="redactiondata",
                     blob_path=f"{inst.folder_for_job}/redacted.pdf",
                 ),
@@ -663,7 +663,38 @@ class TestApply:
 
         # Data should be written back to the specified write address in the payload
         MockIO.write.assert_called_once_with(
-            MockRedactor.apply.return_value,
+            MockRedactor.apply.return_value[0],
+            property_example_b="value",
+        )
+
+    @patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), False))
+    def test_apply_raises_when_no_redactions_applied(self, mock_apply):
+        payload = {
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "readStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleA": "value"},
+            },
+            "writeDetails": {
+                "storageKind": "writeStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleB": "value"},
+            },
+        }
+
+        inst = RedactionManager()
+        inst.job_id = "inst"
+        inst.stage = "REDACT"
+        inst.folder_for_job = "instfolder"
+        inst.storage_name = STORAGE_NAME
+
+        with pytest.raises(NothingToRedactException):
+            inst.apply(payload)
+
+        # The file should still be written back even when no redactions applied
+        MockIO.write.assert_called_once_with(
+            MockRedactor.apply.return_value[0],
             property_example_b="value",
         )
 

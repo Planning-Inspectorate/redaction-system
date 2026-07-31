@@ -147,6 +147,7 @@ class TestRedactionManager(TestCase):
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_apply__REDACTED.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
         ]
         for file_name in files_to_cleanup:
             cls.try_delete_blob(
@@ -165,6 +166,8 @@ class TestRedactionManager(TestCase):
             "test__redaction__manager__try_apply__curated.pdf",
             "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__raw.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
         ]
         for file_name in files_to_delete:
             cls.try_delete_blob(
@@ -423,3 +426,32 @@ class TestRedactionManager(TestCase):
             "The analytics JSON should contain at least the keys 'applyDate', 'redactDate', 'applyJobID',"
             " 'redactJobID', 'truePositives', 'falsePositives', and 'falseNegatives'"
         )
+
+    def test_scrubs_pdf_when_nothing_to_redact(self):
+        """
+        - Given I have a PDF with no redaction annotations in a storage account
+        - When I call RedactionManager.try_apply
+        - Then the response should indicate failure with a NothingToRedactException,
+          the scrubbed PDF should still be uploaded to the destination,
+          and an exception log should be written to the redactiondata container
+        """
+        # Upload a source PDF with no annotations
+        # Run test
+        guid = f"{RUN_ID}-trmtantr"
+        source_file = "test__pdf_processor__source.pdf"
+        blob_file_name = "test__redaction__manager__try_apply__nothing_to_redact"
+        params, response = self._invoke(
+            guid, blob_file_name, source_file=source_file, stage="REDACT"
+        )
+
+        self.validate_process_status(response, status="FAIL")
+        assert "No annotations were found" in response["message"]
+
+        self.validate_service_bus_message_sent(guid)
+        self.validate_logs_saved(guid, stage="REDACT")
+
+        # The scrubbed PDF should still be written to the destination
+        self.validate_blob_exists_and_download(params.write_file_name)
+
+        # An exception log should be written
+        self.validate_exception_log_saved(guid, stage="REDACT")

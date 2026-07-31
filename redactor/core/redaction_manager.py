@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from core.io.azure_blob_io import AzureBlobIO
 from core.io.io_factory import IOFactory
 from core.redaction.config_processor import ConfigProcessor
+from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
@@ -536,9 +537,12 @@ class RedactionManager:
             f" and versions up to '{proposed_version}'. Skipping analytics for this file."
         )
 
-    def apply(self, params: dict[str, Any]) -> dict[str, Any]:
+    def apply(self, params: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """
         Apply any redactions to a file that has already been analysed
+
+        :return tuple[dict[str, Any], bool]: The run metrics and a boolean indicating
+        whether redactions were applied
         """
         LoggingUtil().log_info(
             f"Starting the redaction application process with params '{json.dumps(params, indent=4)}'"
@@ -568,7 +572,7 @@ class RedactionManager:
         )
 
         # Apply the redactions to the file
-        final_redaction_file_data = self.file_processor_inst.apply(
+        final_redaction_file_data, redactions_applied = self.file_processor_inst.apply(
             self.file_data, self.config_cleaned
         )
         run_metrics = self.file_processor_inst.get_run_metrics()
@@ -587,7 +591,13 @@ class RedactionManager:
         )
         write_io_inst.write(final_redaction_file_data, **self.write_storage_properties)
 
-        return run_metrics
+        # Raise if no redactions were applied
+        if not redactions_applied:
+            raise NothingToRedactException(
+                "No annotations were found in the PDF - please confirm that this is correct"
+            )
+
+        return run_metrics, redactions_applied
 
     # ---------------------------------------------------------------------------
     # Logging and reporting functions
