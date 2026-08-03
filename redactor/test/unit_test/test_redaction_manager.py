@@ -9,6 +9,7 @@ from azure.storage.blob import BlobClient, ContainerClient
 from core.io.azure_blob_io import AzureBlobIO
 from core.io.io_factory import IOFactory
 from core.redaction.config_processor import ConfigProcessor
+from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import FileProcessorFactory
 from core.redaction_manager import RedactionManager
 from core.util.enum import PINSService
@@ -224,35 +225,41 @@ class TestSaveDictToBlobJSON:
 
 
 class TestRedact:
-    @patch.object(IOFactory, "get", return_value=MockIO)
-    @patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
-    @patch.object(MockIO, "write")
-    @patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-    @patch("core.redaction_manager.datetime")
-    @patch.object(RedactionManager, "save_dict_to_blob_json")
-    @patch.object(
-        MockRedactor, "get_proposed_redactions", return_value={"some": "redactions"}
-    )
-    @patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc"))
-    @patch.object(AzureBlobIO, "write", return_value=None)
-    @patch.object(RedactionManager, "convert_kwargs_for_io")
-    @patch.object(ConfigProcessor, "validate_and_filter_config")
-    @patch.object(ConfigProcessor, "load_config")
-    def test_redact(
-        self,
-        mock_load_config,
-        mock_validate_filter_config,
-        mock_convert_kwargs,
-        mock_redact,
-        mock_blob_write,
-        mock_get_proposed_redactions,
-        mock_save_dict_to_blob_json,
-        mock_datetime,
-        mock_file_processor_get,
-        mock_io_write,
-        mock_io_read,
-        mock_io_factory_get,
-    ):
+    @pytest.fixture(autouse=True)
+    def _patch_deps(self):
+        with (
+            patch.object(IOFactory, "get", return_value=MockIO),
+            patch.object(MockIO, "read", return_value=BytesIO(b"xyz")),
+            patch.object(MockIO, "write"),
+            patch.object(FileProcessorFactory, "get", return_value=MockRedactor),
+            patch("core.redaction_manager.datetime") as mock_datetime,
+            patch.object(RedactionManager, "save_dict_to_blob_json"),
+            patch.object(
+                MockRedactor,
+                "get_proposed_redactions",
+                return_value={"some": "redactions"},
+            ),
+            patch.object(MockRedactor, "redact", return_value=BytesIO(b"abc")),
+            patch.object(AzureBlobIO, "write", return_value=None),
+            patch.object(
+                RedactionManager,
+                "convert_kwargs_for_io",
+                side_effect=[
+                    {"property_example_a": "value"},
+                    {"property_example_b": "value"},
+                ],
+            ),
+            patch.object(
+                ConfigProcessor,
+                "validate_and_filter_config",
+                return_value={"cleaned_rules": {}},
+            ),
+            patch.object(ConfigProcessor, "load_config", return_value={"rules": {}}),
+        ):
+            mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
+            yield
+
+    def test_redact(self):
         payload = {
             "tryApplyProvisionalRedactions": True,
             "skipRedaction": False,
@@ -269,20 +276,10 @@ class TestRedact:
                 "properties": {"propertyExampleB": "value"},
             },
         }
-        convert_kwargs_for_io_side_effects = [
-            {"property_example_a": "value"},
-            {"property_example_b": "value"},
-        ]
-        mock_raw_config = {"rules": {}}
-        mock_cleaned_config = {"cleaned_rules": {}}
         inst = RedactionManager("job_id")
         inst.job_id = "inst"
         inst.folder_for_job = "instfolder"
         inst.storage_name = "pinsstredactiondevuks"
-        mock_convert_kwargs.side_effect = convert_kwargs_for_io_side_effects
-        mock_load_config.return_value = mock_raw_config
-        mock_validate_filter_config.return_value = mock_cleaned_config
-        mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
         inst.redact(payload)
         # Read and write properties should be converted to snake case
         RedactionManager.convert_kwargs_for_io.assert_has_calls(
@@ -539,50 +536,42 @@ class TestCompareAndSaveRedactions:
 
 
 class TestApply:
-    @patch.object(IOFactory, "get", return_value=MockIO)
-    @patch.object(MockIO, "read", return_value=BytesIO(b"xyz"))
-    @patch.object(MockIO, "write")
-    @patch.object(FileProcessorFactory, "get", return_value=MockRedactor)
-    @patch.object(RedactionManager, "compare_and_save_redactions")
-    @patch.object(RedactionManager, "save_dict_to_blob_json")
-    @patch("core.redaction_manager.datetime")
-    @patch.object(
-        MockRedactor, "get_final_redactions", return_value={"some": "redactions"}
-    )
-    @patch.object(AzureBlobIO, "write", return_value=None)
-    @patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), True))
-    @patch.object(
-        RedactionManager,
-        "convert_kwargs_for_io",
-        side_effect=[
-            {"property_example_a": "value"},
-            {"property_example_b": "value"},
-        ],
-    )
-    @patch.object(
-        ConfigProcessor,
-        "validate_and_filter_config",
-        return_value={"cleaned_rules": {}},
-    )
-    @patch.object(ConfigProcessor, "load_config", return_value={"rules": {}})
-    def test_apply(
-        self,
-        mock_load_config,
-        mock_validate_filter_config,
-        mock_convert_kwargs,
-        mock_apply,
-        mock_blob_write,
-        mock_get_final_redactions,
-        mock_datetime,
-        mock_save_dict_to_blob_json,
-        mock_compare_and_save_redactions,
-        mock_file_processor_get,
-        mock_io_write,
-        mock_io_read,
-        mock_io_factory_get,
-    ):
-        mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
+    @pytest.fixture(autouse=True)
+    def _patch_deps(self):
+        with (
+            patch.object(IOFactory, "get", return_value=MockIO),
+            patch.object(MockIO, "read", return_value=BytesIO(b"xyz")),
+            patch.object(MockIO, "write"),
+            patch.object(FileProcessorFactory, "get", return_value=MockRedactor),
+            patch.object(RedactionManager, "compare_and_save_redactions"),
+            patch.object(RedactionManager, "save_dict_to_blob_json"),
+            patch("core.redaction_manager.datetime") as mock_datetime,
+            patch.object(
+                MockRedactor,
+                "get_final_redactions",
+                return_value={"some": "redactions"},
+            ),
+            patch.object(AzureBlobIO, "write", return_value=None),
+            patch.object(
+                RedactionManager,
+                "convert_kwargs_for_io",
+                side_effect=[
+                    {"property_example_a": "value"},
+                    {"property_example_b": "value"},
+                ],
+            ),
+            patch.object(
+                ConfigProcessor,
+                "validate_and_filter_config",
+                return_value={"cleaned_rules": {}},
+            ),
+            patch.object(ConfigProcessor, "load_config", return_value={"rules": {}}),
+        ):
+            mock_datetime.now.return_value = datetime(2024, 1, 1, tzinfo=UTC)
+            yield
 
+    @patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), True))
+    def test_apply(self, mock_apply):
         payload = {
             "fileKind": "pdf",
             "readDetails": {
@@ -660,7 +649,7 @@ class TestApply:
             "jobID": inst.job_id,
             "date": datetime(2024, 1, 1, tzinfo=UTC).date().isoformat(),
             "fileName": "",
-            "finalRedactions": mock_get_final_redactions.return_value,
+            "finalRedactions": MockRedactor.get_final_redactions.return_value,
         }
         assert (
             calls[0].kwargs["blob_path"]
@@ -668,9 +657,39 @@ class TestApply:
         )
 
         # Compare and save redactions should be called once with the final redactions
-        mock_compare_and_save_redactions.assert_called_once()
+        RedactionManager.compare_and_save_redactions.assert_called_once()
 
         # Data should be written back to the specified write address in the payload
+        MockIO.write.assert_called_once_with(
+            MockRedactor.apply.return_value[0],
+            property_example_b="value",
+        )
+
+    @patch.object(MockRedactor, "apply", return_value=(BytesIO(b"abc"), False))
+    def test_apply_raises_when_no_redactions_applied(self, mock_apply):
+        payload = {
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "readStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleA": "value"},
+            },
+            "writeDetails": {
+                "storageKind": "writeStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleB": "value"},
+            },
+        }
+
+        inst = RedactionManager("job_id")
+        inst.job_id = "inst"
+        inst.folder_for_job = "instfolder"
+        inst.storage_name = STORAGE_NAME
+
+        with pytest.raises(NothingToRedactException):
+            inst.apply(payload)
+
+        # The file should still be written back even when no redactions applied
         MockIO.write.assert_called_once_with(
             MockRedactor.apply.return_value[0],
             property_example_b="value",
@@ -1020,6 +1039,31 @@ class TestTryApply(_TryProcessTestBase):
     job_id = "test_try_apply"
     stage = "REDACT"
     _action = "apply"
+
+    def test_nothing_to_redact(self):
+        """
+        - Given the apply process raises NothingToRedactException
+        - Then try_apply should report a FAIL with the exception message
+        """
+        exception = NothingToRedactException(
+            "No annotations were found in the PDF - please confirm that this is correct"
+        )
+        inst = RedactionManager(self.job_id)
+        self._patch_methods(inst)
+        inst.apply.side_effect = exception
+        params = {"some_payload", ""}
+        response = self._invoke(inst, params)
+        response.pop("execution_time_seconds", None)
+        response.pop("run_metrics", None)
+        expected_response = {
+            "parameters": params,
+            "id": inst.job_id,
+            "stage": self.stage,
+            "status": "FAIL",
+            "message": f"Redaction process failed with the following error: {exception}",
+        }
+        assert response == expected_response
+        inst.log_exception.assert_called_once_with(exception)
 
 
 class TestSendServiceBusCompletionMessage:

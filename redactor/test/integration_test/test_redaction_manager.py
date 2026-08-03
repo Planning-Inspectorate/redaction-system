@@ -57,6 +57,7 @@ class TestIntegrationRedactionManager(TestCase):
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_apply__REDACTED.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
         ]
         for file_name in files_to_cleanup:
             self.try_delete_blob(
@@ -75,6 +76,8 @@ class TestIntegrationRedactionManager(TestCase):
             "test__redaction__manager__try_apply__curated.pdf",
             "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__raw.pdf",
+            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
         ]
         for file_name in files_to_delete:
             self.try_delete_blob(
@@ -509,4 +512,73 @@ class TestIntegrationRedactionManager(TestCase):
         }, (
             "The analytics JSON should contain at least the keys 'applyDate', 'redactDate', 'applyJobID',"
             " 'redactJobID', 'truePositives', 'falsePositives', and 'falseNegatives'"
+        )
+
+    def test__redaction_manager__try_apply__nothing_to_redact(self):
+        """
+        - Given I have a PDF with no redaction annotations in a storage account
+        - When I call RedactionManager.try_apply
+        - Then the response should indicate failure with a NothingToRedactException,
+          the scrubbed PDF should still be uploaded to the destination,
+          and an exception log should be written to the redactiondata container
+        """
+        # Upload a source PDF with no annotations
+        with open(
+            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
+            "rb",
+        ) as f:
+            pdf_bytes = f.read()
+        self.TEST_CONTAINER_CLIENT.upload_blob(
+            f"{RUN_ID}/test__redaction__manager__try_apply__nothing_to_redact__raw.pdf",
+            pdf_bytes,
+            overwrite=True,
+        )
+
+        # Run test
+        guid = f"{RUN_ID}-trmtantr"
+        manager = RedactionManager(guid)
+        params = {
+            "pinsService": "REDACTION_SYSTEM",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__nothing_to_redact__raw.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+            "writeDetails": {
+                "storageKind": "AzureBlob",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {
+                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
+                    "storageName": f"pinsstredaction{ENV}uks",
+                    "containerName": "test",
+                },
+            },
+        }
+
+        response = manager.try_apply(params)
+        assert response["status"] == "FAIL", (
+            f"Expected try_apply to fail when there are no annotations, but got status '{response['status']}'"
+        )
+        assert "No annotations were found" in response["message"]
+
+        # The scrubbed PDF should still be written to the destination
+        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
+            f"{RUN_ID}/test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf"
+        )
+        assert blob_client.exists(), (
+            "Expected the scrubbed PDF to be uploaded to the destination even when no annotations were found"
+        )
+
+        # An exception log should be written
+        exception_blob = f"{guid}-{MOCK_START_TIME}/REDACT_exceptions.txt"
+        exception_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            exception_blob
+        )
+        assert exception_blob_client.exists(), (
+            f"Expected {exception_blob} to be in the redactiondata container, but was missing"
         )
