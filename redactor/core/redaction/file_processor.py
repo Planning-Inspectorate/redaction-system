@@ -81,6 +81,21 @@ class FileProcessor(ABC):
         boolean indicating whether redactions were applied
         """
 
+    @abstractmethod
+    def sanitise(
+        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
+    ) -> tuple[BytesIO, bool]:
+        """
+        Sanitise the document to remove any hidden content, metadata, and unreferenced
+        objects that may contain sensitive information
+
+        :param BytesIO file_bytes: The file content as a bytes stream
+        :param dict[str, Any] redaction_config: The redaction config to apply
+        to the document
+        :return tuple[BytesIO, bool]: The file content as a bytes stream and a
+        boolean indicating whether redactions were applied
+        """
+
     @classmethod
     @abstractmethod
     def get_applicable_redactors(cls) -> set[type[Redactor]]:
@@ -641,25 +656,17 @@ class PDFProcessor(FileProcessor):
 
         return new_file_bytes
 
-    @log_to_appins
-    def apply(
-        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
-    ) -> tuple[BytesIO, bool]:
-        """Apply redaction annotations to all annotations in the PDF, and scrub the PDF
-        to remove any hidden content, metadata, and unreferenced objects that may contain
-        redacted information.
-
-        :param file_bytes: File bytes of the PDF to redact.
-        :param redaction_config: Dictionary of RedactionConfig objects specifying
-        the redaction rules to apply.
-        :return: A tuple containing the redacted PDF file bytes and a boolean indicating
-        whether redactions were applied.
+    def _process_highlights(self, pdf: pymupdf.Document, apply_redactions: bool):
         """
-        LoggingUtil().log_info("Redacting PDF")
+        Process the highlights in the given PDF document. If apply_redactions is True,
+        the highlights will be converted to redaction annotations. If apply_redactions is False,
+        the highlights will be removed from the document.
 
-        pdf = pymupdf.open(stream=file_bytes)
-
+        :param pdf: The PDF document to process.
+        :param apply_redactions: Whether to convert the highlights to redaction annotations or remove them.
+        """
         redaction_highlight_count = 0
+
         with TimerUtil() as timer:
             for page in pdf:
                 for annotation in self._extract_page_annotations(
@@ -675,21 +682,22 @@ class PDFProcessor(FileProcessor):
                     else:
                         # If the rect is not available, use the bounding box of the annotation vertices instead
                         annotation_rect = annotation["annot"].rect
-                    page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
+
+                    if apply_redactions:
+                        # Convert the highlight to a redaction annotation
+                        page.add_redact_annot(annotation_rect, text="", fill=(0, 0, 0))
+
                     page.delete_annot(annotation["annot"])
                     page.clean_contents(True)
 
-            page.apply_redactions()
+                # Apply the redactions to the page if apply_redactions is False
+                if apply_redactions:
+                    page.apply_redactions()
+
         self.run_metrics["redaction_time"] = timer.elapsed_time
+        self.run_metrics["n_highlights"] = redaction_highlight_count
 
-        if redaction_highlight_count == 0:
-            redactions_applied = False
-            LoggingUtil().log_info(
-                "No annotations were found in the PDF and no redactions were applied."
-            )
-        else:
-            redactions_applied = True
-
+    def _scrub_pdf(self, pdf: pymupdf.Document):
         with TimerUtil() as timer:
             pdf.scrub(
                 attached_files=True,
@@ -708,10 +716,69 @@ class PDFProcessor(FileProcessor):
             )
         self.run_metrics["scrub_time"] = timer.elapsed_time
 
+    @log_to_appins
+    def apply(
+        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
+    ) -> tuple[BytesIO, bool]:
+        """Apply redaction annotations to all annotations in the PDF, and scrub the PDF
+        to remove any hidden content, metadata, and unreferenced objects that may contain
+        redacted information.
+
+        :param file_bytes: File bytes of the PDF to redact.
+        :param redaction_config: Dictionary of RedactionConfig objects specifying
+        the redaction rules to apply.
+        :return: A tuple containing the redacted PDF file bytes and a boolean indicating
+        whether redactions were applied.
+        """
+        LoggingUtil().log_info("Redacting PDF")
+
+        pdf = pymupdf.open(stream=file_bytes)
+
+        self._process_highlights(pdf, apply_redactions=True)
+        if self.run_metrics["n_highlights"] == 0:
+            redactions_applied = False
+            LoggingUtil().log_info(
+                "No annotations were found in the PDF and no redactions were applied."
+            )
+        else:
+            redactions_applied = True
+
+        self._scrub_pdf(pdf)
+
         new_file_bytes = BytesIO()
         pdf.save(new_file_bytes, deflate=True)
         new_file_bytes.seek(0)
         return new_file_bytes, redactions_applied
+
+    @log_to_appins
+    def sanitise(
+        self, file_bytes: BytesIO, redaction_config: dict[str, Any]
+    ) -> BytesIO:
+        """Sanitise the PDF to remove any hidden content, metadata, and unreferenced
+        objects that may contain sensitive information.
+
+        :param file_bytes: File bytes of the PDF to sanitise.
+        :param redaction_config: Dictionary of RedactionConfig objects specifying
+        the redaction rules to apply.
+        :return: The sanitised PDF file bytes.
+        """
+        LoggingUtil().log_info("Sanitising PDF")
+
+        pdf = pymupdf.open(stream=file_bytes)
+
+        self._process_highlights(pdf, apply_redactions=False)
+        redaction_highlight_count = self.run_metrics["n_highlights"]
+        if redaction_highlight_count > 0:
+            LoggingUtil().log_info(
+                f"{redaction_highlight_count} redaction highlights were found in the PDF and "
+                "have been removed."
+            )
+        self._scrub_pdf(pdf)
+
+        new_file_bytes = BytesIO()
+        pdf.save(new_file_bytes, deflate=True)
+        new_file_bytes.seek(0)
+        return new_file_bytes
 
     @classmethod
     def get_applicable_redactors(cls) -> set[type[Redactor]]:

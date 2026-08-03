@@ -1069,6 +1069,12 @@ class TestTryApply(_TryProcessTestBase):
         inst.log_exception.assert_called_once_with(exception)
 
 
+class TestTrySanitise(_TryProcessTestBase):
+    job_id = "test_try_redact"
+    stage = "SANITISE"
+    _action = "sanitise"
+
+
 class TestSendServiceBusCompletionMessage:
     def test_with_missing_pins_service(self):
         with patch.object(ServiceBusUtil, "send_redaction_process_complete_message"):

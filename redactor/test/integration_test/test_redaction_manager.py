@@ -455,3 +455,31 @@ class TestRedactionManager(TestCase):
 
         # An exception log should be written
         self.validate_exception_log_saved(guid, stage="REDACT")
+
+    def test_sanitise_pdf(self):
+        """
+        - Given I have a PDF with redaction annotations in a storage account
+        - When I call RedactionManager.try_sanitise
+        - Then the response should indicate success,
+          the sanitised PDF should be uploaded to the destination,
+          and an exception log should be written to the redactiondata container
+        """
+        # Upload a source PDF with annotations
+        # Run test
+        guid = f"{RUN_ID}-trmtas"
+        source_file = "test__pdf_processor__proposed.pdf"
+        blob_file_name = "test__redaction__manager__try_sanitise"
+        params, response = self._invoke(
+            guid, blob_file_name, source_file=source_file, stage="SANITISE"
+        )
+
+        self.validate_process_status(response, status="SUCCESS")
+        self.validate_service_bus_message_sent(guid)
+        self.validate_logs_saved(guid, stage="SANITISE")
+        blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
+
+        sanitised_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
+        assert sanitised_pdf_highlights == [], (
+            "The uploaded PDF should have no remaining highlights after sanitisation, but "
+            f"there were {len(sanitised_pdf_highlights)}"
+        )
