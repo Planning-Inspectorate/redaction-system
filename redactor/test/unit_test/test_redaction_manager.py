@@ -68,6 +68,7 @@ class TestInit:
 
     def test_init_sets_job_id_and_folder_for_job(self):
         job_id = "some_job_id"
+        stage = "ANALYSE"
         with (
             patch.object(
                 RedactionManager,
@@ -78,8 +79,9 @@ class TestInit:
                 RedactionManager, "_make_job_id_unique", return_value=f"{job_id}-12345"
             ),
         ):
-            inst = RedactionManager("some_job_id")
+            inst = RedactionManager(job_id, stage)
             assert inst.job_id == f"{job_id}-12345"
+            assert inst.stage == stage
             assert inst.folder_for_job == f"{job_id}-12345_blob"
 
 
@@ -95,7 +97,7 @@ class TestConvertKwargsForIO:
             "partial_camel_case_b": "b",
             "snake_case_c": "c",
         }
-        inst = RedactionManager("")
+        inst = RedactionManager()
         actual_output = inst.convert_kwargs_for_io(parameters)
         assert actual_output == expected_output
 
@@ -126,7 +128,7 @@ class TestValidateJSONPayload:
                 },
             },
         }
-        inst = RedactionManager("")
+        inst = RedactionManager()
         inst.storage_name = STORAGE_NAME
         inst.stage = "ANALYSE"
         raised_exception = None
@@ -140,7 +142,7 @@ class TestValidateJSONPayload:
 
     def test_invalid_redact_payload(self):
         payload = {"bah": "bad"}
-        inst = RedactionManager("")
+        inst = RedactionManager()
         inst.storage_name = STORAGE_NAME
         inst.stage = "ANALYSE"
         with pytest.raises(Exception):  # noqa: B017
@@ -169,7 +171,7 @@ class TestValidateJSONPayload:
                 },
             },
         }
-        inst = RedactionManager("")
+        inst = RedactionManager()
         inst.storage_name = STORAGE_NAME
         inst.stage = "REDACT"
         raised_exception = None
@@ -183,7 +185,7 @@ class TestValidateJSONPayload:
 
     def test_invalid_apply_payload(self):
         payload = {"bah": "bad"}
-        inst = RedactionManager("")
+        inst = RedactionManager()
         inst.storage_name = STORAGE_NAME
         inst.stage = "REDACT"
         with pytest.raises(Exception):  # noqa: B017
@@ -203,7 +205,7 @@ class TestSaveDictToBlobJSON:
                 "isRedactionCandidate": True,
             }
         ]
-        inst = RedactionManager("")
+        inst = RedactionManager()
         inst.storage_name = STORAGE_NAME
         inst.stage = "REDACT"
         mock_redaction_storage_io_inst = MagicMock(spec=AzureBlobIO)
@@ -276,8 +278,9 @@ class TestRedact:
                 "properties": {"propertyExampleB": "value"},
             },
         }
-        inst = RedactionManager("job_id")
+        inst = RedactionManager()
         inst.job_id = "inst"
+        inst.stage = "ANALYSE"
         inst.folder_for_job = "instfolder"
         inst.storage_name = "pinsstredactiondevuks"
         inst.redact(payload)
@@ -463,7 +466,7 @@ class TestCompareRedactions:
             "falsePositives": 1,
             "falseNegatives": 2,
         }
-        inst = RedactionManager("")
+        inst = RedactionManager()
         actual_output = inst._compare_redactions(
             proposed_redactions_dict, final_redactions_dict
         )
@@ -589,6 +592,7 @@ class TestApply:
         inst = RedactionManager("job_id")
         inst.job_id = "inst"
         inst.folder_for_job = "instfolder"
+        inst.stage = "REDACT"
         inst.storage_name = STORAGE_NAME
         inst.apply(payload)
 
@@ -681,8 +685,9 @@ class TestApply:
             },
         }
 
-        inst = RedactionManager("job_id")
+        inst = RedactionManager()
         inst.job_id = "inst"
+        inst.stage = "REDACT"
         inst.folder_for_job = "instfolder"
         inst.storage_name = STORAGE_NAME
 
@@ -763,20 +768,22 @@ class TestSaveExceptionLog:
     def test_save_exception_log(self, test_case):
         inst = RedactionManager("job_id")
         inst.job_id = "inst"
+        inst.stage = "mystage"
         inst.folder_for_job = "instfolder"
         inst.storage_name = STORAGE_NAME
         inst.runtime_errors = ["some exception A", "some exception B"]
         expected_exception_message = "\n\n\n".join(inst.runtime_errors)
-        inst.save_exception_log("mystage")
+        inst.save_exception_log()
         test_case(inst.job_id, expected_exception_message)
 
     def test_save_exception_log_with_no_exception(self):
         inst = RedactionManager("job_id")
         inst.job_id = "inst"
+        inst.stage = "mystage"
         inst.folder_for_job = "instfolder"
         inst.storage_name = STORAGE_NAME
         inst.runtime_errors = []
-        inst.save_exception_log("mystage")
+        inst.save_exception_log()
         calls = AzureBlobIO.write.call_args_list
         assert len(calls) == 0, (
             f"Expected AzureBlobIO.write to be not have been called, but was called {len(calls)} times"
@@ -899,9 +906,7 @@ class _TryProcessTestBase:
             setattr(inst, attr, value)
 
     def _invoke(self, inst, params):
-        if self._action == "redact":
-            return inst.try_redact(params)
-        return inst.try_apply(params)
+        return inst._try_process(params)
 
     @pytest.mark.parametrize(
         "test_case",
@@ -1066,6 +1071,12 @@ class TestTryApply(_TryProcessTestBase):
         inst.log_exception.assert_called_once_with(exception)
 
 
+class TestTrySanitise(_TryProcessTestBase):
+    job_id = "test_try_redact"
+    stage = "SANITISE"
+    _action = "sanitise"
+
+
 class TestSendServiceBusCompletionMessage:
     def test_with_missing_pins_service(self):
         with patch.object(ServiceBusUtil, "send_redaction_process_complete_message"):
@@ -1097,9 +1108,10 @@ class TestSaveLogs:
     ):
         inst = RedactionManager()
         inst.job_id = "test_save_logs"
+        inst.stage = "mystage"
         inst.folder_for_job = f"{inst.job_id}_folder"
         inst.storage_name = STORAGE_NAME
-        inst.save_logs("mystage")
+        inst.save_logs()
         AzureBlobIO.write.assert_called_once_with(
             data_bytes=b"xyz",
             container_name="redactiondata",

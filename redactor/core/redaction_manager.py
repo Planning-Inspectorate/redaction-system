@@ -167,13 +167,13 @@ class RedactionManager:
         :param dict[str, Any] payload: The input payload to validate
         :raises ValidationError: If the payload is invalid according to the provided validator
         """
-        if self.stage == "ANALYSE":
+        if self.stage in ["ANALYSE", "SANITISE"]:
             payload_structure = RedactJsonPayloadStructure
         elif self.stage == "REDACT":
             payload_structure = ApplyJsonPayloadStructure
         else:
             raise ValueError(
-                f"Invalid stage '{self.stage}' for payload validation. Must be 'ANALYSE' or 'REDACT'."
+                f"Invalid stage '{self.stage}' for payload validation. Must be 'ANALYSE', 'SANITISE' or 'REDACT'."
             )
         payload_structure.model_validate(payload)
 
@@ -600,6 +600,32 @@ class RedactionManager:
 
         return run_metrics, redactions_applied
 
+    def sanitise(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Perform a sanitisation of the file using the supplied parameters.
+
+        :return: The run metrics of the sanitisation process.
+        """
+        LoggingUtil().log_info(
+            f"Starting the sanitisation process with params '{json.dumps(params, indent=4)}'"
+        )
+        self._initialise_process(params)
+
+        # Process the data
+        sanitised_file_data = self.file_processor_inst.sanitise(self.file_data)
+        LoggingUtil().log_info("Sanitisation process complete")
+
+        # Store a copy of the sanitised file in redaction storage
+        self._write_to_redaction_storage(sanitised_file_data, file_name="sanitised")
+        sanitised_file_data.seek(0)
+
+        # Write the data back to the sender's desired location
+        write_io_inst = IOFactory.get(self.write_storage_kind)(
+            **self.write_storage_properties
+        )
+        write_io_inst.write(sanitised_file_data, **self.write_storage_properties)
+        return self.file_processor_inst.get_run_metrics()
+
     # ---------------------------------------------------------------------------
     # Logging and reporting functions
     # ---------------------------------------------------------------------------
@@ -682,6 +708,37 @@ class RedactionManager:
     # Redaction process wrapper
     # ---------------------------------------------------------------------------
 
+    """
+    Expected input structure for the redaction process wrapper
+    ```
+    {
+        "tryApplyProvisionalRedactions": True,
+        "skipRedaction": True,
+        "pinsService": "CBOS",
+        "configName": "default",
+        "fileKind": "pdf",
+        "readDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": "<INPUT_FILE_NAME>.pdf",
+                "storageName": "<STORAGE_ACCOUNT_NAME>",
+                "containerName": "<INPUT_CONTAINER_NAME>"
+            }
+        },
+        "writeDetails": {
+            "storageKind": "AzureBlob",
+            "teamEmail": "someAccount@planninginspectorate.gov.uk",
+            "properties": {
+                "blobPath": "<OUTPUT_FILE_NAME>.pdf",
+                "storageName": "<STORAGE_ACCOUNT_NAME>",
+                "containerName": "<OUTPUT_CONTAINER_NAME>"
+            }
+        }
+    }
+    ```
+    """
+
     def _try_process(
         self,
         params: dict[str, Any],
@@ -701,6 +758,7 @@ class RedactionManager:
         stage_processors = {
             "ANALYSE": self.redact,
             "REDACT": self.apply,
+            "SANITISE": self.sanitise,
         }
         stage_processor = stage_processors.get(self.stage)
         with TimerUtil() as timer:
@@ -770,3 +828,13 @@ class RedactionManager:
             "run_metrics": run_metrics,
         }
         return final_output
+
+    def _construct_base_response(self, params: dict[str, Any]) -> dict[str, Any]:
+        """
+        Construct a base response dictionary with the provided parameters and the current stage and job ID
+        """
+        return {
+            "parameters": params,
+            "stage": self.stage,
+            "id": self.job_id,
+        }
