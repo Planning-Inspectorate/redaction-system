@@ -36,6 +36,13 @@ class AzureVisionUtil:
     _IMAGE_FACE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
     CACHE_LOCK = Lock()
 
+    @classmethod
+    def clear_cache(cls):
+        """Clear cached image analysis results from previous invocations."""
+        with cls.CACHE_LOCK:
+            cls._IMAGE_TEXT_CACHE.clear()
+            cls._IMAGE_FACE_CACHE.clear()
+
     def __init__(self):
         self.azure_endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
         credential = ChainedTokenCredential(

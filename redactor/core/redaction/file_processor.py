@@ -44,6 +44,9 @@ class FileProcessor(ABC):
 
     def __init__(self):
         self.run_metrics = {}
+        # Tracks how many times each redaction term was applied; populated by
+        # _apply_provisional_text_redactions and read below for run metrics.
+        self.terms_found = {}
 
     @classmethod
     @abstractmethod
@@ -304,7 +307,6 @@ class PDFProcessor(FileProcessor):
 
         # Examine redaction candidates: only apply exact matches and partial matches across line breaks
         redaction_instances = []
-        self.terms_found = {}
         for term in text_to_redact:
             self.terms_found[term] = 0
         for i, page in enumerate(pdf):
@@ -506,9 +508,6 @@ class PDFProcessor(FileProcessor):
         the redaction rules to apply.
         :return: The redacted PDF file bytes.
         """
-        # Tracks how many times each redaction term was applied; populated by
-        # _apply_provisional_text_redactions and read below for run metrics.
-        self.terms_found = {}
         # Extract text from PDF
         with TimerUtil() as timer:
             pdf_text = PDFUtil.extract_pdf_text(file_bytes)
