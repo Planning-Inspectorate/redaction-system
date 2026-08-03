@@ -38,7 +38,7 @@ def mock_make_job_id_unique(request):
 @pytest.mark.flaky(
     reruns=3, reruns_delay=20, only_rerun="ResourceNotFoundError"
 )  # Flaky test due to Azure auth/network issues
-class TestIntegrationRedactionManager(TestCase):
+class TestRedactionManager(TestCase):
     STORAGE_ENDPOINT = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
     BLOB_SERVICE_CLIENT = BlobServiceClient(
         STORAGE_ENDPOINT,
@@ -52,19 +52,109 @@ class TestIntegrationRedactionManager(TestCase):
     )
     ANALYTICS_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("analytics")
 
-    def session_setup(self):
+    class TestParams:
+        def __init__(
+            self,
+            source_file: str,
+            blob_file_name: str,
+            stage: str = "ANALYSE",
+            skip_redaction: bool = False,
+            override_params: dict[str, any] | None = None,
+        ):
+            # Open the source PDF and read its bytes
+            if source_file is not None:
+                with open(
+                    os.path.join("test", "resources", "pdf", source_file),
+                    "rb",
+                ) as f:
+                    self.pdf_bytes = f.read()
+
+            base_file_name = f"{RUN_ID}/{blob_file_name}"
+            if stage == "ANALYSE":
+                self.read_file_name = base_file_name + "__raw.pdf"
+                self.write_file_name = base_file_name + "__PROPOSED_REDACTIONS.pdf"
+            else:
+                if source_file is not None:
+                    self.read_file_name = base_file_name + "__curated.pdf"
+                else:
+                    self.read_file_name = base_file_name + "__PROPOSED_REDACTIONS.pdf"
+                self.write_file_name = base_file_name + "__REDACTED.pdf"
+
+            if override_params:
+                self.params = override_params
+            else:
+                self.params = {
+                    "pinsService": "REDACTION_SYSTEM",
+                    "skipRedaction": skip_redaction,
+                    "configName": "default",
+                    "fileKind": "pdf",
+                    "readDetails": {
+                        "storageKind": "AzureBlob",
+                        "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                        "properties": {
+                            "blobPath": self.read_file_name,
+                            "storageName": f"pinsstredaction{ENV}uks",
+                            "containerName": "test",
+                        },
+                    },
+                    "writeDetails": {
+                        "storageKind": "AzureBlob",
+                        "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                        "properties": {
+                            "blobPath": self.write_file_name,
+                            "storageName": f"pinsstredaction{ENV}uks",
+                            "containerName": "test",
+                        },
+                    },
+                    "metadata": {"some": "metadata"},
+                }
+
+    @classmethod
+    def _invoke(
+        cls,
+        guid: str,
+        blob_file_name: str,
+        source_file: str | None = None,
+        stage: str = "ANALYSE",
+        skip_redaction: bool = False,
+        override_params: dict[str, any] | None = None,
+    ):
+        # Build parameters for RedactionManager._try_process
+        test_params = cls.TestParams(
+            source_file,
+            blob_file_name,
+            stage=stage,
+            skip_redaction=skip_redaction,
+            override_params=override_params,
+        )
+
+        if source_file is not None:
+            # Upload test data to Azure
+            cls.TEST_CONTAINER_CLIENT.upload_blob(
+                test_params.read_file_name,
+                test_params.pdf_bytes,
+                overwrite=True,
+            )
+
+        # Run test
+        manager = RedactionManager(guid, stage)
+        response = manager._try_process(test_params.params)
+        return test_params, response
+
+    @classmethod
+    def session_setup(cls):
         files_to_cleanup = [
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_apply__REDACTED.pdf",
         ]
         for file_name in files_to_cleanup:
-            self.try_delete_blob(
-                self.TEST_CONTAINER_CLIENT,
+            cls.try_delete_blob(
+                cls.TEST_CONTAINER_CLIENT,
                 f"{RUN_ID}/{file_name}",
             )
 
-    def session_teardown(self):
+    def session_teardown(cls):
         files_to_delete = [
             "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
             "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
@@ -77,8 +167,8 @@ class TestIntegrationRedactionManager(TestCase):
             "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
         ]
         for file_name in files_to_delete:
-            self.try_delete_blob(
-                self.TEST_CONTAINER_CLIENT,
+            cls.try_delete_blob(
+                cls.TEST_CONTAINER_CLIENT,
                 f"{RUN_ID}/{file_name}",
             )
 
@@ -89,7 +179,8 @@ class TestIntegrationRedactionManager(TestCase):
                 "Failed to clear service bus messages during teardown, but continuing"
             )
 
-    def try_delete_blob(self, container_client: ContainerClient, blob_path: str):
+    @staticmethod
+    def try_delete_blob(container_client: ContainerClient, blob_path: str):
         try:
             container_client.delete_blob(blob_path)
         except Exception:  # noqa: BLE001
@@ -97,11 +188,13 @@ class TestIntegrationRedactionManager(TestCase):
                 "Failed to delete blob '%s' during teardown, but continuing", blob_path
             )
 
-    def extract_pdf_highlights(self, pdf_bytes: bytes):
+    @staticmethod
+    def extract_pdf_highlights(pdf_bytes: bytes):
         pdf = pymupdf.open(stream=pdf_bytes)
         return [annot for page in pdf for annot in page.annots()]
 
-    def validate_service_bus_message_sent(self, run_id: str):
+    @staticmethod
+    def validate_service_bus_message_sent(run_id: str):
         max_wait_time = 2 * 60
         current_wait_time = 0
         retry_delay = 10
@@ -122,135 +215,92 @@ class TestIntegrationRedactionManager(TestCase):
             f"Exceeded max wait time of {max_wait_time} seconds for service bus messages with id '{run_id}' to appear"
         )
 
-    def test__redaction__manager__try_redact__skip_redaction(self):
-        """
-        - Given I have a pdf in a storage account and some default redaction rules
-        - When I call RedactionManager.redact with skipRedaction=True
-        - Then the original file should be downloaded from the source, and then immediately uploaded to the destination
-        """
-        # Upload test data to Azure
-        with open(
-            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
-            "rb",
-        ) as f:
-            pdf_bytes = f.read()
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-            pdf_bytes,
-            overwrite=True,
-        )
-        # Run test
-        guid = f"{RUN_ID}-trmtrsr"
-        manager = RedactionManager(guid)
-        params = {
-            "tryApplyProvisionalRedactions": True,
-            "pinsService": "REDACTION_SYSTEM",
-            "skipRedaction": True,
-            "configName": "default",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "metadata": {"some": "metadata"},
-        }
-        response = manager.try_redact(params)
-        assert response["status"] == "SUCCESS", (
-            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
-        )
-        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf"
-        )
+    @classmethod
+    def validate_blob_exists_and_download(cls, write_file_name: str) -> bytes:
+        blob_client = cls.TEST_CONTAINER_CLIENT.get_blob_client(write_file_name)
         assert blob_client.exists()
-        blob_bytes = blob_client.download_blob().read()
+
+        return blob_client.download_blob().read()
+
+    @staticmethod
+    def validate_blob_contents(pdf_bytes: bytes, blob_bytes: bytes):
         assert pdf_bytes == blob_bytes
-        self.validate_service_bus_message_sent(guid)
-        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
+
+    @classmethod
+    def validate_logs_saved(cls, guid: str, stage: str = "ANALYSE"):
+        log_blob = f"{guid}-{MOCK_START_TIME}/{stage}_log.txt"
+        log_blob_client = cls.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
         assert log_blob_client.exists(), (
             f"Expected {log_blob} to be in the redactiondata container, but was missing"
         )
         assert LoggingUtil().raw_logs == [], (
             "Expected LoggingUtil().raw_logs to be empty after saving logs, but it was not"
         )
-        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.json"
-        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            metric_blob
+
+    @classmethod
+    def validate_exception_log_saved(cls, guid: str, stage: str = "ANALYSE"):
+        exception_blob = f"{guid}-{MOCK_START_TIME}/{stage}_exceptions.txt"
+        exception_blob_client = cls.REDACTION_CONTAINER_CLIENT.get_blob_client(
+            exception_blob
         )
-        assert not metric_blob_client.exists(), (
-            f"Expected {metric_blob} to not be in the redactiondata container, but was created"
+        assert exception_blob_client.exists(), (
+            f"Expected {exception_blob} to be in the redactiondata container, but was missing"
         )
 
-    def test__redaction__manager__try_redact(self):
+    @classmethod
+    def validate_metrics(cls, guid: str, stage: str = "ANALYSE", saved: bool = True):
+        metric_blob = f"{guid}-{MOCK_START_TIME}/{stage}_metrics.json"
+        metric_blob_client = cls.REDACTION_CONTAINER_CLIENT.get_blob_client(metric_blob)
+        if saved:
+            assert metric_blob_client.exists(), (
+                f"Expected {metric_blob} to be in the redactiondata container, but was missing"
+            )
+        else:
+            assert not metric_blob_client.exists(), (
+                f"Expected {metric_blob} to NOT be in the redactiondata container, but it was present"
+            )
+
+    @staticmethod
+    def validate_process_status(response: dict[str, any], status: str = "SUCCESS"):
+        assert response["status"] == status, (
+            f"RedactionManager._try_process was unsuccessful and returned message '{response['message']}'"
+        )
+
+    def test_skips_redaction_file_unchanged(self):
+        """
+        - Given I have a pdf in a storage account and some default redaction rules
+        - When I call RedactionManager.redact with skipRedaction=True
+        - Then the original file should be downloaded from the source, and then immediately uploaded to the destination
+        """
+        source_file = "test__pdf_processor__source.pdf"
+        blob_file_name = "test__redaction__manager__try_redact__skip_redaction"
+        guid = f"{RUN_ID}-trmtrsr"
+        params, response = self._invoke(
+            guid, blob_file_name, source_file=source_file, skip_redaction=True
+        )
+
+        self.validate_process_status(response)
+        blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
+        self.validate_blob_contents(params.pdf_bytes, blob_bytes)
+        self.validate_service_bus_message_sent(guid)
+        self.validate_logs_saved(guid)
+        self.validate_metrics(guid, saved=False)
+
+    def test_applies_provisional_redactions(self):
         """
         - Given I have a pdf in a storage account and some default redaction rules
         - When I call RedactionManager.redact
         - Then the file should be downloaded from the source, and the redacted file should be uploaded to the destination
         """
-        # Upload test data to Azure
-        with open(
-            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
-            "rb",
-        ) as f:
-            pdf_bytes = f.read()
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-            pdf_bytes,
-            overwrite=True,
-        )
+
         # Run test
+        source_file = "test__pdf_processor__source.pdf"
         guid = f"{RUN_ID}-trmtr"
-        manager = RedactionManager(guid)
-        params = {
-            "tryApplyProvisionalRedactions": True,
-            "pinsService": "REDACTION_SYSTEM",
-            "skipRedaction": False,
-            "configName": "default",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-        }
+        blob_file_name = "test__redaction__manager__try_redact"
+        params, response = self._invoke(guid, blob_file_name, source_file=source_file)
 
-        response = manager.try_redact(params)
-        assert response["status"] == "SUCCESS", (
-            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
-        )
-
-        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf"
-        )
-        assert blob_client.exists()
-        blob_bytes = blob_client.download_blob().read()
+        self.validate_process_status(response)
+        blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
 
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert redacted_pdf_highlights, (
@@ -258,6 +308,8 @@ class TestIntegrationRedactionManager(TestCase):
         )
 
         self.validate_service_bus_message_sent(guid)
+        self.validate_logs_saved(guid)
+        self.validate_metrics(guid)
 
         json_blob = f"{guid}-{MOCK_START_TIME}/proposed_redactions.json"
         json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(json_blob)
@@ -277,128 +329,49 @@ class TestIntegrationRedactionManager(TestCase):
             f"{json_blob} should contain at least the keys 'jobID', 'date', 'fileName', and 'proposedRedactions'"
         )
 
-        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
-        assert log_blob_client.exists(), (
-            f"Expected {log_blob} to be in the redactiondata container, but was missing"
-        )
-
-        metric_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_metrics.json"
-        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            metric_blob
-        )
-        assert metric_blob_client.exists(), (
-            f"Expected {metric_blob} to be in the redactiondata container, but was missing"
-        )
-
-    def test__redaction_manager__try_redact__failure(self):
+    def test_error_handling(self):
         """
         - Given I have a pdf in azure blob storage and some redaction rules
         - When I call try_redact using an invalid payload (i.e. there is a failure during processing)
         - Then error information should be written to the redactiondata container
         """
         # Upload test data to Azur
-        with open(
-            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
-            "rb",
-        ) as f:
-            pdf_bytes = f.read()
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction_manager__try_redact__failure.pdf",
-            pdf_bytes,
-            overwrite=True,
-        )
         # Run test
         guid = f"{RUN_ID}-trmtrf"
-        manager = RedactionManager(guid)
-        params = {"an example bad payload": None}
-        response = manager.try_redact(params)
-        assert response["status"] == "FAIL"
-        exception_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_exceptions.txt"
-        exception_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            exception_blob
-        )
-        assert exception_blob_client.exists(), (
-            f"Expected {exception_blob} to be in the redactiondata container, but was missing"
+        source_file = "test__pdf_processor__source.pdf"
+        blob_file_name = "test__redaction__manager__try_redact__failure"
+        _, response = self._invoke(
+            guid,
+            blob_file_name,
+            source_file=source_file,
+            override_params={"an example bad payload": None},
         )
 
-        log_blob = f"{guid}-{MOCK_START_TIME}/ANALYSE_log.txt"
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
-        assert log_blob_client.exists(), (
-            f"Expected {log_blob} to be in the redactiondata container, but was missing"
-        )
+        self.validate_process_status(response, status="FAIL")
+        self.validate_exception_log_saved(guid)
+        self.validate_logs_saved(guid)
 
-    def test__redaction_manager__try_apply(self):
-        # Upload test data to Azure
-        with open(
-            os.path.join(
-                "test", "resources", "pdf", "test__pdf_processor__proposed.pdf"
-            ),
-            "rb",
-        ) as f:
-            pdf_bytes = f.read()
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
-            pdf_bytes,
-            overwrite=True,
-        )
-        # Run test
+    def test_applies_redactions(self):
+        stage = "REDACT"
         guid = f"{RUN_ID}-trmta"
-        manager = RedactionManager(guid)
-        params = {
-            "pinsService": "REDACTION_SYSTEM",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__curated.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-        }
-
-        response = manager.try_apply(params)
-        assert response["status"] == "SUCCESS", (
-            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+        source_file = "test__pdf_processor__proposed.pdf"
+        blob_file_name = "test__redaction__manager__try_apply"
+        params, response = self._invoke(
+            guid, blob_file_name, source_file=source_file, stage=stage
         )
 
-        blob_client = self.TEST_CONTAINER_CLIENT.get_blob_client(
-            f"{RUN_ID}/test__redaction__manager__try_apply__REDACTED.pdf"
-        )
-        assert blob_client.exists()
+        self.validate_process_status(response)
+        blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
 
-        blob_bytes = blob_client.download_blob().read()
         redacted_pdf_highlights = self.extract_pdf_highlights(blob_bytes)
         assert not redacted_pdf_highlights, (
-            f"There should be no remaining highlights in the PDF after redacting, but there were {len(redacted_pdf_highlights)}"
+            "There should be no remaining highlights in the PDF after redacting, but "
+            f"there were {len(redacted_pdf_highlights)}"
         )
 
         self.validate_service_bus_message_sent(guid)
-
-        log_blob = f"{guid}-{MOCK_START_TIME}/REDACT_log.txt"
-        log_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(log_blob)
-        assert log_blob_client.exists(), (
-            f"Expected {log_blob} to be in the redactiondata container, but was missing"
-        )
-
-        metric_blob = f"{guid}-{MOCK_START_TIME}/REDACT_metrics.json"
-        metric_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(
-            metric_blob
-        )
-        assert metric_blob_client.exists(), (
-            f"Expected {metric_blob} to be in the redactiondata container, but was missing"
-        )
+        self.validate_logs_saved(guid, stage=stage)
+        self.validate_metrics(guid, stage=stage)
 
         json_blob = f"{guid}-{MOCK_START_TIME}/final_redactions.json"
         json_blob_client = self.REDACTION_CONTAINER_CLIENT.get_blob_client(json_blob)
@@ -413,81 +386,21 @@ class TestIntegrationRedactionManager(TestCase):
             "final_redactions.json should contain at least the keys 'jobID', 'date', and 'finalRedactions'"
         )
 
-    def test__redaction_manager__try_apply__with_analytics(self):
-        with open(
-            os.path.join("test", "resources", "pdf", "test__pdf_processor__source.pdf"),
-            "rb",
-        ) as f:
-            pdf_bytes = f.read()
-        self.TEST_CONTAINER_CLIENT.upload_blob(
-            f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-            pdf_bytes,
-            overwrite=True,
-        )
-        # Run test
+    def test_analytics_saved(self):
         redact_guid = f"{RUN_ID}:1"
-        manager = RedactionManager(redact_guid)
-        params = {
-            "tryApplyProvisionalRedactions": True,
-            "pinsService": "REDACTION_SYSTEM",
-            "skipRedaction": False,
-            "configName": "default",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__raw.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-        }
+        source_file = "test__pdf_processor__source.pdf"
+        blob_file_name = "test__redaction__manager__try_redact__with_analytics"
 
-        response = manager.try_redact(params)
-        assert response["status"] == "SUCCESS", (
-            f"RedactionManager.try_redact was unsuccessful and returned message '{response['message']}'"
+        # Run first stage of redaction
+        _, response = self._invoke(
+            redact_guid, blob_file_name, source_file=source_file, stage="ANALYSE"
         )
 
         # Apply redaction and check analytics
         apply_guid = f"{RUN_ID}:3"
-        manager = RedactionManager(apply_guid)
-        params = {
-            "pinsService": "REDACTION_SYSTEM",
-            "fileKind": "pdf",
-            "readDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-            "writeDetails": {
-                "storageKind": "AzureBlob",
-                "teamEmail": "someAccount@planninginspectorate.gov.uk",
-                "properties": {
-                    "blobPath": f"{RUN_ID}/test__redaction__manager__try_apply__with_analytics_REDACTED.pdf",
-                    "storageName": f"pinsstredaction{ENV}uks",
-                    "containerName": "test",
-                },
-            },
-        }
+        _, response = self._invoke(apply_guid, blob_file_name, stage="REDACT")
 
-        response = manager.try_apply(params)
-        assert response["status"] == "SUCCESS", (
-            f"RedactionManager.try_apply was unsuccessful and returned message '{response['message']}'"
-        )
+        self.validate_process_status(response)
 
         analytics_blob_client = self.ANALYTICS_CONTAINER_CLIENT.get_blob_client(
             f"{RUN_ID}.json"
