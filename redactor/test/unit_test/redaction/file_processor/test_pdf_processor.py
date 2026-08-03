@@ -789,8 +789,11 @@ class TestApply:
         assert set(run_metrics.keys()) == {
             "redaction_time",
             "scrub_time",
+            "n_highlights",
         }
         assert isinstance(run_metrics["redaction_time"], float)
         assert isinstance(run_metrics["scrub_time"], float)
+        assert isinstance(run_metrics["n_highlights"], int)
         assert run_metrics["redaction_time"] >= 0
         assert run_metrics["scrub_time"] >= 0
+        assert run_metrics["n_highlights"] >= 0

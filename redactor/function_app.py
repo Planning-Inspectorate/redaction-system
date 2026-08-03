@@ -139,18 +139,15 @@ def trigger_task(params):
 
     job_id = params.pop("job_id")
     stage = params["stage"]
-    if stage == "ANALYSE":
-        logger.info("Call try_redact")
-        return RedactionManager(job_id).try_redact(params)
-    if stage == "REDACT":
-        logger.info("Call try_apply")
-        return RedactionManager(job_id).try_apply(params)
 
     # Shut down OpenTelemetry providers to prevent resource leaks
     # See https://learn.microsoft.com/en-us/troubleshoot/azure/azure-monitor/app-insights/telemetry/opentelemetry-troubleshooting-python
     get_meter_provider().shutdown()
     get_tracer_provider().shutdown()
     get_logger_provider().shutdown()
+
+    if stage in ["ANALYSE", "REDACT", "SANITISE"]:
+        return RedactionManager(job_id, stage)._try_process(params)
 
     raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
