@@ -150,13 +150,22 @@ class RedactionManager:
             for k, v in some_parameters.items()
         }
 
-    def validate_redact_json_payload(self, payload: dict[str, Any]):
-        model_inst = RedactJsonPayloadStructure(**payload)
-        RedactJsonPayloadStructure.model_validate(model_inst)
+    def validate_json_payload(self, payload: dict[str, Any]):
+        """
+        Validate the input payload using the provided payload validator
 
-    def validate_apply_json_payload(self, payload: dict[str, Any]):
-        model_inst = ApplyJsonPayloadStructure(**payload)
-        ApplyJsonPayloadStructure.model_validate(model_inst)
+        :param dict[str, Any] payload: The input payload to validate
+        :raises ValidationError: If the payload is invalid according to the provided validator
+        """
+        if self.stage == "ANALYSE":
+            payload_structure = RedactJsonPayloadStructure
+        elif self.stage == "REDACT":
+            payload_structure = ApplyJsonPayloadStructure
+        else:
+            raise ValueError(
+                f"Invalid stage '{self.stage}' for payload validation. Must be 'ANALYSE' or 'REDACT'."
+            )
+        payload_structure.model_validate(payload)
 
     def json_serialise_datetime_to_iso(self, obj):
         """
@@ -682,7 +691,6 @@ class RedactionManager:
         self,
         params: dict[str, Any],
         base_response: dict[str, Any],
-        payload_validator: Callable,
         redaction_function: Callable,
     ):
         """
@@ -703,7 +711,7 @@ class RedactionManager:
             message = "Redaction process complete"
             run_metrics = None
             try:
-                payload_validator(params)
+                self.validate_json_payload(params)
                 run_metrics = redaction_function(params)
             except Exception as e:  # noqa: BLE001
                 self.log_exception(e)
@@ -797,14 +805,13 @@ class RedactionManager:
         }
         ```
         """
+        self.stage = "ANALYSE"
         base_response = {
             "parameters": params,
-            "stage": "ANALYSE",
+            "stage": self.stage,
             "id": self.job_id,
         }
-        return self._try_process(
-            params, base_response, self.validate_redact_json_payload, self.redact
-        )
+        return self._try_process(params, base_response, self.redact)
 
     def try_apply(self, params: dict[str, Any]):
         """
@@ -836,11 +843,10 @@ class RedactionManager:
         }
         ```
         """
+        self.stage = "REDACT"
         base_response = {
             "parameters": params,
-            "stage": "REDACT",
+            "stage": self.stage,
             "id": self.job_id,
         }
-        return self._try_process(
-            params, base_response, self.validate_apply_json_payload, self.apply
-        )
+        return self._try_process(params, base_response, self.apply)
