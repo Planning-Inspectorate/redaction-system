@@ -2,6 +2,7 @@ import os
 from io import BytesIO
 from typing import ClassVar
 
+import pytest
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import (
     AzureCliCredential,
@@ -18,7 +19,10 @@ load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
 
 
-class TestIntegrationRedactionManager(TestCase):
+@pytest.mark.flaky(
+    reruns=3, reruns_delay=20, only_rerun="ResourceNotFoundError"
+)  # Flaky test due to Azure auth/network issues
+class TestIntegrationAzureBlobIO(TestCase):
     STORAGE_ENDPOINT = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
     CONTAINER_NAME = "test"
     BLOB_SERVICE_CLIENT = BlobServiceClient(
