@@ -9,17 +9,28 @@ import pytest
 from PIL import Image
 
 from core.redaction.exceptions import NonEnglishContentException
-from core.redaction.file_processor import (
-    PDFImageMetadata,
-    PDFLineMetadata,
-    PDFPageMetadata,
-    PDFProcessor,
-)
+from core.redaction.file_processor import PDFProcessor
 from core.redaction.result import (
     ImageRedactionResult,
     TextRedactionResult,
 )
+from core.util.pdf_util import (
+    PDFImageMetadata,
+    PDFLineMetadata,
+    PDFPageMetadata,
+    PDFUtil,
+)
 from core.util.text_util import get_normalised_words, is_english_text
+
+
+@pytest.fixture(autouse=True)
+def _mock_init():
+    def init_side_effect(self):
+        self.run_metrics = {}
+        self.terms_found = {}
+
+    with patch.object(PDFProcessor, "__init__", init_side_effect):
+        yield
 
 
 def _make_pdf_with_text(text: str) -> BytesIO:
@@ -32,189 +43,78 @@ def _make_pdf_with_text(text: str) -> BytesIO:
     return b
 
 
-def test__pdf_processor__get_name():
-    """
-    - When get_name is called
-    - The return value must be a string
-    """
-    assert isinstance(PDFProcessor.get_name(), str)
+class TestGetName:
+    def test_returns_str(self):
+        """
+        - When get_name is called
+        - The return value must be a string
+        """
+        assert isinstance(PDFProcessor.get_name(), str)
 
 
-def test__pdf_processor__extract_pdf_text():
-    """
-    - Given I have a pdf with some text content
-    - When I call _extract_pdf_text
-    - Then the text content should be returned
-    """
-    expected_text = (
-        "You see, he's met two of your three criteria for sentience, so what if he meets the third. "
-        "Consciousness in even the smallest degree. What is he then? I don't know. Do you? (to Riker) "
-        "Do you? (to Phillipa) Do you? Well, that's the question you have to answer. Your Honour, the "
-        "courtroom is a crucible. In it we burn away irrelevancies until we are left with a pure product, "
-        "the truth for all time. Now, sooner or later, this man or others like him will succeed in replicating "
-        "Commander Data. And the decision you reach here today will determine how we will regard this creation "
-        "of our genius. It will reveal the kind of a people we are, what he is destined to be. It will reach "
-        "far beyond this courtroom and this one android. It could significantly redefine the boundaries of "
-        "personal liberty and freedom, expanding them for some, savagely curtailing them for others. Are you "
-        "prepared to condemn him and all who come after him to servitude and slavery? Your Honour, Starfleet "
-        "was founded to seek out new life. Well, there it sits. Waiting. You wanted a chance to make law. "
-        "Well, here it is. Make a good one."
-    )
-    expected_text_split = " ".split(expected_text)
-    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    actual_text = PDFProcessor()._extract_pdf_text(document_bytes)
-    actual_text_split = " ".split(actual_text)
-    assert expected_text_split == actual_text_split
+class TestExtractPDFAnnotations:
+    @pytest.fixture(autouse=True)
+    def _setup(self):
+        mock_document = pymupdf.open()
+        mock_page = mock_document.new_page()
 
-
-def test__pdf_processor__extract_pdf_text__zero_width_spaces():
-    """
-    - Given I have a PDF with zero-width space characters
-    - When I call _extract_pdf_text
-    - Then the zero-width space characters should be removed
-    """
-    expected_text = "This is a test of zero-width spaces."
-    mock_document = pymupdf.open()
-    mock_document.new_page()
-    with (
-        patch("pymupdf.open", return_value=mock_document),
-        patch(
-            "pymupdf.Page.get_text",
-            side_effect=["This is a test of zero-\u200bwidth spaces."],
-        ),
-    ):
-        actual_text = PDFProcessor()._extract_pdf_text(BytesIO())
-    assert expected_text == actual_text
-
-
-def test__pdf_processor__extract_pdf_images():
-    """
-    - Given I have a PDF with an image
-    - When I call _extract_pdf_images
-    - Then the image and its metadata should be returned as a list of PDFImageMetadata objects
-    """
-    with open(
-        "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
-    ) as f:
-        document_bytes = BytesIO(f.read())
-    with open("test/resources/image/test_image_horizontal.jpg", "rb") as f:
-        image_bytes = BytesIO(f.read())
-    image = Image.open(image_bytes)
-    expected_image_metadata = [
-        PDFImageMetadata(
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=image,
-            page_number=0,
-            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
+        mock_types = [
+            pymupdf.PDF_ANNOT_HIGHLIGHT,
+            pymupdf.PDF_ANNOT_HIGHLIGHT,
+            pymupdf.PDF_ANNOT_REDACT,
+        ]
+        vertices = (
+            [(0, 0), (0, 1), (1, 0), (1, 1)],
+            [(2, 2), (2, 3), (3, 2), (3, 3)],
+            [(4, 4), (4, 5), (5, 4), (5, 5)],
         )
-    ]
-    actual_image_metadata = PDFProcessor()._extract_pdf_images(document_bytes)
-    # We cannot compare images, so parse the expected/actual values to remove the image from the comparison
-    expected_as_dict = [
-        {k: v for k, v in x if k != "image"} for x in expected_image_metadata
-    ]
-    actual_as_dict = [
-        {k: v for k, v in x if k != "image"} for x in actual_image_metadata
-    ]
-    actual_image = actual_image_metadata[0].image
-    assert expected_as_dict == actual_as_dict
-    # Comparing images is not possible due to lossy compression in the PDF, so just check an image is returned
-    assert isinstance(actual_image, Image.Image)
+        types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
 
+        self.mock_annotations = [MagicMock(spec=pymupdf.Annot) for _ in range(3)]
+        for i, mock_annotation in enumerate(self.mock_annotations):
+            mock_annotation.info = {
+                "content": f"Annotation {i}",
+            }
+            mock_annotation.type = types[i]
+            mock_annotation.vertices = vertices[i]
+            mock_annotation._yielded = False
 
-def test__pdf_processor__extract_pdf_images__dead_image():
-    """
-    - Given I have a PDF with a dead image entry (referenced but not displayed)
-    - When I call _extract_pdf_images
-    - Then the dead image should be skipped and not included in the result
-    """
-    mock_document = pymupdf.open()
-    mock_document.new_page()
-    image_xref = (1, 0, 100, 100, 8, "DeviceRGB", "", "Im1", "DCTDecode", 0)
-    infinite_rect = pymupdf.Rect(1, 1, -1, -1)  # Infinite rect returned for dead images
+        with (
+            patch("pymupdf.open", return_value=mock_document),
+            patch(
+                "pymupdf.Page.annot_xrefs",
+                return_value=zip(self.mock_annotations, mock_types),
+            ),
+            patch(
+                "pymupdf.Page.load_annot",
+                side_effect=self.mock_annotations,
+            ),
+            patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
+            patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_page),
+        ):
+            yield
 
-    with (
-        patch("pymupdf.open", return_value=mock_document),
-        patch.object(pymupdf.Page, "get_images", return_value=[image_xref]),
-        patch.object(
-            mock_document,
-            "extract_image",
-            return_value={
-                "ext": "jpeg",
-                "width": 100,
-                "height": 100,
-                "image": Image.new("RGB", (100, 100)).tobytes(),
-            },
-        ),
-        patch.object(
-            pymupdf.Page,
-            "get_image_bbox",
-            return_value=infinite_rect,
-        ),
-    ):
-        result = PDFProcessor()._extract_pdf_images(BytesIO())
-
-    assert result == []
-
-
-def test__pdf_processor__extract_pdf_annotations():
-    mock_document = pymupdf.open()
-    mock_page = mock_document.new_page()
-
-    mock_annotations = [MagicMock(spec=pymupdf.Annot) for _ in range(3)]
-    mock_types = [
-        pymupdf.PDF_ANNOT_HIGHLIGHT,
-        pymupdf.PDF_ANNOT_HIGHLIGHT,
-        pymupdf.PDF_ANNOT_REDACT,
-    ]
-    vertices = (
-        [(0, 0), (0, 1), (1, 0), (1, 1)],
-        [(2, 2), (2, 3), (3, 2), (3, 3)],
-        [(4, 4), (4, 5), (5, 4), (5, 5)],
-    )
-    types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
-    for i, mock_annotation in enumerate(mock_annotations):
-        mock_annotation.info = {
-            "content": f"Annotation {i}",
-        }
-        mock_annotation.type = types[i]
-        mock_annotation.vertices = vertices[i]
-        mock_annotation._yielded = False
-
-    with (
-        patch("pymupdf.open", return_value=mock_document),
-        patch(
-            "pymupdf.Page.annot_xrefs", return_value=zip(mock_annotations, mock_types)
-        ),
-        patch(
-            "pymupdf.Page.load_annot",
-            side_effect=mock_annotations,
-        ),
-        patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
-        patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_page),
-    ):
+    def test_returns_all_annotations(self):
         expected_annotations = (
             {
                 "page_number": 0,
                 "annotations": [
                     {
-                        "annot": mock_annotations[0],
+                        "annot": self.mock_annotations[0],
                         "content": "Annotation 0",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(0, 0, 1, 1),
                         "text": "hello",
                     },
                     {
-                        "annot": mock_annotations[1],
+                        "annot": self.mock_annotations[1],
                         "content": "Annotation 1",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(2, 2, 3, 3),
                         "text": "world",
                     },
                     {
-                        "annot": mock_annotations[2],
+                        "annot": self.mock_annotations[2],
                         "content": "Annotation 2",
                         "type": "Redact",
                         "rect": pymupdf.Rect(4, 4, 5, 5),
@@ -226,45 +126,9 @@ def test__pdf_processor__extract_pdf_annotations():
             BytesIO(), return_annot=True
         )
 
-    assert expected_annotations == actual_annotations
+        assert expected_annotations == actual_annotations
 
-
-def test__pdf_processor__extract_pdf_annotations__highlight_only():
-    mock_document = pymupdf.open()
-    mock_page = mock_document.new_page()
-
-    mock_annotations = [MagicMock(spec=pymupdf.Annot) for _ in range(3)]
-    mock_types = [
-        pymupdf.PDF_ANNOT_HIGHLIGHT,
-        pymupdf.PDF_ANNOT_HIGHLIGHT,
-        pymupdf.PDF_ANNOT_REDACT,
-    ]
-    vertices = (
-        [(0, 0), (0, 1), (1, 0), (1, 1)],
-        [(2, 2), (2, 3), (3, 2), (3, 3)],
-        [(4, 4), (4, 5), (5, 4), (5, 5)],
-    )
-    types = ((8, "Highlight"), (8, "Highlight"), (12, "Redact"))
-    for i, mock_annotation in enumerate(mock_annotations):
-        mock_annotation.info = {
-            "content": f"Annotation {i}",
-        }
-        mock_annotation.type = types[i]
-        mock_annotation.vertices = vertices[i]
-        mock_annotation._yielded = False
-
-    with (
-        patch("pymupdf.open", return_value=mock_document),
-        patch(
-            "pymupdf.Page.annot_xrefs", return_value=zip(mock_annotations, mock_types)
-        ),
-        patch(
-            "pymupdf.Page.load_annot",
-            side_effect=mock_annotations,
-        ),
-        patch("pymupdf.Page.get_text", side_effect=["hello", "world"]),
-        patch("pymupdf.mupdf.pdf_annot_page", return_value=mock_page),
-    ):
+    def test_returns_only_highlight_annotations(self):
         expected_annotations = (
             {
                 "page_number": 0,
@@ -288,1380 +152,604 @@ def test__pdf_processor__extract_pdf_annotations__highlight_only():
             BytesIO(), annotation_class=[pymupdf.PDF_ANNOT_HIGHLIGHT]
         )
 
-    assert expected_annotations == actual_annotations
+        assert expected_annotations == actual_annotations
 
 
-def test__pdf_processor__get_proposed_redactions():
-    creation_date = "D:20260103123456+01'00'"
-    creation_timestamp = datetime(
-        year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
-    )
-    annotations = (
-        {
-            "page_number": "0",
-            "annotations": [
-                {
-                    "title": "REDACTION CANDIDATE",
-                    "content": "Redact this",
-                    "type": "Highlight",
-                    "rect": pymupdf.Rect(0, 0, 1, 1),
-                    "text": "Redact this",
-                    "creationDate": creation_date,
-                    "modDate": "",
-                },
-                {
-                    "title": "REDACTION CANDIDATE",
-                    "content": "Redact this too",
-                    "type": "Highlight",
-                    "rect": pymupdf.Rect(2, 2, 3, 3),
-                    "text": "Redact this",
-                    "creationDate": creation_date,
-                    "modDate": "",
-                },
-                {
-                    "title": "REDACTION CANDIDATE",
-                    "content": "Redact this too",
-                    "type": "Highlight",
-                    "rect": pymupdf.Rect(0, 2, 1, 3),
-                    "text": "too.",
-                    "creationDate": creation_date,
-                    "modDate": "",
-                },
-            ],
-        },
-    )
-    document_bytes = BytesIO()
-    expected_dict = [
-        {
-            "pageNumber": 0,
-            "annotations": [
-                {
-                    "annotationType": "Highlight",
-                    "proposedRedaction": "Redact this",
-                    "annotatedText": "Redact this",
-                    "rect": (0.0, 0.0, 1.0, 1.0),
-                    "creationDate": creation_timestamp,
-                    "isRedactionCandidate": True,
-                    "modDate": None,
-                },
-                {
-                    "annotationType": "Highlight",
-                    "proposedRedaction": "Redact this too",
-                    "annotatedText": "Redact this",
-                    "rect": (2.0, 2.0, 3.0, 3.0),
-                    "creationDate": creation_timestamp,
-                    "isRedactionCandidate": True,
-                    "modDate": None,
-                },
-                {
-                    "annotationType": "Highlight",
-                    "proposedRedaction": "Redact this too",
-                    "annotatedText": "too.",
-                    "rect": (0.0, 2.0, 1.0, 3.0),
-                    "creationDate": creation_timestamp,
-                    "isRedactionCandidate": True,
-                    "modDate": None,
-                },
-            ],
-        }
-    ]
-    with patch.object(
-        PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+class TestGetProposedRedactions:
+    def test_returns_all_highlights(self):
+        creation_date = "D:20260103123456+01'00'"
+        creation_timestamp = datetime(
+            year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
+        )
+        annotations = (
+            {
+                "page_number": "0",
+                "annotations": [
+                    {
+                        "title": "REDACTION CANDIDATE",
+                        "content": "Redact this",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(0, 0, 1, 1),
+                        "text": "Redact this",
+                        "creationDate": creation_date,
+                        "modDate": "",
+                    },
+                    {
+                        "title": "REDACTION CANDIDATE",
+                        "content": "Redact this too",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(2, 2, 3, 3),
+                        "text": "Redact this",
+                        "creationDate": creation_date,
+                        "modDate": "",
+                    },
+                    {
+                        "title": "REDACTION CANDIDATE",
+                        "content": "Redact this too",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(0, 2, 1, 3),
+                        "text": "too.",
+                        "creationDate": creation_date,
+                        "modDate": "",
+                    },
+                ],
+            },
+        )
+        document_bytes = BytesIO()
+        expected_dict = [
+            {
+                "pageNumber": 0,
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "Redact this",
+                        "annotatedText": "Redact this",
+                        "rect": (0.0, 0.0, 1.0, 1.0),
+                        "creationDate": creation_timestamp,
+                        "isRedactionCandidate": True,
+                        "modDate": None,
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "Redact this too",
+                        "annotatedText": "Redact this",
+                        "rect": (2.0, 2.0, 3.0, 3.0),
+                        "creationDate": creation_timestamp,
+                        "isRedactionCandidate": True,
+                        "modDate": None,
+                    },
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "Redact this too",
+                        "annotatedText": "too.",
+                        "rect": (0.0, 2.0, 1.0, 3.0),
+                        "creationDate": creation_timestamp,
+                        "isRedactionCandidate": True,
+                        "modDate": None,
+                    },
+                ],
+            }
+        ]
+        with patch.object(
+            PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+        ):
+            actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
+        assert expected_dict == actual_dict
+
+    def test_malformed_pdf_date(self):
+        """
+        - Given I have annotation metadata with a malformed PDF date
+        - When I call get_proposed_redactions
+        - Then the malformed date should be treated as missing metadata
+        """
+        creation_date = "D:20260103123456"
+        creation_timestamp = datetime(
+            year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
+        )
+        annotations = (
+            {
+                "page_number": "0",
+                "annotations": [
+                    {
+                        "title": "REDACTION CANDIDATE",
+                        "content": "Redact this",
+                        "type": "Highlight",
+                        "rect": pymupdf.Rect(0, 0, 1, 1),
+                        "text": "Redact this",
+                        "creationDate": creation_date,
+                        "modDate": "D:-001-1-1-1-1-1",
+                    },
+                ],
+            },
+        )
+        document_bytes = BytesIO()
+        expected_dict = [
+            {
+                "pageNumber": 0,
+                "annotations": [
+                    {
+                        "annotationType": "Highlight",
+                        "proposedRedaction": "Redact this",
+                        "annotatedText": "Redact this",
+                        "rect": (0.0, 0.0, 1.0, 1.0),
+                        "creationDate": creation_timestamp,
+                        "isRedactionCandidate": True,
+                        "modDate": None,
+                    },
+                ],
+            }
+        ]
+
+        with patch.object(
+            PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+        ):
+            actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
+
+        assert expected_dict == actual_dict
+
+
+class TestExamineApplyRedactionsBase:
+    @staticmethod
+    def create_mock_page_metadata(
+        page_number,
+        text_content: str | None = None,
+        lines=None,
+        y0=None,
+        y1=None,
+        x0=None,
+        x1=None,
     ):
-        actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
-    assert expected_dict == actual_dict
+        line_metadata = []
 
-
-def test__pdf_processor__get_proposed_redactions__malformed_pdf_date():
-    """
-    - Given I have annotation metadata with a malformed PDF date
-    - When I call get_proposed_redactions
-    - Then the malformed date should be treated as missing metadata
-    """
-    creation_date = "D:20260103123456"
-    creation_timestamp = datetime(
-        year=2026, month=1, day=3, hour=12, minute=34, second=56, tzinfo=UTC
-    )
-    annotations = (
-        {
-            "page_number": "0",
-            "annotations": [
-                {
-                    "title": "REDACTION CANDIDATE",
-                    "content": "Redact this",
-                    "type": "Highlight",
-                    "rect": pymupdf.Rect(0, 0, 1, 1),
-                    "text": "Redact this",
-                    "creationDate": creation_date,
-                    "modDate": "D:-001-1-1-1-1-1",
-                },
-            ],
-        },
-    )
-    document_bytes = BytesIO()
-    expected_dict = [
-        {
-            "pageNumber": 0,
-            "annotations": [
-                {
-                    "annotationType": "Highlight",
-                    "proposedRedaction": "Redact this",
-                    "annotatedText": "Redact this",
-                    "rect": (0.0, 0.0, 1.0, 1.0),
-                    "creationDate": creation_timestamp,
-                    "isRedactionCandidate": True,
-                    "modDate": None,
-                },
-            ],
-        }
-    ]
-
-    with patch.object(
-        PDFProcessor, "_extract_pdf_annotations", return_value=annotations
-    ):
-        actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
-
-    assert expected_dict == actual_dict
-
-
-def test__pdf_processor__transform_bounding_box_to_global_space__translated_image():
-    """
-    - Given I have an image of size 100x100, and a bounding box within that image
-    - When I call _transform_bounding_box_to_global_space with a transform representing a translation in the PDF
-    - Then the a Rect should be returned that represents the translated bounding box
-
-    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
-          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
-          into this test for automation
-    """
-    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
-    source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(
-        75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375
-    )  # Shifted in the document
-    # Sample taken from test__pdf_processor__translated_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(
-        73.5, 125.5462646484375, 148.5, 133.0462646484375
-    )
-    actual_transformed_bounding_box = (
-        PDFProcessor()._transform_bounding_box_to_global_space(
-            bounding_box, source_image_dimensions, transformation_matrix
-        )
-    )
-    assert expected_transformed_bounding_box == actual_transformed_bounding_box
-
-
-def test__pdf_processor__transform_bounding_box_to_global_space__scale_image():
-    """
-    - Given I have an image of size 100x100, and a bounding box within that image
-    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and scale by 0.5 in the PDF
-    - Then the a Rect should be returned that represents the translated bounding box
-
-    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
-          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
-          into this test for automation
-    """
-    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
-    source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(
-        37.5, 0.0, -0.0, 37.5, 73.5, 88.0462646484375
-    )  # Scaled uniformly by 0.5
-    # Sample taken from test__pdf_processor_scale_half_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(
-        73.5, 106.7962646484375, 111.0, 110.5462646484375
-    )
-    actual_transformed_bounding_box = (
-        PDFProcessor()._transform_bounding_box_to_global_space(
-            bounding_box, source_image_dimensions, transformation_matrix
-        )
-    )
-    assert expected_transformed_bounding_box == actual_transformed_bounding_box
-
-
-def test__pdf_processor__transform_bounding_box_to_global_space__rotated_image():
-    """
-    - Given I have an image of size 100x100, and a bounding box within that image
-    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and 45 degree rotation in the PDF
-    - Then the a Rect should be returned that represents the translated bounding box
-
-    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
-          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
-          into this test for automation
-    """
-    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
-    source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(
-        53.03301239013672,
-        53.03300476074219,
-        -53.03300476074219,
-        53.03301239013672,
-        126.53300476074219,
-        88.04627227783203,
-    )  # Rotated by 45 degrees
-    # Sample taken from test__pdf_processor__rotated_45_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(
-        94.71320343017578, 114.56277465820312, 153.0495147705078, 172.89907836914062
-    )
-    actual_transformed_bounding_box = (
-        PDFProcessor()._transform_bounding_box_to_global_space(
-            bounding_box, source_image_dimensions, transformation_matrix
-        )
-    )
-    assert expected_transformed_bounding_box == actual_transformed_bounding_box
-
-
-def test__pdf_processor__transform_bounding_box_to_global_space__translated_scaled_rotated_image():
-    """
-    - Given I have an image of size 100x100, and a bounding box within that image
-    - When I call _transform_bounding_box_to_global_space with a transform representing a translation scale by 0.5 and 45 degree rotation
-    - Then the a Rect should be returned that represents the translated bounding box
-
-    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
-          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
-          into this test for automation
-    """
-    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
-    source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(
-        26.51650619506836,
-        26.516502380371094,
-        -26.516502380371094,
-        26.51650619506836,
-        100.0165023803711,
-        88.0462646484375,
-    )  # Positioned in the document, scaled by 0.5 and rotated 45 degrees
-    # Sample taken from test__pdf_processor_scale_half_rotated_45_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(
-        84.10659790039062, 101.30451965332031, 113.2747573852539, 130.47267150878906
-    )
-    actual_transformed_bounding_box = (
-        PDFProcessor()._transform_bounding_box_to_global_space(
-            bounding_box, source_image_dimensions, transformation_matrix
-        )
-    )
-    assert expected_transformed_bounding_box == actual_transformed_bounding_box
-
-
-def test__pdf_processor__transform_bounding_box_to_global_space__scale_non_uniform_y_image():
-    """
-    - Given I have an image of size 100x100, and a bounding box within that image
-    - When I call _transform_bounding_box_to_global_space with a transform representing a translation and non-uniform 0.5 scale in the y axis
-    - Then the a Rect should be returned that represents the translated bounding box
-
-    Note: Constructing the transformation Matrix is tricky due to it needing to be relative to the expected output. For the
-          sake of testing, this function was manually tested for this scenario, and the inputs/outputs logged and pasted
-          into this test for automation
-    """
-    bounding_box = pymupdf.Rect(0.0, 50.0, 100.0, 60.0)
-    source_image_dimensions = pymupdf.Point(x=100, y=100)
-    transformation_matrix = pymupdf.Matrix(
-        75.0, 0.0, -0.0, 37.5, 73.5, 88.0462646484375
-    )  # Scaled in y axis by 0.5
-    # Sample taken from test__pdf_processor__scale_half_y_image.pdf, which was manually inspected
-    expected_transformed_bounding_box = pymupdf.Rect(
-        73.5, 106.7962646484375, 148.5, 110.5462646484375
-    )
-    actual_transformed_bounding_box = (
-        PDFProcessor()._transform_bounding_box_to_global_space(
-            bounding_box, source_image_dimensions, transformation_matrix
-        )
-    )
-    assert expected_transformed_bounding_box == actual_transformed_bounding_box
-
-
-def test__pdf_processor__create_line_metadata():
-    """
-    - Given I have a line of text with some metadata, and a bounding box that partially overlaps with that line
-    - When I call _update_line_info with the bounding box and the line metadata
-    - Then the line metadata should be updated to reflect the redaction of the text within the bounding box
-    """
-    expected_line_metadata = PDFLineMetadata(
-        line_number=0,
-        words=np.array(["hello", "world"], dtype=str),
-        y0=0,
-        y1=10,
-        x0=(0, 15),
-        x1=(10, 25),
-    )
-    line_metadata = PDFProcessor()._create_line_metadata(
-        ["hello", "world"],
-        [
-            pymupdf.Rect(
-                0,
-                0,
-                10,
-                10,
-            ),
-            pymupdf.Rect(15, 0, 25, 10),
-        ],
-        0,
-    )
-    assert expected_line_metadata == line_metadata
-
-
-def test__pdf_processor__extract_page_text():
-    page = pymupdf.open().new_page()
-
-    def mock_get_text(*args, **kwargs):
-        if len(args) > 1 or kwargs:
-            return [
-                (0, 0, 10, 10, "Hello", 0, 0, None),
-                (5, 0, 15, 10, "World!", 0, 0, None),
-                (0, 10, 10, 20, "Hey", 0, 1, None),
-                (5, 10, 15, 20, "there", 0, 1, None),
-            ]
-        return "Hello World! Hey there"
-
-    with patch.object(pymupdf.Page, "get_text", mock_get_text):
-        page_metadata = PDFProcessor()._extract_page_text(page)
-
-    expected_page_metadata = PDFPageMetadata(
-        page_number=page.number,
-        lines=[
-            PDFLineMetadata(
-                line_number=0,
-                words=np.array(["hello", "world"], dtype=str),
-                y0=0,
-                y1=10,
-                x0=(0, 5),
-                x1=(10, 15),
-            ),
-            PDFLineMetadata(
-                line_number=1,
-                words=np.array(["hey", "there"], dtype=str),
-                y0=10,
-                y1=20,
-                x0=(0, 5),
-                x1=(10, 15),
-            ),
-        ],
-        raw_text="Hello World! Hey there",
-    )
-
-    assert expected_page_metadata == page_metadata
-
-
-def create_mock_page_metadata(
-    page_number,
-    text_content: str | None = None,
-    lines=None,
-    y0=None,
-    y1=None,
-    x0=None,
-    x1=None,
-):
-    line_metadata = []
-
-    if lines:
-        for i, line in enumerate(lines):
-            normalised_words = get_normalised_words(line)
-            line_metadata.append(
-                PDFLineMetadata(
-                    line_number=i,
-                    words=np.array(normalised_words, dtype=str),
-                    y0=y0[i],
-                    y1=y1[i],
-                    x0=tuple(x0[i]),
-                    x1=tuple(x1[i]),
+        if lines:
+            for i, line in enumerate(lines):
+                normalised_words = get_normalised_words(line)
+                line_metadata.append(
+                    PDFLineMetadata(
+                        line_number=i,
+                        words=np.array(normalised_words, dtype=str),
+                        y0=y0[i],
+                        y1=y1[i],
+                        x0=tuple(x0[i]),
+                        x1=tuple(x1[i]),
+                    )
                 )
+        return PDFPageMetadata(
+            page_number=page_number,
+            lines=line_metadata,
+            raw_text=text_content if text_content else "",
+        )
+
+
+class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
+    def test_returns_match_on_page(self):
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content="Hello World",
+            lines=["Hello", "World"],
+            y0=[0, 20],
+            y1=[10, 30],
+            x0=[[0], [0]],
+            x1=[[10], [10]],
+        )
+        term = "Hello"
+        rect = pymupdf.Rect(0, 0, 10, 10)
+
+        expected_result = [(0, rect, term)]
+        with patch.object(
+            PDFUtil,
+            "examine_provisional_text_redaction",
+            return_value=expected_result,
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
+            pdf_processor.terms_found = {term: 0}
+
+            result = pdf_processor._examine_provisional_redactions_on_page(
+                [term], page_metadata
             )
-    return PDFPageMetadata(
-        page_number=page_number,
-        lines=line_metadata,
-        raw_text=text_content if text_content else "",
-    )
 
+        assert result == expected_result
 
-def test__pdf_processor__check_partial_redaction_across_line_breaks():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello\nWorld",
-        lines=["Hello", "World"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Hello World"
-    normalised_words_to_redact = get_normalised_words(term)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_check_subsequent_words",
-            return_value=(["world"], 0),
-        ),
-    ):
-        match_result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-            normalised_words_to_redact,
-            "hello",
-            page_metadata.lines[0],
-            page_metadata,
-        )
-    expected_result = [(0, page_metadata.lines[1], 0)]
-
-    assert match_result == expected_result
-
-
-def test__pdf_processor__check_partial_redaction_across_line_breaks__no_match():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello\nYou",
-        lines=["Hello", "You"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Hello World"
-    normalised_words_to_redact = get_normalised_words(term)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_check_subsequent_words",
-            side_effect=[(["hello"], 0), ([], -1)],
-        ),
-    ):
-        result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-            normalised_words_to_redact,
-            "hello",
-            page_metadata.lines[0],
-            page_metadata,
-        )
-
-    assert result == []
-
-
-def test__pdf_processor__check_partial_redaction_across_line_breaks__two_breaks():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="This is line\nbroken",
-        lines=["This", "is line", "broken"],
-        y0=[0, 20, 40],
-        y1=[10, 30, 50],
-        x0=[[0], [0, 15], [0]],
-        x1=[[10], [10, 25], [10]],
-    )
-    term = "This is line broken"
-    normalised_words_to_redact = get_normalised_words(term)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_find_potential_matches_in_line",
-            side_effect=[([("this", 0, 0)]), [("is", 0, 0)], []],
-        ),
-    ):
-        result = PDFProcessor()._check_partial_redaction_across_line_breaks(
-            normalised_words_to_redact,
-            "this",
-            page_metadata.lines[0],
-            page_metadata,
-        )
-
-    assert result == [(0, page_metadata.lines[1], 1), (0, page_metadata.lines[2], 0)]
-
-
-def test__pdf_processor__examine_provisional_text_redaction():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello World",
-        lines=["Hello World"],
-        y0=[0],
-        y1=[10],
-        x0=[[0, 6]],
-        x1=[[10, 11]],
-    )
-    term = "Hello"
-    rect = pymupdf.Rect(0, 0, 10, 10)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_find_potential_matches_in_line",
-            return_value=([("hello", 0, 0)]),
-        ),
-    ):
-        result = PDFProcessor()._examine_provisional_text_redaction(
-            "Hello",
-            page_metadata,
-        )
-
-    assert result == [(page_metadata.page_number, rect, term)]
-
-
-@patch.object(PDFProcessor, "_find_potential_matches_in_line", return_value=[])
-def test__pdf_processor__examine_provisional_text_redaction__no_matches(
-    mock_full_redaction,
-):
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello World",
-        lines=["Hello World"],
-        y0=[0],
-        y1=[10],
-        x0=[[0, 6]],
-        x1=[[10, 11]],
-    )
-    term = "test"
-
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        pdf_processor = PDFProcessor()
-        result = pdf_processor._examine_provisional_text_redaction(
-            term,
-            page_metadata,
-        )
-
-    assert result == []
-
-
-def test__pdf_processor__examine_provisional_text_redaction__line_break():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello\nWorld",
-        lines=["Hello", "World"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Hello World"
-    rect = pymupdf.Rect(0, 0, 10, 10)
-    next_rect = pymupdf.Rect(0, 20, 10, 30)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_check_partial_redaction_across_line_breaks",
-            return_value=[(0, page_metadata.lines[1], 0)],
-        ),
-        patch.object(
-            PDFProcessor,
-            "_find_potential_matches_in_line",
-            side_effect=[[("hello", 0, 0)], []],
-        ),
-    ):
-        pdf_processor = PDFProcessor()
-        result = pdf_processor._examine_provisional_text_redaction(
-            term,
-            page_metadata,
-        )
-
-    assert result == [
-        (page_metadata.page_number, rect, term),
-        (page_metadata.page_number, next_rect, term),
-    ]
-
-
-def test__pdf_processor__examine_provisional_text_redaction__hyphenated_line_break():
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Something-\nElse",
-        lines=["Something-", "Else"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Something-Else"
-    rect = pymupdf.Rect(0, 0, 10, 10)
-    next_rect = pymupdf.Rect(0, 20, 10, 30)
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_check_partial_redaction_across_line_breaks",
-            return_value=[(0, page_metadata.lines[1], 0)],
-        ),
-        patch.object(
-            PDFProcessor,
-            "_find_potential_matches_in_line",
-            side_effect=[[("something", 0, 0)], []],
-        ),
-    ):
-        pdf_processor = PDFProcessor()
-        result = pdf_processor._examine_provisional_text_redaction(
-            term,
-            page_metadata,
-        )
-
-    assert result == [
-        (page_metadata.page_number, rect, term),
-        (page_metadata.page_number, next_rect, term),
-    ]
-
-
-@patch.object(PDFProcessor, "__init__", return_value=None)
-def test__pdf_processor__examine_provisional_redactions_on_page(mock_init):
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello World",
-        lines=["Hello", "World"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Hello"
-    rect = pymupdf.Rect(0, 0, 10, 10)
-
-    expected_result = [(0, rect, term)]
-    with patch.object(
-        PDFProcessor,
-        "_examine_provisional_text_redaction",
-        return_value=expected_result,
-    ):
-        pdf_processor = PDFProcessor()
-        pdf_processor.file_bytes = BytesIO()  # Dummy value for file_bytes
-        pdf_processor.terms_found = {term: 0}
-
-        result = pdf_processor._examine_provisional_redactions_on_page(
-            [term], page_metadata
-        )
-
-    assert result == expected_result
-
-
-@patch.object(PDFProcessor, "__init__", return_value=None)
-def test__pdf_processor__examine_provisional_redactions_on_page__line_break(mock_init):
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="Hello\nWorld",
-        lines=["Hello", "World"],
-        y0=[0, 20],
-        y1=[10, 30],
-        x0=[[0], [0]],
-        x1=[[10], [10]],
-    )
-    term = "Hello World"
-    rect = pymupdf.Rect(0, 0, 10, 10)
-    next_rect = pymupdf.Rect(0, 20, 10, 30)
-
-    expected_result = [(0, rect, term), (0, next_rect, term)]
-    side_effects = [
-        [(0, rect, term), (0, next_rect, term)],
-        [],
-    ]
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_examine_provisional_text_redaction",
-            side_effect=side_effects,
-        ),
-    ):
-        pdf_processor = PDFProcessor()
-        pdf_processor.terms_found = {term: 0}
-        result = pdf_processor._examine_provisional_redactions_on_page(
-            [term],
-            page_metadata,
-        )
-
-    assert result == expected_result
-
-
-def test__pdf_processor__apply_provisional_text_redactions__no_text_on_page():
-    file_bytes = _make_pdf_with_text("")
-    page_metadata = create_mock_page_metadata(
-        page_number=0,
-        text_content="",
-        lines=[],
-        y0=[],
-        y1=[],
-        x0=[],
-        x1=[],
-    )
-    term = "Hello World"
-
-    with (
-        patch.object(PDFProcessor, "__init__", return_value=None),
-        patch.object(
-            PDFProcessor,
-            "_extract_page_text",
-            return_value=page_metadata,
-        ),
-        patch.object(
-            PDFProcessor,
-            "_get_next_page_metadata",
-            return_value=None,
-        ),
-        patch.object(
-            PDFProcessor,
-            "_examine_provisional_redactions_on_page",
-        ) as mock_examine_provisional_redactions_on_page,
-        patch.object(
-            PDFProcessor,
-            "_add_provisional_redaction",
-        ) as mock_add_provisional_redaction,
-    ):
-        pdf_processor = PDFProcessor()
-        pdf_processor.terms_found = {term: 0}
-        pdf_processor._apply_provisional_text_redactions(
-            file_bytes,
-            [term],
-        )
-
-    mock_examine_provisional_redactions_on_page.assert_not_called()
-    mock_add_provisional_redaction.assert_not_called()
-
-
-def test__pdf_processor__match_word_to_redact_in_line():
-    words_to_check = np.array(["hello", "world"], dtype=str)
-    result = PDFProcessor._match_word_to_redact_in_line("hello", words_to_check)
-    assert result == [0]
-
-
-def test__pdf_processor__check_subsequent_words():
-    term = "Hello World"
-    words_to_check = np.array(["hello", "world"], dtype=str)
-    index = 0
-    expected_result = (["hello", "world"], 1)
-    result = PDFProcessor._check_subsequent_words(
-        get_normalised_words(term), words_to_check, index
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__match_word_to_redact_in_line__suffix_fused_word():
-    """A first word fused to a preceding word is matched only when allow_suffix is set."""
-    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
-    # Without allow_suffix the fused word is not matched
-    assert PDFProcessor._match_word_to_redact_in_line("monica", words_to_check) == []
-    # With allow_suffix the fused word is matched
-    assert PDFProcessor._match_word_to_redact_in_line(
-        "monica", words_to_check, allow_suffix=True
-    ) == [0]
-
-
-def test__pdf_processor__match_word_to_redact_in_line__suffix_short_word_guarded():
-    """A short word (< MIN_JOINED_BOUNDARY_LENGTH) must not match as a fused suffix."""
-    words_to_check = np.array(["byof", "cowan"], dtype=str)
-    assert (
-        PDFProcessor._match_word_to_redact_in_line(
-            "of", words_to_check, allow_suffix=True
-        )
-        == []
-    )
-
-
-def test__pdf_processor__check_subsequent_words__first_word_suffix():
-    """The first word of a term may match a token it is fused to as a suffix."""
-    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
-    result = PDFProcessor._check_subsequent_words(
-        get_normalised_words("Monica Cowan"),
-        words_to_check,
-        0,
-        allow_first_suffix=True,
-        allow_last_prefix=True,
-    )
-    assert result == (["somethingmonica", "cowan"], 1)
-
-
-def test__pdf_processor__check_subsequent_words__last_word_prefix():
-    """The last word of a term may match a token it is fused to as a prefix."""
-    words_to_check = np.array(["christine", "watts-hughgeneva"], dtype=str)
-    result = PDFProcessor._check_subsequent_words(
-        get_normalised_words("christine watts-hugh"),
-        words_to_check,
-        0,
-        allow_first_suffix=True,
-        allow_last_prefix=True,
-    )
-    assert result == (["christine", "watts-hughgeneva"], 1)
-
-
-def test__pdf_processor__check_subsequent_words__boundary_disabled_by_default():
-    """Boundary matching must not occur unless explicitly enabled."""
-    words_to_check = np.array(["somethingmonica", "cowan"], dtype=str)
-    result = PDFProcessor._check_subsequent_words(
-        get_normalised_words("Monica Cowan"), words_to_check, 0
-    )
-    assert result == ([], -1)
-
-
-def test__pdf_processor__check_subsequent_words__inner_word_must_match_exactly():
-    """Inner words are never boundary-matched; a non-matching inner word breaks the match."""
-    words_to_check = np.array(["alpha", "betaX", "gamma"], dtype=str)
-    result = PDFProcessor._check_subsequent_words(
-        get_normalised_words("alpha beta gamma"),
-        words_to_check,
-        0,
-        allow_first_suffix=True,
-        allow_last_prefix=True,
-    )
-    assert result == (["alpha"], 0)
-
-
-@pytest.mark.parametrize(
-    "token, word, expected",
-    [
-        ("somethingmonica", "monica", True),  # Fused suffix, long enough
-        ("byof", "of", False),  # Too short (< min length)
-        ("monica", "monica", False),  # Identical token is not a fused suffix
-        ("monicasomething", "monica", False),  # Word is a prefix, not a suffix
-    ],
-)
-def test__pdf_processor__token_has_boundary_suffix(token, word, expected):
-    assert PDFProcessor._token_has_boundary_suffix(token, word) is expected
-
-
-@pytest.mark.parametrize(
-    "token, word, expected",
-    [
-        ("watts-hughgeneva", "watts-hugh", True),  # Fused prefix, long enough
-        ("ofby", "of", False),  # Too short (< min length)
-        ("cowan", "cowan", False),  # Identical token is not a fused prefix
-        ("somethingcowan", "cowan", False),  # Word is a suffix, not a prefix
-    ],
-)
-def test__pdf_processor__token_has_boundary_prefix(token, word, expected):
-    assert PDFProcessor._token_has_boundary_prefix(token, word) is expected
-
-
-def test__pdf_processor__check_partial_match_before_hyphen():
-    term_to_redact = "Something-else"
-    words_to_check = np.array(["something"], dtype=str)
-    expected_result = ("something", 0, 0)
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__preceding_words():
-    term_to_redact = "Mary Hugh-Williams"
-    words_to_check = np.array(["mary", "hugh"], dtype=str)
-    expected_result = ("mary hugh", 0, 1)
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__excess_preceding_words():
-    term_to_redact = "this term is line-broken"
-    words_to_check = np.array(["is", "line"], dtype=str)
-    expected_result = None
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__final_word_match_only():
-    term_to_redact = "Chris Hugh-Williams"
-    words_to_check = np.array(["mary", "hugh"], dtype=str)
-    expected_result = None
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__no_match():
-    term_to_redact = "go check-this"
-    words_to_check = np.array(["something", "else"], dtype=str)
-    expected_result = None
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__first_word():
-    term_to_redact = "check-this out"
-    words_to_check = np.array(["now", "check"], dtype=str)
-    expected_result = ("check", 1, 1)
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-def test__pdf_processor__check_partial_match_before_hyphen__not_line_broken():
-    term_to_redact = "check-this"
-    words_to_check = np.array(["now", "check-this"], dtype=str)
-    expected_result = None
-    result = PDFProcessor._check_partial_match_before_hyphen(
-        get_normalised_words(term_to_redact), words_to_check
-    )
-    assert result == expected_result
-
-
-@pytest.mark.parametrize(
-    "test_case",
-    [
-        ("he's", "he's", True),
-        ("he'", "he", True),
-        ("he", "he", True),
-        ("the", "he", False),  # Partial match should not be redacted
-        ("then", "he", False),  # Partial match should not be redacted
-        ("her", "he", False),  # Partial match should not be redacted
-        (
-            "Bob-",
-            "Bob",
-            True,
-        ),  # A tring with punctuation at the end of the string should be redacted
-        (
-            "-Bob",
-            "Bob",
-            True,
-        ),  # A tring with punctuation at the start of the string should be redacted
-        (
-            "Bob's",
-            "Bob",
-            True,
-        ),  # A string ending with 's should be marked as a full word
-        (
-            "Jean-Luc",
-            "Jean-Luc",
-            True,
-        ),  # A string with punctuation in the middle should be redacted
-        ("Bob", "bob", True),  # Case should be ignored
-        ("Bob", "Bob ", True),  # Trailing whitespace should be ignored
-        ("Bob", " Bob", True),  # Leading whitespace should be ignored
-        ("bob's", "bob", True),  # Possessive markers should be ignored, and be redacted
-        ("François", "François", True),  # Non-english characters should be matched
-        ("François", "Francois", False),  # Non-english characters should not be altered
-        (
-            "Bob\u2019s",
-            "Bob",
-            True,
-        ),  # Bob's (with a non ascii apostrophe) should equivalent to "Bob's"
-        ("(https://example.com)", "https://example.com", True),  # URL with punctuation
-        ("https://example.com/", "https://example.com", True),  # URL with punctuation
-        ("(https://example.com/)", "https://example.com", True),  # URL with punctuation
-        (
-            "and down",
-            "d",
-            False,
-        ),  # Partial match within multiple words should not be redacted
-        ("£120,000", "£120,000", True),  # Amount with punctuation should be redacted
-        ("Something: else", "Something: else", True),  # Punctuation within phrase
-        ("Something-", "Something-else", True),  # Hyphenated word at line break
-        (
-            "Mary Hugh-",
-            "Mary Hugh-Williams",
-            True,
-        ),  # Hyphenated word at line break with preceding word
-        # --- Boundary matching for words fused by a missing space ---
-        (
-            "somethingMonica Cowan",
-            "Monica Cowan",
-            True,
-        ),  # First word fused to a preceding word (suffix match)
-        (
-            "christine watts-hughGeneva",
-            "christine watts-hugh",
-            True,
-        ),  # Last word fused to a following word (prefix match)
-        (
-            "Sweden",
-            "Eden",
-            False,
-        ),  # Single-word term must not match as a suffix inside a larger word
-        (
-            "Edenbridge",
-            "Eden",
-            False,
-        ),  # Single-word term must not match as a prefix inside a larger word
-        (
-            "johnsmith",
-            "smith",
-            False,
-        ),  # Single-word term never fuses even when long enough
-        (
-            "byof cowan",
-            "of cowan",
-            False,
-        ),  # Short boundary word (< min length) must not fuse-match
-    ],
-)
-def test__pdf_processor__find_potential_matches_in_line(test_case):
-    """
-    - Given I have a sample of some text to redact, and a sample of the corresponding text near the bounding box
-    - When i call _find_potential_matches_in_line
-    - Then the text should only be marked for redaction is it is not a partial redaction of another word.
-      e.g, "he" is a partial redaction of "their" so should return False
-    """
-
-    actual_text_at_rect = test_case[0]
-    text_to_redact = test_case[1]
-    truth = test_case[2]
-    error_message = (
-        f"Expected _find_potential_matches_in_line to return {truth} when trying "
-        f"to redact '{text_to_redact}' within the word '{actual_text_at_rect}'"
-    )
-
-    rect = Mock()
-    rect.width = 100  # Dummy value
-    rect.__add__ = Mock(return_value=rect)
-
-    words_to_check = np.array(get_normalised_words(actual_text_at_rect), dtype=str)
-
-    result = PDFProcessor._find_potential_matches_in_line(
-        get_normalised_words(text_to_redact), words_to_check
-    )
-
-    if truth:
-        expected_result = (
-            " ".join(get_normalised_words(actual_text_at_rect)),
-            0,
-            len(get_normalised_words(actual_text_at_rect)) - 1,
-        )
-        assert result[-1] == expected_result, error_message
-    else:
-        assert result == []
-
-
-def test__pdf_processor__redact_skips_non_english_raises_exception():
-    """
-    - Given a non-English PDF input
-    - When redact() is called
-    - Then it should raise NonEnglishContentException and not modify the original bytes
-    """
-    french_text = (
-        "Bonjour, ceci est un document de test. Ce fichier PDF contient du texte en français, "
-        "destiné à vérifier la détection de la langue. Il ne doit pas être traité pour la rédaction."
-    )
-    file_bytes = _make_pdf_with_text(french_text)
-
-    # Sanity check language detection
-    doc_text = "\n".join(page.get_text() for page in pymupdf.open(stream=file_bytes))
-    file_bytes.seek(0)
-    assert is_english_text(doc_text) is False
-
-    with pytest.raises(NonEnglishContentException):
-        PDFProcessor().redact(file_bytes, {"redaction_rules": []})
-
-    # Ensure original stream still represents a PDF without highlight annotations
-    pdf = pymupdf.open(stream=file_bytes)
-    annots = [a for p in pdf for a in p.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
-    assert not annots
-
-
-def test__pdf_processor__redact__no_text():
-    file_bytes = _make_pdf_with_text(" \n")
-    doc_text = "\n".join(page.get_text() for page in pymupdf.open(stream=file_bytes))
-    file_bytes.seek(0)
-    assert is_english_text(doc_text) is False
-
-    # does not raise exception
-    with (
-        patch.object(PDFProcessor, "_extract_pdf_images", return_value=[]),
-        patch.object(PDFProcessor, "_extract_unique_pdf_images", return_value=""),
-        patch.object(
-            PDFProcessor, "_apply_provisional_image_redactions", return_value=file_bytes
-        ),
-        patch.object(
-            PDFProcessor, "_apply_provisional_text_redactions", return_value=file_bytes
-        ),
-    ):
-        result = PDFProcessor().redact(file_bytes, {"redaction_rules": []})
-
-    assert result == file_bytes
-
-
-def test__pdf_processor__extract_unique_pdf_images():
-    """
-    - Given I have some image metadata that contains 6 images, 2 of which are duplicates of at least 1 of the other 4
-    - When I call _extract_unique_pdf_images
-    - Then only 4 unique images should be returned
-    """
-    image_metadata = [
-        PDFImageMetadata(  # A
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=Image.new("RGB", (100, 100)),
+    def test_returns_line_broken_match(self):
+        page_metadata = self.create_mock_page_metadata(
             page_number=0,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-        PDFImageMetadata(  # B
-            source_image_resolution=(101, 101),
-            file_format="jpeg",
-            image=Image.new("RGB", (101, 101)),
-            page_number=0,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-        PDFImageMetadata(  # C
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=Image.new("RGB", (100, 100), 255),
-            page_number=0,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-        PDFImageMetadata(  # D
-            source_image_resolution=(1000, 1000),
-            file_format="jpeg",
-            image=Image.new("RGB", (1000, 1000), 255),
-            page_number=1,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-        PDFImageMetadata(  # A copy of A
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=Image.new("RGB", (100, 100)),
-            page_number=1,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-        PDFImageMetadata(  # A copy of C
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=Image.new("RGB", (100, 100), 255),
-            page_number=2,
-            image_transform_in_pdf=(1, 0, 0, 1, 0, 0),
-        ),
-    ]
-    expected_output = [
-        image_metadata[0].image,
-        image_metadata[1].image,
-        image_metadata[2].image,
-        image_metadata[3].image,
-    ]
-    with patch.object(PDFProcessor, "__init__", return_value=None):
-        actual_output = PDFProcessor()._extract_unique_pdf_images(image_metadata)
-        assert expected_output == actual_output
+            text_content="Hello\nWorld",
+            lines=["Hello", "World"],
+            y0=[0, 20],
+            y1=[10, 30],
+            x0=[[0], [0]],
+            x1=[[10], [10]],
+        )
+        term = "Hello World"
+        rect = pymupdf.Rect(0, 0, 10, 10)
+        next_rect = pymupdf.Rect(0, 20, 10, 30)
 
-
-def test__pdf_processor__apply_provisional_image_redactions():
-    """
-    - Given I have a PDF with a single image, and some redactions to apply to the image
-    - When I call _apply_provisional_image_redactions
-    - Then the redactions should be correctly applied to the document, and match a pre-baked example
-    """
-    with open(
-        "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
-    ) as f:
-        document_bytes = BytesIO(f.read())
-    with open(
-        "test/resources/pdf/test__pdf_processor__translated_image_PROVISIONAL.pdf",
-        "rb",
-    ) as f:
-        expected_provisional_redaction_bytes = BytesIO(f.read())
-    pdf = pymupdf.open(stream=document_bytes)
-    source_image = next(
-        Image.open(BytesIO(pdf.extract_image(image[0]).get("image")))
-        for page in pdf
-        for image in page.get_images(full=True)
-    )
-    redactions = [
-        ImageRedactionResult(
-            rule_name="test__pdf_processor__apply_provisional_image_redactions",
-            run_metrics={},
-            redaction_results=(
-                ImageRedactionResult.Result(
-                    image_dimensions=(100, 100),
-                    source_image=source_image,
-                    redaction_boxes=((0, 0, 100, 100),),
-                    names=("test_redaction",),
-                ),
+        expected_result = [(0, rect, term), (0, next_rect, term)]
+        side_effects = [
+            [(0, rect, term), (0, next_rect, term)],
+            [],
+        ]
+        with (
+            patch.object(
+                PDFUtil,
+                "examine_provisional_text_redaction",
+                side_effect=side_effects,
             ),
-        )
-    ]
-    pdf_image_metadata = [
-        PDFImageMetadata(
-            source_image_resolution=(100, 100),
-            file_format="jpeg",
-            image=source_image,
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            result = pdf_processor._examine_provisional_redactions_on_page(
+                [term],
+                page_metadata,
+            )
+
+        assert result == expected_result
+
+
+class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
+    def test_skips_no_text_on_page(self):
+        file_bytes = _make_pdf_with_text("")
+        page_metadata = self.create_mock_page_metadata(
             page_number=0,
-            image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
+            text_content="",
+            lines=[],
+            y0=[],
+            y1=[],
+            x0=[],
+            x1=[],
         )
-    ]
-    with patch.object(
-        PDFProcessor, "_extract_pdf_images", return_value=pdf_image_metadata
-    ):
-        redacted_document_bytes = PDFProcessor()._apply_provisional_image_redactions(
-            document_bytes, redactions
+        term = "Hello World"
+
+        with (
+            patch.object(
+                PDFUtil,
+                "extract_page_text",
+                return_value=page_metadata,
+            ),
+            patch.object(
+                PDFUtil,
+                "get_next_page_metadata",
+                return_value=None,
+            ),
+            patch.object(
+                PDFProcessor,
+                "_examine_provisional_redactions_on_page",
+            ) as mock_examine_provisional_redactions_on_page,
+            patch.object(
+                PDFUtil,
+                "add_provisional_redaction",
+            ) as mock_add_provisional_redaction,
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            pdf_processor._apply_provisional_text_redactions(
+                file_bytes,
+                [term],
+            )
+
+        mock_examine_provisional_redactions_on_page.assert_not_called()
+        mock_add_provisional_redaction.assert_not_called()
+
+
+class TestRedact:
+    def test_skips_non_english_raises_exception(self):
+        """
+        - Given a non-English PDF input
+        - When redact() is called
+        - Then it should raise NonEnglishContentException and not modify the original bytes
+        """
+        french_text = (
+            "Bonjour, ceci est un document de test. Ce fichier PDF contient du texte en français, "
+            "destiné à vérifier la détection de la langue. Il ne doit pas être traité pour la rédaction."
         )
-    expected_annotation_rects = []
-    for page in pymupdf.open(stream=expected_provisional_redaction_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            expected_annotation_rects.append(annotation.rect)
+        file_bytes = _make_pdf_with_text(french_text)
 
-    # Get the actual redacted text
-    actual_annotated_rects = []
-    for page in pymupdf.open(stream=redacted_document_bytes):
-        for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
-            actual_annotated_rects.append(annotation.rect)
-    assert expected_annotation_rects == actual_annotated_rects
+        # Sanity check language detection
+        doc_text = "\n".join(
+            page.get_text() for page in pymupdf.open(stream=file_bytes)
+        )
+        file_bytes.seek(0)
+        assert is_english_text(doc_text) is False
+
+        with pytest.raises(NonEnglishContentException):
+            PDFProcessor().redact(file_bytes, {"redaction_rules": []})
+
+        # Ensure original stream still represents a PDF without highlight annotations
+        pdf = pymupdf.open(stream=file_bytes)
+        annots = [a for p in pdf for a in p.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)]
+        assert not annots
+
+    def test_skips_blank_pdf(self):
+        file_bytes = _make_pdf_with_text(" \n")
+        doc_text = "\n".join(
+            page.get_text() for page in pymupdf.open(stream=file_bytes)
+        )
+        file_bytes.seek(0)
+        assert is_english_text(doc_text) is False
+
+        # does not raise exception
+        with (
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch.object(PDFUtil, "extract_unique_pdf_images", return_value=""),
+            patch.object(
+                PDFProcessor,
+                "_apply_provisional_image_redactions",
+                return_value=file_bytes,
+            ),
+            patch.object(
+                PDFProcessor,
+                "_apply_provisional_text_redactions",
+                return_value=file_bytes,
+            ),
+        ):
+            result = PDFProcessor().redact(file_bytes, {"redaction_rules": []})
+
+        assert result == file_bytes
+
+    def test_run_metrics_saved(self):
+        """
+        - Given I have a PDF with English text
+        - When I call redact with a text redaction rule
+        - Then run_metrics should contain all expected timing and summary keys
+        """
+        file_bytes = _make_pdf_with_text(
+            "Hello World this is a test document with English text content"
+        )
+
+        mock_text_result = TextRedactionResult(
+            rule_name="test_rule",
+            run_metrics={"tokens_used": 10},
+            redaction_strings=("Hello", "World"),
+        )
+
+        mock_redactor = Mock()
+        mock_redactor.redact.return_value = mock_text_result
+
+        mock_redaction_config = Mock()
+        mock_redaction_config.redactor_type = "llm_text"
+        mock_redaction_config.text = None
+        mock_redaction_config.images = None
+
+        with (
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[]),
+            patch.object(
+                PDFProcessor,
+                "_apply_provisional_text_redactions",
+                return_value=file_bytes,
+            ),
+            patch.object(
+                PDFProcessor,
+                "_apply_provisional_image_redactions",
+                return_value=file_bytes,
+            ),
+            patch(
+                "core.redaction.file_processor.RedactorFactory.get",
+                return_value=lambda config: mock_redactor,
+            ),
+        ):
+            processor = PDFProcessor()
+            processor.redact(file_bytes, {"redaction_rules": [mock_redaction_config]})
+            run_metrics = processor.get_run_metrics()
+
+        assert run_metrics is not None
+        # Check all expected keys are present
+        expected_keys = {
+            "pdf_text_extraction_time",
+            "pdf_image_extraction_time",
+            "text_analysis_total_time",
+            "image_analysis_total_time",
+            "analysis_total_time",
+            "text_redaction_apply_time",
+            "image_redaction_apply_time",
+            "result_metrics",
+            "aggregate_result_metrics",
+            "unapplied_text_redaction_terms",
+            "text_redaction_summary",
+        }
+        assert set(run_metrics.keys()) == expected_keys
+
+        # Check timing values are non-negative floats
+        timing_keys = {key for key in expected_keys if "time" in key}
+        for key in timing_keys:
+            assert isinstance(run_metrics[key], float)
+            assert run_metrics[key] >= 0
+
+        # Check analysis_total_time is the sum of text and image analysis
+        assert run_metrics["analysis_total_time"] == pytest.approx(
+            run_metrics["text_analysis_total_time"]
+            + run_metrics["image_analysis_total_time"]
+        )
+
+        # Check result_metrics contains the rule
+        assert "test_rule" in run_metrics["result_metrics"]
+        assert run_metrics["result_metrics"]["test_rule"] == {"tokens_used": 10}
+
+        # Check text_redaction_summary
+        assert "test_rule" in run_metrics["text_redaction_summary"]
+        assert run_metrics["text_redaction_summary"]["test_rule"][
+            "redaction_strings"
+        ] == (
+            "Hello",
+            "World",
+        )
+        assert run_metrics["text_redaction_summary"]["test_rule"]["n_proposed"] == 2
 
 
-def test__pdf_processor__apply():
-    with open(
-        os.path.join(
-            "test",
-            "resources",
-            "pdf",
-            "test__pdf_processor__text_and_image_proposed.pdf",
-        ),
-        "rb",
-    ) as f:
-        curated_doc_bytes = BytesIO(f.read())
-    with open(
-        os.path.join(
-            "test",
-            "resources",
-            "pdf",
-            "test__pdf_processor__text_and_image_redacted.pdf",
-        ),
-        "rb",
-    ) as f:
-        expected_redacted_doc_bytes = BytesIO(f.read())
-    actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, {})
-    expected_redacted_doc = pymupdf.open(stream=expected_redacted_doc_bytes)
-    actual_redacted_doc = pymupdf.open(stream=actual_redacted_doc_bytes)
-    expected_missing_words = {"Riker)", "Phillipa)"}
-    expected_text = "".join(page.get_text() for page in expected_redacted_doc)
-    for word_to_remove in expected_missing_words:
-        expected_text = expected_text.replace(word_to_remove, "")
-    actual_text = "".join(page.get_text() for page in actual_redacted_doc)
-    assert expected_text == actual_text
-    # The redacted image has the text whited out
-    with open(
-        os.path.join("test", "resources", "image", "image_with_text_redacted.jpg"), "rb"
-    ) as f:
-        expected_image_bytes = BytesIO(f.read())
-        expected_image = Image.open(expected_image_bytes)
-    pdf_images = [
-        Image.open(BytesIO(actual_redacted_doc.extract_image(xref[0]).get("image")))
-        for page in actual_redacted_doc
-        for xref in page.get_images(full=True)
-    ]
-    temp_bytes = BytesIO()
-    pdf_images[0].save(temp_bytes, format="JPEG")
-    actual_image = Image.open(temp_bytes)
-    assert expected_image == actual_image, (
-        "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
-    )
+class TestApplyProvisionalImageRedactions:
+    def _get_annotated_rects(self, document_bytes):
+        rects = []
+        for page in pymupdf.open(stream=document_bytes):
+            for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+                rects.append(annotation.rect)
+        return rects
+
+    def test_returns_pdf_with_image_highlights(self):
+        """
+        - Given I have a PDF with a single image, and some redactions to apply to the image
+        - When I call _apply_provisional_image_redactions
+        - Then the redactions should be correctly applied to the document, and match a pre-baked example
+        """
+        # Load the test PDF and extract the source image
+        with open(
+            "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
+        ) as f:
+            doc_bytes = BytesIO(f.read())
+        pdf = pymupdf.open(stream=doc_bytes)
+        source_image = next(
+            Image.open(BytesIO(pdf.extract_image(image[0]).get("image")))
+            for page in pdf
+            for image in page.get_images(full=True)
+        )
+
+        # Create a mock redaction result for the image
+        redactions = [
+            ImageRedactionResult(
+                rule_name="test__pdf_processor__apply_provisional_image_redactions",
+                run_metrics={},
+                redaction_results=(
+                    ImageRedactionResult.Result(
+                        image_dimensions=(100, 100),
+                        source_image=source_image,
+                        redaction_boxes=((0, 0, 100, 100),),
+                        names=("test_redaction",),
+                    ),
+                ),
+            )
+        ]
+        pdf_image_metadata = [
+            PDFImageMetadata(
+                source_image_resolution=(100, 100),
+                file_format="jpeg",
+                image=source_image,
+                page_number=0,
+                image_transform_in_pdf=(75.0, 0.0, -0.0, 75.0, 73.5, 88.0462646484375),
+            )
+        ]
+
+        # Apply provisional image redactions to the PDF
+        with patch.object(
+            PDFUtil, "extract_pdf_images", return_value=pdf_image_metadata
+        ):
+            redacted_doc_bytes = PDFProcessor()._apply_provisional_image_redactions(
+                doc_bytes, redactions
+            )
+        actual_annotated_rects = self._get_annotated_rects(redacted_doc_bytes)
+
+        # Compare with expected redacted PDF with image highlights
+        with open(
+            "test/resources/pdf/test__pdf_processor__translated_image_PROVISIONAL.pdf",
+            "rb",
+        ) as f:
+            expected_provisional_redaction_bytes = BytesIO(f.read())
+        expected_annotation_rects = self._get_annotated_rects(
+            expected_provisional_redaction_bytes
+        )
+
+        assert expected_annotation_rects == actual_annotated_rects
 
 
-def test__pdf_processor__redact__run_metrics():
-    """
-    - Given I have a PDF with English text
-    - When I call redact with a text redaction rule
-    - Then run_metrics should contain all expected timing and summary keys
-    """
-    file_bytes = _make_pdf_with_text(
-        "Hello World this is a test document with English text content"
-    )
+class TestApply:
+    def test_returns_highlighted_scrubbed_pdf(self):
+        with open(
+            os.path.join(
+                "test",
+                "resources",
+                "pdf",
+                "test__pdf_processor__text_and_image_proposed.pdf",
+            ),
+            "rb",
+        ) as f:
+            curated_doc_bytes = BytesIO(f.read())
+        with open(
+            os.path.join(
+                "test",
+                "resources",
+                "pdf",
+                "test__pdf_processor__text_and_image_redacted.pdf",
+            ),
+            "rb",
+        ) as f:
+            expected_redacted_doc_bytes = BytesIO(f.read())
 
-    mock_text_result = TextRedactionResult(
-        rule_name="test_rule",
-        run_metrics={"tokens_used": 10},
-        redaction_strings=("Hello", "World"),
-    )
+        actual_redacted_doc_bytes = PDFProcessor().apply(curated_doc_bytes, {})
 
-    mock_redactor = Mock()
-    mock_redactor.redact.return_value = mock_text_result
+        # Compare the text content of the redacted document to the expected redacted document
+        expected_redacted_doc = pymupdf.open(stream=expected_redacted_doc_bytes)
+        actual_redacted_doc = pymupdf.open(stream=actual_redacted_doc_bytes)
+        expected_missing_words = {"Riker)", "Phillipa)"}
+        expected_text = "".join(page.get_text() for page in expected_redacted_doc)
+        for word_to_remove in expected_missing_words:
+            expected_text = expected_text.replace(word_to_remove, "")
+        actual_text = "".join(page.get_text() for page in actual_redacted_doc)
+        assert expected_text == actual_text
 
-    mock_redaction_config = Mock()
-    mock_redaction_config.redactor_type = "llm_text"
-    mock_redaction_config.text = None
-    mock_redaction_config.images = None
+        # Compare the metadata of the redacted document to the expected redacted document
+        expected_metadata = {
+            "format": "PDF 1.4",
+            "title": "",
+            "author": "",
+            "subject": "",
+            "keywords": "",
+            "creator": "",
+            "producer": "",
+            "creationDate": "",
+            "modDate": "",
+            "trapped": "",
+            "encryption": None,
+        }
+        assert expected_metadata == actual_redacted_doc.metadata, (
+            "Expected the metadata in the pdf to have been scrubbed, but it was not. "
+            f"Expected: {expected_metadata}, Actual: {actual_redacted_doc.metadata}"
+        )
 
-    with (
-        patch.object(PDFProcessor, "_extract_pdf_images", return_value=[]),
-        patch.object(PDFProcessor, "_extract_unique_pdf_images", return_value=[]),
-        patch.object(
-            PDFProcessor,
-            "_apply_provisional_text_redactions",
-            return_value=file_bytes,
-        ),
-        patch.object(
-            PDFProcessor,
-            "_apply_provisional_image_redactions",
-            return_value=file_bytes,
-        ),
-        patch(
-            "core.redaction.file_processor.RedactorFactory.get",
-            return_value=lambda config: mock_redactor,
-        ),
-    ):
+        # Compare the image content of the redacted document to the expected redacted image
+        with open(
+            os.path.join("test", "resources", "image", "image_with_text_redacted.jpg"),
+            "rb",
+        ) as f:
+            expected_image_bytes = BytesIO(f.read())
+            expected_image = Image.open(expected_image_bytes)
+        pdf_images = [
+            Image.open(BytesIO(actual_redacted_doc.extract_image(xref[0]).get("image")))
+            for page in actual_redacted_doc
+            for xref in page.get_images(full=True)
+        ]
+        temp_bytes = BytesIO()
+        pdf_images[0].save(temp_bytes, format="JPEG")
+        actual_image = Image.open(temp_bytes)
+        assert expected_image == actual_image, (
+            "Expected the image in the pdf to be redacted, but it did not match the redacted sample"
+        )
+
+    def test_saves_run_metrics(self):
+        """
+        - Given I have a PDF with highlight annotations (proposed redactions)
+        - When I call apply
+        - Then run_metrics should contain redaction_time and scrub_time as non-negative floats
+        """
+        with open(
+            os.path.join(
+                "test",
+                "resources",
+                "pdf",
+                "test__pdf_processor__text_and_image_proposed.pdf",
+            ),
+            "rb",
+        ) as f:
+            curated_doc_bytes = BytesIO(f.read())
+
         processor = PDFProcessor()
-        processor.redact(file_bytes, {"redaction_rules": [mock_redaction_config]})
+        processor.apply(curated_doc_bytes, {})
         run_metrics = processor.get_run_metrics()
 
-    assert run_metrics is not None
-    # Check all expected keys are present
-    expected_keys = {
-        "pdf_text_extraction_time",
-        "pdf_image_extraction_time",
-        "text_analysis_total_time",
-        "image_analysis_total_time",
-        "analysis_total_time",
-        "text_redaction_apply_time",
-        "image_redaction_apply_time",
-        "result_metrics",
-        "aggregate_result_metrics",
-        "unapplied_text_redaction_terms",
-        "text_redaction_summary",
-    }
-    assert set(run_metrics.keys()) == expected_keys
-
-    # Check timing values are non-negative floats
-    timing_keys = [
-        "pdf_text_extraction_time",
-        "pdf_image_extraction_time",
-        "text_analysis_total_time",
-        "image_analysis_total_time",
-        "analysis_total_time",
-        "text_redaction_apply_time",
-        "image_redaction_apply_time",
-    ]
-    for key in timing_keys:
-        assert isinstance(run_metrics[key], float)
-        assert run_metrics[key] >= 0
-
-    # Check analysis_total_time is the sum of text and image analysis
-    assert run_metrics["analysis_total_time"] == pytest.approx(
-        run_metrics["text_analysis_total_time"]
-        + run_metrics["image_analysis_total_time"]
-    )
-
-    # Check result_metrics contains the rule
-    assert "test_rule" in run_metrics["result_metrics"]
-    assert run_metrics["result_metrics"]["test_rule"] == {"tokens_used": 10}
-
-    # Check text_redaction_summary
-    assert "test_rule" in run_metrics["text_redaction_summary"]
-    assert run_metrics["text_redaction_summary"]["test_rule"]["redaction_strings"] == (
-        "Hello",
-        "World",
-    )
-    assert run_metrics["text_redaction_summary"]["test_rule"]["n_proposed"] == 2
-
-
-def test__pdf_processor__apply__run_metrics():
-    """
-    - Given I have a PDF with highlight annotations (proposed redactions)
-    - When I call apply
-    - Then run_metrics should contain redaction_time and scrub_time as non-negative floats
-    """
-    with open(
-        os.path.join(
-            "test",
-            "resources",
-            "pdf",
-            "test__pdf_processor__text_and_image_proposed.pdf",
-        ),
-        "rb",
-    ) as f:
-        curated_doc_bytes = BytesIO(f.read())
-
-    processor = PDFProcessor()
-    processor.apply(curated_doc_bytes, {})
-    run_metrics = processor.get_run_metrics()
-
-    assert run_metrics is not None
-    assert set(run_metrics.keys()) == {"redaction_time", "scrub_time"}
-    assert isinstance(run_metrics["redaction_time"], float)
-    assert isinstance(run_metrics["scrub_time"], float)
-    assert run_metrics["redaction_time"] >= 0
-    assert run_metrics["scrub_time"] >= 0
+        assert run_metrics is not None
+        assert set(run_metrics.keys()) == {
+            "redaction_time",
+            "scrub_time",
+        }
+        assert isinstance(run_metrics["redaction_time"], float)
+        assert isinstance(run_metrics["scrub_time"], float)
+        assert run_metrics["redaction_time"] >= 0
+        assert run_metrics["scrub_time"] >= 0

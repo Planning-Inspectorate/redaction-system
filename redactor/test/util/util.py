@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+from math import isclose
 
 from azure.identity.aio import (
     AzureCliCredential,
@@ -9,6 +10,7 @@ from azure.identity.aio import (
 )
 from azure.servicebus import ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient
+from pymupdf import Rect
 
 
 class ServiceBusUtil:
@@ -120,3 +122,46 @@ def compare_unashable_lists(expected_results, actual_results):
     )
     assert len(expected_results) == len(actual_results), message
     assert all(matches), message
+
+
+def assert_rect_approx_equal(
+    actual: Rect,
+    expected: Rect,
+    *,
+    rel_tol: float = 1e-2,
+    abs_tol: float = 1e-2,
+):
+    """
+    Assert that two pymupdf.Rect objects are approximately equal.
+
+    Args:
+        actual: The actual Rect value.
+        expected: The expected Rect value.
+        rel_tol: Relative tolerance for float comparison.
+        abs_tol: Absolute tolerance for float comparison.
+    """
+    for attr in ("x0", "y0", "x1", "y1"):
+        a = getattr(actual, attr)
+        e = getattr(expected, attr)
+        assert isclose(a, e, rel_tol=rel_tol, abs_tol=abs_tol), (
+            f"Rect.{attr} mismatch: {a} != {e} (tolerance rel={rel_tol}, abs={abs_tol})\n"
+            f"  actual:   {actual}\n"
+            f"  expected: {expected}"
+        )
+
+
+def assert_instances_to_redact_approx_equal(
+    actual_instances: list[tuple[int, Rect, str]],
+    expected_instances: list[tuple[int, Rect, str]],
+):
+    for actual, expected in zip(actual_instances, expected_instances):
+        assert actual[0] == expected[0], (
+            f"Page number mismatch: {actual[0]} != {expected[0]}"
+        )
+        assert actual[2] == expected[2], (
+            f"Redaction term mismatch: {actual[2]} != {expected[2]}"
+        )
+        (
+            assert_rect_approx_equal(actual[1], expected[1]),
+            (f"Rect mismatch: {actual[1]} != {expected[1]}"),
+        )

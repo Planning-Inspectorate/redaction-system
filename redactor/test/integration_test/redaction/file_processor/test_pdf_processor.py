@@ -9,73 +9,11 @@ from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from core.redaction.file_processor import PDFProcessor
-
-
-def assert_rect_approx_equal(
-    actual: pymupdf.Rect,
-    expected: pymupdf.Rect,
-    *,
-    rel_tol: float = 1e-2,
-    abs_tol: float = 1e-2,
-):
-    """
-    Assert that two pymupdf.Rect objects are approximately equal.
-
-    Args:
-        actual: The actual Rect value.
-        expected: The expected Rect value.
-        rel_tol: Relative tolerance for float comparison.
-        abs_tol: Absolute tolerance for float comparison.
-    """
-    for attr in ("x0", "y0", "x1", "y1"):
-        a = getattr(actual, attr)
-        e = getattr(expected, attr)
-        assert isclose(a, e, rel_tol=rel_tol, abs_tol=abs_tol), (
-            f"Rect.{attr} mismatch: {a} != {e} (tolerance rel={rel_tol}, abs={abs_tol})\n"
-            f"  actual:   {actual}\n"
-            f"  expected: {expected}"
-        )
-
-
-def assert_rects_approx_equal(
-    actual: list[pymupdf.Rect],
-    expected: list[pymupdf.Rect],
-    *,
-    rel_tol: float = 1e-2,
-    abs_tol: float = 1e-2,
-):
-    """
-    Assert that two lists of pymupdf.Rect objects are approximately equal.
-
-    Args:
-        actual: The actual list of Rects.
-        expected: The expected list of Rects.
-        rel_tol: Relative tolerance for float comparison.
-        abs_tol: Absolute tolerance for float comparison.
-    """
-    assert len(actual) == len(expected), (
-        f"Rect list length mismatch: {len(actual)} != {len(expected)}"
-    )
-    for i, (a, e) in enumerate(zip(actual, expected)):
-        try:
-            assert_rect_approx_equal(a, e, rel_tol=rel_tol, abs_tol=abs_tol)
-        except AssertionError as err:
-            raise AssertionError(f"Rect mismatch at index {i}: {err}") from None
-
-
-def assert_instances_to_redact_approx_equal(
-    actual: tuple[int, Rect, str], expected: tuple[int, Rect, str]
-):
-    assert actual[0] == expected[0], (
-        f"Page number mismatch: {actual[0]} != {expected[0]}"
-    )
-    assert actual[2] == expected[2], (
-        f"Redaction term mismatch: {actual[2]} != {expected[2]}"
-    )
-    (
-        assert_rect_approx_equal(actual[1], expected[1]),
-        (f"Rect mismatch: {actual[1]} != {expected[1]}"),
-    )
+from core.util.pdf_util import PDFUtil
+from test.util.util import (
+    assert_instances_to_redact_approx_equal,
+    assert_rect_approx_equal,
+)
 
 
 def test__pdf_processor__extract_pdf_annotations():
@@ -215,7 +153,7 @@ def test__pdf_processor__add_provisional_redaction():
     page = pymupdf.open().new_page()
     rect = Rect(0, 0, 10, 10)
     term = "Hello"
-    PDFProcessor._add_provisional_redaction(page, rect, term)
+    PDFUtil.add_provisional_redaction(page, rect, term)
     annotations = list(page.annots())
     assert len(annotations) == 1
     annot = annotations[0]
@@ -226,78 +164,6 @@ def test__pdf_processor__add_provisional_redaction():
     assert info["creationDate"] is not None
     assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
     assert annot.type == (8, "Highlight")
-
-
-def test__pdf_processor__examine_provisional_text_redaction():
-    """
-    Given I have a provisional redaction candidate for a PDF
-    I want to determine whether it exactly matches the text on the page
-    If if is a multi-part redaction, I want to capture all parts of the redaction
-    """
-    with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
-        document_bytes = BytesIO(f.read())
-    terms_to_redact = [
-        "Riker",  # Single word redaction
-        "Commander Data",  # Multi-word redaction
-        "Your Honour",  # Multi-word redaction across line break
-    ]
-    pdf_processor = PDFProcessor()
-    pdf = pymupdf.open(stream=document_bytes)
-
-    instances_to_redact = []
-    for term in terms_to_redact:
-        instances_to_redact.extend(
-            pdf_processor._examine_provisional_text_redaction(
-                term,
-                pdf_processor._extract_page_text(pdf[0]),
-            )
-        )
-
-    expected_result = [
-        (
-            0,
-            Rect(72.0, 101.452392578125, 101.31330871582031, 113.741455078125),
-            "Riker",
-        ),
-        (
-            0,
-            Rect(
-                180.76254272460938,
-                145.0911865234375,
-                270.5700378417969,
-                157.3802490234375,
-            ),
-            "Commander Data",
-        ),
-        (
-            0,
-            Rect(
-                470.42864990234375,
-                101.452392578125,
-                492.64031982421875,
-                113.741455078125,
-            ),
-            "Your Honour",
-        ),
-        (
-            0,
-            Rect(72.0, 115.9986572265625, 110.50122833251953, 128.2877197265625),
-            "Your Honour",
-        ),
-        (
-            0,
-            Rect(
-                273.0046081542969,
-                217.822509765625,
-                336.7688903808594,
-                230.111572265625,
-            ),
-            "Your Honour",
-        ),
-    ]
-
-    for actual, expected in zip(instances_to_redact, expected_result):
-        assert_instances_to_redact_approx_equal(actual, expected)
 
 
 def test__pdf_processor__examine_provisional_redactions_on_page():
@@ -333,17 +199,17 @@ def test__pdf_processor__examine_provisional_redactions_on_page():
         ),
     ]
     pdf_processor = PDFProcessor()
+    pdf_processor.terms_found = {}
     pdf = pymupdf.open(stream=document_bytes)
 
     instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
         [text for _, text in redaction_candidates],
-        pdf_processor._extract_page_text(pdf[0]),
+        PDFUtil.extract_page_text(pdf[0]),
     )
 
-    for actual, expected in zip(
+    assert_instances_to_redact_approx_equal(
         instances_to_redact, [(0, rect, term) for rect, term in redaction_candidates]
-    ):
-        assert_instances_to_redact_approx_equal(actual, expected)
+    )
 
 
 def test__pdf_processor__apply_provisional_text_redactions():
