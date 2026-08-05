@@ -12,9 +12,6 @@ from typing import Any
 
 import azure.durable_functions as df
 import azure.functions as func
-from opentelemetry._logs import get_logger_provider
-from opentelemetry.metrics import get_meter_provider
-from opentelemetry.trace import get_tracer_provider
 
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
@@ -139,12 +136,6 @@ def trigger_task(params):
 
     job_id = params.pop("job_id")
     stage = params["stage"]
-
-    # Shut down OpenTelemetry providers to prevent resource leaks
-    # See https://learn.microsoft.com/en-us/troubleshoot/azure/azure-monitor/app-insights/telemetry/opentelemetry-troubleshooting-python
-    get_meter_provider().shutdown()
-    get_tracer_provider().shutdown()
-    get_logger_provider().shutdown()
 
     if stage in ["ANALYSE", "REDACT", "SANITISE"]:
         return RedactionManager(job_id, stage)._try_process(params)
