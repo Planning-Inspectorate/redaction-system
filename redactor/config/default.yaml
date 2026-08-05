@@ -4,7 +4,7 @@ redactors:
     redaction_rules:
     - name: "Text_Redactor_01"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      system_prompt: "You are a precise assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
       - "People's names"
       constraints:
@@ -15,7 +15,7 @@ redactors:
 
     - name: "Text_Redactor_02"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      system_prompt: "You are a precise assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
       - "Personal addresses and postcodes" 
       - "Personal email addresses, unless it's a Planning Inspectorate email"
@@ -25,7 +25,7 @@ redactors:
         
     - name: "Text_Redactor_03"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      system_prompt: "You are a precise assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
       - "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text."
       - "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership"
@@ -35,7 +35,7 @@ redactors:
 
     - name: "Text_Redactor_04"
       model: "gpt-5.6-luna"
-      system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
+      system_prompt: "You are a precise assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
       - "Dates of birth, and ages of people"
       - "The location of any of the following: badger sett, bat maternity roost, bird nest"
