@@ -31,9 +31,10 @@ extends:
   parameters:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
-    customVisionProjectId: $(CUSTOM_VISION_PROJECT_ID_${{ upper(parameters.env) }})
-    customVisionEndpoint: $(CUSTOM_VISION_ENDPOINT_${{ upper(parameters.env) }})
-    customVisionApiKey: $(CUSTOM_VISION_API_KEY_${{ upper(parameters.env) }
+    customVisionTrainProjectId: $(CUSTOM_VISION_TRAIN_PROJECT_ID_${{ upper(parameters.env) }})
+    customVisionTrainEndpoint: $(CUSTOM_VISION_TRAIN_ENDPOINT_${{ upper(parameters.env) }})
+    customVisionPredProjectId: $(CUSTOM_VISION_PRED_PROJECT_ID_${{ upper(parameters.env) }})
+    customVisionPredEndpoint: $(CUSTOM_VISION_PRED_ENDPOINT_${{ upper(parameters.env) }})
     storageAccountName: $(STORAGE_NAME_${{ upper(parameters.env) }})
     containerName: customvision-models
 
@@ -62,9 +63,8 @@ extends:
         - script: |
             python3 -m pip install azure-cognitiveservices-vision-customvision
             python3 pipelines/scripts/export_cv_model.py \
-              --project-id $(customVisionProjectId) \
-              --endpoint $(customVisionEndpoint) \
-              --api-key $(customVisionApiKey) \
+              --project-id $(customVisionTrainProjectId) \
+              --endpoint $(customVisionTrainEndpoint) \
               --output $(modelFileName)
           displayName: 'Export model using Custom Vision API'
 
@@ -116,8 +116,7 @@ extends:
         - script: |
             python3 -m pip install azure-cognitiveservices-vision-customvision
             python3 pipelines/scripts/import_cv_model.py \
-              --project-id $(customVisionProjectId) \
-              --endpoint $(customVisionEndpoint) \
-              --api-key $(customVisionApiKey) \
+              --project-id $(customVisionPredProjectId) \
+              --endpoint $(customVisionPredEndpoint) \
               --input $(modelFileName)
           displayName: 'Import model using Custom Vision API'
