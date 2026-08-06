@@ -28,12 +28,14 @@ resources:
       ref: refs/tags/release/3.24.2
 
 extends:
-  template: stages/wrapper_cd.yml@templates
+  template: stages/wrapper_cd.yml@templates/
   parameters:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
+
     environments:
       - name: ${{ parameters.env }}
+
     deploymentStages:
       - name: Deploy Receiver Function App
         deploymentJobs:
@@ -79,6 +81,7 @@ extends:
                     --build-remote true \
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
+
       - name: Deploy Processor Function App
         deploymentJobs:
           - name: Deploy Processor Function App
