@@ -373,6 +373,44 @@ resource "azurerm_cognitive_account" "computer_vision" {
 }
 
 ############################################################################
+# Create Azure Custom Vision (Signature Redaction)
+############################################################################
+resource "azurerm_cognitive_account" "custom_vision_train" {
+  #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
+  count                              = var.environment == "dev" ? 1 : 0
+  name                               = "${local.org}-lang-train-${local.resource_suffix}"
+  location                           = local.location
+  resource_group_name                = azurerm_resource_group.primary.name
+  kind                               = "CustomVision.Training"
+  sku_name                           = "F0"
+  custom_subdomain_name              = "${local.org}-customvision-train-${local.resource_suffix}"
+  public_network_access_enabled      = false
+  outbound_network_access_restricted = true
+  fqdns                              = ["azureprivatedns.net"]
+  local_auth_enabled                 = false
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+resource "azurerm_cognitive_account" "custom_vision_pred" {
+  #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
+  name                               = "${local.org}-lang-pred-${local.resource_suffix}"
+  location                           = local.location
+  resource_group_name                = azurerm_resource_group.primary.name
+  kind                               = "CustomVision.Prediction"
+  sku_name                           = "F0"
+  custom_subdomain_name              = "${local.org}-customvision-pred-${local.resource_suffix}"
+  public_network_access_enabled      = false
+  outbound_network_access_restricted = true
+  fqdns                              = ["azureprivatedns.net"]
+  local_auth_enabled                 = false
+  identity {
+    type = "SystemAssigned"
+  }
+}
+
+############################################################################
 # Service bus subscriptions
 # The topics themselves are defined at https://github.com/Planning-Inspectorate/infrastructure-environments
 # Each team that uses the redaction system must have a block like this for their own subscription

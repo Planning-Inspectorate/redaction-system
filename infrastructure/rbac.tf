@@ -19,6 +19,19 @@ resource "azurerm_role_assignment" "function_app_processor_computervision_contri
   principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
 }
 
+resource "azurerm_role_assignment" "function_app_processor_customvision_train_contributor" {
+  count                = var.environment == "dev" ? 1 : 0
+  scope                = azurerm_cognitive_account.custom_vision_train[0].id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "function_app_processor_customvision_pred_contributor" {
+  scope                = azurerm_cognitive_account.custom_vision_pred.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = azurerm_linux_function_app.processor.identity[0].principal_id
+}
+
 resource "azurerm_role_assignment" "function_app_processor_servicebus_datasender" {
   scope                = data.azurerm_servicebus_namespace.backoffice.id
   role_definition_name = "Azure Service Bus Data Sender"
@@ -39,6 +52,19 @@ resource "azurerm_role_assignment" "function_app_openai_contributor" {
 
 resource "azurerm_role_assignment" "function_app_computervision_contributor" {
   scope                = azurerm_cognitive_account.computer_vision.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = azurerm_linux_function_app.redaction_system.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "function_app_customvision_train_contributor" {
+  count                = var.environment == "dev" ? 1 : 0
+  scope                = azurerm_cognitive_account.custom_vision_train[0].id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = azurerm_linux_function_app.redaction_system.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "function_app_customvision_pred_contributor" {
+  scope                = azurerm_cognitive_account.custom_vision_pred.id
   role_definition_name = "Cognitive Services User"
   principal_id         = azurerm_linux_function_app.redaction_system.identity[0].principal_id
 }
@@ -78,6 +104,19 @@ resource "azurerm_role_assignment" "engineer_openai_contributor" {
 
 resource "azurerm_role_assignment" "engineer_computervision_contributor" {
   scope                = azurerm_cognitive_account.computer_vision.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azuread_group.redaction_engineers.object_id
+}
+
+resource "azurerm_role_assignment" "engineer_customvision_train_contributor" {
+  count                = var.environment == "dev" ? 1 : 0
+  scope                = azurerm_cognitive_account.custom_vision_train[0].id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azuread_group.redaction_engineers.object_id
+}
+
+resource "azurerm_role_assignment" "engineer_customvision_pred_contributor" {
+  scope                = azurerm_cognitive_account.custom_vision_pred.id
   role_definition_name = "Cognitive Services User"
   principal_id         = data.azuread_group.redaction_engineers.object_id
 }
@@ -128,6 +167,20 @@ resource "azurerm_role_assignment" "ado_openai_contributor" {
 resource "azurerm_role_assignment" "ado_computervision_contributor" {
   count                = var.environment != "prod" ? 1 : 0
   scope                = azurerm_cognitive_account.computer_vision.id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azuread_service_principal.ci.object_id
+}
+
+resource "azurerm_role_assignment" "ado_customvision_train_contributor" {
+  count                = var.environment == "dev" ? 1 : 0
+  scope                = azurerm_cognitive_account.custom_vision_train[0].id
+  role_definition_name = "Cognitive Services User"
+  principal_id         = data.azuread_service_principal.ci.object_id
+}
+
+resource "azurerm_role_assignment" "ado_customvision_pred_contributor" {
+  count                = var.environment != "prod" ? 1 : 0
+  scope                = azurerm_cognitive_account.custom_vision_pred.id
   role_definition_name = "Cognitive Services User"
   principal_id         = data.azuread_service_principal.ci.object_id
 }
