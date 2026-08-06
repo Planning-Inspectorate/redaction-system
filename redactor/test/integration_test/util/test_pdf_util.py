@@ -1,4 +1,5 @@
 from io import BytesIO
+from math import isclose
 
 import pymupdf
 from pymupdf import Rect
@@ -78,7 +79,8 @@ class TestPDFUtil:
         assert_instances_to_redact_approx_equal(instances_to_redact, expected_result)
 
     def test_add_provisional_redaction(self):
-        page = pymupdf.open().new_page()
+        doc = pymupdf.open()
+        page = doc.new_page()
         rect = Rect(0, 0, 10, 10)
         term = "Hello"
         PDFUtil.add_provisional_redaction(page, rect, term)
@@ -92,3 +94,20 @@ class TestPDFUtil:
         assert info["creationDate"] is not None
         assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
         assert annot.type == (8, "Highlight")
+
+        # Save and reopen to verify persisted colours (pymupdf requires reload to read back)
+        pdf_bytes = BytesIO()
+        doc.save(pdf_bytes)
+        pdf_bytes.seek(0)
+        reopened = pymupdf.open(stream=pdf_bytes)
+        annot = next(iter(reopened[0].annots()))
+
+        expected_colours = [0.2157, 0.898, 1.0]
+        actual_colours = annot.colors["stroke"]
+        assert len(actual_colours) == 3, (
+            f"Expected highlight colour to have 3 components, got {actual_colours}"
+        )
+        assert all(
+            isclose(actual_colours[i], expected_colours[i], abs_tol=1e-2)
+            for i in range(3)
+        ), f"Expected {expected_colours}, got {list(actual_colours)}"

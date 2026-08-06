@@ -15,6 +15,8 @@ from core.util.types import PydanticImage
 # guards against matching short words that legitimately appear inside larger words.
 MIN_JOINED_BOUNDARY_LENGTH = 4
 
+ANNOT_HIGHLIGHT_COLOR = (0.2157, 0.898, 1.0)  # light blue
+
 
 class PDFImageMetadata(BaseModel):
     source_image_resolution: tuple[float, float]
@@ -522,6 +524,8 @@ class PDFUtil:
                 "creationDate": pymupdf.get_pdf_now(),
             }
         )
+        highlight_annotation.set_colors(colors={"stroke": ANNOT_HIGHLIGHT_COLOR})
+        highlight_annotation.update()
 
     @classmethod
     def _check_partial_redaction_across_line_breaks(
