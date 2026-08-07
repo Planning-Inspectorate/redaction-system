@@ -249,4 +249,6 @@ scratch
 
 # Profile outputs
 *.profile
-memoryProfile
+memoryProfile/
+
+signature_detector/model
