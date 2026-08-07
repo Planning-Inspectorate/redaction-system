@@ -114,7 +114,7 @@ resource "azurerm_storage_share" "function_app_processor" {
   quota              = 5120
 }
 resource "azurerm_storage_share" "function_app" {
-  name               = azurerm_linux_function_app.redaction_system.name
+  name               = azurerm_linux_function_app.receiver.name
   storage_account_id = azurerm_storage_account.redaction_storage.id
   quota              = 5120
 }
@@ -188,7 +188,7 @@ resource "azurerm_linux_function_app" "processor" {
   }
 }
 
-resource "azurerm_linux_function_app" "redaction_system" {
+resource "azurerm_linux_function_app" "receiver" {
   name                = "${local.org}-func-${local.resource_suffix}"
   resource_group_name = azurerm_resource_group.primary.name
   location            = local.location
@@ -225,6 +225,12 @@ resource "azurerm_linux_function_app" "redaction_system" {
     "AZURE_SERVICE_BUS_NAMESPACE"                   = data.azurerm_servicebus_namespace.backoffice.name
     "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
   }
+}
+
+# Renamed to avoid confusion between function apps
+moved {
+  from = azurerm_linux_function_app.redaction_system.id
+  to   = azurerm_linux_function_app.receiver.id
 }
 
 ############################################################################
