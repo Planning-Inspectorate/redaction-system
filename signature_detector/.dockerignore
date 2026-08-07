@@ -1,0 +1,7 @@
+# Byte-compiled
+__pycache__/
+*.pyc
+
+# Model cache artifacts
+.cache/
+*.tmp
