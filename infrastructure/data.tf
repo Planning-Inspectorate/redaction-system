@@ -84,3 +84,10 @@ data "azurerm_servicebus_topic" "redaction_process_complete" {
   name         = "redaction-process-complete"
   namespace_id = data.azurerm_servicebus_namespace.backoffice.id
 }
+
+data "azurerm_container_registry" "container_registry" {
+  name                = var.tooling_config.container_registry_name
+  resource_group_name = var.tooling_config.container_registry_rg
+
+  provider = azurerm.tooling
+}

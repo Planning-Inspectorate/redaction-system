@@ -42,9 +42,11 @@ variable "daily_log_cap" {
 variable "tooling_config" {
   description = "Config for the tooling subscription resources"
   type = object({
-    network_name    = string
-    network_rg      = string
-    subscription_id = string
+    container_registry_name = string
+    container_registry_rg   = string
+    network_name            = string
+    network_rg              = string
+    subscription_id         = string
   })
 }
 

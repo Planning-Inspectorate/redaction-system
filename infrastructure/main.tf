@@ -185,6 +185,7 @@ resource "azurerm_linux_function_app" "processor" {
     "WEBSITE_CONTENTOVERVNET"                       = 1
     "AZURE_SERVICE_BUS_NAMESPACE"                   = data.azurerm_servicebus_namespace.backoffice.name
     "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
+    "SIGNATURE_DETECTOR_ENDPOINT"                   = azurerm_linux_web_app.signature_detector.default_hostname
   }
 }
 
