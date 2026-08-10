@@ -185,6 +185,7 @@ resource "azurerm_linux_function_app" "processor" {
     "WEBSITE_CONTENTOVERVNET"                       = 1
     "AZURE_SERVICE_BUS_NAMESPACE"                   = data.azurerm_servicebus_namespace.backoffice.name
     "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
+    "SIGNATURE_DETECTOR_ENDPOINT"                   = azurerm_linux_web_app.signature_detector.default_hostname
   }
 }
 
@@ -228,6 +229,74 @@ moved {
   from = azurerm_linux_function_app.redaction_system
   to   = azurerm_linux_function_app.receiver
 }
+
+resource "azurerm_linux_web_app" "signature_detector" {
+  #checkov:skip=CKV_AZURE_88: Azure Files not needed for Docker container app
+  #checkov:skip=CKV_AZURE_13: Internal service behind private network, authentication handled at application level
+  name                          = "${local.org}-app-signature-detector-${local.resource_suffix}"
+  location                      = local.location
+  resource_group_name           = azurerm_resource_group.primary.name
+  service_plan_id               = azurerm_service_plan.processor.id
+  client_certificate_enabled    = true
+  https_only                    = true
+  public_network_access_enabled = false
+  virtual_network_subnet_id     = azurerm_subnet.function_app.id
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  logs {
+    failed_request_tracing  = true
+    detailed_error_messages = true
+
+    http_logs {
+      file_system {
+        retention_in_days = 7
+        retention_in_mb   = 35
+      }
+    }
+
+  }
+
+
+  site_config {
+    always_on         = true
+    http2_enabled     = true
+    ftps_state        = "Disabled"
+    health_check_path = "/health"
+
+    application_stack {
+      docker_image_name        = "signature-detector:latest"
+      docker_registry_url      = "https://${azurerm_container_registry.container_registry.login_server}"
+      docker_registry_username = ""
+      docker_registry_password = ""
+    }
+
+    ip_restriction_default_action = "Allow"
+
+  }
+
+  lifecycle {
+    ignore_changes = [
+      site_config[0].application_stack[0].docker_image_name,
+      tags
+    ]
+  }
+
+  app_settings = {
+    "WEBSITES_PORT"                       = "8080"
+    "DOCKER_ENABLE_CI"                    = "true"
+    "TRANSFORMERS_OFFLINE"                = "1"
+    "HF_HUB_OFFLINE"                      = "1"
+    "APP_INSIGHTS_CONNECTION_STRING"      = azurerm_application_insights.redaction_system.connection_string
+    "WEBSITES_ENABLE_APP_SERVICE_STORAGE" = "false"
+    "DOCKER_REGISTRY_SERVER_URL"          = "https://${azurerm_container_registry.container_registry.login_server}"
+  }
+
+  tags = local.tags
+}
+
 
 ############################################################################
 # Create App Insights / Monitoring resources
@@ -299,6 +368,23 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "log_cap" {
   severity = 2
   action {
     action_groups = [azurerm_monitor_action_group.redaction_tech.id]
+  }
+}
+
+resource "azurerm_monitor_diagnostic_setting" "web_app_logs" {
+  name                       = "Web App Logs"
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.redaction_system.id
+  target_resource_id         = azurerm_linux_web_app.signature_detector.id
+
+  enabled_log {
+    category = "AppServiceConsoleLogs"
+  }
+
+  lifecycle {
+    ignore_changes = [
+      enabled_log,
+      metric
+    ]
   }
 }
 
@@ -392,4 +478,29 @@ resource "azurerm_servicebus_subscription_rule" "redaction_process_complete" {
   correlation_filter {
     label = "redaction-system" # Each team will have their requests labelled with an id representing their team
   }
+}
+
+############################################################################
+# Container Registry
+############################################################################
+resource "azurerm_container_registry" "container_registry" {
+  #checkov:skip=CKV_AZURE_164: Ensures that ACR uses signed/trusted images
+  #checkov:skip=CKV_AZURE_165: Georeplication not necessary
+  #checkov:skip=CKV_AZURE_166: "Ensure container image quarantine, scan, and mark images verified"
+  #checkov:skip=CKV_AZURE_167: "Ensure a retention policy is set to cleanup untagged manifests."
+  #checkov:skip=CKV_AZURE_233: Zone redundancy not needed
+  name                          = "${local.org}crredaction${var.environment_short}${local.location_short}"
+  resource_group_name           = azurerm_resource_group.primary.name
+  location                      = local.location
+  admin_enabled                 = false
+  sku                           = "Premium"
+  public_network_access_enabled = false
+  retention_policy_in_days      = 7
+  data_endpoint_enabled         = true
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = local.tags
 }

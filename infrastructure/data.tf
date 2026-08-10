@@ -72,6 +72,14 @@ data "azurerm_private_dns_zone" "servicebus" {
   tags = local.tags
 }
 
+data "azurerm_private_dns_zone" "acr" {
+  name                = "privatelink.azurecr.io"
+  resource_group_name = var.tooling_config.network_rg
+  provider            = azurerm.tooling
+
+  tags = local.tags
+}
+
 ##
 # Service bus
 ##
