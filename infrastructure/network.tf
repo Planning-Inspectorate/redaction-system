@@ -1,6 +1,7 @@
 ############################################################################
 # Virtual networks
 ############################################################################
+
 resource "azurerm_virtual_network" "redaction_system" {
   name                = "vnet-${local.service_name}-${var.environment}-${local.location_short}"
   location            = local.location
@@ -40,6 +41,7 @@ resource "azurerm_subnet" "function_app" {
 ############################################################################
 # DNS Zone Vnet links
 ############################################################################
+
 resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   for_each              = { for idx, val in local.storage_subresources : idx => val }
   name                  = "${local.org}-vnetlink-${each.value}-${local.service_name}-${var.environment}"
@@ -98,6 +100,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
 ############################################################################
 # Private endpoints
 ############################################################################
+
 resource "azurerm_private_endpoint" "redaction_storage" {
   for_each            = { for idx, val in local.storage_subresources : idx => val }
   name                = "${local.org}-pe-${azurerm_storage_account.redaction_storage.name}-${each.value}-${var.environment}"

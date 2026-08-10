@@ -1,6 +1,7 @@
 ############################################################################
 # Service permissions
 ############################################################################
+
 resource "azurerm_role_assignment" "function_app_processor_storage_contributor" {
   scope                = azurerm_storage_account.redaction_storage.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -34,6 +35,7 @@ resource "azurerm_role_assignment" "function_app_servicebus_datasender" {
 ############################################################################
 # Engineer permissions
 ############################################################################
+
 resource "azurerm_role_assignment" "engineer_storage_contributor" {
   scope                = azurerm_storage_account.redaction_storage.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -92,6 +94,23 @@ resource "azurerm_role_assignment" "ado_deployment_functions_contributor" {
   principal_id         = data.azuread_service_principal.deployment.object_id
 }
 
+resource "azurerm_role_assignment" "ado_deployment_signature_detector_contributor" {
+  scope                = azurerm_linux_web_app.signature_detector.id
+  role_definition_name = "Contributor"
+  principal_id         = data.azuread_service_principal.deployment.object_id
+}
+
+resource "azurerm_role_assignment" "ado_deployment_functions_container_registry_acr_pull" {
+  scope                = data.azurerm_container_registry.container_registry.id
+  role_definition_name = "AcrPull"
+  principal_id         = data.azuread_service_principal.deployment.object_id
+}
+
+resource "azurerm_role_assignment" "ado_deployment_functions_container_registry_acr_push" {
+  scope                = data.azurerm_container_registry.container_registry.id
+  role_definition_name = "AcrPush"
+  principal_id         = data.azuread_service_principal.deployment.object_id
+}
 
 resource "azurerm_role_assignment" "ado_ci_storage_contributor" {
   count                = var.environment != "prod" ? 1 : 0
