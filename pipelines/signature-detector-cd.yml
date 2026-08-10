@@ -1,0 +1,136 @@
+name: Signature Detector CD
+
+parameters:
+- name: env
+  default: 'Dev'
+  values:
+  - 'Dev'
+  - 'Test'
+  - 'Training'
+  - 'Prod'
+
+pr: none
+
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - signature_detector/**
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      endpoint: Planning-Inspectorate
+      name: Planning-Inspectorate/common-pipeline-templates
+      ref: refs/tags/release/3.24.2
+
+variables:
+  - template: azure-pipelines-variables.yml
+  - name: acrName
+    value: 'pinscr${{ lower(parameters.env) }}redactionuks'
+  - name: imageName
+    value: 'signature-detector'
+  - name: resourceGroup
+    value: 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks'
+  - name: appName
+    value: 'pins-app-signature-detector-redaction-system-${{ lower(parameters.env) }}-uks'
+
+extends:
+  template: stages/wrapper_cd.yml@templates
+  parameters:
+    globalVariables:
+      - template: pipelines/azure-pipelines-variables.yml@self
+    environments:
+      - name: ${{ parameters.env }}
+    deploymentStages:
+      - name: Build and Push Docker Image
+        deploymentJobs:
+          - name: Build and Push
+            steps:
+              - checkout: self
+                displayName: 'Checkout repo'
+
+              - task: AzureCLI@2
+                displayName: 'Download model files'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    python3 -m pip install huggingface_hub
+                    python3 pipelines/scripts/download_signature_detector_model.py --model-dir $(Build.SourcesDirectory)/signature_detector/model
+
+              - task: AzureCLI@2
+                displayName: 'Build and push to ACR'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    az acr login --name $(acrName)
+                    cd $(Build.SourcesDirectory)/signature_detector
+                    docker build -t $(acrName).azurecr.io/$(imageName):$(Build.SourceVersion) \
+                                 -t $(acrName).azurecr.io/$(imageName):latest .
+                    docker push $(acrName).azurecr.io/$(imageName):$(Build.SourceVersion)
+                    docker push $(acrName).azurecr.io/$(imageName):latest
+
+      - name: Deploy to App Service
+        dependsOn:
+          - Build and Push Docker Image
+        deploymentJobs:
+          - name: Deploy Container
+            steps:
+              - task: AzureCLI@2
+                displayName: 'Update App Service container image'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    az webapp config container set \
+                      --resource-group $(resourceGroup) \
+                      --name $(appName) \
+                      --registry-url https://$(acrName).azurecr.io \
+                      --docker-custom-image-name $(acrName).azurecr.io/$(imageName):$(Build.SourceVersion) \
+                      --docker-registry-server-url https://$(acrName).azurecr.io
+
+                    az webapp restart \
+                      --resource-group $(resourceGroup) \
+                      --name $(appName)
+
+              - task: AzureCLI@2
+                displayName: 'Wait for healthy deployment'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    echo "Waiting for App Service to become healthy..."
+                    for i in $(seq 1 30); do
+                      STATUS=$(az webapp show --resource-group $(resourceGroup) --name $(appName) --query state -o tsv)
+                      if [ "$STATUS" = "Running" ]; then
+                        echo "App Service is running."
+                        exit 0
+                      fi
+                      echo "Status: $STATUS. Retrying in 10s..."
+                      sleep 10
+                    done
+                    echo "App Service did not become healthy in time."
+                    exit 1
+
+              - task: AzureCLI@2
+                displayName: 'Test the deployed service'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    python3 pipelines/scripts/test_signature_detector_service.py --service-url https://$(appName).azurewebsites.net --image $(Build.SourcesDirectory)/redactor/test/resources/image/image_with_signature.png
