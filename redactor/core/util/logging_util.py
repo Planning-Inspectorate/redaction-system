@@ -5,7 +5,6 @@ import threading
 import traceback
 from typing import ClassVar
 
-from azure.monitor.opentelemetry import configure_azure_monitor
 from dotenv import load_dotenv
 
 load_dotenv(verbose=True)
@@ -90,6 +89,8 @@ class LoggingUtil(metaclass=Singleton):
         # Calling configure_azure_monitor again would add a second export pipeline
         # and duplicate every log entry
         if not os.environ.get("FUNCTIONS_WORKER_RUNTIME"):
+            from azure.monitor.opentelemetry import configure_azure_monitor
+
             configure_azure_monitor(
                 logger_name=self.namespace,
                 connection_string=app_insights_connection_string,
