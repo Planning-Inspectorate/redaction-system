@@ -37,7 +37,7 @@ def test_logging_util__is_thread_safe(mock_init):
 
 @pytest.mark.nologgerfixt
 @patch("os.environ.get", return_value="some_connection_string;blah;blah")
-@patch("core.util.logging_util.configure_azure_monitor")
+@patch("azure.monitor.opentelemetry.configure_azure_monitor")
 def get_new_logging_instance(mock_configure_azure_monitor, mock_env_get):
     Singleton._INSTANCES = {}
     return LoggingUtil()
@@ -45,7 +45,7 @@ def get_new_logging_instance(mock_configure_azure_monitor, mock_env_get):
 
 @pytest.mark.nologgerfixt
 @patch("os.environ.get", side_effect=["some_connection_string;blah;blah", None])
-@patch("core.util.logging_util.configure_azure_monitor")
+@patch("azure.monitor.opentelemetry.configure_azure_monitor")
 def test_logging_util__init(mock_configure_azure_monitor, mock_env_get):
     Singleton._INSTANCES = {}
     logging_util_inst = LoggingUtil()

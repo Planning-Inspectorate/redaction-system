@@ -26,4 +26,4 @@ def mock_logging_util(request):
 
 
 def pytest_configure():
-    configure_session()
+    configure_session(eager_import=False)

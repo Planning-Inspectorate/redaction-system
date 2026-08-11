@@ -44,7 +44,7 @@ _CONFIGURED = False
 logger = logging.getLogger(__name__)
 
 
-def configure_session():
+def configure_session(eager_import: bool = True):
     global _CONFIGURED
     if _CONFIGURED:
         return
@@ -54,7 +54,8 @@ def configure_session():
         run_id = str(uuid4())[:8]
         os.environ["RUN_ID"] = str(run_id)
     logger.info(f"Running with run_id='{os.environ['RUN_ID']}'")
-    import_all_testing_modules()
+    if eager_import:
+        import_all_testing_modules()
 
 
 def import_all_testing_modules():
