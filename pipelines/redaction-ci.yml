@@ -381,7 +381,7 @@ extends:
           - task: PublishCodeCoverageResults@2
             displayName: 'Publish coverage reports'
             inputs:
-              summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/coverage.xml'
+              summaryFileLocation: '$(Build.SourcesDirectory)/redaction-system/redactor/coverage.xml'
 
           - script: |
               set -e
