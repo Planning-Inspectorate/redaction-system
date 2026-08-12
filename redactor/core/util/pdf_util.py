@@ -4,7 +4,7 @@ import numpy as np
 import pymupdf
 from numpy.typing import NDArray
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from core.util.image_analysis import ImageAnalysisUtil
 from core.util.text_util import get_normalised_words, normalise_text
@@ -45,8 +45,8 @@ class PDFLineMetadata(BaseModel):
     x1: tuple[float, ...] = ()
     """The x1 coordinates of the words in the line"""
 
-    class Config:
-        arbitrary_types_allowed = True  # Allow numpy arrays in the model
+    # Allow numpy arrays in the model
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __eq__(self, other):
         # Needed updating to compare numpy arrays
