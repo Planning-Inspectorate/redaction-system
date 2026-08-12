@@ -115,9 +115,10 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 60) -> str:
             while time.time() < deadline:
                 time.sleep(5)
                 status_r = requests.get(status_url, timeout=30)
-                if status_r.status_code == 200:
-                    status_data = status_r.json()
-                    runtime_status = status_data.get("runtimeStatus", "")
+                status_data = status_r.json()
+                status_code = status_r.status_code
+                runtime_status = status_data.get("runtimeStatus", "")
+                if status_code == 200:
                     if runtime_status in ("Completed", "Failed", "Terminated"):
                         logger.info(
                             "Orchestration %s finished with status: %s (%s)",
@@ -126,6 +127,15 @@ def trigger_and_wait(start_url: str, payload: dict, timeout_s: int = 60) -> str:
                             _dt(t0),
                         )
                         return instance_id
+                else:
+                    runtime_status = status_data.get("runtimeStatus", "")
+                    logger.info(
+                        "Orchestration %s still running: %s %s (%s)",
+                        instance_id,
+                        status_code,
+                        runtime_status,
+                        _dt(t0),
+                    )
             logger.warning(
                 "Orchestration %s did not complete within %ds", instance_id, timeout_s
             )
