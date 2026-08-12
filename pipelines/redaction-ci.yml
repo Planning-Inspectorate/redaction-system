@@ -283,6 +283,37 @@ extends:
 
           - script: |
               set -e
+              cd redaction-system
+
+              echo "Warming up Durable Functions orchestrator..."
+              ORCH_URL="http://localhost:7071/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
+
+              # Wait for the orchestrator endpoint to accept requests
+              for i in {1..30}; do
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$ORCH_URL" \
+                  -H "Content-Type: application/json" \
+                  -d '{"warmup": true}' 2>/dev/null || echo "000")
+                if [ "$STATUS" = "202" ] || [ "$STATUS" = "409" ]; then
+                  echo "Orchestrator endpoint is accepting requests (HTTP $STATUS)"
+                  break
+                fi
+                echo "Orchestrator not ready yet (HTTP $STATUS), retrying in 3s..."
+                sleep 3
+              done
+
+              if [ "$STATUS" != "202" ] && [ "$STATUS" != "409" ]; then
+                echo "Orchestrator did not become ready. Last 100 lines of processor log:"
+                tail -n 100 func-host-processor.log || true
+                exit 1
+              fi
+
+              # Wait for warm-up orchestration to complete
+              sleep 5
+              echo "Warm-up complete"
+            displayName: 'Warm up Durable Functions orchestrator'
+
+          - script: |
+              set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
