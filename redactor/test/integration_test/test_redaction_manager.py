@@ -35,10 +35,11 @@ def mock_make_job_id_unique(request):
         yield
 
 
-@pytest.mark.flaky(
-    reruns=3, reruns_delay=20, only_rerun="ResourceNotFoundError"
-)  # Flaky test due to Azure auth/network issues
 class TestRedactionManager(TestCase):
+    pytestmark = pytest.mark.flaky(
+        reruns=3, reruns_delay=20, only_rerun="ResourceNotFoundError"
+    )  # Flaky test due to Azure auth/network issues
+
     STORAGE_ENDPOINT = f"https://pinsstredaction{ENV}uks.blob.core.windows.net"
     BLOB_SERVICE_CLIENT = BlobServiceClient(
         STORAGE_ENDPOINT,
