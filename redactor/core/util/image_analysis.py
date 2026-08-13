@@ -34,7 +34,7 @@ def handle_last_retry_error(retry_state):
 class ImageAnalysisUtil:
     CACHE_LOCK = Lock()
 
-    def __init__(self):
+    class EndpointNotSetError(EnvironmentError):
         pass
 
     @classmethod
@@ -65,12 +65,7 @@ class ImageAnalysisUtil:
         :param Image.Image image: The image to check
         :returns: True if the image size is within the limits, False otherwise
         """
-        byte_stream = BytesIO()
-        # Convert image to RGB if it's not already, as some formats may not be
-        # supported by Azure Computer Vision API
-        save_image = image.convert("RGB") if image.mode != "RGB" else image
-        save_image.save(byte_stream, format="jpeg")
-        image_bytes = byte_stream.getvalue()
+        image_bytes = cls._save_image_to_bytes(image)
 
         if len(image_bytes) > 20 * 1024 * 1024:
             LoggingUtil().log_info(
@@ -172,12 +167,18 @@ class AzureVisionUtil(ImageAnalysisUtil):
     @classmethod
     def _get_client(cls) -> ImageAnalysisClient:
         if cls._VISION_CLIENT is None:
+            endpoint = os.environ.get("AZURE_VISION_ENDPOINT", None)
+            if endpoint is None:
+                raise cls.EndpointNotSetError(
+                    "AZURE_VISION_ENDPOINT environment variable is not set."
+                )
             cls._VISION_CLIENT = ImageAnalysisClient(
-                endpoint=os.environ.get("AZURE_VISION_ENDPOINT", None),
+                endpoint,
                 credential=ChainedTokenCredential(
                     ManagedIdentityCredential(), AzureCliCredential()
                 ),
             )
+
         return cls._VISION_CLIENT
 
     @classmethod

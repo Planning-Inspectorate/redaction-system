@@ -121,6 +121,18 @@ class TestImageDetection:
 
 
 class TestAzureVisionUtilBase:
+    # Avoid checking for the environment variable in tests
+    @pytest.fixture(autouse=True)
+    @staticmethod
+    def _mock_get_endpoint(request):
+        if "noendpointfixt" in request.keywords:
+            yield
+            return
+        with patch.object(
+            AzureVisionUtil, "_get_client", return_value="http://mock-endpoint"
+        ):
+            yield
+
     @pytest.fixture(autouse=True)
     @staticmethod
     def _clear_caches():
@@ -129,6 +141,29 @@ class TestAzureVisionUtilBase:
         yield
         AzureVisionUtil._IMAGE_FACE_CACHE.clear()
         AzureVisionUtil._IMAGE_TEXT_CACHE.clear()
+
+
+class TestGetClient(TestAzureVisionUtilBase):
+    @pytest.fixture(autouse=True)
+    def _reset_endpoint(self):
+        AzureVisionUtil._VISION_CLIENT = None
+        yield
+        AzureVisionUtil._VISION_CLIENT = None
+
+    @pytest.mark.noendpointfixt
+    def test_returns_endpoint_from_env(self, monkeypatch):
+        monkeypatch.setenv("AZURE_VISION_ENDPOINT", "http://test-endpoint")
+        with patch("core.util.image_analysis.ImageAnalysisClient") as mock_client:
+            client = AzureVisionUtil._get_client()
+        assert client is not None
+        mock_client.assert_called_once()
+        assert mock_client.call_args_list[0].args[0] == "http://test-endpoint"
+
+    @pytest.mark.noendpointfixt
+    def test_raises_error_if_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("AZURE_VISION_ENDPOINT", raising=False)
+        with pytest.raises(AzureVisionUtil.EndpointNotSetError):
+            AzureVisionUtil._get_client()
 
 
 class TestDetectFaces(TestAzureVisionUtilBase):
