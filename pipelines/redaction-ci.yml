@@ -368,11 +368,19 @@ extends:
             condition: always()
 
           - task: PublishBuildArtifacts@1
-            displayName: 'Publish e2e logs'
+            displayName: 'Publish e2e receiver log'
             condition: always()
             inputs:
-              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
-              ArtifactName: 'e2e-local-logs'
+              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/func-host-receiver.log'
+              ArtifactName: 'e2e-local-receiver-logs'
+
+          - task: PublishBuildArtifacts@1
+            displayName: 'Publish e2e processor log'
+            condition: always()
+            inputs:
+              PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/func-host-processor.log'
+              ArtifactName: 'e2e-local-processor-logs'
+
 
           - script: |
               set -e
