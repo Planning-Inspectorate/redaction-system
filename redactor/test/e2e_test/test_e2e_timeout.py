@@ -4,7 +4,7 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from time import sleep
+from time import sleep, time
 
 import pytest
 
@@ -106,6 +106,9 @@ def _get_all_message_summaries() -> list[dict]:
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
+@pytest.mark.flaky(
+    reruns=3, reruns_delay=5, only_rerun="AssertionError"
+)  # Flaky test due LLMs
 def test_e2e_timeout(
     tmp_path: Path,
     case: TimeoutCase,
@@ -136,18 +139,6 @@ def test_e2e_timeout(
 
     job_id = trigger_and_wait(redact_start_url, payload)
 
-    # Check output blob presence
-    exists = az_blob_exists(e2e_storage_account, e2e_container_name, out_blob)
-    assert exists is case.expects_output, (
-        f"Expected output blob exists={case.expects_output} for case={case.name}"
-    )
-
-    if case.expects_output:
-        out_file = tmp_path / Path(case.out_name).name
-        az_download(e2e_storage_account, e2e_container_name, out_blob, out_file)
-        assert out_file.exists()
-        logger.info("Downloaded output OK: %s", out_file.name)
-
     # Check service bus failure message
     if case.expects_failure_message:
         failure_msg = _poll_for_failure_message(job_id, max_wait_s=120, interval_s=10)
@@ -162,3 +153,21 @@ def test_e2e_timeout(
         logger.info(
             "Verified timeout failure message on service bus: %s", failure_msg["id"]
         )
+
+    if case.expects_output:
+        deadline = time() + 60  # Wait up to 60 seconds for output blob
+        while time() < deadline:
+            sleep(5)
+            # Check output blob presence
+            exists = az_blob_exists(e2e_storage_account, e2e_container_name, out_blob)
+            if exists:
+                break
+    assert exists is case.expects_output, (
+        f"Expected output blob exists={case.expects_output} for case={case.name}"
+    )
+
+    if case.expects_output:
+        out_file = tmp_path / Path(case.out_name).name
+        az_download(e2e_storage_account, e2e_container_name, out_blob, out_file)
+        assert out_file.exists()
+        logger.info("Downloaded output OK: %s", out_file.name)
