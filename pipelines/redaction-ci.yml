@@ -307,7 +307,7 @@ extends:
                   break
                 fi
                 echo "Orchestrator not ready yet (HTTP $STATUS), retrying in 3s..."
-                sleep 3
+                sleep 5
               done
 
               if [ "$STATUS" != "202" ] && [ "$STATUS" != "409" ]; then
