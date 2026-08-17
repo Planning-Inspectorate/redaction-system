@@ -29,7 +29,7 @@ resources:
       type: github
       endpoint: Planning-Inspectorate
       name: Planning-Inspectorate/common-pipeline-templates
-      ref: refs/tags/release/3.25.2
+      ref: refs/tags/release/3.29.0
 
 extends:
   template: stages/wrapper_ci.yml@templates
@@ -60,13 +60,13 @@ extends:
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
-          - script: |
+          - script: | # Should we put this on the agent instead?
               set -e
               cd redaction-system
               python3 -m pip install -r redactor/requirements.txt
             displayName: 'Install requirements'
 
-          - script: |
+          - script: | # Should we put this on the agent instead?
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
@@ -83,7 +83,7 @@ extends:
               testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-          - script: |
+          - script: | # Should we put this on the agent instead?
               set -e
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
@@ -99,11 +99,20 @@ extends:
               testResultsFiles: '**/integration_test_results.xml'
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
+#This needs to be reference the template node install
 
-          - task: NodeTool@0
-            displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
-            inputs:
-              versionSpec: '20.x'
+          - template: ../steps/node_script.yml
+            parameters:
+              displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)' # Do we even want a display name here? Just adds another stage in the pipeline?
+              nodeVersion: 20.x
+              script: npm ci
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm # Does this need to match where the scripts are?
+
+          # - task: NodeTool@0
+          #   displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
+          #   inputs:
+          #     versionSpec: '20.x'
 
           - script: |
               set -e
@@ -199,6 +208,7 @@ extends:
               tail -n 200 ../func-host.log || true
               exit 1
             displayName: 'Start local Azure Functions receiver host (background) + wait'
+
           - script: |
               set -e
               cd redaction-system/redactor
@@ -299,7 +309,7 @@ extends:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system'
               ArtifactName: 'e2e-local-logs'
 
-          - script: |
+          - script: | 
               set -e
               cd redaction-system/redactor
               python3 -m coverage combine
@@ -307,7 +317,7 @@ extends:
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
 
-          - task: UseDotNet@2
+          - task: UseDotNet@2 # This could be added to the agent
             displayName: 'Install latest .net'
             inputs:
               packageType: 'sdk'
