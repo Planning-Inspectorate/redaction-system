@@ -17,7 +17,7 @@ pr:
     include:
       - main
 
-# Run when merged into main
+# Run when merged into main /// Should this not run before the merge?
 trigger:
   branches:
     include:
@@ -103,7 +103,7 @@ extends:
 
           - template: ../steps/node_script.yml
             parameters:
-              displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)' # Do we even want a display name here? Just adds another stage in the pipeline?
+              # displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)' # Do we even want a display name here? Just adds another stage in the pipeline?
               nodeVersion: 20.x
               script: npm ci
               environmentVariables:
