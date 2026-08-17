@@ -104,7 +104,7 @@ extends:
           - template: ../steps/node_script.yml
             parameters:
               # displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)' # Do we even want a display name here? Just adds another stage in the pipeline?
-              nodeVersion: 20.x
+              nodeVersion: 20
               script: npm ci
               environmentVariables:
                 npm_config_cache: $(Pipeline.Workspace)/.npm # Does this need to match where the scripts are?
