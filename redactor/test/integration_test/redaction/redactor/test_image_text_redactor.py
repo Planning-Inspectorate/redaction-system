@@ -8,50 +8,50 @@ from core.redaction.redactor import ImageTextRedactor
 from core.redaction.result import ImageRedactionResult
 
 
-def test__image_text_redactor__redact_number_plate():
-    """
-    - Given I have an image containing a UK number plate
-    - When I call ImageTextRedactor.redact
-    - Then the correct number plate should be identified as a redaction box
-    """
-    with open(
-        os.path.join("test", "resources", "image", "image_with_number_plate.jpg"),
-        "rb",
-    ) as f:
-        image = Image.open(BytesIO(f.read()))
+class TestImageTextRedactor:
+    def test_returns_box_around_number_plate(self):
+        """
+        - Given I have an image containing a UK number plate
+        - When I call ImageTextRedactor.redact
+        - Then the correct number plate should be identified as a redaction box
+        """
+        with open(
+            os.path.join("test", "resources", "image", "image_with_number_plate.jpg"),
+            "rb",
+        ) as f:
+            image = Image.open(BytesIO(f.read()))
 
-    config = ImageRedactionConfig(
-        name="config name",
-        redactor_type="ImageTextRedaction",
-        images=[image],
-    )
-    redactor_inst = ImageTextRedactor(config)
-    result = redactor_inst.redact()
+        config = ImageRedactionConfig(
+            name="config name",
+            redactor_type="ImageTextRedaction",
+            images=[image],
+        )
+        redactor_inst = ImageTextRedactor(config)
+        result = redactor_inst.redact()
 
-    redaction_boxes = (
-        (420, 488, 478, 519),
-        (338, 488, 413, 521),
-    )
+        redaction_boxes = (
+            (420, 488, 478, 519),
+            (338, 488, 413, 521),
+        )
 
-    assert isinstance(result, ImageRedactionResult)
-    assert len(result.redaction_results) == 1
-    assert set(result.redaction_results[0].redaction_boxes) == set(redaction_boxes)
+        assert isinstance(result, ImageRedactionResult)
+        assert len(result.redaction_results) == 1
+        assert set(result.redaction_results[0].redaction_boxes) == set(redaction_boxes)
 
+    def test_no_images_returns_empty_result(self):
+        """
+        - Given I have a config with an empty images list
+        - When I call ImageTextRedactor.redact
+        - Then it should return an empty ImageRedactionResult without calling Azure Vision
+        """
+        config = ImageRedactionConfig(
+            name="config name",
+            redactor_type="ImageTextRedaction",
+            images=[],
+        )
+        redactor_inst = ImageTextRedactor(config)
+        result = redactor_inst.redact()
 
-def test__image_text_redactor__redact__no_images_returns_empty_result():
-    """
-    - Given I have a config with an empty images list
-    - When I call ImageTextRedactor.redact
-    - Then it should return an empty ImageRedactionResult without calling Azure Vision
-    """
-    config = ImageRedactionConfig(
-        name="config name",
-        redactor_type="ImageTextRedaction",
-        images=[],
-    )
-    redactor_inst = ImageTextRedactor(config)
-    result = redactor_inst.redact()
-
-    assert isinstance(result, ImageRedactionResult)
-    assert result.redaction_results == ()
-    assert result.run_metrics["total_images_to_analyse"] == 0
+        assert isinstance(result, ImageRedactionResult)
+        assert result.redaction_results == ()
+        assert result.run_metrics["total_images_to_analyse"] == 0
