@@ -11,13 +11,9 @@ parameters:
   - 'Training'
   - 'Prod'
 
+# trigger after build only
 pr: none
-
-# Run when merged into main
-trigger:
-  branches:
-    include:
-      - main
+trigger: none
 
 resources:
   repositories:
@@ -26,6 +22,13 @@ resources:
       endpoint: Planning-Inspectorate
       name: Planning-Inspectorate/common-pipeline-templates
       ref: refs/tags/release/3.24.2
+  pipelines:
+    - pipeline: build
+      source: Redaction System Build
+      trigger:
+        branches:
+          include:
+            - main
 
 extends:
   template: stages/wrapper_cd.yml@templates
@@ -35,35 +38,13 @@ extends:
     environments:
       - name: ${{ parameters.env }}
     deploymentStages:
-      - name: Deploy Receiver Function App
+      - name: Deploy
         deploymentJobs:
-          - name: Deploy Receiver Function App
+          - name: Deploy Receiver Functions
             steps:
-              - checkout: self
-                displayName: 'Checkout repo'
-              
-              # Create a zip file of all the files in the filelist.
-              - script: |
-                  set -e
-                  cd $(Build.SourcesDirectory)/receiver
-                  zip -r $(Build.ArtifactStagingDirectory)/receiver.zip .
-                displayName: 'Archive top level files'
-              
-              # Publish the zip file as an artifact to be used further in the pipeline.
-              - task: PublishBuildArtifacts@1
-                displayName: 'Publish build artifact'
-                inputs:
-                  PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-                  ArtifactName: 'FunctionCode'
-              
-              # Download the artifact first - the zip file.
-              - task: DownloadBuildArtifacts@1
-                displayName: 'Download function code artifact'
-                inputs:
-                  buildType: 'current'
-                  artifactName: 'FunctionCode'
-                  downloadPath: '$(System.ArtifactsDirectory)'
-
+              - download: build
+                artifact: receiver-function
+                displayName: Download receiver-function
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
               - task: AzureCLI@2
                 displayName: 'Deploy to function app'
@@ -75,41 +56,15 @@ extends:
                     az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(System.ArtifactsDirectory)/FunctionCode/receiver.zip' \
+                    --src '$(Pipeline.Workspace)/build/receiver-function/receiver.zip' \
                     --build-remote true \
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
-      - name: Deploy Processor Function App
-        deploymentJobs:
-          - name: Deploy Processor Function App
+          - name: Deploy Processor Functions
             steps:
-              - checkout: self
-                displayName: 'Checkout repo'
-              
-              # Create a zip file of all the files in the filelist.
-              - script: |
-                  set -e
-                  cd $(Build.SourcesDirectory)/redactor
-                  zip -r $(Build.ArtifactStagingDirectory)/redactor.zip . \
-                    -x "test/*" \
-                    -x "__pycache__/*" \
-                    -x "*/__pycache__/*"
-                displayName: 'Archive top level files'
-              
-              # Publish the zip file as an artifact to be used further in the pipeline.
-              - task: PublishBuildArtifacts@1
-                displayName: 'Publish build artifact'
-                inputs:
-                  PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-                  ArtifactName: 'FunctionCode'
-              
-              # Download the artifact first - the zip file.
-              - task: DownloadBuildArtifacts@1
-                displayName: 'Download function code artifact'
-                inputs:
-                  buildType: 'current'
-                  artifactName: 'FunctionCode'
-                  downloadPath: '$(System.ArtifactsDirectory)'
+              - download: build
+                artifact: redactor-function
+                displayName: Download redactor-function
 
               # Use the Azure CLI to deploy the zip file to the Function App in Azure.
               - task: AzureCLI@2
@@ -122,7 +77,7 @@ extends:
                     az functionapp deployment source config-zip \
                     --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(System.ArtifactsDirectory)/FunctionCode/redactor.zip' \
+                    --src '$(Pipeline.Workspace)/build/redactor-function/redactor.zip' \
                     --build-remote true \
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
