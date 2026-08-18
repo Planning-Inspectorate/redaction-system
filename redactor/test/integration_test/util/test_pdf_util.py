@@ -83,13 +83,13 @@ class TestPDFUtil:
         page = doc.new_page()
         rect = Rect(0, 0, 10, 10)
         term = "Hello"
-        PDFUtil.add_provisional_redaction(page, rect, term)
+        PDFUtil.add_provisional_redaction(page, rect, term, title="Greeting")
         annotations = list(page.annots())
         assert len(annotations) == 1
         annot = annotations[0]
 
         info = annot.info
-        assert info["title"] == "REDACTION CANDIDATE"
+        assert info["title"] == "Greeting"
         assert info["content"] == "Hello"
         assert info["creationDate"] is not None
         assert annot.vertices == [(0.0, 0.0), (10.0, 0.0), (0, 10.0), (10.0, 10.0)]
@@ -101,6 +101,12 @@ class TestPDFUtil:
         pdf_bytes.seek(0)
         reopened = pymupdf.open(stream=pdf_bytes)
         annot = next(iter(reopened[0].annots()))
+
+        reopened_info = annot.info
+        assert reopened_info["title"] == "Greeting", (
+            f"Title not persisted after save/reopen: got '{reopened_info['title']}'"
+        )
+        assert reopened_info["content"] == "Hello"
 
         expected_colours = [0.2157, 0.898, 1.0]
         actual_colours = annot.colors["stroke"]

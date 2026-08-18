@@ -167,7 +167,7 @@ class PDFProcessor(FileProcessor):
             if return_annot:
                 annot_info = {"annot": annot, **annot.info}
             else:
-                annot_info = annot.info
+                annot_info = {**annot.info, **annot.colors}
             type_num, type_str = annot.type
             if type_num in (8, 12):  # Highlight or redact annotation
                 vertices = annot.vertices
@@ -228,6 +228,8 @@ class PDFProcessor(FileProcessor):
         cls,
         annotations: tuple[dict[str, Any]],
     ) -> list[dict[str, Any]]:
+        from core.util.pdf_util import ANNOT_HIGHLIGHT_COLOR
+
         annotations_list = []
         for page in annotations:
             page_dict = {
@@ -241,8 +243,9 @@ class PDFProcessor(FileProcessor):
                             annot.get("creationDate", None)
                         ),
                         "modDate": cls._convert_pdf_date(annot.get("modDate", None)),
-                        "isRedactionCandidate": annot.pop("title", "")
-                        == "REDACTION CANDIDATE",
+                        "isRedactionCandidate": (
+                            annot.pop("stroke", None) == ANNOT_HIGHLIGHT_COLOR
+                        ),
                         "rect": tuple(annot.get("rect", ())),
                         "annotationType": annot.pop("type", None),
                         "annotatedText": annot.pop("text", None),
@@ -257,8 +260,7 @@ class PDFProcessor(FileProcessor):
     def get_proposed_redactions(cls, file_bytes: BytesIO) -> list[dict[str, Any]]:
         """
         Get the proposed redactions from the given PDF as a list of dictionaries containing
-        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
-        have the annotation title "REDACTION CANDIDATE".
+        the annotation details.
 
         :param BytesIO file_bytes: Bytes stream for the PDF
         :param str orient: The orientation for the output list of dictionaries
@@ -275,9 +277,7 @@ class PDFProcessor(FileProcessor):
     def get_final_redactions(cls, file_bytes: BytesIO) -> list[dict[str, Any]]:
         """
         Get the final redactions from the given PDF as a list of dictionaries containing
-        the annotation details. Redactions proposed by _apply_provisional_text_redactions will
-        have the annotation title "REDACTION CANDIDATE".
-
+        the annotation details.
         :param BytesIO file_bytes: Bytes stream for the PDF
         :param str orient: The orientation for the output list of dictionaries
         :param kwargs: Additional arguments to pass to _extract_pdf_annotations
@@ -290,6 +290,43 @@ class PDFProcessor(FileProcessor):
         )
         return cls._normalise_annotations(annotations)
 
+    def _get_redactor_label(self, term: str) -> str | None:
+        """
+        Get the label of the redactor that proposed the given redaction term,
+        based on the text_redaction_summary attribute.
+
+        :param str term: The redaction term to look up
+
+        :return str | None: The label of the redactor that proposed the term, or None if
+        not found
+        """
+        if not hasattr(self, "_text_redaction_summary"):
+            return None
+        redactor_name = next(
+            (
+                name
+                for name, summary in self._text_redaction_summary.items()
+                if term in summary.get("redaction_strings", [])
+            ),
+            None,
+        )
+
+        if redactor_name:
+            redactor_label = next(
+                (
+                    rule.label
+                    for rule in self.redaction_rules
+                    if rule.name == redactor_name
+                ),
+                None,
+            )
+            # Fall back to the redactor name if the label is not set
+            if not redactor_label:
+                return redactor_name
+            return redactor_label
+        else:
+            return None
+
     @log_to_appins(log_args=False)
     def _apply_provisional_text_redactions(
         self, file_bytes: BytesIO, text_to_redact: list[str]
@@ -299,8 +336,7 @@ class PDFProcessor(FileProcessor):
         the PDF bytes stream
 
         :param BytesIO file_bytes: Bytes stream for the PDF
-        :param list[str] text_to_redact: The text strings to redact in the
-        document
+        :param list[str] text_to_redact: The text strings to redact in the document
         :return BytesIO: Bytes stream for the PDF with provisional text redactions applied
         """
         pdf = pymupdf.open(stream=file_bytes)
@@ -346,10 +382,18 @@ class PDFProcessor(FileProcessor):
         )
 
         for page_to_redact, rect, term in redaction_instances:
-            PDFUtil.add_provisional_redaction(pdf[page_to_redact], rect, name=term)
+            # Get the name of the redactor that proposed the redaction for the
+            # annotation title by checking self._text_redaction_summary for the term
+            redactor_label = self._get_redactor_label(term)
+            LoggingUtil().log_info(
+                f"Applying provisional redaction with label {redactor_label} for term '{term}' on page {page_to_redact}."
+            )
+            PDFUtil.add_provisional_redaction(
+                pdf[page_to_redact], rect, name=term, title=redactor_label
+            )
 
         new_file_bytes = BytesIO()
-        pdf.save(new_file_bytes, deflate=True)
+        pdf.save(new_file_bytes, deflate=True, garbage=0)
         new_file_bytes.seek(0)
         return new_file_bytes
 
@@ -421,6 +465,11 @@ class PDFProcessor(FileProcessor):
         pages = [page for page in pdf]
         if pdf_images is None:
             pdf_images = PDFUtil.extract_pdf_images(file_bytes)
+            if not pdf_images:
+                LoggingUtil().log_info(
+                    "No images found in PDF, skipping provisional image redactions."
+                )
+                return file_bytes
         pdf_images_cleaned = [
             pdf_image.image.convert("RGB") for pdf_image in pdf_images
         ]
@@ -477,7 +526,10 @@ class PDFProcessor(FileProcessor):
                     )
                     try:
                         PDFUtil.add_provisional_redaction(
-                            page, rect_in_global_space, name=redaction_name
+                            page,
+                            rect_in_global_space,
+                            name=redaction_name,
+                            title="Image Redaction",
                         )
                     except ValueError as e:
                         LoggingUtil().log_exception_with_message(
@@ -666,13 +718,16 @@ class PDFProcessor(FileProcessor):
         LoggingUtil().log_info("Text redactions applied")
 
         # Apply image redactions
-        LoggingUtil().log_info("Applying image redactions")
-        with TimerUtil() as timer:
-            new_file_bytes = self._apply_provisional_image_redactions(
-                new_file_bytes, image_redactions, pdf_images=self.pdf_images
-            )
-        self.run_metrics["image_redaction_apply_time"] = timer.elapsed_time
-        LoggingUtil().log_info("Image redactions applied")
+        if self.pdf_images:
+            LoggingUtil().log_info("Applying image redactions")
+            with TimerUtil() as timer:
+                new_file_bytes = self._apply_provisional_image_redactions(
+                    new_file_bytes, image_redactions, pdf_images=self.pdf_images
+                )
+            LoggingUtil().log_info("Image redactions applied")
+            self.run_metrics["image_redaction_apply_time"] = timer.elapsed_time
+        else:
+            self.run_metrics["image_redaction_apply_time"] = 0.0
 
         # Update run metrics with unapplied text redaction terms and summary
         self.run_metrics["unapplied_text_redaction_terms"] = [

@@ -156,6 +156,8 @@ class TestExtractPDFAnnotations:
 
 
 class TestGetProposedRedactions:
+    STROKE_COLOUR = (0.2157, 0.898, 1.0)
+
     def test_returns_all_highlights(self):
         creation_date = "D:20260103123456+01'00'"
         creation_timestamp = datetime(
@@ -166,31 +168,34 @@ class TestGetProposedRedactions:
                 "page_number": "0",
                 "annotations": [
                     {
-                        "title": "REDACTION CANDIDATE",
+                        "title": "Text Redaction",
                         "content": "Redact this",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(0, 0, 1, 1),
                         "text": "Redact this",
                         "creationDate": creation_date,
                         "modDate": "",
+                        "stroke": self.STROKE_COLOUR,
                     },
                     {
-                        "title": "REDACTION CANDIDATE",
+                        "title": "Text Redaction",
                         "content": "Redact this too",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(2, 2, 3, 3),
                         "text": "Redact this",
                         "creationDate": creation_date,
                         "modDate": "",
+                        "stroke": self.STROKE_COLOUR,
                     },
                     {
-                        "title": "REDACTION CANDIDATE",
+                        "title": "Text Redaction",
                         "content": "Redact this too",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(0, 2, 1, 3),
                         "text": "too.",
                         "creationDate": creation_date,
                         "modDate": "",
+                        "stroke": self.STROKE_COLOUR,
                     },
                 ],
             },
@@ -201,6 +206,7 @@ class TestGetProposedRedactions:
                 "pageNumber": 0,
                 "annotations": [
                     {
+                        "title": "Text Redaction",
                         "annotationType": "Highlight",
                         "proposedRedaction": "Redact this",
                         "annotatedText": "Redact this",
@@ -210,6 +216,7 @@ class TestGetProposedRedactions:
                         "modDate": None,
                     },
                     {
+                        "title": "Text Redaction",
                         "annotationType": "Highlight",
                         "proposedRedaction": "Redact this too",
                         "annotatedText": "Redact this",
@@ -219,6 +226,7 @@ class TestGetProposedRedactions:
                         "modDate": None,
                     },
                     {
+                        "title": "Text Redaction",
                         "annotationType": "Highlight",
                         "proposedRedaction": "Redact this too",
                         "annotatedText": "too.",
@@ -251,13 +259,14 @@ class TestGetProposedRedactions:
                 "page_number": "0",
                 "annotations": [
                     {
-                        "title": "REDACTION CANDIDATE",
+                        "title": "Text Redaction",
                         "content": "Redact this",
                         "type": "Highlight",
                         "rect": pymupdf.Rect(0, 0, 1, 1),
                         "text": "Redact this",
                         "creationDate": creation_date,
                         "modDate": "D:-001-1-1-1-1-1",
+                        "stroke": self.STROKE_COLOUR,
                     },
                 ],
             },
@@ -268,6 +277,7 @@ class TestGetProposedRedactions:
                 "pageNumber": 0,
                 "annotations": [
                     {
+                        "title": "Text Redaction",
                         "annotationType": "Highlight",
                         "proposedRedaction": "Redact this",
                         "annotatedText": "Redact this",
@@ -286,6 +296,41 @@ class TestGetProposedRedactions:
             actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
 
         assert expected_dict == actual_dict
+
+
+class TestGetRedactorLabel:
+    def _create_mock_redaction_config(self, name: str, label: str | None = None):
+        config = Mock()
+        config.redactor_type = "llm_text"
+        config.name = name
+        config.label = label
+        config.text = None
+        config.images = None
+        return config
+
+    def test_returns_label(self):
+        """
+        Given I have a PDFProcessor with a text_redaction_summary attribute
+        When I call _get_redactor_label with a redactor name
+        Then I should receive the label for that redactor from the text_redaction_summary
+        """
+        pdf_processor = PDFProcessor()
+        pdf_processor.redaction_rules = [
+            self._create_mock_redaction_config(
+                "TextRedactor1", label="Labelled Redactor"
+            ),
+            self._create_mock_redaction_config("TextRedactor2"),
+        ]
+        pdf_processor._text_redaction_summary = {
+            "TextRedactor1": {"redaction_strings": ["Commander Data"]},
+            "TextRedactor2": {"redaction_strings": ["Phillipa"]},
+        }
+
+        label = pdf_processor._get_redactor_label("Commander Data")
+        assert label == "Labelled Redactor"
+
+        label = pdf_processor._get_redactor_label("Phillipa")
+        assert label == "TextRedactor2"
 
 
 class TestExamineApplyRedactionsBase:

@@ -2,6 +2,7 @@ import os
 from io import BytesIO
 from math import isclose
 from pathlib import Path
+from string import punctuation
 
 import pymupdf
 from pymupdf import Rect
@@ -49,9 +50,38 @@ def extract_annotated_text(document_bytes):
     for page in pymupdf.open(stream=document_bytes):
         for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
             annotated_text.append(
-                " ".join(page.get_textbox(annotation.rect).split()).lower()
+                " ".join(page.get_textbox(annotation.rect).split())
+                .strip(punctuation)
+                .lower()
             )
     return annotated_text
+
+
+def create_config(is_image: bool = False, label: str | None = None):
+    llm_text_redaction_args = {
+        "name": "config name",
+        "model": "gpt-4.1",
+        "system_prompt": (
+            "You will be sent text to analyse. The text is a quote from Star Trek. "
+            "Please find all strings in the text that adhere to the following rules: "
+        ),
+        "redaction_terms": [
+            "The names of characters",
+            "Rank",
+            "Genders, such as she, her, he, him, they, their",
+        ],
+    }
+    if is_image:
+        config = ImageLLMTextRedactionConfig(
+            redactor_type="ImageLLMTextRedaction",
+            label=label,
+            **llm_text_redaction_args,
+        )
+    else:
+        config = LLMTextRedactionConfig(
+            redactor_type="LLMTextRedaction", label=label, **llm_text_redaction_args
+        )
+    return {"redaction_rules": [config]}
 
 
 class TestExtractPDFAnnotations:
@@ -70,7 +100,7 @@ class TestExtractPDFAnnotations:
                 "page_number": 0,
                 "annotations": [
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[180.76254272460938, 145.0911865234375, 241.24356079101562, 157.3802490234375]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -82,7 +112,7 @@ class TestExtractPDFAnnotations:
                         "text": "Commander",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[244.29502868652344, 145.0911865234375, 267.51654052734375, 157.3802490234375]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -94,7 +124,7 @@ class TestExtractPDFAnnotations:
                         "text": "Data",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[72.0, 101.452392578125, 97.65274810791016, 113.741455078125]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -103,7 +133,7 @@ class TestExtractPDFAnnotations:
                         "text": "Riker",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[164.2420654296875, 101.452392578125, 199.68487548828125, 113.741455078125]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -115,7 +145,7 @@ class TestExtractPDFAnnotations:
                         "text": "Phillipa",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[194.0673065185547, 72.35986328125, 215.45306396484375, 84.64892578125]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -127,7 +157,7 @@ class TestExtractPDFAnnotations:
                         "text": "your",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[470.42864990234375, 101.452392578125, 492.6402282714844, 113.741455078125]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -139,7 +169,7 @@ class TestExtractPDFAnnotations:
                         "text": "Your",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[273.0046081542969, 217.822509765625, 295.2162170410156, 230.111572265625]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -151,7 +181,7 @@ class TestExtractPDFAnnotations:
                         "text": "Your",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[72.0, 115.9986572265625, 108.05452728271484, 128.2877197265625]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -163,7 +193,7 @@ class TestExtractPDFAnnotations:
                         "text": "Honour",
                     },
                     {
-                        "content": "REDACTION CANDIDATE",
+                        "content": "Text Redaction",
                         "subject": "[298.2676696777344, 217.822509765625, 334.3221740722656, 230.111572265625]",
                         "type": "Highlight",
                         "rect": Rect(
@@ -237,18 +267,29 @@ class TestExamineProvisionalRedactionsOnPage:
 
 class TestApplyProvisionalTextRedactions:
     def test_applies_highlights_to_redaction_strings(self):
-        document_bytes = open_pdf_from_file(PROPOSED_PDF_PATH)
+        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
         redaction_strings = [
-            "he's",
-            "he",
+            "Your",
+            "Honour",
             "Riker",
             "Phillipa",
-            "him",
-            "Commander Data",
-            "him",
-            "him",
+            "Commander",
+            "Data",
         ]
-        redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
+        pdf_processor = PDFProcessor()
+        redaction_rules = create_config(is_image=False, label="config label")[
+            "redaction_rules"
+        ]
+        pdf_processor.redaction_rules = redaction_rules
+        text_redaction_config = redaction_rules[0]
+        pdf_processor._text_redaction_summary = {
+            text_redaction_config.name: {
+                "redaction_strings": redaction_strings,
+                "n_proposed": len(redaction_strings),
+                "n_applied": 0,
+            }
+        }
+        redacted_document_bytes = pdf_processor._apply_provisional_text_redactions(
             document_bytes, redaction_strings
         )
 
@@ -261,6 +302,7 @@ class TestApplyProvisionalTextRedactions:
         # Get the actual redacted text
         actual_annotated_text = extract_annotated_text(redacted_document_bytes)
 
+        # Check all expected redaction strings are present
         matches = {
             expected_text: expected_text in actual_annotated_text
             for expected_text in expected_annotated_text
@@ -268,6 +310,13 @@ class TestApplyProvisionalTextRedactions:
         valid_match_count = len([x for x in matches.values() if x])
 
         assert valid_match_count == len(matches)
+
+        # Check that the annotations have the correct label
+        for page in pymupdf.open(stream=redacted_document_bytes):
+            for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+                print(annotation.info)
+                assert annotation.info["title"] == text_redaction_config.label
+                assert annotation.info["content"] in redaction_strings
 
     def test_does_not_apply_to_partial_matches(self):
         document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
@@ -334,7 +383,7 @@ class TestApplyProvisionalTextRedactions:
             "could significantly redefine the boundaries of personal liberty and freedom,"
             " expanding them" in actual_annotated_text
         )
-        assert "for some, savagely curtailing them for others." in actual_annotated_text
+        assert "for some, savagely curtailing them for others" in actual_annotated_text
 
 
 class TestRedact:
@@ -359,27 +408,8 @@ class TestRedact:
             pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
         )
         assert not page_annotations_before
-        redacted_file_bytes = PDFProcessor().redact(
-            file_bytes,
-            {
-                "redaction_rules": [
-                    LLMTextRedactionConfig(
-                        name="config name",
-                        redactor_type="LLMTextRedaction",
-                        model="gpt-4.1",
-                        system_prompt=(
-                            "You will be sent text to analyse. The text is a quote from Star Trek. "
-                            "Please find all strings in the text that adhere to the following rules: "
-                        ),
-                        redaction_terms=[
-                            "The names of characters",
-                            "Rank",
-                            "Genders, such as she, her, he, him, they, their",
-                        ],
-                    )
-                ]
-            },
-        )
+        redaction_config = create_config(label="config label")
+        redacted_file_bytes = PDFProcessor().redact(file_bytes, redaction_config)
         actual_annotated_text = set(extract_annotated_text(redacted_file_bytes))
 
         matches = {
@@ -399,6 +429,15 @@ class TestRedact:
             f"\nExpected results {expected_redacted_text}\nActual results: {actual_annotated_text}"
         )
         assert match_percent >= acceptance_threshold, error_message
+
+        # Check that the annotations have the correct label
+        for page in pymupdf.open(stream=redacted_file_bytes):
+            for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT):
+                print(annotation.info)
+                assert (
+                    annotation.info["title"]
+                    == redaction_config["redaction_rules"][0].label
+                )
 
     def test_returns_annotated_image_pdf_bytes(self):
         """
@@ -423,25 +462,7 @@ class TestRedact:
         assert not page_annotations_before
 
         redacted_file_bytes = PDFProcessor().redact(
-            file_bytes,
-            {
-                "redaction_rules": [
-                    ImageLLMTextRedactionConfig(
-                        name="config name",
-                        redactor_type="ImageLLMTextRedaction",
-                        model="gpt-4.1",
-                        system_prompt=(
-                            "You will be sent text to analyse. The text is a quote from Star Trek. "
-                            "Please find all strings in the text that adhere to the following rules: "
-                        ),
-                        redaction_terms=[
-                            "The names of characters",
-                            "Rank",
-                            "Genders, such as she, her, he, him, they, their",
-                        ],
-                    )
-                ]
-            },
+            file_bytes, create_config(is_image=True)
         )
 
         pdf_after = pymupdf.open(stream=redacted_file_bytes)
@@ -660,25 +681,7 @@ class TestApply:
             "test__pdf_processor__apply requires a document that has provisional redactions - there were none found in the document"
         )
         redacted_file_bytes, redactions_applied = PDFProcessor().apply(
-            provisional_redaction_file_bytes,
-            {
-                "redaction_rules": [
-                    LLMTextRedactionConfig(
-                        name="config name",
-                        redactor_type="LLMTextRedaction",
-                        model="gpt-4.1",
-                        system_prompt=(
-                            "You will be sent text to analyse. The text is a quote from Star Trek. "
-                            "Please find all strings in the text that adhere to the following rules: "
-                        ),
-                        redaction_terms=[
-                            "The names of characters",
-                            "Rank",
-                            "Genders, such as she, her, he, him, they, their",
-                        ],
-                    )
-                ]
-            },
+            provisional_redaction_file_bytes, create_config()
         )
 
         # Extract text from source and final documents
