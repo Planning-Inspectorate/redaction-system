@@ -7,7 +7,7 @@ from PIL import Image
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageTextRedactor
 from core.redaction.result import ImageRedactionResult
-from core.util.azure_vision_util import AzureVisionUtil
+from core.util.image_analysis import AzureVisionUtil
 from test.util.util import compare_unashable_lists
 
 
@@ -107,8 +107,11 @@ def test__image_text_redactor__redact():
     )
     with (
         mock.patch.object(ImageTextRedactor, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "__init__", return_value=None),
-        mock.patch.object(AzureVisionUtil, "detect_text", return_value=text_rect_map),
+        mock.patch.object(
+            ImageTextRedactor,
+            "_analyse_images",
+            return_value=([(config.images[0], text_rect_map)], 0.0),
+        ),
         mock.patch.object(
             ImageTextRedactor,
             "detect_number_plates",

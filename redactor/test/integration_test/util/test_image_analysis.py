@@ -3,7 +3,7 @@ from io import BytesIO
 
 from PIL import Image
 
-from core.util.azure_vision_util import AzureVisionUtil, ImageAnalysisUtil
+from core.util.image_analysis import AzureVisionUtil, ImageAnalysisUtil
 
 
 class TestCheckImageSize:

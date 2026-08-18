@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel, Field
 
-from core.util.azure_vision_util import ImageAnalysisUtil
+from core.util.image_analysis import ImageAnalysisUtil
 from core.util.text_util import get_normalised_words, normalise_text
 from core.util.types import PydanticImage
 

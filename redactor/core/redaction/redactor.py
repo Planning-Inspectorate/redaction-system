@@ -24,7 +24,7 @@ from core.redaction.result import (
     LLMTextRedactionResult,
     RedactionResult,
 )
-from core.util.azure_vision_util import AzureVisionUtil
+from core.util.image_analysis import AzureVisionUtil
 from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
