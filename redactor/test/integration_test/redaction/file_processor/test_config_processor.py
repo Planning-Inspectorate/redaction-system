@@ -15,6 +15,7 @@ def test__config_processor__process_config():
     """
     file_processor_class = PDFProcessor
     llm_text_redaction_attributes = {
+        "label": "Names of Individuals",
         "model": "gpt-5.6-luna",
         "system_prompt": "You are a thorough assistant that extracts all of the requested terms from a given text.",
         "redaction_terms": ["People's names"],
@@ -29,7 +30,7 @@ def test__config_processor__process_config():
     expected_parsed_config = {
         "redaction_rules": [
             LLMTextRedactionConfig(
-                name="Text_Redactor_01",
+                name="names",
                 redactor_type="LLMTextRedaction",
                 **llm_text_redaction_attributes,
             ),
@@ -48,6 +49,12 @@ def test__config_processor__process_config():
     actual_parsed_config = ConfigProcessor.validate_and_filter_config(
         loaded_config, file_processor_class
     )
+    actual_rules = actual_parsed_config["redaction_rules"]
     for expected_rule in expected_parsed_config["redaction_rules"]:
-        assert expected_rule in actual_parsed_config["redaction_rules"]
+        assert expected_rule in actual_rules, (
+            f"Expected rule '{expected_rule.name}' ({expected_rule.redactor_type}) "
+            f"not found in actual config.\n"
+            f"Expected: {expected_rule}\n"
+            f"Actual rules: {[r.name for r in actual_rules]}"
+        )
     assert actual_parsed_config["provisional_redactions"] is None

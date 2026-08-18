@@ -2,7 +2,8 @@ redactors:
   - redactor_type: "LLMTextRedaction"
 
     redaction_rules:
-    - name: "Text_Redactor_01"
+    - name: "names"
+      label: "Names of Individuals"
       model: "gpt-5.6-luna"
       system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
@@ -13,7 +14,8 @@ redactors:
       - "Do not include the name of the author of the text"
       - "Do not include the names of those on whose behalf the text was written"
 
-    - name: "Text_Redactor_02"
+    - name: "contact_identity_info"
+      label: "Contact and Identity Information"
       model: "gpt-5.6-luna"
       system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
@@ -23,7 +25,8 @@ redactors:
       - "National Insurance Numbers, e.g. AB 12 34 56 C"
       - "Hyperlinks, except those that are .gov.uk, .org, .gov.wales"
         
-    - name: "Text_Redactor_03"
+    - name: "sensitive_info"
+      label: "Sensitive Information"
       model: "gpt-5.6-luna"
       system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
@@ -33,7 +36,8 @@ redactors:
       - "Any defamatory (libellous) or inflammatory information"
       - "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares"
 
-    - name: "Text_Redactor_04"
+    - name: "personal_info_protected_sites"
+      label: "Personal Details and Protected Sites"
       model: "gpt-5.6-luna"
       system_prompt: "You are a thorough assistant that extracts all of the requested terms from a given text."
       redaction_terms: 
@@ -54,15 +58,15 @@ redactors:
     
     redaction_rules: 
     - name: "Image_LLM_Text_Redactor_01"
-      text_redaction_rule: "Text_Redactor_01"
+      text_redaction_rule: "names"
     
     - name: "Image_LLM_Text_Redactor_02"
-      text_redaction_rule: "Text_Redactor_02"
+      text_redaction_rule: "contact_identity_info"
 
     - name: "Image_LLM_Text_Redactor_03"
-      text_redaction_rule: "Text_Redactor_03"
+      text_redaction_rule: "sensitive_info"
     
     - name: "Image_LLM_Text_Redactor_04"
-      text_redaction_rule: "Text_Redactor_04"
+      text_redaction_rule: "personal_info_protected_sites"
 
 provisional_redactions:
