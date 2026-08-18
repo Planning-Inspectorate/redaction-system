@@ -502,7 +502,10 @@ class PDFUtil:
 
     @staticmethod
     def add_provisional_redaction(
-        page: pymupdf.Page, rect: pymupdf.Rect, name: str | None = None
+        page: pymupdf.Page,
+        rect: pymupdf.Rect,
+        name: str | None = None,
+        title: str | None = None,
     ):
         """
         Add an annotation to the PDF page as a provisional redaction.
@@ -519,7 +522,7 @@ class PDFUtil:
         highlight_annotation = page.add_highlight_annot(rect)
         highlight_annotation.set_info(
             {
-                "title": "REDACTION CANDIDATE",
+                "title": title if title else "Text Redaction",
                 "content": name,
                 "creationDate": pymupdf.get_pdf_now(),
             }
