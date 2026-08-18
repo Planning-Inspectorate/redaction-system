@@ -1,0 +1,52 @@
+# just wait for PR to run on main as a trigger
+pr: none
+trigger: none
+
+resources:
+  repositories:
+    - repository: templates
+      type: github
+      endpoint: Planning-Inspectorate
+      name: Planning-Inspectorate/common-pipeline-templates
+      ref: refs/tags/release/3.24.2
+  pipelines:
+    - pipeline: pr
+      source: Redaction System CI
+      trigger:
+        branches:
+          include:
+            - main
+
+extends:
+  template: stages/wrapper_ci.yml@templates
+  parameters:
+    gitFetchDepth: 0
+    validationJobs:
+      - name: Build receiver
+        steps:
+          - task: ArchiveFiles@2
+            displayName: Archive receiver
+            inputs:
+              rootFolderOrFile: $(Build.Repository.LocalPath)/receiver
+              includeRootFolder: false
+              archiveFile: $(System.DefaultWorkingDirectory)/receiver.zip
+          - publish: $(System.DefaultWorkingDirectory)/receiver.zip
+            artifact: receiver-function
+            displayName: Publish receiver function
+      - name: Build redactor
+        steps:
+          - script: |
+              set -e
+              rm -rf $(Build.SourcesDirectory)/redactor/test/*
+              rm -rf $(Build.SourcesDirectory)/redactor/__pycache__/*
+              rm -rf $(Build.SourcesDirectory)/redactor/*/__pycache__/*
+            displayName: 'Remove files before archiving'
+          - task: ArchiveFiles@2
+            displayName: Archive redactor
+            inputs:
+              rootFolderOrFile: $(Build.Repository.LocalPath)/redactor
+              includeRootFolder: false
+              archiveFile: $(System.DefaultWorkingDirectory)/redactor.zip
+          - publish: $(System.DefaultWorkingDirectory)/redactor.zip
+            artifact: redactor-function
+            displayName: Publish redactor function
