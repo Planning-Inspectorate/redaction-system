@@ -41,6 +41,7 @@ class LLMUtilConfig(BaseModel):
 
 class RedactionConfig(BaseModel):
     name: str
+    label: str | None = None
     redactor_type: str
     """The redactor the config should be fed into"""
 
