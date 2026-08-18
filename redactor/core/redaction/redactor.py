@@ -177,18 +177,26 @@ class ImageRedactor(Redactor):  # pragma: no cover
 
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
-        results: list[ImageRedactionResult.Result] = []
-        total_images_to_analyse = len(self.config.images)
-        if total_images_to_analyse == 0:
+
+        self.total_images_to_analyse = len(self.config.images)
+        run_metrics = {"total_images_to_analyse": self.total_images_to_analyse}
+        if self.total_images_to_analyse == 0:
             LoggingUtil().log_info("No images to analyse, skipping image analysis")
             return ImageRedactionResult(
                 rule_name=self.config.name,
-                run_metrics={},
+                run_metrics=run_metrics,
                 redaction_results=(),
             )
+
+        return self.redact_faces()
+
+    def redact_faces(self) -> ImageRedactionResult:
+        confidence_threshold = self.config.confidence_thresholds.face_detection
+
+        results: list[ImageRedactionResult.Result] = []
         with TimerUtil() as timer:
             face_detection_results = AzureVisionUtil().detect_faces_in_images(
-                self.config.images, self.config.confidence_threshold
+                self.config.images, confidence_threshold
             )
             for image_to_redact, faces_detected in face_detection_results:
                 # If image analysis failed, the full image will be returned
@@ -216,7 +224,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
             rule_name=self.config.name,
             run_metrics={
                 "total_image_analysis_time": timer.elapsed_time,
-                "total_images_to_analyse": total_images_to_analyse,
+                "total_images_to_analyse": self.total_images_to_analyse,
             },
             redaction_results=tuple(results),
         )
@@ -427,7 +435,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 # If image analysis failed, the full image will be returned
                 full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
                 if len(text_rect_map) == 1 and text_rect_map[0] == (
-                    "TEXT DETECTION FAILED",
+                    "Text Detection Failed",
                     full_image_box,
                 ):
                     LoggingUtil().log_info(
@@ -531,7 +539,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 for image in image_text_content
                 for chunk in image["text_chunks"]
                 if image["text_content"]
-                != "TEXT DETECTION FAILED"  # Exclude images where text detection failed
+                != "Text Detection Failed"  # Exclude images where text detection failed
             }
         )
 
@@ -601,7 +609,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 text_content = image_result["text_content"]
 
                 # If the image couldn't be analysed, mark the whole image for redaction
-                if len(text_rect_map) == 1 and text_content == "TEXT DETECTION FAILED":
+                if len(text_rect_map) == 1 and text_content == "Text Detection Failed":
                     LoggingUtil().log_info(
                         "Text detection failed for image, redacting full image"
                     )
