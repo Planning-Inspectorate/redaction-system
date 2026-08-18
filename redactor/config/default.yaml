@@ -30,7 +30,7 @@ redactors:
       - "Personal health information, e.g. illnesses or concerning a person's sex life. List each term as it appears in the text."
       - "Personal data revealing ethnic origin, political opinions, philosophical beliefs, or trade union membership"
       - "Criminal offence data, e.g. allegations, investigations, proceedings, penalties"
-      - "Any defamatory (libellous) or inflammatory information"
+      - "Direct allegations that a named individual has committed criminal, fraudulent, unethical or unlawful conduct where the allegation is not already publicly established."
       - "Specific financial information such as bank accounts, salary details, house valuations, bonuses, or shares"
 
     - name: "Text_Redactor_04"
