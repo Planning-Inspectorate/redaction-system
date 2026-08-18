@@ -421,7 +421,7 @@ def test__image_llm_text_redactor__redact__with_image_analysis_failure():
                     images[0],
                     (
                         (
-                            "TEXT DETECTION FAILED",
+                            "Text Detection Failed",
                             (0, 0, images[0].width, images[0].height),
                         ),
                     ),
@@ -468,9 +468,9 @@ def test__image_llm_text_redactor__redact__with_image_analysis_failure():
     mock_text_analysis_result = (
         {
             "image": config.images[0],
-            "text_rect_map": (("TEXT DETECTION FAILED", (0, 0, 1000, 1000)),),
-            "text_content": "TEXT DETECTION FAILED",
-            "text_chunks": ["TEXT DETECTION FAILED"],
+            "text_rect_map": (("Text Detection Failed", (0, 0, 1000, 1000)),),
+            "text_content": "Text Detection Failed",
+            "text_chunks": ["Text Detection Failed"],
             "redaction_strings": [],
         },
         {

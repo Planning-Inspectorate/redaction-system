@@ -278,7 +278,7 @@ def test__image_text_redactor__redact__with_analysis_failure():
                 config.images[0],
                 (
                     (
-                        "TEXT DETECTION FAILED",
+                        "Text Detection Failed",
                         (0, 0, config.images[0].width, config.images[0].height),
                     ),
                 ),

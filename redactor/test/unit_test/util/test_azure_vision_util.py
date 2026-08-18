@@ -1,375 +1,360 @@
+from typing import ClassVar
 from unittest.mock import Mock, patch
 
-from azure.ai.vision.imageanalysis import ImageAnalysisClient
+import pytest
 from PIL import Image
 
-from core.util.azure_vision_util import AzureVisionUtil, check_image_size
-from core.util.logging_util import LoggingUtil
+from core.util.azure_vision_util import AzureVisionUtil, ImageAnalysisUtil
 from test.util.util import compare_unashable_lists
-
-
-def MockImageAnalysisClientResult(people):
-    mock_result = Mock()
-    mock_result.people.list = people
-    return mock_result
 
 
 class ImageAnalysisError(Exception):
     pass
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_faces_in_images(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
+class ConcreteAnalysisUtil(ImageAnalysisUtil):
+    """Concrete subclass for testing the abstract base."""
 
-    def mock_detect_faces(inst, image, confidence):
-        if image == images[0]:
-            return "a"
-        if image == images[1]:
-            return "b"
-        if image == images[2]:
-            return "c"
-        if image == images[3]:
-            return "d"
-        if image == images[4]:
-            return "e"
-
-    with patch.object(AzureVisionUtil, "detect_faces", mock_detect_faces):
-        actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
-        expected_results = [
-            (images[0], "a"),
-            (images[1], "b"),
-            (images[2], "c"),
-            (images[3], "d"),
-            (images[4], "e"),
-        ]
-        compare_unashable_lists(expected_results, actual_results)
+    _IMAGE_TEST_CACHE: ClassVar[list] = []
 
 
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_faces_in_images__with_exception(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
+@pytest.fixture(autouse=True)
+def _clear_caches():
+    ConcreteAnalysisUtil._IMAGE_TEST_CACHE.clear()
+    yield
+    ConcreteAnalysisUtil._IMAGE_TEST_CACHE.clear()
 
-    def mock_detect_faces(inst, image, confidence):
-        if image == images[0]:
-            return "a"
-        if image == images[1]:
-            # This element should not be returned
-            raise ImageAnalysisError("Some exception")
-        if image == images[2]:
-            return "c"
-        if image == images[3]:
-            return "d"
-        if image == images[4]:
-            return "e"
 
-    with patch.object(AzureVisionUtil, "detect_faces", mock_detect_faces):
-        actual_results = AzureVisionUtil().detect_faces_in_images(images, 0.1)
-        expected_results = [
-            (images[0], "a"),
+class TestCheckImageSize:
+    def test_valid_image(self):
+        assert ImageAnalysisUtil.check_image_size(Image.new("RGB", (100, 100))) is True
+
+    def test_exact_minimum(self):
+        assert ImageAnalysisUtil.check_image_size(Image.new("RGB", (50, 50))) is True
+
+    def test_exact_maximum(self):
+        assert (
+            ImageAnalysisUtil.check_image_size(Image.new("RGB", (16000, 16000))) is True
+        )
+
+    def test_too_small_width(self):
+        assert ImageAnalysisUtil.check_image_size(Image.new("RGB", (49, 100))) is False
+
+    def test_too_small_height(self):
+        assert ImageAnalysisUtil.check_image_size(Image.new("RGB", (100, 49))) is False
+
+    def test_too_large_width(self):
+        assert (
+            ImageAnalysisUtil.check_image_size(Image.new("RGB", (16001, 100))) is False
+        )
+
+    def test_too_large_height(self):
+        assert (
+            ImageAnalysisUtil.check_image_size(Image.new("RGB", (100, 16001))) is False
+        )
+
+    def test_non_rgb_image_converted(self):
+        image = Image.new("RGBA", (100, 100))
+        assert ImageAnalysisUtil.check_image_size(image) is True
+
+
+class TestClearCache:
+    def test_clears_image_caches(self):
+        ConcreteAnalysisUtil._IMAGE_TEST_CACHE.append({"image": Mock()})
+        assert len(ConcreteAnalysisUtil._IMAGE_TEST_CACHE) == 1
+
+        ConcreteAnalysisUtil.clear_cache()
+        assert len(ConcreteAnalysisUtil._IMAGE_TEST_CACHE) == 0
+
+
+class TestImageDetection:
+    def test_returns_results_for_all_images(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(5)]
+        expected = [(img, (("Object Detected", (i,)),)) for i, img in enumerate(images)]
+
+        results = ImageAnalysisUtil._image_detection(
+            images,
+            "object",
+            lambda img: ((images.index(img),),),
+        )
+
+        compare_unashable_lists(expected, results)
+
+    def test_passes_kwargs_to_detection_function(self):
+        images = [Image.new("RGB", (51, 51))]
+        captured = {}
+
+        def detector(img, threshold=0.5):
+            captured["threshold"] = threshold
+            return ()
+
+        ImageAnalysisUtil._image_detection(images, "test", detector, threshold=0.9)
+
+        assert captured["threshold"] == 0.9
+
+    def test_fallback_redaction_on_exception(self):
+        images = [Image.new("RGB", (51 + i, 51), i) for i in range(3)]
+
+        def failing_detector(image):
+            if image == images[1]:
+                raise ImageAnalysisError("boom")
+            else:
+                return (("text", (0, 0, 10, 10)),)
+
+        expected_results = (
+            (images[0], (("text", (0, 0, 10, 10)),)),
             (
                 images[1],
-                (0, 0, images[1].width, images[1].height),
-            ),  # Full image redaction for exception
-            (images[2], "c"),
-            (images[3], "d"),
-            (images[4], "e"),
-        ]
-        compare_unashable_lists(expected_results, actual_results)
-
-
-@patch("core.util.azure_vision_util.BytesIO", autospec=True)
-def test__azure_vision_util__detect_faces(mock_bytes_io):
-    azure_vision_util = AzureVisionUtil()
-    image = Mock()
-
-    people_list = [
-        Mock(
-            bounding_box=Mock(x=10, y=20, width=30, height=40),
-            confidence=0.9,
-        ),
-        Mock(
-            bounding_box=Mock(x=10, y=20, width=30, height=40),
-            confidence=0.4,  # Below threshold
-        ),
-    ]
-
-    with (
-        patch(
-            "core.util.azure_vision_util.check_image_size",
-            return_value=True,
-            autospec=True,
-        ),
-        patch.object(
-            ImageAnalysisClient, "analyze", return_value=Mock(), autospec=True
-        ) as mock_analyze,
-    ):
-        mock_analyze.return_value = MockImageAnalysisClientResult(people_list)
-        result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-
-    assert result == ((10, 20, 40, 60),)
-
-    # Verify caching
-    assert azure_vision_util._IMAGE_FACE_CACHE == [
-        {
-            "image": image,
-            "faces": (
-                {
-                    "box": (10, 20, 40, 60),
-                    "confidence": 0.9,
-                },
-                {
-                    "box": (10, 20, 40, 60),
-                    "confidence": 0.4,
-                },
-            ),
-        }
-    ]
-
-
-@patch("core.util.azure_vision_util.BytesIO", autospec=True)
-def test__azure_vision_util__detect_faces__use_cached_result(mock_bytes_io):
-    azure_vision_util = AzureVisionUtil()
-    image = Mock()
-    image_rects = ((10, 20, 40, 60),)
-
-    azure_vision_util._IMAGE_FACE_CACHE = [
-        {
-            "image": image,
-            "faces": (
-                {
-                    "box": (10, 20, 40, 60),
-                    "confidence": 0.9,
-                },
-            ),
-        }
-    ]
-
-    with patch(
-        "core.util.azure_vision_util.check_image_size", return_value=True, autospec=True
-    ):
-        result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-    LoggingUtil.log_info.assert_called_with("Using cached face detection result.")
-
-    assert result == image_rects
-
-    mock_bytes_io.assert_not_called()  # Ensure no analysis was performed
-
-
-def MockTextAnalysisClientResult():
-    mock_result = Mock()
-    mock_result.read = Mock()
-
-    class MockWord:
-        def __init__(self, content, bounding_box):
-            self.text = content
-            self.bounding_polygon = bounding_box
-
-    class MockLine:
-        def __init__(self, words: list[MockWord]):
-            self.words = words
-
-    class MockBlock:
-        def __init__(self, lines: list[MockLine]):
-            self.lines = lines
-
-    mock_result.read.blocks = [
-        MockBlock(
-            lines=[
-                MockLine(
-                    words=[
-                        MockWord(
-                            "Hello",
-                            [Mock(x=10, y=20), Mock(x=40, y=20), Mock(x=30, y=40)],
-                        )
-                    ],
-                ),
-                MockLine(
-                    words=[
-                        MockWord(
-                            "World",
-                            [Mock(x=50, y=60), Mock(x=80, y=60), Mock(x=70, y=80)],
-                        )
-                    ],
-                ),
-            ]
-        ),
-    ]
-
-    return mock_result
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_text_in_images(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
-
-    def mock_detect_text(inst, image):
-        if image == images[0]:
-            return "a"
-        if image == images[1]:
-            return "b"
-        if image == images[2]:
-            return "c"
-        if image == images[3]:
-            return "d"
-        if image == images[4]:
-            return "e"
-
-    with patch.object(AzureVisionUtil, "detect_text", mock_detect_text):
-        actual_results = AzureVisionUtil().detect_text_in_images(images)
-        expected_results = [
-            (images[0], "a"),
-            (images[1], "b"),
-            (images[2], "c"),
-            (images[3], "d"),
-            (images[4], "e"),
-        ]
-        compare_unashable_lists(expected_results, actual_results)
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_text_in_images__with_exception(mock_azure_vision):
-    images = [Image.new("RGB", (51, 51), i) for i in range(5)]
-
-    def mock_detect_text(inst, image):
-        if image == images[0]:
-            return "a"
-        if image == images[1]:
-            return "b"
-        if image == images[2]:
-            # This element should not be returned
-            raise ImageAnalysisError("Some exception")
-        if image == images[3]:
-            return "d"
-        if image == images[4]:
-            return "e"
-
-    with patch.object(AzureVisionUtil, "detect_text", mock_detect_text):
-        actual_results = AzureVisionUtil().detect_text_in_images(images)
-        expected_results = [
-            (images[0], "a"),
-            (images[1], "b"),
-            (
-                images[2],
                 (
-                    "TEXT DETECTION FAILED",
-                    (0, 0, images[2].width, images[2].height),
+                    (
+                        "Text Detection Failed",
+                        (0, 0, images[1].width, images[1].height),
+                    ),
                 ),
             ),
-            (images[3], "d"),
-            (images[4], "e"),
+            (images[2], (("text", (0, 0, 10, 10)),)),
+        )
+
+        results = ImageAnalysisUtil._image_detection(images, "text", failing_detector)
+
+        compare_unashable_lists(expected_results, results)
+
+
+class TestAzureVisionUtilBase:
+    @pytest.fixture(autouse=True)
+    @staticmethod
+    def _clear_caches():
+        AzureVisionUtil._IMAGE_FACE_CACHE.clear()
+        AzureVisionUtil._IMAGE_TEXT_CACHE.clear()
+        yield
+        AzureVisionUtil._IMAGE_FACE_CACHE.clear()
+        AzureVisionUtil._IMAGE_TEXT_CACHE.clear()
+
+
+class TestDetectFaces(TestAzureVisionUtilBase):
+    @staticmethod
+    def _mock_vision_result_people(people):
+        mock_result = Mock()
+        mock_result.people.list = people
+        return mock_result
+
+    def test_returns_boxes_above_threshold(self):
+        image = Mock()
+        people_list = [
+            Mock(bounding_box=Mock(x=10, y=20, width=30, height=40), confidence=0.9),
+            Mock(bounding_box=Mock(x=50, y=60, width=10, height=10), confidence=0.4),
         ]
+
+        with (
+            patch.object(AzureVisionUtil, "check_image_size", return_value=True),
+            patch.object(
+                AzureVisionUtil,
+                "_azure_vision_analysis",
+                return_value=self._mock_vision_result_people(people_list),
+            ),
+        ):
+            result = AzureVisionUtil.detect_faces(image, confidence_threshold=0.5)
+
+        assert result == ((10, 20, 40, 60),)
+
+    def test_caches_result(self):
+        image = Mock()
+        people_list = [
+            Mock(bounding_box=Mock(x=10, y=20, width=30, height=40), confidence=0.9),
+        ]
+
+        with (
+            patch.object(AzureVisionUtil, "check_image_size", return_value=True),
+            patch.object(
+                AzureVisionUtil,
+                "_azure_vision_analysis",
+                return_value=self._mock_vision_result_people(people_list),
+            ),
+        ):
+            AzureVisionUtil.detect_faces(image, confidence_threshold=0.5)
+
+        assert len(AzureVisionUtil._IMAGE_FACE_CACHE) == 1
+        assert AzureVisionUtil._IMAGE_FACE_CACHE[0]["image"] == image
+
+    def test_uses_cached_result(self):
+        image = Mock()
+        AzureVisionUtil._IMAGE_FACE_CACHE = [
+            {
+                "image": image,
+                "faces": ({"box": (10, 20, 40, 60), "confidence": 0.9},),
+            }
+        ]
+
+        with patch.object(AzureVisionUtil, "_azure_vision_analysis") as mock_analysis:
+            result = AzureVisionUtil.detect_faces(image, confidence_threshold=0.5)
+
+        mock_analysis.assert_not_called()
+        assert result == ((10, 20, 40, 60),)
+
+    def test_skips_image_too_small(self):
+        image = Image.new("RGB", (49, 49))
+        result = AzureVisionUtil.detect_faces(image, confidence_threshold=0.5)
+        assert result == ()
+
+    def test_skips_image_too_large(self):
+        image = Image.new("RGB", (16001, 100))
+        result = AzureVisionUtil.detect_faces(image, confidence_threshold=0.5)
+        assert result == ()
+
+
+class TestDetectFacesInImages(TestAzureVisionUtilBase):
+    def test_returns_results_for_all_images(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(5)]
+        expected_results = [
+            (img, (("Face Detected", (i,)),)) for i, img in enumerate(images)
+        ]
+
+        with patch.object(
+            AzureVisionUtil,
+            "detect_faces",
+            side_effect=lambda img, **kw: ((images.index(img),),),
+        ):
+            actual_results = AzureVisionUtil.detect_faces_in_images(images, 0.1)
+
         compare_unashable_lists(expected_results, actual_results)
 
+    def test_redacts_full_image_on_exception(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(3)]
 
-@patch("core.util.azure_vision_util.BytesIO", autospec=True)
-def test__azure_vision_util__detect_text(mock_bytes_io):
-    azure_vision_util = AzureVisionUtil()
-    image = Mock()
+        def mock_detect(image, **kwargs):
+            if image == images[1]:
+                raise ImageAnalysisError("Some exception")
+            return ((0, 0, 10, 10),)
 
-    with (
-        patch.object(
-            ImageAnalysisClient, "analyze", return_value=Mock(), autospec=True
-        ) as mock_analyze,
-        patch(
-            "core.util.azure_vision_util.check_image_size",
-            return_value=True,
-            autospec=True,
-        ),
-    ):
-        mock_analyze.return_value = MockTextAnalysisClientResult()
-        result = azure_vision_util.detect_text(image)
+        with patch.object(AzureVisionUtil, "detect_faces", side_effect=mock_detect):
+            actual_results = AzureVisionUtil.detect_faces_in_images(images, 0.1)
 
-    expected_response = (
-        ("Hello", (10, 20, 30, 40)),
-        ("World", (50, 60, 70, 80)),
-    )
-
-    assert result == expected_response
-
-    # Verify caching
-    assert azure_vision_util._IMAGE_TEXT_CACHE == [
-        {
-            "image": image,
-            "text": expected_response,
-        }
-    ]
+        failed_result = next(r for r in actual_results if r[0] == images[1])
+        assert failed_result == (
+            images[1],
+            (("Face Detection Failed", (0, 0, images[1].width, images[1].height)),),
+        )
 
 
-@patch("core.util.azure_vision_util.BytesIO", autospec=True)
-def test__azure_vision_util__detect_text__use_cached_result(mock_bytes_io):
-    azure_vision_util = AzureVisionUtil()
-    image = Mock()
-    text_to_redact = (
-        ("Hello", (10, 20, 30, 40)),
-        ("World", (50, 60, 70, 80)),
-    )
+class TestDetectText(TestAzureVisionUtilBase):
+    @staticmethod
+    def _mock_vision_result_text():
+        mock_result = Mock()
 
-    azure_vision_util._IMAGE_TEXT_CACHE = [
-        {
-            "image": image,
-            "text": text_to_redact,
-        },
-    ]
+        class MockWord:
+            def __init__(self, content, bounding_box):
+                self.text = content
+                self.bounding_polygon = bounding_box
 
-    with patch(
-        "core.util.azure_vision_util.check_image_size", return_value=True, autospec=True
-    ):
-        result = azure_vision_util.detect_text(image)
-        LoggingUtil.log_info.assert_called_with("Using cached text detection result.")
+        class MockLine:
+            def __init__(self, words):
+                self.words = words
 
-    assert result == text_to_redact
-    mock_bytes_io.assert_not_called()  # Ensure no analysis was performed
+        class MockBlock:
+            def __init__(self, lines):
+                self.lines = lines
+
+        mock_result.read.blocks = [
+            MockBlock(
+                lines=[
+                    MockLine(
+                        words=[
+                            MockWord(
+                                "Hello",
+                                [Mock(x=10, y=20), Mock(x=40, y=20), Mock(x=30, y=40)],
+                            )
+                        ],
+                    ),
+                    MockLine(
+                        words=[
+                            MockWord(
+                                "World",
+                                [Mock(x=50, y=60), Mock(x=80, y=60), Mock(x=70, y=80)],
+                            )
+                        ],
+                    ),
+                ]
+            ),
+        ]
+        return mock_result
+
+    def test_returns_words_with_bounding_boxes(self):
+        image = Mock()
+
+        with (
+            patch.object(AzureVisionUtil, "check_image_size", return_value=True),
+            patch.object(
+                AzureVisionUtil,
+                "_azure_vision_analysis",
+                return_value=self._mock_vision_result_text(),
+            ),
+        ):
+            result = AzureVisionUtil.detect_text(image)
+
+        assert result == (("Hello", (10, 20, 30, 40)), ("World", (50, 60, 70, 80)))
+
+    def test_caches_result(self):
+        image = Mock()
+
+        with (
+            patch.object(AzureVisionUtil, "check_image_size", return_value=True),
+            patch.object(
+                AzureVisionUtil,
+                "_azure_vision_analysis",
+                return_value=self._mock_vision_result_text(),
+            ),
+        ):
+            AzureVisionUtil.detect_text(image)
+
+        assert len(AzureVisionUtil._IMAGE_TEXT_CACHE) == 1
+        assert AzureVisionUtil._IMAGE_TEXT_CACHE[0]["image"] == image
+
+    def test_uses_cached_result(self):
+        image = Mock()
+        cached_text = (("Hello", (10, 20, 30, 40)),)
+        AzureVisionUtil._IMAGE_TEXT_CACHE = [{"image": image, "text": cached_text}]
+
+        with patch.object(AzureVisionUtil, "_azure_vision_analysis") as mock_analysis:
+            result = AzureVisionUtil.detect_text(image)
+
+        mock_analysis.assert_not_called()
+        assert result == cached_text
 
 
-def test__check_image_size__valid_image():
-    image = Image.new("RGB", (100, 100))
-    assert check_image_size(image) is True
+class TestDetectTextInImages(TestAzureVisionUtilBase):
+    def test_returns_results_for_all_images(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(5)]
+        expected_results = [
+            (img, ((str(i), (0, 0, i, i)),)) for i, img in enumerate(images)
+        ]
 
+        with patch.object(
+            AzureVisionUtil,
+            "detect_text",
+            side_effect=lambda img: (
+                (
+                    str(images.index(img)),
+                    (0, 0, images.index(img), images.index(img)),
+                ),
+            ),
+        ):
+            actual_results = AzureVisionUtil.detect_text_in_images(images)
 
-def test__check_image_size__too_small_width():
-    image = Image.new("RGB", (49, 100))
-    assert check_image_size(image) is False
+        compare_unashable_lists(expected_results, actual_results)
 
+    def test_redacts_full_image_on_exception(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(3)]
 
-def test__check_image_size__too_small_height():
-    image = Image.new("RGB", (100, 49))
-    assert check_image_size(image) is False
+        def mock_detect(image):
+            if image == images[1]:
+                raise ImageAnalysisError("Some exception")
+            return (("word", (0, 0, 10, 10)),)
 
+        with patch.object(AzureVisionUtil, "detect_text", side_effect=mock_detect):
+            actual_results = AzureVisionUtil.detect_text_in_images(images)
 
-def test__check_image_size__too_large_width():
-    image = Image.new("RGB", (16001, 100))
-    assert check_image_size(image) is False
-
-
-def test__check_image_size__too_large_height():
-    image = Image.new("RGB", (100, 16001))
-    assert check_image_size(image) is False
-
-
-def test__azure_vision_util__check_image_size__exact_minimum():
-    image = Image.new("RGB", (50, 50))
-    assert check_image_size(image) is True
-
-
-def test__azure_vision_util__check_image_size__exact_maximum():
-    image = Image.new("RGB", (16000, 16000))
-    assert check_image_size(image) is True
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_faces__image_too_small(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
-    azure_vision_util._IMAGE_FACE_CACHE = []
-    image = Image.new("RGB", (49, 49))
-    result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-    assert result == ()
-
-
-@patch.object(AzureVisionUtil, "__init__", return_value=None)
-def test__azure_vision_util__detect_faces__image_too_large(mock_azure_vision):
-    azure_vision_util = AzureVisionUtil()
-    azure_vision_util._IMAGE_FACE_CACHE = []
-    image = Image.new("RGB", (16001, 100))
-    result = azure_vision_util.detect_faces(image, confidence_threshold=0.5)
-    assert result == ()
+        failed_result = next(r for r in actual_results if r[0] == images[1])
+        assert failed_result == (
+            images[1],
+            (("Text Detection Failed", (0, 0, images[1].width, images[1].height)),),
+        )
