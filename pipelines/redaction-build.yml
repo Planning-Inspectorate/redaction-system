@@ -21,6 +21,8 @@ extends:
   template: stages/wrapper_ci.yml@templates
   parameters:
     gitFetchDepth: 0
+    globalVariables:
+      - template: pipelines/azure-pipelines-variables.yml@self
     validationJobs:
       - name: Build receiver
         steps:
@@ -50,3 +52,20 @@ extends:
           - publish: $(System.DefaultWorkingDirectory)/redactor.zip
             artifact: redactor-function
             displayName: Publish redactor function
+      - name: Build signature detection
+        steps:
+          - task: AzureCLI@2
+            displayName: 'Download model files'
+            inputs:
+              azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment Dev'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                set -e
+                python3 -m pip install huggingface_hub
+                python3 pipelines/scripts/download_signature_detector_model.py --model-dir $(Build.SourcesDirectory)/signature_detector/model
+          - template: ../steps/azure_web_app_docker_build_push.yml@templates
+            parameters:
+              azurecrName: $(azurecrName)
+              workingDirectory: $(Build.SourcesDirectory)/signature_detector
+              repository: redaction-system/signature-detector

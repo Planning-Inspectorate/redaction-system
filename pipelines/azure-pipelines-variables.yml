@@ -24,3 +24,6 @@ variables:
   E2E_CONTAINER_NAME_DEV: pinsfuncredactionsystemdevuks-applease
   E2E_CONTAINER_NAME_TEST: pinsfuncredactionsystemtestuks-applease
   E2E_CONTAINER_NAME_PROD: pinsfuncredactionsystemproduks-applease
+
+  # shared container registry
+  azurecrName: pinscrsharedtoolinguks
