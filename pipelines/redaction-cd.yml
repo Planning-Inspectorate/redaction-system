@@ -35,6 +35,10 @@ extends:
   parameters:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
+      - name: resourceGroup
+        value: 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks'
+      - name: signatureDetectorAppName
+        value: 'pins-app-signature-detector-redaction-system-${{ lower(parameters.env) }}-uks'
     environments:
       - name: ${{ parameters.env }}
     deploymentStages:
@@ -42,6 +46,9 @@ extends:
         deploymentJobs:
           - name: Deploy Receiver Functions
             steps:
+              - bash: |
+                  git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
+                displayName: Checkout Build-Commit
               - download: build
                 artifact: receiver-function
                 displayName: Download receiver-function
@@ -54,7 +61,7 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --resource-group $(resourceGroup) \
                     --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(Pipeline.Workspace)/build/receiver-function/receiver.zip' \
                     --build-remote true \
@@ -62,6 +69,9 @@ extends:
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
           - name: Deploy Processor Functions
             steps:
+              - bash: |
+                  git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
+                displayName: Checkout Build-Commit
               - download: build
                 artifact: redactor-function
                 displayName: Download redactor-function
@@ -75,17 +85,47 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     az functionapp deployment source config-zip \
-                    --resource-group 'pins-rg-redaction-system-${{ lower(parameters.env) }}-uks' \
+                    --resource-group $(resourceGroup) \
                     --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
                     --src '$(Pipeline.Workspace)/build/redactor-function/redactor.zip' \
                     --build-remote true \
                     --verbose
                     python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
+          - name: Deploy Signature detection
+            steps:
+              - template: ../steps/azure_web_app_deploy_slot.yml@templates
+                parameters:
+                  appName: pins-app-signature-detector-redaction-system-${{ lower(parameters.env) }}-uks
+                  appResourceGroup: $(resourceGroup)
+                  azurecrName: $(azurecrName)
+                  repository: redaction-system/signature-detector
+                  slot: default
+
+              - task: AzureCLI@2
+                displayName: 'Wait for healthy deployment'
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    echo "Waiting for App Service to become healthy..."
+                    for i in $(seq 1 30); do
+                      STATUS=$(az webapp show --resource-group $(resourceGroup) --name $(signatureDetectorAppName) --query state -o tsv)
+                      if [ "$STATUS" = "Running" ]; then
+                        echo "App Service is running."
+                        exit 0
+                      fi
+                      echo "Status: $STATUS. Retrying in 10s..."
+                      sleep 10
+                    done
+                    echo "App Service did not become healthy in time."
+                    exit 1
+
 
       - name: Run Smoke Tests
         dependsOn:
-          - Deploy Receiver Function App
-          - Deploy Processor Function App
+          - Deploy
         deploymentJobs:
           - name: Run Smoke Tests
             steps:
@@ -114,3 +154,14 @@ extends:
                     python3 -m pip install pytest
                     python3 -m pip install dotenv
                     python3 -m pytest redactor/test/smoke_test/test_connectivity.py
+                    
+
+              - task: AzureCLI@2
+                displayName: Test signature detection
+                inputs:
+                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                  scriptType: 'bash'
+                  scriptLocation: 'inlineScript'
+                  inlineScript: |
+                    set -e
+                    python3 redactor/test/smoke_test/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/test/resources/image/image_with_signature.png
