@@ -1,4 +1,4 @@
-import dataclasses
+import contextlib
 from unittest import mock
 
 from PIL import Image
@@ -6,7 +6,7 @@ from PIL import Image
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.redaction.result import ImageRedactionResult
-from core.util.image_analysis import AzureVisionUtil
+from core.util.image_analysis import AzureVisionUtil, SignatureDetector
 from test.util.util import compare_unashable_lists
 
 
@@ -24,7 +24,7 @@ class ImageAnalysisError(Exception):
     pass
 
 
-class TestRedactBase:
+class TestImageRedactorBase:
     RULE_NAME = "some image redaction config"
 
     def setup_image_redactor(self, images):
@@ -42,158 +42,202 @@ class TestRedactBase:
 
             return inst
 
+    @staticmethod
+    @contextlib.contextmanager
+    def mock_detectors(face_results, signature_results):
+        with (
+            mock.patch.object(
+                AzureVisionUtil,
+                "detect_faces_in_images",
+                return_value=face_results,
+            ),
+            mock.patch.object(
+                SignatureDetector,
+                "detect_signatures_in_images",
+                return_value=signature_results,
+            ),
+        ):
+            yield
 
-class TestRedactFaces(TestRedactBase):
-    def patch_azure_vision_util(
-        self, detect_faces_return_value, detect_faces_side_effects=None
-    ):
-        mock_avu = mock.Mock(spec=AzureVisionUtil)
-        mock_avu.detect_faces_in_images.return_value = detect_faces_return_value
-        mock_avu.detect_faces_in_images.side_effect = detect_faces_side_effects
 
-        return mock.patch(
-            "core.redaction.redactor.AzureVisionUtil",
-            return_value=mock_avu,
-        )
-
-    def test_returns_redaction_results(self):
-        """
-        - Given I have some redaction config (containing two images)
-        - When I call ImageRedactor.redact
-        - If the underlying analysis tool returns three bounding boxes, then these should be returned alongside metedata about the analysed image
-        """
-        images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
-        detect_faces_result = [
+class TestCreateRedactionResults(TestImageRedactorBase):
+    def test_combines_image_analysis_results(self):
+        images = [Image.new("RGB", (100, 100)), Image.new("RGB", (200, 100))]
+        face_results = (
             (
                 images[0],
-                (
-                    ("Face Detected", (10, 10, 50, 50)),
-                    ("Face Detected", (100, 100, 50, 50)),
-                ),
+                (("Face Detected", (10, 10, 50, 50)),),
             ),
-            (images[1], (("Face Detected", (30, 30, 50, 50)),)),
+            (
+                images[1],
+                (("Face Detected", (60, 20, 50, 80)),),
+            ),
+        )
+        sig_results = (
+            (images[0], ()),
+            (images[1], (("Signature Detected", (30, 30, 50, 50)),)),
+        )
+        inst = self.setup_image_redactor(images)
+
+        actual_results = inst._create_redaction_results([face_results, sig_results])
+
+        expected_results = (
+            ImageRedactionResult.Result(
+                source_image=images[0],
+                image_dimensions=(100, 100),
+                redaction_boxes=((10, 10, 50, 50),),
+                names=("Face Detected",),
+            ),
+            ImageRedactionResult.Result(
+                source_image=images[1],
+                image_dimensions=(200, 100),
+                redaction_boxes=(
+                    (60, 20, 50, 80),
+                    (30, 30, 50, 50),
+                ),
+                names=("Face Detected", "Signature Detected"),
+            ),
+        )
+        compare_unashable_lists(expected_results, actual_results)
+
+    def test_no_result_with_no_detections(self):
+        images = [Image.new("RGB", (100, 100))]
+        face_results = ((images[0], ()),)
+        sig_results = ((images[0], (("Signature Detected", (30, 30, 50, 50)),)),)
+        inst = self.setup_image_redactor(images)
+
+        actual_results = inst._create_redaction_results([face_results, sig_results])
+
+        expected_results = (
+            ImageRedactionResult.Result(
+                source_image=images[0],
+                image_dimensions=(100, 100),
+                redaction_boxes=((30, 30, 50, 50),),
+                names=("Signature Detected",),
+            ),
+        )
+        compare_unashable_lists(expected_results, actual_results)
+
+
+class TestRedact(TestImageRedactorBase):
+    def test_no_images_skips_analysis(self):
+        inst = self.setup_image_redactor(images=[])
+
+        with (
+            mock.patch.object(AzureVisionUtil, "detect_faces_in_images") as mock_faces,
+            mock.patch.object(
+                SignatureDetector, "detect_signatures_in_images"
+            ) as mock_sigs,
+        ):
+            actual = inst.redact()
+
+        mock_faces.assert_not_called()
+        mock_sigs.assert_not_called()
+        assert actual.rule_name == self.RULE_NAME
+        assert actual.redaction_results == ()
+
+    def test_returns_face_and_signature_results(self):
+        images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
+        face_results = [
+            (images[0], (("Face Detected", (10, 10, 50, 50)),)),
+            (images[1], ()),
+        ]
+        sig_results = [
+            (images[0], ()),
+            (images[1], (("Signature Detected", (30, 30, 50, 50)),)),
         ]
         inst = self.setup_image_redactor(images)
 
-        expected_results = ImageRedactionResult(
-            rule_name=self.RULE_NAME,
-            run_metrics={},
-            redaction_results=tuple(
-                ImageRedactionResult.Result(
-                    source_image=image,
-                    image_dimensions=(image.width, image.height),
-                    redaction_boxes=faces_detected,
-                    names=tuple("Face Detected" for _ in faces_detected),
-                )
-                for i, (image, faces_detected) in enumerate(detect_faces_result)
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
+
+        assert len(actual.redaction_results) == 2
+        expected_results = [
+            ImageRedactionResult.Result(
+                source_image=images[0],
+                image_dimensions=(1000, 1000),
+                redaction_boxes=((10, 10, 50, 50),),
+                names=("Face Detected",),
             ),
-        )
-        cleaned_expected_results = dataclasses.asdict(expected_results)
-        cleaned_expected_results.pop("run_metrics")
-
-        with self.patch_azure_vision_util(detect_faces_result):
-            actual_results = inst.redact()
-
-        cleaned_actual_results = dataclasses.asdict(actual_results)
-        cleaned_actual_results.pop("run_metrics")
-
-        assert cleaned_expected_results == cleaned_actual_results
-
-    def test_no_images_skips_analysis(self):
-        """
-        - Given I have a config with an empty images list
-        - When I call ImageRedactor.redact
-        - Then it should return an empty ImageRedactionResult without calling AzureVisionUtil
-        """
-        inst = self.setup_image_redactor(images=[])
-
-        with self.patch_azure_vision_util(
-            detect_faces_return_value=[]
-        ) as mock_azure_vision_util:
-            actual_results = inst.redact()
-
-        mock_azure_vision_util.assert_not_called()
-
-        assert actual_results.rule_name == self.RULE_NAME
-        assert actual_results.redaction_results == ()
-        assert actual_results.run_metrics == {"total_images_to_analyse": 0}
-
-    def test_no_faces_detected(self):
-        """
-        - Given I have some redaction config (containing two images)
-        - When I call ImageRedactor.redact
-        - If the underlying analysis tool returns no bounding boxes, then the redaction results should be empty
-        """
-        images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
-        inst = self.setup_image_redactor(images=images)
-
-        expected_results = ImageRedactionResult(
-            rule_name=self.RULE_NAME,
-            run_metrics={},
-            redaction_results=(),
-        )
-        cleaned_expected_results = dataclasses.asdict(expected_results)
-        cleaned_expected_results.pop("run_metrics")
-
-        detect_faces_result = [(images[0], ()), (images[1], ())]
-        with self.patch_azure_vision_util(detect_faces_result):
-            actual_results = inst.redact()
-
-        cleaned_actual_results = dataclasses.asdict(actual_results)
-        cleaned_actual_results.pop("run_metrics")
-
-        assert cleaned_expected_results == cleaned_actual_results
-
-    def test_with_analysis_failure(self):
-        """
-        - Given I have some redaction config (containing two images)
-        - When I call ImageRedactor.redact
-        - If the underlying analysis fails for one of the images, then the whole failed image should be redacted
-        """
-        images = [Image.new("RGB", (1000, 1000)), Image.new("RGB", (200, 100))]
-        inst = self.setup_image_redactor(images=images)
-
-        def detect_faces_side_effects(images, confidence):
-            return [
-                (
-                    images[0],
-                    ((0, 0, images[0].width, images[0].height),),
-                ),  # Full image redaction for exception
-                (images[1], ((30, 30, 50, 50),)),  # Normal detection for second image
-            ]
-
-        expected_results = ImageRedactionResult(
-            rule_name=self.RULE_NAME,
-            run_metrics={},
-            redaction_results=(
-                ImageRedactionResult.Result(
-                    source_image=images[0],
-                    image_dimensions=(images[0].width, images[0].height),
-                    # Should contain a single redaction box set to the image's bounds
-                    redaction_boxes=((0, 0, images[0].width, images[0].height),),
-                    names=("Face Detection Failed",),
-                ),
-                ImageRedactionResult.Result(
-                    source_image=images[1],
-                    image_dimensions=(images[1].width, images[1].height),
-                    redaction_boxes=((30, 30, 50, 50),),
-                    names=("Face Detected",),
-                ),
+            ImageRedactionResult.Result(
+                source_image=images[1],
+                image_dimensions=(200, 100),
+                redaction_boxes=((30, 30, 50, 50),),
+                names=("Signature Detected",),
             ),
-        )
-        cleaned_expected_results = dataclasses.asdict(expected_results)
-        cleaned_expected_results.pop("run_metrics")
-        expected_redaction_boxes = cleaned_expected_results.pop("redaction_results")
+        ]
+        compare_unashable_lists(expected_results, actual.redaction_results)
 
-        with self.patch_azure_vision_util(
-            detect_faces_return_value=None,
-            detect_faces_side_effects=detect_faces_side_effects,
-        ):
-            actual_results = inst.redact()
+    def test_no_detections_returns_empty(self):
+        images = [Image.new("RGB", (100, 100))]
+        face_results = [(images[0], ())]
+        sig_results = [(images[0], ())]
+        inst = self.setup_image_redactor(images)
 
-        cleaned_actual_results = dataclasses.asdict(actual_results)
-        cleaned_actual_results.pop("run_metrics")
-        actual_redaction_boxes = cleaned_actual_results.pop("redaction_results")
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
 
-        assert cleaned_expected_results == cleaned_actual_results
-        compare_unashable_lists(expected_redaction_boxes, actual_redaction_boxes)
+        assert actual.redaction_results == ()
+
+    def test_face_failure_redacts_full_image(self):
+        images = [Image.new("RGB", (200, 100))]
+        full_box = (0, 0, 200, 100)
+        face_results = [(images[0], (("Face Detection Failed", full_box),))]
+        sig_results = [(images[0], ())]
+        inst = self.setup_image_redactor(images)
+
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
+
+        assert len(actual.redaction_results) == 1
+        result = actual.redaction_results[0]
+        assert list(result.redaction_boxes) == [full_box]
+        assert "Face Detection Failed" in result.names
+
+    def test_signature_failure_redacts_full_image(self):
+        images = [Image.new("RGB", (200, 100))]
+        full_box = (0, 0, 200, 100)
+        face_results = [(images[0], ())]
+        sig_results = [(images[0], (("Signature Detection Failed", full_box),))]
+        inst = self.setup_image_redactor(images)
+
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
+
+        assert len(actual.redaction_results) == 1
+        result = actual.redaction_results[0]
+        assert list(result.redaction_boxes) == [full_box]
+        assert "Signature Detection Failed" in result.names
+
+    def test_aggregates_faces_and_signatures_for_same_image(self):
+        images = [Image.new("RGB", (500, 500))]
+        face_box = (10, 10, 50, 50)
+        sig_box = (200, 200, 300, 300)
+        face_results = [(images[0], (("Face Detected", face_box),))]
+        sig_results = [(images[0], (("Signature Detected", sig_box),))]
+        inst = self.setup_image_redactor(images)
+
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
+
+        assert len(actual.redaction_results) == 1
+        result = actual.redaction_results[0]
+        assert face_box in result.redaction_boxes
+        assert sig_box in result.redaction_boxes
+        assert "Face Detected" in result.names
+        assert "Signature Detected" in result.names
+
+    def test_run_metrics_contains_timing_keys(self):
+        images = [Image.new("RGB", (100, 100))]
+        face_results = [(images[0], ())]
+        sig_results = [(images[0], ())]
+        inst = self.setup_image_redactor(images)
+
+        with self.mock_detectors(face_results, sig_results):
+            actual = inst.redact()
+
+        assert "total_images_to_analyse" in actual.run_metrics
+        assert "total_face_analysis_time" in actual.run_metrics
+        assert "total_signature_analysis_time" in actual.run_metrics
+        assert "total_image_analysis_time" in actual.run_metrics
+        assert actual.run_metrics["total_images_to_analyse"] == 1

@@ -24,7 +24,7 @@ from core.redaction.result import (
     LLMTextRedactionResult,
     RedactionResult,
 )
-from core.util.image_analysis import AzureVisionUtil
+from core.util.image_analysis import AzureVisionUtil, SignatureDetector
 from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
@@ -177,6 +177,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
 
     def redact(self) -> ImageRedactionResult:
         self.config: ImageRedactionConfig
+        thresholds = self.config.confidence_thresholds
 
         self.total_images_to_analyse = len(self.config.images)
         run_metrics = {"total_images_to_analyse": self.total_images_to_analyse}
@@ -188,46 +189,76 @@ class ImageRedactor(Redactor):  # pragma: no cover
                 redaction_results=(),
             )
 
-        return self.redact_faces()
-
-    def redact_faces(self) -> ImageRedactionResult:
-        confidence_threshold = self.config.confidence_thresholds.face_detection
-
-        results: list[ImageRedactionResult.Result] = []
-        with TimerUtil() as timer:
-            face_detection_results = AzureVisionUtil().detect_faces_in_images(
-                self.config.images, confidence_threshold
-            )
-            for image_to_redact, faces_detected in face_detection_results:
-                # If image analysis failed, the full image will be returned
-                full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
-                if len(faces_detected) == 1 and faces_detected[0] == full_image_box:
-                    faces_detected = (full_image_box,)
-                    names = ("Face Detection Failed",)
-                elif len(faces_detected) == 0:
-                    continue
-                else:
-                    names = tuple(["Face Detected" for _ in faces_detected])
-                results.append(
-                    ImageRedactionResult.Result(
-                        image_dimensions=(
-                            image_to_redact.width,
-                            image_to_redact.height,
-                        ),
-                        source_image=image_to_redact,
-                        redaction_boxes=faces_detected,
-                        names=names,
+        detection_results = []
+        for detection_function, detection_type in [
+            (AzureVisionUtil.detect_faces_in_images, "face"),
+            (SignatureDetector.detect_signatures_in_images, "signature"),
+        ]:
+            with TimerUtil() as timer:
+                results: list[tuple[Image.Image, tuple[str, tuple]]] = (
+                    detection_function(
+                        self.config.images,
+                        getattr(thresholds, f"{detection_type}_detection"),
                     )
                 )
+                detection_results.append(results)
+            run_metrics[f"total_{detection_type}_analysis_time"] = timer.elapsed_time
+
+        run_metrics["total_image_analysis_time"] = sum(
+            run_metrics[metric] for metric in run_metrics if "analysis_time" in metric
+        )
+
+        redaction_results = self._create_redaction_results(detection_results)
 
         return ImageRedactionResult(
             rule_name=self.config.name,
-            run_metrics={
-                "total_image_analysis_time": timer.elapsed_time,
-                "total_images_to_analyse": self.total_images_to_analyse,
-            },
-            redaction_results=tuple(results),
+            run_metrics=run_metrics,
+            redaction_results=redaction_results,
         )
+
+    def _create_redaction_results(
+        self,
+        detection_results: list[tuple[tuple[Image.Image, tuple[tuple[str, tuple]]]]],
+    ) -> tuple[ImageRedactionResult.Result, ...]:
+        results: list[ImageRedactionResult.Result] = []
+
+        for i, image in enumerate(self.config.images):
+            # Aggregate all detected objects across all object detection types
+            bounding_boxes: list[tuple[int, int, int, int]] = []
+            object_names: list[str] = []
+
+            for detection_result in detection_results:
+                image_to_redact, objects_detected = detection_result[i]
+
+                # Should match since result is returned for all images
+                if image_to_redact != image:
+                    raise ValueError(
+                        f"Image mismatch in detection results: expected {image}, got {image_to_redact}"
+                    )
+
+                if len(objects_detected) == 0:
+                    continue
+
+                print(objects_detected)
+                for name, box in objects_detected:
+                    bounding_boxes.append(box)
+                    object_names.append(name)
+
+            if not bounding_boxes:
+                continue
+
+            results.append(
+                ImageRedactionResult.Result(
+                    image_dimensions=(
+                        image_to_redact.width,
+                        image_to_redact.height,
+                    ),
+                    source_image=image_to_redact,
+                    redaction_boxes=tuple(bounding_boxes),
+                    names=tuple(object_names),
+                )
+            )
+        return tuple(results)
 
 
 class ImageTextRedactor(ImageRedactor, TextRedactor):
