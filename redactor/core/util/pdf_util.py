@@ -224,7 +224,9 @@ class PDFUtil:
         return image_metadata_list
 
     @staticmethod
-    def extract_unique_pdf_images(image_metadata: list[PDFImageMetadata]):
+    def extract_unique_pdf_images(
+        image_metadata: list[PDFImageMetadata],
+    ) -> list[Image.Image]:
         """
         Process a list of PDFImageMetadata to only contain the unique images.
         A PDF may have an image repeated many times, for example in the header of
@@ -236,10 +238,9 @@ class PDFUtil:
         seen_images = []
         for metadata in image_metadata:
             image = metadata.image
-            cleaned_image = image.convert("RGB")
-            if not any(image == existing_image[1] for existing_image in seen_images):
-                seen_images.append((image, cleaned_image))
-        return [x[0] for x in seen_images]
+            if not any(image == existing_image for existing_image in seen_images):
+                seen_images.append(image)
+        return seen_images
 
     @classmethod
     def _check_subsequent_words(
