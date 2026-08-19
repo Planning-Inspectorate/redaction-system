@@ -3,7 +3,11 @@ from io import BytesIO
 
 from PIL import Image
 
-from core.util.image_analysis import AzureVisionUtil, ImageAnalysisUtil
+from core.util.image_analysis import (
+    AzureVisionUtil,
+    ImageAnalysisUtil,
+    SignatureDetector,
+)
 
 
 class TestCheckImageSize:
@@ -301,3 +305,46 @@ class TestDetectText:
 
         assert self.EXPECTED_TEXT_RESPONSE == response
         assert response == new_response
+
+
+class TestDetectSignatures:
+    def test_identifies_signature(self):
+        with open(
+            os.path.join("test", "resources", "image", "image_with_signature.png"),
+            "rb",
+        ) as f:
+            image = Image.open(BytesIO(f.read()))
+            response = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        expected_response = ((688, 620, 872, 697),)
+        assert response == expected_response
+
+    def test_uses_cached_response(self):
+        with open(
+            os.path.join("test", "resources", "image", "image_with_signature.png"),
+            "rb",
+        ) as f:
+            image = Image.open(BytesIO(f.read()))
+            response = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+            new_response = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        assert len(response) > 0
+        assert response == new_response
+
+    def test_no_signature_in_text_image(self):
+        with open(
+            os.path.join("test", "resources", "image", "image_with_text.jpg"),
+            "rb",
+        ) as f:
+            image = Image.open(BytesIO(f.read()))
+            response = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        assert response == ()
