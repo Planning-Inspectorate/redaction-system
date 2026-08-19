@@ -4,7 +4,11 @@ from unittest.mock import Mock, patch
 import pytest
 from PIL import Image
 
-from core.util.image_analysis import AzureVisionUtil, ImageAnalysisUtil
+from core.util.image_analysis import (
+    AzureVisionUtil,
+    ImageAnalysisUtil,
+    SignatureDetector,
+)
 from test.util.util import compare_unashable_lists
 
 
@@ -392,4 +396,209 @@ class TestDetectTextInImages(TestAzureVisionUtilBase):
         assert failed_result == (
             images[1],
             (("Text Detection Failed", (0, 0, images[1].width, images[1].height)),),
+        )
+
+
+class TestSignatureDetectorBase:
+    # Avoid checking for the environment variable in tests
+    @pytest.fixture(autouse=True)
+    @staticmethod
+    def _mock_get_endpoint(request):
+        if "noendpointfixt" in request.keywords:
+            yield
+            return
+        with patch.object(
+            SignatureDetector, "_get_endpoint", return_value="http://mock-endpoint"
+        ):
+            yield
+
+    @pytest.fixture(autouse=True)
+    @staticmethod
+    def _clear_caches():
+        SignatureDetector._IMAGE_CACHE.clear()
+        yield
+        SignatureDetector._IMAGE_CACHE.clear()
+
+
+class TestGetBoundingBox(TestSignatureDetectorBase):
+    def test_returns_bounding_box(self):
+        detection = {
+            "score": 0.9,
+            "label": "signature",
+            "box": {"x_min": 10, "y_min": 20, "x_max": 50, "y_max": 60},
+        }
+        bounding_box = SignatureDetector._get_bounding_box(detection)
+        assert bounding_box == (10, 20, 50, 60)
+
+
+class TestGetEndpoint(TestSignatureDetectorBase):
+    @pytest.fixture(autouse=True)
+    def _reset_endpoint(self):
+        SignatureDetector._ENDPOINT = None
+        yield
+        SignatureDetector._ENDPOINT = None
+
+    @pytest.mark.noendpointfixt
+    def test_returns_endpoint_from_env(self, monkeypatch):
+        monkeypatch.setenv("SIGNATURE_DETECTOR_ENDPOINT", "http://test-endpoint")
+        endpoint = SignatureDetector._get_endpoint()
+        assert endpoint == "http://test-endpoint"
+
+    @pytest.mark.noendpointfixt
+    def test_raises_error_if_env_not_set(self, monkeypatch):
+        monkeypatch.delenv("SIGNATURE_DETECTOR_ENDPOINT", raising=False)
+        with pytest.raises(SignatureDetector.EndpointNotSetError):
+            SignatureDetector._get_endpoint()
+
+
+class TestDetectSignatures(TestSignatureDetectorBase):
+    @staticmethod
+    def _mock_response(detections, status_code=200):
+        mock = Mock()
+        mock.status_code = status_code
+        mock.json.return_value = {"detections": detections}
+        mock.raise_for_status = Mock()
+        return mock
+
+    def test_returns_boxes_above_threshold(self):
+        image = Image.new("RGB", (100, 100))
+        detections = [
+            {
+                "score": 0.9,
+                "label": "signature",
+                "box": {"x_min": 10, "y_min": 20, "x_max": 50, "y_max": 60},
+            },
+            {
+                "score": 0.3,
+                "label": "signature",
+                "box": {"x_min": 70, "y_min": 80, "x_max": 90, "y_max": 95},
+            },
+        ]
+
+        with patch(
+            "core.util.image_analysis.post",
+            return_value=self._mock_response(detections),
+        ):
+            result = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        assert result == ((10, 20, 50, 60),)
+
+    def test_returns_empty_for_no_detections(self):
+        image = Image.new("RGB", (100, 100))
+
+        with patch(
+            "core.util.image_analysis.post", return_value=self._mock_response([])
+        ):
+            result = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        assert result == ()
+
+    def test_skips_image_too_small(self):
+        image = Image.new("RGB", (49, 49))
+        result = SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
+        assert result == ()
+
+    def test_skips_image_too_large(self):
+        image = Image.new("RGB", (16001, 100))
+        result = SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
+        assert result == ()
+
+    def test_caches_result(self):
+        image = Image.new("RGB", (100, 100))
+        detections = [
+            {
+                "score": 0.9,
+                "label": "signature",
+                "box": {"x_min": 10, "y_min": 20, "x_max": 50, "y_max": 60},
+            },
+        ]
+
+        with patch(
+            "core.util.image_analysis.post",
+            return_value=self._mock_response(detections),
+        ):
+            SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
+
+        assert len(SignatureDetector._IMAGE_CACHE) == 1
+        assert SignatureDetector._IMAGE_CACHE[0]["signatures"] == detections
+
+    def test_uses_cached_result(self):
+        image = Image.new("RGB", (100, 100))
+        cached_detections = [
+            {"score": 0.9, "box": (10, 20, 50, 60), "confidence": 0.9},
+        ]
+        SignatureDetector._IMAGE_CACHE = [
+            {"image": image, "signatures": cached_detections}
+        ]
+
+        with patch("core.util.image_analysis.post") as mock_post:
+            result = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        mock_post.assert_not_called()
+        assert result == ((10, 20, 50, 60),)
+
+    def test_sends_correct_payload(self):
+        image = Image.new("RGB", (100, 100))
+
+        with patch(
+            "core.util.image_analysis.post", return_value=self._mock_response([])
+        ) as mock_post:
+            SignatureDetector.detect_signatures(image, confidence_threshold=0.7)
+
+        call_kwargs = mock_post.call_args
+        assert call_kwargs.kwargs["json"]["threshold"] == 0.0
+        assert "image" in call_kwargs.kwargs["json"]
+        assert call_kwargs.kwargs["timeout"] == 120
+
+
+class TestDetectSignaturesInImages:
+    def test_returns_results_for_all_images(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(3)]
+
+        def mock_detect(img, **kwargs):
+            idx = images.index(img)
+            return ((idx, idx, idx, idx),)
+
+        with patch.object(
+            SignatureDetector, "detect_signatures", side_effect=mock_detect
+        ):
+            actual = SignatureDetector.detect_signatures_in_images(images, 0.5)
+
+        expected = [
+            (img, (("Signature Detected", (i, i, i, i)),))
+            for i, img in enumerate(images)
+        ]
+        compare_unashable_lists(expected, actual)
+
+    def test_redacts_full_image_on_exception(self):
+        images = [Image.new("RGB", (51, 51), i) for i in range(3)]
+
+        class DetectionError(Exception):
+            pass
+
+        def mock_detect(image, **kwargs):
+            if image == images[1]:
+                raise DetectionError("endpoint down")
+            return ()
+
+        with patch.object(
+            SignatureDetector, "detect_signatures", side_effect=mock_detect
+        ):
+            actual = SignatureDetector.detect_signatures_in_images(images, 0.5)
+
+        failed = next(r for r in actual if r[0] == images[1])
+        assert failed == (
+            images[1],
+            (
+                (
+                    "Signature Detection Failed",
+                    (0, 0, images[1].width, images[1].height),
+                ),
+            ),
         )
