@@ -14,6 +14,7 @@ from azure.identity import (
 )
 from dotenv import load_dotenv
 from PIL import Image
+from requests import post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
@@ -178,7 +179,6 @@ class AzureVisionUtil(ImageAnalysisUtil):
                     ManagedIdentityCredential(), AzureCliCredential()
                 ),
             )
-
         return cls._VISION_CLIENT
 
     @classmethod
@@ -358,3 +358,104 @@ class AzureVisionUtil(ImageAnalysisUtil):
             cls._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
 
         return text_detected
+
+
+class SignatureDetector(ImageAnalysisUtil):
+    _IMAGE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
+    _ENDPOINT: ClassVar[str | None] = None
+
+    @classmethod
+    def _get_endpoint(cls) -> str:
+        if cls._ENDPOINT is None:
+            cls._ENDPOINT = os.environ.get("SIGNATURE_DETECTOR_ENDPOINT")
+            if cls._ENDPOINT is None:
+                raise cls.EndpointNotSetError(
+                    "SIGNATURE_DETECTOR_ENDPOINT environment variable is not set."
+                )
+        return cls._ENDPOINT
+
+    @classmethod
+    def detect_signatures_in_images(
+        cls, images: list[Image.Image], confidence_threshold: float = 0.5
+    ) -> list[tuple[Image.Image, tuple[str, tuple]]]:
+        return cls._image_detection(
+            images,
+            "signature",
+            cls.detect_signatures,
+            confidence_threshold=confidence_threshold,
+        )
+
+    @staticmethod
+    def _get_bounding_box(detection: dict) -> tuple[float, float, float, float]:
+        """
+        Convert a detection dictionary to a bounding box tuple.
+
+        :param dict detection: The detection dictionary containing the bounding box
+        :return Tuple[float, float, float, float]: The bounding box as a 4-tuple of the form
+        (top left corner x, top left corner y, bottom right corner x, bottom right corner y)
+        """
+        box = detection.get("box", {})
+        return tuple(
+            round(box.get(val)) for val in ["x_min", "y_min", "x_max", "y_max"]
+        )
+
+    @classmethod
+    @retry(
+        retry=retry_if_exception(
+            lambda exception: (
+                isinstance(exception, HttpResponseError)
+                and exception.status_code in [429, 503]
+            )
+        ),
+        wait=wait_random_exponential(min=1, max=60),
+        stop=stop_after_attempt(5),
+        before_sleep=lambda retry_state: LoggingUtil().log_info(
+            "Retrying signature detection..."
+        ),
+        retry_error_callback=handle_last_retry_error,
+    )
+    def detect_signatures(
+        cls, image: Image.Image, confidence_threshold: float = 0.5
+    ) -> tuple[tuple[float, float, float, float], ...]:
+        valid_image = AzureVisionUtil.check_image_size(image)
+        if not valid_image:
+            LoggingUtil().log_info(
+                "Skipping signature detection for image due to size constraints."
+            )
+            return ()
+
+        try:
+            with cls.CACHE_LOCK:
+                cached = next(
+                    item["signatures"]
+                    for item in cls._IMAGE_CACHE
+                    if item["image"] == image
+                )
+            LoggingUtil().log_info("Using cached signature detection result.")
+            return tuple(s["box"] for s in cached if s["score"] >= confidence_threshold)
+        except StopIteration:
+            pass
+
+        image_bytes = cls._save_image_to_bytes(image)
+
+        LoggingUtil().log_info(
+            "Analysing image for signatures using signature detector app..."
+        )
+        response = post(
+            f"{cls._get_endpoint()}/score",
+            json={"image": image_bytes.hex(), "threshold": 0.0},
+            headers={"Content-Type": "application/json"},
+            timeout=120,
+        )
+        response.raise_for_status()
+        result = response.json()
+        detections = result.get("detections", [])
+
+        with cls.CACHE_LOCK:
+            cls._IMAGE_CACHE.append({"image": image, "signatures": detections})
+
+        return tuple(
+            cls._get_bounding_box(d)
+            for d in detections
+            if d["score"] >= confidence_threshold
+        )
