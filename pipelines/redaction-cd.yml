@@ -29,6 +29,12 @@ resources:
         branches:
           include:
             - main
+    - pipeline: signatureBuild
+      source: Signature Detector Build
+      trigger:
+        branches:
+          include:
+            - main
 
 extends:
   template: stages/wrapper_cd.yml@templates
@@ -100,6 +106,7 @@ extends:
                   azurecrName: $(azurecrName)
                   repository: redaction-system/signature-detector
                   slot: default
+                  gitCommitHash: $(resources.pipeline.signatureBuild.sourceCommit)
 
               - task: AzureCLI@2
                 displayName: 'Wait for healthy deployment'
