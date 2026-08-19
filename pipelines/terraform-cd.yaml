@@ -1,10 +1,6 @@
+# runs after Infrastructure PR on merge to main
 pr: none
-
-# Run when merged into main
-trigger:
-  branches:
-    include:
-      - main
+trigger: none
 
 resources:
   pipelines:
