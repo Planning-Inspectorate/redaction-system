@@ -86,7 +86,7 @@ resource "azurerm_storage_management_policy" "main" {
 
 resource "azurerm_storage_container" "redaction_storage" {
   #checkov:skip=CKV2_AZURE_21: Not needed
-  for_each = local.storage_containers
+  for_each = toset(var.storage_containers)
 
   name                  = each.key
   storage_account_id    = azurerm_storage_account.redaction_storage.id

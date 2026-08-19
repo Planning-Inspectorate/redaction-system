@@ -13,7 +13,7 @@ locals {
     "ServiceName" : local.service_name
     "Location" : local.location
   }
-  storage_containers = toset(var.storage_containers)
+
   storage_subresources = [
     "blob",
     "queue", # Needed for Azure Durable functions
