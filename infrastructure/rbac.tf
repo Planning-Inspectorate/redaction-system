@@ -3,11 +3,7 @@
 ############################################################################
 
 
-resource "azurerm_role_assignment" "function_app_servicebus_datasender" {
-  scope                = data.azurerm_servicebus_namespace.backoffice.id
-  role_definition_name = "Azure Service Bus Data Sender"
-  principal_id         = azurerm_linux_function_app.receiver.identity[0].principal_id
-}
+
 
 ############################################################################
 # Engineer permissions
