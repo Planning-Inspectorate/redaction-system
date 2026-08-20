@@ -1,6 +1,6 @@
 import json
-import os
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 from yaml import safe_load
@@ -174,7 +174,9 @@ class ConfigProcessor:
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = os.path.join("config", f"{config_name}.yaml")
+        config_path = (
+            Path(__file__).resolve().parents[2] / "config" / f"{config_name}.yaml"
+        )
         with open(config_path, "r") as f:
             config = safe_load(f)
         return config
