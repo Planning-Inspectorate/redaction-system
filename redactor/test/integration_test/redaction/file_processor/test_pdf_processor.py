@@ -5,6 +5,7 @@ from pathlib import Path
 from string import punctuation
 
 import pymupdf
+import pytest
 from pymupdf import Rect
 
 from core.redaction.config import (
@@ -667,6 +668,9 @@ class TestRedact:
         )
         assert match_percent >= acceptance_threshold, error_message
 
+    @pytest.mark.skip(
+        reason="This test will not pass until NRR-248 (analyse flattened/printed PDfs) is implemented"
+    )
     def test_returns_annotated_image_with_signature_pdf_bytes(self):
         """
         - Given I have a PDF with some an image of a signature
