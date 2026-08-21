@@ -1,14 +1,24 @@
 import os
 from io import BytesIO
 
+import pytest
 from PIL import Image
 
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.redaction.result import ImageRedactionResult
+from core.util.image_analysis import AzureVisionUtil, SignatureDetector
 
 
 class TestRedact:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        """
+        Clear the cache before each test to ensure that tests are independent
+        """
+        AzureVisionUtil.clear_cache()
+        SignatureDetector.clear_cache()
+
     def test_no_images_returns_empty_result(self):
         """
         - Given I have a config with an empty images list
