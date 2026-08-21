@@ -5,7 +5,7 @@ import pytest
 import requests
 from azure.identity import AzureCliCredential
 
-from core.util.logging_util import log_to_appins
+from core.utils import log_to_appins
 
 APP_INSIGHTS_TOKEN = (
     AzureCliCredential().get_token("https://api.applicationinsights.io/.default").token

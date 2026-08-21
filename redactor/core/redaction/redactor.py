@@ -21,6 +21,7 @@ from core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
     RedactorNameNotFoundException,
 )
+from core.redaction.utils.text_util import get_normalised_words
 from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
@@ -29,9 +30,7 @@ from core.types import (
     RedactionResult,
     TextRedactionResult,
 )
-from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.metric_util import TimerUtil
-from core.util.text_util import get_normalised_words
+from core.utils import LoggingUtil, TimerUtil, log_to_appins
 
 
 class Redactor(ABC):

@@ -339,7 +339,7 @@ class TestRedact(TestImageLLMTextRedactor):
         - Then rendered images should be appended to the analysis pipeline and LLM should
         identify redaction strings from the rendered text
         """
-        from core.util.pdf_util import PDFImageMetadata
+        from core.redaction.utils.pdf_util import PDFImageMetadata
 
         rendered_image = Image.new("RGB", (800, 600))
         rendered_metadata = PDFImageMetadata(
