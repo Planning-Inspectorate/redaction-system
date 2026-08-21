@@ -389,7 +389,9 @@ class TestExtractPDFTextContent:
         page_metadata = pdf_processor.pages_metadata[0]
         assert len(page_metadata.raw_text) > 0
         assert len(page_metadata.lines) > 0
-        assert page_metadata.rendered_image is None
+
+        # Always rendered for image redaction
+        assert page_metadata.rendered_image is not None
 
     def test_pdf_without_text_returns_printed_text(self):
         document_bytes = open_pdf_from_file(PRINTED_PDF_PATH)
