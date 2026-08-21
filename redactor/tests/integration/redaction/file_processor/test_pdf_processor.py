@@ -1,11 +1,17 @@
-import os
-from io import BytesIO
 from math import isclose
-from pathlib import Path
 from string import punctuation
 
 import pymupdf
 from pymupdf import Rect
+from tests.utils.resources import (
+    PRINTED_PDF,
+    PROPOSED_PDF,
+    REDACTED_PDF,
+    SIGNATURE_PDF,
+    SOURCE_IMAGE_PDF,
+    SOURCE_PDF,
+    open_pdf,
+)
 from tests.utils.util import (
     assert_instances_to_redact_approx_equal,
     assert_rect_approx_equal,
@@ -18,21 +24,6 @@ from core.redaction.config import (
 )
 from core.redaction.file_processor import PDFProcessor
 from core.redaction.utils.pdf_util import PDFUtil
-
-pdf_dir = os.path.join("test", "resources", "pdf")
-
-SOURCE_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__source.pdf")
-PROPOSED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__proposed.pdf")
-SOURCE_IMAGE_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__source_image.pdf")
-REDACTED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__redacted.pdf")
-SIGNATURE_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__signature.pdf")
-PRINTED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__printed.pdf")
-
-
-def open_pdf_from_file(file_path: Path) -> BytesIO:
-    with open(file_path, "rb") as f:
-        document_bytes = BytesIO(f.read())
-    return document_bytes
 
 
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
@@ -85,7 +76,7 @@ class TestExtractPDFAnnotations:
         When I call _extract_pdf_annotations with the PDF and annotation type
         Then I should receive a list of all annotations of that type in the PDF, with page numbers included in the annotation info
         """
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         pdf_processor = PDFProcessor()
         annotations = pdf_processor._extract_pdf_annotations(document_bytes)
 
@@ -219,7 +210,7 @@ class TestExamineProvisionalRedactionsOnPage:
         I want to examine each candidate and determine which should be kept as a redaction instance
         With multi-part redactions handled correctly
         """
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         redaction_candidates = [
             (
                 Rect(72.0, 101.452392578125, 101.31322479248047, 113.741455078125),
@@ -261,7 +252,7 @@ class TestExamineProvisionalRedactionsOnPage:
 
 class TestApplyProvisionalTextRedactions:
     def test_applies_highlights_to_redaction_strings(self):
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         redaction_strings = [
             "Your",
             "Honour",
@@ -288,7 +279,7 @@ class TestApplyProvisionalTextRedactions:
         )
 
         # Generate expected redaction text from the raw document
-        expected_provisional_redaction_bytes = open_pdf_from_file(PROPOSED_PDF_PATH)
+        expected_provisional_redaction_bytes = open_pdf(PROPOSED_PDF)
         expected_annotated_text = extract_annotated_text(
             expected_provisional_redaction_bytes
         )
@@ -313,7 +304,7 @@ class TestApplyProvisionalTextRedactions:
                 assert annotation.info["content"] in redaction_strings
 
     def test_does_not_apply_to_partial_matches(self):
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         redaction_strings = ["it"]
 
         redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
@@ -341,7 +332,7 @@ class TestApplyProvisionalTextRedactions:
         assert set(actual_annotated_text) == {"it"}
 
     def test_applies_to_line_break(self):
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         redaction_strings = ["all who come after him"]
 
         redacted_document_bytes = PDFProcessor()._apply_provisional_text_redactions(
@@ -356,7 +347,7 @@ class TestApplyProvisionalTextRedactions:
         assert "come after him" in actual_annotated_text
 
     def test_applies_to_multi_line_breaks(self):
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         redaction_strings = [
             (
                 "It could significantly redefine the boundaries of personal liberty and freedom,"
@@ -382,7 +373,7 @@ class TestApplyProvisionalTextRedactions:
 
 class TestExtractPDFTextContent:
     def test_pdf_with_text_returns_text_content(self):
-        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        document_bytes = open_pdf(SOURCE_PDF)
         pdf_processor = PDFProcessor()
         pdf_processor._extract_pdf_text_content(document_bytes)
 
@@ -394,7 +385,7 @@ class TestExtractPDFTextContent:
         assert page_metadata.rendered_image is not None
 
     def test_pdf_without_text_returns_printed_text(self):
-        document_bytes = open_pdf_from_file(PRINTED_PDF_PATH)
+        document_bytes = open_pdf(PRINTED_PDF)
         pdf_processor = PDFProcessor()
         pdf_processor._extract_pdf_text_content(document_bytes)
 
@@ -414,7 +405,7 @@ class TestRedact:
         - When I call redact() with some config and the pdf content as bytes
         - Then I should receive a new bytes object which contains the PDF with redactions as specified by the input config
         """
-        file_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        file_bytes = open_pdf(SOURCE_PDF)
         expected_redacted_text = {
             "commander",
             "data",
@@ -466,7 +457,7 @@ class TestRedact:
         - When I call redact() with some config and the pdf content as bytes
         - Then I should receive a new bytes object which contains the PDF with redactions as specified by the input config
         """
-        file_bytes = open_pdf_from_file(SOURCE_IMAGE_PDF_PATH)
+        file_bytes = open_pdf(SOURCE_IMAGE_PDF)
         expected_redacted_text = {
             "commander",
             "data",
@@ -673,7 +664,7 @@ class TestRedact:
         - When I call redact() with some config and the pdf content as bytes
         - Then I should receive a new bytes object which contains the PDF with the signature highlighted
         """
-        file_bytes = open_pdf_from_file(SIGNATURE_PDF_PATH)
+        file_bytes = open_pdf(SIGNATURE_PDF)
         pdf_before = pymupdf.open(stream=file_bytes)
         page_annotations_before = get_pdf_annotations(
             pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
@@ -713,7 +704,7 @@ class TestRedact:
         assert actual_annotation_rects == expected_annotation_rects
 
     def test_returns_annotated_printed_pdf_bytes(self):
-        file_bytes = open_pdf_from_file(PRINTED_PDF_PATH)
+        file_bytes = open_pdf(PRINTED_PDF)
         pdf_before = pymupdf.open(stream=file_bytes)
         page_annotations_before = get_pdf_annotations(
             pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
@@ -744,7 +735,7 @@ class TestApply:
         - Then the final redacted output should have the same content as our sample fully-redacted pdf
         """
         # Run the redaction process against the provisional redaction file
-        provisional_redaction_file_bytes = open_pdf_from_file(PROPOSED_PDF_PATH)
+        provisional_redaction_file_bytes = open_pdf(PROPOSED_PDF)
         provisional_redactions = get_pdf_annotations(
             pymupdf.open(stream=provisional_redaction_file_bytes),
             pymupdf.PDF_ANNOT_HIGHLIGHT,
@@ -757,7 +748,7 @@ class TestApply:
         )
 
         # Extract text from source and final documents
-        expected_redacted_document_bytes = open_pdf_from_file(REDACTED_PDF_PATH)
+        expected_redacted_document_bytes = open_pdf(REDACTED_PDF)
         expected_redacted_document_text = "\n".join(
             page.get_text()
             for page in pymupdf.open(stream=expected_redacted_document_bytes)

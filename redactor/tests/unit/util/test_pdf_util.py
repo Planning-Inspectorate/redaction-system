@@ -6,6 +6,7 @@ import numpy as np
 import pymupdf
 import pytest
 from PIL import Image
+from tests.utils.resources import SOURCE_PDF, open_pdf
 
 from core.redaction.utils.pdf_util import (
     PDFImageMetadata,
@@ -62,8 +63,7 @@ class TestExtractPDFText:
             "\na good one."
         )
         expected_text_split = expected_text.split(" ")
-        with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
-            document_bytes = BytesIO(f.read())
+        document_bytes = open_pdf(SOURCE_PDF)
         actual_text = PDFUtil.extract_pdf_text(document_bytes)
         actual_text_split = actual_text.split(" ")
         assert expected_text_split == actual_text_split
