@@ -24,16 +24,6 @@ from core.util.pdf_util import (
 from core.util.text_util import get_normalised_words, is_english_text
 
 
-@pytest.fixture(autouse=True)
-def _mock_init():
-    def init_side_effect(self):
-        self.run_metrics = {}
-        self.terms_found = {}
-
-    with patch.object(PDFProcessor, "__init__", init_side_effect):
-        yield
-
-
 def _make_pdf_with_text(text: str) -> BytesIO:
     doc = pymupdf.open()
     page = doc.new_page()
