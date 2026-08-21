@@ -529,7 +529,11 @@ class TestDetectSignatures(TestSignatureDetectorBase):
     def test_uses_cached_result(self):
         image = Image.new("RGB", (100, 100))
         cached_detections = [
-            {"score": 0.9, "box": (10, 20, 50, 60), "confidence": 0.9},
+            {
+                "score": 0.9,
+                "box": {"x_min": 10, "y_min": 20, "x_max": 50, "y_max": 60},
+                "confidence": 0.9,
+            },
         ]
         SignatureDetector._IMAGE_CACHE = [
             {"image": image, "signatures": cached_detections}

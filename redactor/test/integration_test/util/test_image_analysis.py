@@ -1,6 +1,7 @@
 import os
 from io import BytesIO
 
+import pytest
 from PIL import Image
 
 from core.util.image_analysis import (
@@ -37,6 +38,13 @@ class TestCheckImageSize:
 
 
 class TestDetectFaces:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        """
+        Clear the cache before each test to ensure that tests are independent
+        """
+        AzureVisionUtil.clear_cache()
+
     def test_identifies_faces(self):
         """
         - Given I have an image with two people in it (Darth Plagueis the wise scene from Revenge of the Sith)
@@ -308,6 +316,13 @@ class TestDetectText:
 
 
 class TestDetectSignatures:
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        """
+        Clear the cache before each test to ensure that tests are independent
+        """
+        SignatureDetector.clear_cache()
+
     def test_identifies_signature(self):
         with open(
             os.path.join("test", "resources", "image", "image_with_signature.png"),
