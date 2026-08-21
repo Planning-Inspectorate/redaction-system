@@ -2,7 +2,7 @@ from io import BytesIO
 
 import pytest
 
-from core.api.io.storage_io import StorageIO
+from core.api.io.io import StorageIO
 
 
 class DummyStorage(StorageIO):
