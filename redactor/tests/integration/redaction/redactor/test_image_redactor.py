@@ -1,13 +1,10 @@
-import os
-from io import BytesIO
-
 import pytest
-from PIL import Image
 
 from core.analysis.images import AzureVisionUtil, SignatureDetector
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.types import ImageRedactionResult
+from tests.utils.resources import open_image
 
 
 class TestRedact:
@@ -38,11 +35,7 @@ class TestRedact:
         assert result.run_metrics["total_images_to_analyse"] == 0
 
     def test_returns_matching_bounding_boxes(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_signature.png"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
+        image = open_image("signature.png")
 
         config = ImageRedactionConfig(
             name="config name",

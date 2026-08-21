@@ -1,40 +1,25 @@
-import os
-from io import BytesIO
-
 import pytest
-from PIL import Image
 
 from core.analysis.images import (
     AzureVisionUtil,
     ImageAnalysisUtil,
     SignatureDetector,
 )
+from tests.utils.resources import open_image
 
 
 class TestCheckImageSize:
     def test_image_too_large(self):
-        with open(
-            os.path.join("test", "resources", "image", "test_image_large.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            assert not ImageAnalysisUtil.check_image_size(image)
+        image = open_image("too_large.jpg")
+        assert not ImageAnalysisUtil.check_image_size(image)
 
     def test_image_too_small(self):
-        with open(
-            os.path.join("test", "resources", "image", "test_image_small.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            assert not ImageAnalysisUtil.check_image_size(image)
+        image = open_image("too_small.jpg")
+        assert not ImageAnalysisUtil.check_image_size(image)
 
     def test_image_valid(self):
-        with open(
-            os.path.join("test", "resources", "image", "test_image_horizontal.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            assert ImageAnalysisUtil.check_image_size(image)
+        image = open_image("horizontal.jpg")
+        assert ImageAnalysisUtil.check_image_size(image)
 
 
 class TestDetectFaces:
@@ -51,28 +36,18 @@ class TestDetectFaces:
         - When I call AzureVisionUtil.detect_faces
         - The two faces should be identified
         """
-        with open(
-            os.path.join("test", "resources", "image", "image_with_faces.jpeg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
-            # Azure Vision seems to be deterministic from testing
+        image = open_image("faces.jpeg")
+        response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        # Azure Vision seems to be deterministic from testing
 
         expected_response = ((0, 2, 410, 430), (359, 7, 766, 431))
         assert expected_response == response
 
     def test_uses_cached_response(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_faces.jpeg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
-            # Azure Vision seems to be deterministic from testing
-            new_response = AzureVisionUtil().detect_faces(
-                image, confidence_threshold=0.5
-            )
+        image = open_image("faces.jpeg")
+        response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        # Azure Vision seems to be deterministic from testing
+        new_response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
 
         expected_response = ((0, 2, 410, 430), (359, 7, 766, 431))
 
@@ -293,23 +268,15 @@ class TestDetectText:
         - When I call AzureVisionUtil.detect_text
         - The text content of the image should be extracted, with each line represented by a bounding box
         """
-        with open(
-            os.path.join("test", "resources", "image", "image_with_text.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = AzureVisionUtil().detect_text(image)
+        image = open_image("text.jpg")
+        response = AzureVisionUtil().detect_text(image)
 
         assert self.EXPECTED_TEXT_RESPONSE == response
 
     def test_uses_cached_response(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_text.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = AzureVisionUtil().detect_text(image)
-            new_response = AzureVisionUtil().detect_text(image)
+        image = open_image("text.jpg")
+        response = AzureVisionUtil().detect_text(image)
+        new_response = AzureVisionUtil().detect_text(image)
 
         assert self.EXPECTED_TEXT_RESPONSE == response
         assert response == new_response
@@ -324,42 +291,24 @@ class TestDetectSignatures:
         SignatureDetector.clear_cache()
 
     def test_identifies_signature(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_signature.png"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = SignatureDetector.detect_signatures(
-                image, confidence_threshold=0.5
-            )
+        image = open_image("signature.png")
+        response = SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
 
         expected_response = ((688, 620, 872, 697),)
         assert response == expected_response
 
     def test_uses_cached_response(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_signature.png"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = SignatureDetector.detect_signatures(
-                image, confidence_threshold=0.5
-            )
-            new_response = SignatureDetector.detect_signatures(
-                image, confidence_threshold=0.5
-            )
+        image = open_image("signature.png")
+        response = SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
+        new_response = SignatureDetector.detect_signatures(
+            image, confidence_threshold=0.5
+        )
 
         assert len(response) > 0
         assert response == new_response
 
     def test_no_signature_in_text_image(self):
-        with open(
-            os.path.join("test", "resources", "image", "image_with_text.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
-            response = SignatureDetector.detect_signatures(
-                image, confidence_threshold=0.5
-            )
+        image = open_image("text.jpg")
+        response = SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
 
         assert response == ()

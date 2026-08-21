@@ -14,6 +14,7 @@ from core.redaction.utils.pdf_util import (
     PDFUtil,
 )
 from core.redaction.utils.text_util import get_normalised_words
+from tests.utils.resources import SOURCE_PDF, TRANSLATED_IMAGE_PDF, open_image, open_pdf
 
 
 def create_mock_page_metadata(
@@ -62,8 +63,7 @@ class TestExtractPDFText:
             "\na good one."
         )
         expected_text_split = expected_text.split(" ")
-        with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
-            document_bytes = BytesIO(f.read())
+        document_bytes = open_pdf(SOURCE_PDF)
         actual_text = PDFUtil.extract_pdf_text(document_bytes)
         actual_text_split = actual_text.split(" ")
         assert expected_text_split == actual_text_split
@@ -90,13 +90,8 @@ class ExtractPdfImages:
         - When I call _extract_pdf_images
         - Then the image and its metadata should be returned as a list of PDFImageMetadata objects
         """
-        with open(
-            "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
-        ) as f:
-            document_bytes = BytesIO(f.read())
-        with open("test/resources/image/test_image_horizontal.jpg", "rb") as f:
-            image_bytes = BytesIO(f.read())
-        image = Image.open(image_bytes)
+        document_bytes = open_pdf(TRANSLATED_IMAGE_PDF)
+        image = open_image("horizontal.jpg")
         expected_image_metadata = [
             PDFImageMetadata(
                 source_image_resolution=(100, 100),
