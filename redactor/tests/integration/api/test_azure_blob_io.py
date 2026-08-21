@@ -11,9 +11,9 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
-from tests.utils.test_case import TestCase
 
-from core.io.azure_blob_io import AzureBlobIO
+from core.api.io import AzureBlobIO
+from tests.utils.test_case import TestCase
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")

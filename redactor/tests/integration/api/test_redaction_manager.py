@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusUtil
 
-from core.redaction_manager import RedactionManager
+from core.api.redaction_manager import RedactionManager
 from core.util.logging_util import LoggingUtil
 
 load_dotenv(verbose=True)

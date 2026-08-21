@@ -1,5 +1,6 @@
+from abc import ABC, abstractmethod
 from io import BytesIO
-from typing import Any
+from typing import Any, ClassVar
 
 from azure.core.exceptions import ResourceExistsError
 from azure.identity import (
@@ -9,8 +10,36 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 
-from core.io.storage_io import StorageIO
 from core.util.logging_util import LoggingUtil
+
+
+class StorageIO(ABC):
+    """
+    Generic storage IO interface for binary objects.
+
+    Implementations should support:
+      - read(container_name: str, blob_path: str) -> BytesIO
+      - write(data_bytes: BytesIO, container_name: str, blob_path: str) -> None
+      - list_blobs(container_name: str, blob_path: str = '') -> list[str]
+
+    Constructor takes flexible keyword args to allow different providers to pass config.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+    @classmethod
+    @abstractmethod
+    def get_kind(cls) -> str:  # pragma: no cover - interface only
+        raise NotImplementedError
+
+    @abstractmethod
+    def read(self, **kwargs: Any) -> BytesIO:  # pragma: no cover - interface only
+        raise NotImplementedError
+
+    @abstractmethod
+    def write(self, data_bytes: BytesIO, **kwargs: Any) -> None:  # pragma: no cover
+        raise NotImplementedError
 
 
 class AzureBlobIO(StorageIO):
@@ -134,3 +163,18 @@ class AzureBlobIO(StorageIO):
             raise ResourceExistsError(
                 f"The specified blob {self.storage_endpoint}/{container_name}/{blob_path} already exists"
             )
+
+
+class IOFactory:
+    AVAILABLE_IO_KINDS: ClassVar[list[type[StorageIO]]] = [AzureBlobIO]
+
+    @classmethod
+    def get(cls, storage_kind: str):
+        kind_map = {
+            io_class.get_kind(): io_class for io_class in cls.AVAILABLE_IO_KINDS
+        }
+        if storage_kind not in kind_map:
+            raise ValueError(
+                f"Could not find an IO class that allows interacting with storage kind '{storage_kind}'"
+            )
+        return kind_map[storage_kind]
