@@ -1,14 +1,21 @@
+from __future__ import annotations
+
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from yaml import safe_load
 
 from core.redaction.config import RedactionConfig
-from core.redaction.exceptions import InvalidRedactionConfigException
-from core.redaction.file_processor import FileProcessor
 from core.redaction.redactor import RedactorFactory
+
+if TYPE_CHECKING:
+    from core.redaction.file_processor import FileProcessor
+
+
+class InvalidRedactionConfigException(Exception):  # pragma: no cover
+    pass
 
 
 class ConfigProcessor:

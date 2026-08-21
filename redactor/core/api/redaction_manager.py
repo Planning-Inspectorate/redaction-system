@@ -17,13 +17,16 @@ from pydantic import BaseModel
 from core.api.io import AzureBlobIO, IOFactory
 from core.api.utils import PINSService, ServiceBusUtil
 from core.redaction.config_processor import ConfigProcessor
-from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
 from core.utils import LoggingUtil
 
 load_dotenv(verbose=True, override=True)
+
+
+class NothingToRedactException(Exception):  # pragma: no cover
+    pass
 
 
 class JsonPayloadStructure(BaseModel):

@@ -2,11 +2,12 @@ from unittest import mock
 
 import pytest
 
-from core.redaction.exceptions import (
+from core.redaction.redactor import (
     DuplicateRedactorNameException,
+    Redactor,
+    RedactorFactory,
     RedactorNameNotFoundException,
 )
-from core.redaction.redactor import Redactor, RedactorFactory
 
 """
 Create some mock redactor classes for testing

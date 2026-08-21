@@ -5,6 +5,10 @@ from core.analysis.text import LLMTextAnalyserConfig
 from core.types import PydanticImage
 
 
+class InvalidRedactionConfigException(Exception):  # pragma: no cover
+    pass
+
+
 class RedactionConfig(BaseModel):
     name: str
     label: str | None = None
