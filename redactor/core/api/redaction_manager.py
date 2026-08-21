@@ -14,13 +14,10 @@ from azure.core.exceptions import ResourceExistsError
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-from core.api.io import AzureBlobIO, IOFactory
-from core.api.utils import PINSService, ServiceBusUtil
-from core.redaction.config_processor import ConfigProcessor
-from core.redaction.file_processor import (
-    FileProcessorFactory,
-)
-from core.utils import LoggingUtil
+from ..redaction import ConfigProcessor, FileProcessorFactory
+from ..utils import LoggingUtil
+from .io import AzureBlobIO, IOFactory
+from .utils import PINSService, ServiceBusUtil
 
 load_dotenv(verbose=True, override=True)
 

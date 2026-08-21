@@ -14,25 +14,20 @@ import pymupdf
 if TYPE_CHECKING:
     from core.redaction.config import RedactionConfig
 
-from core.analysis.images import AzureVisionUtil
-from core.redaction.redactor import (
+from ..analysis import AzureVisionUtil
+from ..types import (
+    ImageRedactionResult,
+    RedactionResult,
+    TextRedactionResult,
+)
+from ..utils import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
+from .redactor import (
     ImageRedactor,
     Redactor,
     RedactorFactory,
     TextRedactor,
 )
-from core.redaction.utils.pdf_util import (
-    PDFImageMetadata,
-    PDFPageMetadata,
-    PDFUtil,
-)
-from core.redaction.utils.text_util import is_english_text
-from core.types import (
-    ImageRedactionResult,
-    RedactionResult,
-    TextRedactionResult,
-)
-from core.utils import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
+from .utils import PDFImageMetadata, PDFPageMetadata, PDFUtil, is_english_text
 
 
 class UnprocessedRedactionResultException(Exception):  # pragma: no cover

@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any
 
 from yaml import safe_load
 
-from core.redaction.config import RedactionConfig
-from core.redaction.redactor import RedactorFactory
+from .config import RedactionConfig
+from .redactor import RedactorFactory
 
 if TYPE_CHECKING:
-    from core.redaction.file_processor import FileProcessor
+    from .file_processor import FileProcessor
 
 
 class InvalidRedactionConfigException(Exception):  # pragma: no cover
