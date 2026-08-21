@@ -7,13 +7,13 @@ import pymupdf
 import pytest
 from PIL import Image
 
-from core.util.pdf_util import (
+from core.redaction.utils.pdf_util import (
     PDFImageMetadata,
     PDFLineMetadata,
     PDFPageMetadata,
     PDFUtil,
 )
-from core.util.text_util import get_normalised_words
+from core.redaction.utils.text_util import get_normalised_words
 
 
 def create_mock_page_metadata(

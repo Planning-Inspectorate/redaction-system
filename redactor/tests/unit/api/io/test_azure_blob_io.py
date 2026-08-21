@@ -5,7 +5,7 @@ import pytest
 # Import the module and class under test
 from core.api import io as azure_blob_io
 from core.api.io import AzureBlobIO
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 
 class DummyManagedIdentityCredential:

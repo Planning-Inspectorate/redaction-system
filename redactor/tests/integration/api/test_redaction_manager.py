@@ -16,7 +16,7 @@ from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusUtil
 
 from core.api.redaction_manager import RedactionManager
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")

@@ -23,19 +23,18 @@ from core.redaction.redactor import (
     RedactorFactory,
     TextRedactor,
 )
+from core.redaction.utils.pdf_util import (
+    PDFImageMetadata,
+    PDFPageMetadata,
+    PDFUtil,
+)
+from core.redaction.utils.text_util import is_english_text
 from core.types import (
     ImageRedactionResult,
     RedactionResult,
     TextRedactionResult,
 )
-from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.metric_util import MetricUtil, TimerUtil
-from core.util.pdf_util import (
-    PDFImageMetadata,
-    PDFPageMetadata,
-    PDFUtil,
-)
-from core.util.text_util import is_english_text
+from core.utils import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
 
 
 class FileProcessor(ABC):
@@ -238,7 +237,7 @@ class PDFProcessor(FileProcessor):
         cls,
         annotations: tuple[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        from core.util.pdf_util import ANNOT_HIGHLIGHT_COLOR
+        from core.redaction.utils.pdf_util import ANNOT_HIGHLIGHT_COLOR
 
         annotations_list = []
         for page in annotations:
