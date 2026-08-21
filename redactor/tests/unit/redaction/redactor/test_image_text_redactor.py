@@ -7,7 +7,7 @@ from tests.unit_test.redaction.redactor.util import TestImageTextRedactorBase
 
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageTextRedactor
-from core.redaction.result import ImageRedactionResult
+from core.types import ImageRedactionResult
 
 
 def test_get_name():

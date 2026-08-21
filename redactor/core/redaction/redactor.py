@@ -16,7 +16,7 @@ from core.redaction.config import (
     RedactionConfig,
     TextRedactionConfig,
 )
-from core.redaction.result import (
+from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     ImageTextRedactionResult,

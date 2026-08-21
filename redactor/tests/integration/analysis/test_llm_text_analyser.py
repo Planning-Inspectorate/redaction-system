@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from core.analysis.text import LLMTextAnalyser
 from core.redaction.config import LLMTextAnalyserConfig
-from core.redaction.result import LLMTextRedactionResult
+from core.types import LLMTextRedactionResult
 
 
 class SampleResultFormat(BaseModel):

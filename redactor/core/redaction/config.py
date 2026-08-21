@@ -10,7 +10,7 @@ from yaml import safe_load
 from core.analysis.text import LLMTextAnalysisConfig
 from core.redaction.file_processor import FileProcessor
 from core.redaction.redactor import RedactorFactory
-from core.util.types import PydanticImage
+from core.types import PydanticImage
 
 
 class InvalidRedactionConfigException(Exception):  # pragma: no cover

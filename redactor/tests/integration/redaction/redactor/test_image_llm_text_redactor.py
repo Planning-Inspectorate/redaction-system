@@ -5,7 +5,7 @@ from PIL import Image
 
 from core.redaction.config import ImageLLMTextRedactionConfig
 from core.redaction.redactor import ImageLLMTextRedactor
-from core.redaction.result import ImageRedactionResult
+from core.types import ImageRedactionResult
 
 
 class TestRedact:

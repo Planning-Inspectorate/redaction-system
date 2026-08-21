@@ -10,7 +10,7 @@ from PIL import Image
 
 from core.analysis.images import AzureVisionUtil
 from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
-from core.redaction.result import (
+from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     TextRedactionResult,

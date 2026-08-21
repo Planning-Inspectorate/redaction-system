@@ -31,7 +31,7 @@ from tenacity.retry import (
 from tiktoken import get_encoding
 
 from core.analysis.utils import TokenSemaphore, get_max_workers
-from core.redaction.result import (
+from core.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )

@@ -12,7 +12,7 @@ from core.analysis.text import (
     update_max_tokens,
 )
 from core.redaction.config import LLMTextAnalyserConfig
-from core.redaction.result import (
+from core.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
