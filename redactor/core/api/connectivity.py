@@ -15,7 +15,7 @@ from openai import AzureOpenAI
 from PIL import Image
 from pydantic import BaseModel
 
-from core.api.utils import PINSService, ServiceBusUtil
+from .utils import PINSService, ServiceBusUtil
 
 """
 Contains various utility functions to test connectivity to azure services

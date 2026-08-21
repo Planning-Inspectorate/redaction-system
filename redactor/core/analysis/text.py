@@ -22,20 +22,19 @@ from openai import (
 from openai.types.chat.chat_completion import CompletionUsage
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel, ValidationError
-from tenacity import retry, stop_after_attempt, wait_random_exponential
-from tenacity.retry import (
+from tenacity import (
+    retry,
     retry_any,
     retry_if_exception_message,
     retry_if_exception_type,
+    stop_after_attempt,
+    wait_random_exponential,
 )
 from tiktoken import get_encoding
 
-from core.analysis.utils import TokenSemaphore, get_max_workers
-from core.types import (
-    LLMRedactionResultFormat,
-    LLMTextRedactionResult,
-)
-from core.utils import LoggingUtil, TimerUtil, log_to_appins
+from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
+from ..utils import LoggingUtil, TimerUtil, log_to_appins
+from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
 

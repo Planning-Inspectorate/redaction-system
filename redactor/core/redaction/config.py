@@ -1,8 +1,8 @@
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
-from core.analysis.text import LLMTextAnalyserConfig
-from core.types import PydanticImage
+from ..analysis.text import LLMTextAnalyserConfig
+from ..types import PydanticImage
 
 
 class InvalidRedactionConfigException(Exception):  # pragma: no cover
