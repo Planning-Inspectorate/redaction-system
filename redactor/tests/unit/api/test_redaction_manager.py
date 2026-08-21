@@ -7,10 +7,9 @@ import pytest
 from azure.storage.blob import BlobClient, ContainerClient
 
 from core.api.io import AzureBlobIO, IOFactory
-from core.api.redaction_manager import RedactionManager
+from core.api.redaction_manager import NothingToRedactException, RedactionManager
 from core.api.utils import PINSService, ServiceBusUtil
 from core.redaction.config_processor import ConfigProcessor
-from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import FileProcessorFactory
 from core.utils import LoggingUtil
 
