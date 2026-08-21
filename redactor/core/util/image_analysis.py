@@ -434,7 +434,7 @@ class SignatureDetector(ImageAnalysisUtil):
             LoggingUtil().log_info("Using cached signature detection result.")
             return tuple(
                 cls._get_bounding_box(d)
-                for d in cached["signatures"]
+                for d in cached
                 if d["score"] >= confidence_threshold
             )
         except StopIteration:
