@@ -5,7 +5,6 @@ from pathlib import Path
 from string import punctuation
 
 import pymupdf
-import pytest
 from pymupdf import Rect
 
 from core.redaction.config import (
@@ -27,6 +26,7 @@ PROPOSED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__proposed.pdf")
 SOURCE_IMAGE_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__source_image.pdf")
 REDACTED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__redacted.pdf")
 SIGNATURE_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__signature.pdf")
+PRINTED_PDF_PATH = os.path.join(pdf_dir, "test__pdf_processor__printed.pdf")
 
 
 def open_pdf_from_file(file_path: Path) -> BytesIO:
@@ -250,7 +250,7 @@ class TestExamineProvisionalRedactionsOnPage:
 
         instances_to_redact = pdf_processor._examine_provisional_redactions_on_page(
             [text for _, text in redaction_candidates],
-            PDFUtil.extract_page_text(pdf[0]),
+            PDFUtil.extract_page_metadata(pdf[0]),
         )
 
         assert_instances_to_redact_approx_equal(
@@ -380,6 +380,33 @@ class TestApplyProvisionalTextRedactions:
         assert "for some, savagely curtailing them for others" in actual_annotated_text
 
 
+class TestExtractPDFTextContent:
+    def test_pdf_with_text_returns_text_content(self):
+        document_bytes = open_pdf_from_file(SOURCE_PDF_PATH)
+        pdf_processor = PDFProcessor()
+        pdf_processor._extract_pdf_text_content(document_bytes)
+
+        page_metadata = pdf_processor.pages_metadata[0]
+        assert len(page_metadata.raw_text) > 0
+        assert len(page_metadata.lines) > 0
+
+        # Always rendered for image redaction
+        assert page_metadata.rendered_image is not None
+
+    def test_pdf_without_text_returns_printed_text(self):
+        document_bytes = open_pdf_from_file(PRINTED_PDF_PATH)
+        pdf_processor = PDFProcessor()
+        pdf_processor._extract_pdf_text_content(document_bytes)
+
+        page_metadata = pdf_processor.pages_metadata[0]
+        assert len(page_metadata.raw_text) > 0
+        assert len(page_metadata.lines) == 0
+
+        rendered_image = page_metadata.rendered_image
+        assert rendered_image.image is not None
+        assert len(rendered_image.text_rect_map) > 0
+
+
 class TestRedact:
     def test_returns_annotated_pdf_bytes(self):
         """
@@ -455,177 +482,148 @@ class TestRedact:
         )
         assert not page_annotations_before
 
-        redacted_file_bytes = PDFProcessor().redact(
+        pdf_processor = PDFProcessor()
+        redacted_file_bytes = pdf_processor.redact(
             file_bytes, create_config(is_image=True)
         )
 
         pdf_after = pymupdf.open(stream=redacted_file_bytes)
 
         expected_annotation_rects = [
+            Rect(395.3376770019531, 79.43072509765625, 412.7724609375, 92.76025390625),
             Rect(
-                448.9051818847656,
-                131.69879150390625,
-                469.8133850097656,
-                144.7745361328125,
+                319.3392333984375,
+                94.54766845703125,
+                336.7740478515625,
+                107.877197265625,
             ),
             Rect(
-                437.7434387207031,
-                203.3111572265625,
-                458.2377014160156,
-                216.69097900390625,
+                141.28866577148438,
+                185.27484130859375,
+                158.939453125,
+                198.14459228515625,
             ),
             Rect(
-                125.64540100097656,
-                217.90728759765625,
-                145.86898803710938,
-                231.28717041015625,
-            ),
-            Rect(396.392578125, 74.3953857421875, 414.3232727050781, 87.4710693359375),
-            Rect(
-                325.8874816894531,
-                88.68743896484375,
-                343.80230712890625,
-                102.37127685546875,
+                363.05877685546875,
+                94.54766845703125,
+                372.3216857910156,
+                107.877197265625,
             ),
             Rect(
-                118.94203186035156,
-                174.9466552734375,
-                136.60203552246094,
-                188.02239990234375,
+                79.68730926513672,
+                79.890380859375,
+                100.41425323486328,
+                92.30059814453125,
             ),
             Rect(
-                466.6270446777344,
-                103.3511962890625,
-                493.506103515625,
-                115.8187255859375,
+                441.1964416503906,
+                94.9818115234375,
+                469.0621032714844,
+                107.85162353515625,
             ),
             Rect(
-                72.32075500488281,
-                117.62628173828125,
-                115.28176879882812,
-                131.00616455078125,
+                123.62283325195312,
+                110.07318115234375,
+                152.08966064453125,
+                123.40264892578125,
             ),
             Rect(
-                271.08197021484375,
-                217.3160400390625,
-                298.1842346191406,
-                231.60809326171875,
+                220.36325073242188,
+                109.63909912109375,
+                248.20547485351562,
+                123.42816162109375,
+            ),
+            Rect(362.337890625, 110.0987548828125, 384.0745849609375, 122.968505859375),
+            Rect(
+                348.8542785644531, 155.44952392578125, 370.9996032714844, 168.3193359375
             ),
             Rect(
-                294.9021301269531,
-                217.3160400390625,
-                340.4108581542969,
-                231.60809326171875,
+                387.57440185546875,
+                215.483154296875,
+                410.3208923339844,
+                228.8126220703125,
             ),
             Rect(
-                359.51593017578125,
-                131.681884765625,
-                386.7773132324219,
-                145.06170654296875,
+                362.96246337890625,
+                245.282958984375,
+                384.2672119140625,
+                259.072021484375,
             ),
             Rect(
-                179.11331176757812,
-                145.9739990234375,
-                244.79586791992188,
-                159.9619140625,
+                79.90330505371094,
+                110.07318115234375,
+                112.04747009277344,
+                123.40264892578125,
             ),
             Rect(
-                241.30679321289062,
-                145.686767578125,
-                274.3641052246094,
-                159.97882080078125,
+                165.20310974121094,
+                109.63909912109375,
+                208.16329956054688,
+                123.42816162109375,
             ),
             Rect(
-                72.32077026367188, 74.37847900390625, 95.5218505859375, 87.75830078125
+                457.0119323730469,
+                110.58392333984375,
+                483.073974609375,
+                122.0748291015625,
             ),
             Rect(
-                451.21392822265625,
-                88.68743896484375,
-                480.4974365234375,
-                102.37127685546875,
+                79.37503051757812,
+                125.67529296875,
+                121.15621948242188,
+                137.6258544921875,
+            ),
+            Rect(394.0155944824219, 230.166015625, 460.67425537109375, 243.955078125),
+            Rect(
+                269.49078369140625,
+                124.78155517578125,
+                288.5599670410156,
+                138.11102294921875,
+            ),
+            Rect(421.27166748046875, 125.2412109375, 440.7728576660156, 137.6513671875),
+            Rect(
+                153.1378936767578,
+                170.56646728515625,
+                172.0144500732422,
+                183.43621826171875,
             ),
             Rect(
-                119.76990509033203,
-                102.70916748046875,
-                149.84971618652344,
-                117.00128173828125,
+                78.96643829345703,
+                186.14300537109375,
+                98.27497100830078,
+                198.09356689453125,
             ),
             Rect(
-                221.00552368164062,
-                102.70916748046875,
-                251.0853271484375,
-                117.00128173828125,
+                451.0990295410156,
+                140.35809326171875,
+                471.0087585449219,
+                152.768310546875,
             ),
             Rect(
-                365.1365661621094,
-                102.74298095703125,
-                388.7358093261719,
-                116.4268798828125,
+                124.9449234008789, 230.62567138671875, 144.638671875, 243.49542236328125
             ),
             Rect(
-                353.4334716796875, 145.9739990234375, 377.16009521484375, 159.9619140625
+                254.1802215576172,
+                229.73187255859375,
+                274.8603820800781,
+                243.98065185546875,
             ),
             Rect(
-                310.3948059082031,
-                203.27740478515625,
-                334.66278076171875,
-                217.265380859375,
+                181.6431427001953,
+                155.015380859375,
+                272.2162170410156,
+                168.34490966796875,
             ),
             Rect(
-                242.11883544921875,
-                231.91217041015625,
-                265.4315490722656,
-                246.20428466796875,
+                194.71812438964844, 79.43072509765625, 221.5506134033203, 92.76025390625
             ),
             Rect(
-                266.6078186035156,
-                117.33917236328125,
-                286.146728515625,
-                131.02301025390625,
+                457.0119323730469,
+                110.58392333984375,
+                483.073974609375,
+                122.0748291015625,
             ),
-            Rect(
-                423.12652587890625,
-                117.35601806640625,
-                443.3501281738281,
-                130.73590087890625,
-            ),
-            Rect(
-                145.27786254882812,
-                160.2998046875,
-                165.21495056152344,
-                174.28778076171875,
-            ),
-            Rect(502.7712097167969, 160.89111328125, 522.8673095703125, 173.966796875),
-            Rect(
-                371.09161376953125,
-                88.68743896484375,
-                380.3445739746094,
-                102.37127685546875,
-            ),
-            Rect(
-                72.1933364868164,
-                102.72607421875,
-                107.01799774169922,
-                116.71405029296875,
-            ),
-            Rect(
-                162.80857849121094,
-                102.70916748046875,
-                208.31735229492188,
-                117.00128173828125,
-            ),
-            Rect(
-                339.7560119628906,
-                131.681884765625,
-                362.68646240234375,
-                145.06170654296875,
-            ),
-            Rect(
-                359.51593017578125,
-                131.681884765625,
-                386.7773132324219,
-                145.06170654296875,
-            ),
+            Rect(394.0155944824219, 230.166015625, 421.0406494140625, 243.955078125),
         ]
 
         actual_annotation_rects = []
@@ -657,9 +655,18 @@ class TestRedact:
         )
         assert match_percent >= acceptance_threshold, error_message
 
-    @pytest.mark.skip(
-        reason="This test will not pass until NRR-248 (analyse flattened/printed PDfs) is implemented"
-    )
+        run_metrics = pdf_processor.get_run_metrics()
+        assert run_metrics["unapplied_text_redaction_terms"] == []
+
+        text_redaction_summary = run_metrics["text_redaction_summary"]
+        image_text_summary = text_redaction_summary.get("config name")
+        assert image_text_summary is not None
+
+        n_proposed = image_text_summary["n_proposed"]
+        assert n_proposed > 0
+        # All should be applied
+        assert image_text_summary["n_applied"] == n_proposed
+
     def test_returns_annotated_image_with_signature_pdf_bytes(self):
         """
         - Given I have a PDF with some an image of a signature
@@ -704,6 +711,29 @@ class TestRedact:
             )
         ]
         assert actual_annotation_rects == expected_annotation_rects
+
+    def test_returns_annotated_printed_pdf_bytes(self):
+        file_bytes = open_pdf_from_file(PRINTED_PDF_PATH)
+        pdf_before = pymupdf.open(stream=file_bytes)
+        page_annotations_before = get_pdf_annotations(
+            pdf_before, pymupdf.PDF_ANNOT_HIGHLIGHT
+        )
+        assert not page_annotations_before
+
+        redacted_file_bytes = PDFProcessor().redact(
+            file_bytes, create_config(is_image=True)
+        )
+        pdf_after = pymupdf.open(stream=redacted_file_bytes)
+        actual_annotation_rects = []
+        for page in pdf_after:
+            actual_annotation_rects.extend(
+                [
+                    annotation.rect
+                    for annotation in page.annots(pymupdf.PDF_ANNOT_HIGHLIGHT)
+                ]
+            )
+
+        assert len(actual_annotation_rects) > 0
 
 
 class TestApply:

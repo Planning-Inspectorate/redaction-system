@@ -60,8 +60,13 @@ class ImageRedactionResult(RedactionResult):
 
 @dataclass(frozen=True)
 class TextRedactionResult(RedactionResult):
-    redaction_strings: tuple[str] = field(default_factory=list)
+    redaction_strings: tuple[str] = field(default_factory=lambda: ())
     """The list of strings to redact"""
+
+
+@dataclass(frozen=True)
+class ImageTextRedactionResult(TextRedactionResult, ImageRedactionResult):
+    pass
 
 
 @dataclass(frozen=True)
@@ -76,6 +81,11 @@ class LLMTextRedactionResult(TextRedactionResult):
 
     metadata: LLMResultMetadata = field(default=None)
     """Any metadata provided by the LLM"""
+
+
+@dataclass(frozen=True)
+class ImageLLMTextRedactionResult(LLMTextRedactionResult, ImageRedactionResult):
+    pass
 
 
 class LLMRedactionResultFormat(BaseModel):
