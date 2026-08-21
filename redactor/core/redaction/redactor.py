@@ -7,17 +7,8 @@ from typing import Any, ClassVar
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from PIL import Image
 
-from core.analysis.images import AzureVisionUtil, SignatureDetector
-from core.analysis.text import LLMTextAnalyser
-from core.redaction.config import (
-    ImageLLMTextRedactionConfig,
-    ImageRedactionConfig,
-    LLMTextRedactionConfig,
-    RedactionConfig,
-    TextRedactionConfig,
-)
-from core.redaction.utils.text_util import get_normalised_words
-from core.types import (
+from ..analysis import AzureVisionUtil, LLMTextAnalyser, SignatureDetector
+from ..types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     ImageTextRedactionResult,
@@ -25,7 +16,15 @@ from core.types import (
     RedactionResult,
     TextRedactionResult,
 )
-from core.utils import LoggingUtil, TimerUtil, log_to_appins
+from ..utils import LoggingUtil, TimerUtil, log_to_appins
+from .config import (
+    ImageLLMTextRedactionConfig,
+    ImageRedactionConfig,
+    LLMTextRedactionConfig,
+    RedactionConfig,
+    TextRedactionConfig,
+)
+from .utils import get_normalised_words
 
 
 class IncorrectRedactionConfigClassException(Exception):  # pragma: no cover
