@@ -12,7 +12,7 @@ from core.analysis.text import (
     handle_last_retry_error,
     update_max_tokens,
 )
-from core.redaction.result import (
+from core.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )

@@ -6,7 +6,7 @@ from core.redaction.config import (
     RedactionConfig,
 )
 from core.redaction.redactor import LLMTextRedactor
-from core.redaction.result import LLMTextRedactionResult
+from core.types import LLMTextRedactionResult
 
 
 def test__llm_text_redactor__get_name():

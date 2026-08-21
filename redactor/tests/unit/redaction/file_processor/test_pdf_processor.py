@@ -9,9 +9,8 @@ import pytest
 from PIL import Image
 
 from core.analysis.images import AzureVisionUtil
-from core.redaction.exceptions import NonEnglishContentException
-from core.redaction.file_processor import PDFProcessor
-from core.redaction.result import (
+from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
+from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     TextRedactionResult,

@@ -2,7 +2,7 @@ from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from core.redaction.redactor import LLMTextRedactor
-from core.redaction.result import LLMTextRedactionResult
+from core.types import LLMTextRedactionResult
 
 
 class TestRedact:
