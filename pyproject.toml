@@ -66,11 +66,18 @@ where = ["redactor"]
 source = [
     "./"
 ]
+omit = [
+    "tests/*",
+    "function_app.py",
+]
+concurrency = "multiprocessing"
 
 [tool.coverage.report]
-exclude_lines = [
-    "if __name__ == .__main__.:"
+exclude_also = [
+    "@abstractmethod",
+    "if __name__ == .__main__.:,"
 ]
+show_missing = "true"
 
 [dependency-groups]
 dev = [
