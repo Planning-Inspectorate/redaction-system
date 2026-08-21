@@ -6,13 +6,19 @@ import pytest
 from openai import LengthFinishReasonError, RateLimitError
 from tenacity import stop_after_attempt, wait_none
 
-from core.analysis.text import LLMUtil, handle_last_retry_error, update_max_tokens
-from core.redaction.config import LLMUtilConfig
+from core.analysis.text import (
+    LLMTextAnalyser,
+    handle_last_retry_error,
+    update_max_tokens,
+)
+from core.redaction.config import LLMTextAnalyserConfig
 from core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
 from core.util.logging_util import LoggingUtil
+
+MODULE = "core.analysis.text"
 
 
 class MockLLMChatCompletion:
@@ -82,176 +88,190 @@ def test__update_max_tokens__limit():
     assert retry_state.kwargs["max_completion_tokens"] == 8000
 
 
-def test__llm_util____init__():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser____init__():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         token_rate_limit=2000,
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
-    assert llm_util.config.token_rate_limit == 2000
-    assert llm_util.config.token_encoding_name == "cl100k_base"
+    assert llm_text_analyser.config.token_rate_limit == 2000
+    assert llm_text_analyser.config.token_encoding_name == "cl100k_base"
 
-    assert llm_util.input_token_cost == 149 * 0.000001
-    assert llm_util.output_token_cost == 593 * 0.000001
+    assert llm_text_analyser.input_token_cost == 149 * 0.000001
+    assert llm_text_analyser.output_token_cost == 593 * 0.000001
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details(mock_llm_util_init):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser___set_model_details(mock_llm_text_analyser_init):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         token_rate_limit=TOKEN_RATE_LIMIT / 10,
         request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
 
-    llm_util._set_model_details()
+    llm_text_analyser._set_model_details()
 
-    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT / 10
-    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT / 10
+    assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT / 10
+    assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT / 10
 
-    assert llm_util.input_token_cost == 149 * 0.000001
-    assert llm_util.output_token_cost == 593 * 0.000001
+    assert llm_text_analyser.input_token_cost == 149 * 0.000001
+    assert llm_text_analyser.output_token_cost == 593 * 0.000001
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details__exceeds_token_rate_limit(mock_llm_util_init):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser___set_model_details__exceeds_token_rate_limit(
+    mock_llm_text_analyser_init,
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         token_rate_limit=TOKEN_RATE_LIMIT * 3,
         request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
 
-    llm_util._set_model_details()
+    llm_text_analyser._set_model_details()
 
-    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT
+    assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
         "Token rate limit for model gpt-4.1 exceeds maximum. "
         f"Setting to maximum of {TOKEN_RATE_LIMIT} tokens per minute."
     )
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details__exceeds_request_rate_limit(mock_llm_util_init):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser___set_model_details__exceeds_request_rate_limit(
+    mock_llm_text_analyser_init,
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         token_rate_limit=TOKEN_RATE_LIMIT / 10,
         request_rate_limit=REQUEST_RATE_LIMIT * 2,
     )
 
-    llm_util._set_model_details()
+    llm_text_analyser._set_model_details()
 
-    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT
+    assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
         "Request rate limit for model gpt-4.1 exceeds maximum. "
         f"Setting to maximum of {REQUEST_RATE_LIMIT} requests per minute."
     )
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details__zero_token_request_rate_limit(
-    mock_llm_util_init,
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser___set_model_details__zero_token_request_rate_limit(
+    mock_llm_text_analyser_init,
 ):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         token_rate_limit=0,
         request_rate_limit=0,
     )
 
-    llm_util._set_model_details()
+    llm_text_analyser._set_model_details()
 
-    assert llm_util.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.5
-    assert llm_util.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.5
+    assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.5
+    assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.5
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-def test__llm_util___set_model_details__invalid_model(mock_llm_util_init):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser___set_model_details__invalid_model(
+    mock_llm_text_analyser_init,
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1-nan0",
     )
 
     with pytest.raises(ValueError) as exc:
-        llm_util._set_model_details()
+        llm_text_analyser._set_model_details()
 
     assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-@patch("core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__none_given(mock_llm_util_init, mock_cpu_count):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+@patch(f"{MODULE}.os.cpu_count", return_value=8)
+def test__llm_text_analyser___set_workers__none_given(
+    mock_llm_text_analyser_init, mock_cpu_count
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util._set_workers()
+    llm_text_analyser._set_workers()
 
-    assert llm_util.config.max_concurrent_requests == 12
+    assert llm_text_analyser.config.max_concurrent_requests == 12
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-@patch("core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__exceeds_cpu_count(mock_llm_util_init, mock_cpu_count):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+@patch(f"{MODULE}.os.cpu_count", return_value=8)
+def test__llm_text_analyser___set_workers__exceeds_cpu_count(
+    mock_llm_text_analyser_init, mock_cpu_count
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util._set_workers(40)
+    llm_text_analyser._set_workers(40)
 
-    assert llm_util.config.max_concurrent_requests == 12
+    assert llm_text_analyser.config.max_concurrent_requests == 12
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-@patch("core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util___set_workers__zero_cpu_count(mock_llm_util_init, mock_cpu_count):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+@patch(f"{MODULE}.os.cpu_count", return_value=8)
+def test__llm_text_analyser___set_workers__zero_cpu_count(
+    mock_llm_text_analyser_init, mock_cpu_count
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util._set_workers(0)
+    llm_text_analyser._set_workers(0)
 
-    assert llm_util.config.max_concurrent_requests == 1
+    assert llm_text_analyser.config.max_concurrent_requests == 1
 
 
-@patch.object(LLMUtil, "__init__", return_value=None)
-@patch("core.util.llm_util.os.cpu_count", return_value=40)
-def test__llm_util___set_workers__high_cpu_count(mock_llm_util_init, mock_cpu_count):
-    llm_util = LLMUtil()
-    llm_util.config = LLMUtilConfig(
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+@patch(f"{MODULE}.os.cpu_count", return_value=40)
+def test__llm_text_analyser___set_workers__high_cpu_count(
+    mock_llm_text_analyser_init, mock_cpu_count
+):
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util._set_workers()
+    llm_text_analyser._set_workers()
 
-    assert llm_util.config.max_concurrent_requests == 32
+    assert llm_text_analyser.config.max_concurrent_requests == 32
 
 
-@patch("core.util.llm_util.get_encoding")
-def test__llm_util___num_tokens_consumed__exception(mock_get_encoding):
+@patch(f"{MODULE}.get_encoding")
+def test__llm_text_analyser___num_tokens_consumed__exception(mock_get_encoding):
     mock_encoding = Mock()
     mock_encoding.encode.side_effect = Exception("Encoding error")
     mock_get_encoding.return_value = mock_encoding
 
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
 
-    num_tokens = llm_util._num_tokens_consumed(
-        llm_util.create_api_message(system_prompt, user_prompt)
+    num_tokens = llm_text_analyser._num_tokens_consumed(
+        llm_text_analyser.create_api_message(system_prompt, user_prompt)
     )
     assert num_tokens == 0
 
 
 def test__create_api_message():
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     system_prompt = "This is a system prompt."
     user_prompt = "This is a user prompt."
@@ -259,7 +279,7 @@ def test__create_api_message():
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    actual_message = llm_util.create_api_message(system_prompt, user_prompt)
+    actual_message = llm_text_analyser.create_api_message(system_prompt, user_prompt)
     assert actual_message == expected_message
 
 
@@ -282,98 +302,102 @@ def create_mock_chat_completion(
     )
 
 
-def test__llm_util___compute_costs():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser___compute_costs():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
     mock_chat_completion = create_mock_chat_completion(
         prompt_tokens=10, completion_tokens=15
     )
 
-    llm_util._compute_costs(mock_chat_completion.usage)
+    llm_text_analyser._compute_costs(mock_chat_completion.usage)
 
-    assert llm_util.input_token_count == 10
-    assert llm_util.output_token_count == 15
-    assert llm_util.total_cost == 40
+    assert llm_text_analyser.input_token_count == 10
+    assert llm_text_analyser.output_token_count == 15
+    assert llm_text_analyser.total_cost == 40
 
 
 @patch.object(
-    LLMUtil,
+    LLMTextAnalyser,
     "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util___analyse_text_chunk(
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk(
     mock_num_tokens_consumed, mock_create_api_message
 ):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
     expected_result = (mock_chat_completion, redaction_strings)
 
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.request_semaphore = Mock()
-    llm_util.token_semaphore = Mock()
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
-    with patch.object(LLMUtil, "invoke_chain", return_value=mock_chat_completion):
-        actual_result = llm_util._analyse_text_chunk(
+    with patch.object(
+        LLMTextAnalyser, "invoke_chain", return_value=mock_chat_completion
+    ):
+        actual_result = llm_text_analyser._analyse_text_chunk(
             system_prompt="system prompt", user_prompt=""
         )
 
     assert expected_result == actual_result
 
-    assert llm_util.input_token_count == 5
-    assert llm_util.output_token_count == 4
-    assert llm_util.total_cost == 13
+    assert llm_text_analyser.input_token_count == 5
+    assert llm_text_analyser.output_token_count == 4
+    assert llm_text_analyser.total_cost == 13
 
-    llm_util.request_semaphore.acquire.assert_called_once()
-    llm_util.request_semaphore.release.assert_called_once()
+    llm_text_analyser.request_semaphore.acquire.assert_called_once()
+    llm_text_analyser.request_semaphore.release.assert_called_once()
 
-    llm_util.token_semaphore.acquire.assert_called_once_with(10)
-    llm_util.token_semaphore.release.assert_called_once_with(10)
+    llm_text_analyser.token_semaphore.acquire.assert_called_once_with(10)
+    llm_text_analyser.token_semaphore.release.assert_called_once_with(10)
 
 
 @patch.object(
-    LLMUtil,
+    LLMTextAnalyser,
     "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__timeout_on_request_semaphore(
     mock_num_tokens_consumed, mock_create_api_message
 ):
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         request_timeout=1,
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.request_semaphore = Mock()
-    llm_util.token_semaphore = Mock()
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
 
-    llm_util._analyse_text_chunk.retry.wait = wait_none()
-    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+    llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+    llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(1)
 
-    llm_util.request_semaphore.acquire.return_value = False
+    llm_text_analyser.request_semaphore.acquire.return_value = False
 
     user_prompt = ""
 
-    result = llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+    result = llm_text_analyser._analyse_text_chunk(
+        system_prompt="system prompt", user_prompt=""
+    )
 
     assert result is None  # Timeout occurred, so None is returned
 
-    llm_util.request_semaphore.acquire.assert_called_once()
-    llm_util.request_semaphore.release.assert_not_called()
+    llm_text_analyser.request_semaphore.acquire.assert_called_once()
+    llm_text_analyser.request_semaphore.release.assert_not_called()
 
-    llm_util.token_semaphore.acquire.assert_not_called()
-    llm_util.token_semaphore.release.assert_not_called()
+    llm_text_analyser.token_semaphore.acquire.assert_not_called()
+    llm_text_analyser.token_semaphore.release.assert_not_called()
 
     logging_util_calls = LoggingUtil.log_exception.call_args_list
     logging_util_calls_as_string = [str(x) for x in logging_util_calls]
@@ -388,57 +412,61 @@ def test__llm_util___analyse_text_chunk__timeout_on_request_semaphore(
 
 
 @patch.object(
-    LLMUtil, "invoke_chain", side_effect=Exception("Some LLM invocation error")
+    LLMTextAnalyser, "invoke_chain", side_effect=Exception("Some LLM invocation error")
 )
 @patch.object(
-    LLMUtil,
+    LLMTextAnalyser,
     "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util___analyse_text_chunk__exception(
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__exception(
     mock_num_tokens_consumed, mock_create_api_message, mock_invoke_chain
 ):
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
-    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+    llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(1)
 
     with pytest.raises(Exception):  # noqa: B017
-        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
         LoggingUtil.log_exception.assert_called_with(
             "An error occurred while processing the chunk: Some LLM invocation error"
         )
 
 
 @patch.object(
-    LLMUtil,
+    LLMTextAnalyser,
     "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util___analyse_text_chunk__length_finish_reason(
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__length_finish_reason(
     mock_num_tokens_consumed, mock_create_api_message
 ):
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
-    llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+    llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(1)
     completion = create_mock_chat_completion()
 
     with (
         pytest.raises(Exception),  # noqa: B017
         patch.object(
-            LLMUtil,
+            LLMTextAnalyser,
             "invoke_chain",
             side_effect=LengthFinishReasonError(completion=completion),
         ),
     ):
-        llm_util._analyse_text_chunk(system_prompt="system prompt", user_prompt="")
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
         LoggingUtil.log_exception.assert_called_with(
             "An error occurred while processing the chunk: Could not parse content as"
             f"the length limit was reached - {completion.usage}"
@@ -455,55 +483,55 @@ def test__llm_util___analyse_text_chunk__length_finish_reason(
     ],
 )
 @patch.object(
-    LLMUtil,
+    LLMTextAnalyser,
     "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
-@patch.object(LLMUtil, "_num_tokens_consumed", return_value=10)
-def test__llm_util___analyse_text_chunk__retry_on_exception(
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_on_exception(
     mock_num_tokens, mock_api_message, exception
 ):
     mock_chat_completion = create_mock_chat_completion()
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
     with patch.object(
-        LLMUtil,
+        LLMTextAnalyser,
         "invoke_chain",
         side_effect=[
             exception,
             create_mock_chat_completion(["string A", "string B"]),
         ],
     ):
-        llm_util = LLMUtil(llm_util_config)
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
-        llm_util._analyse_text_chunk.retry.wait = wait_none()
-        llm_util._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
 
-        actual_result = llm_util._analyse_text_chunk(
+        actual_result = llm_text_analyser._analyse_text_chunk(
             system_prompt="system prompt", user_prompt="", max_completion_tokens=1000
         )
 
-        assert LLMUtil.invoke_chain.call_count == 2
+        assert LLMTextAnalyser.invoke_chain.call_count == 2
         assert isinstance(actual_result[0], MockLLMChatCompletion)
         assert actual_result[1] == redaction_strings
 
         if isinstance(exception, LengthFinishReasonError):
             # Last call should have updated max_completion_tokens to 2000
-            assert LLMUtil.invoke_chain.call_args.args[-1] == 2000
+            assert LLMTextAnalyser.invoke_chain.call_args.args[-1] == 2000
 
 
-def test__llm_util__analyse_text():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser__analyse_text():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.request_semaphore = Mock()
-    llm_util.token_semaphore = Mock()
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
     results = [
         (create_mock_chat_completion(["string A"]), ["string A"]),
@@ -513,12 +541,14 @@ def test__llm_util__analyse_text():
 
     def side_effect(*args, **kwargs):
         result = next(results_iter)
-        llm_util._compute_costs(result[0].usage)
+        llm_text_analyser._compute_costs(result[0].usage)
         return result
 
-    with patch.object(LLMUtil, "_analyse_text_chunk") as mock_analyse_text_chunk:
+    with patch.object(
+        LLMTextAnalyser, "_analyse_text_chunk"
+    ) as mock_analyse_text_chunk:
         mock_analyse_text_chunk.side_effect = side_effect
-        actual_result = llm_util.analyse_text(
+        actual_result = llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["redaction string A", "redaction string B"],
         )
@@ -534,21 +564,23 @@ def test__llm_util__analyse_text():
     # Output may be unordered due to parallel execution
     assert set(actual_result.redaction_strings) == {"string A", "string B"}
 
-    assert llm_util.input_token_count == 10
-    assert llm_util.output_token_count == 8
-    assert llm_util.total_cost == 26.0
+    assert llm_text_analyser.input_token_count == 10
+    assert llm_text_analyser.output_token_count == 8
+    assert llm_text_analyser.total_cost == 26.0
 
 
-@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
-def test__llm_util__analyse_text__check_pool_size():
-    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=4)
-    llm_util = LLMUtil(llm_util_config)
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+def test__llm_text_analyser__analyse_text__check_pool_size():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-4.1", max_concurrent_requests=4
+    )
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     with (
         patch.object(
             ThreadPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
-        patch("core.util.llm_util.as_completed", return_value=[]),
+        patch(f"{MODULE}.as_completed", return_value=[]),
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
@@ -556,7 +588,7 @@ def test__llm_util__analyse_text__check_pool_size():
             ThreadPoolExecutor, "__exit__", return_value=None
         ) as mock_executor_exit,
     ):
-        llm_util.analyse_text(
+        llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["redaction string A", "redaction string B"] * 20,
         )
@@ -566,20 +598,22 @@ def test__llm_util__analyse_text__check_pool_size():
     mock_executor_exit.assert_called_once()
 
 
-@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
-@patch("core.util.llm_util.os.cpu_count", return_value=8)
-def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
-    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=4)
-    llm_util = LLMUtil(llm_util_config)
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+@patch(f"{MODULE}.os.cpu_count", return_value=8)
+def test__llm_text_analyser__analyse_text__override_pool_size(mock_cpu_count):
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-4.1", max_concurrent_requests=4
+    )
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     # Override to test that the value is respected
-    llm_util.config.max_concurrent_requests = 40
+    llm_text_analyser.config.max_concurrent_requests = 40
 
     with (
         patch.object(
             ThreadPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
-        patch("core.util.llm_util.as_completed", return_value=[]),
+        patch(f"{MODULE}.as_completed", return_value=[]),
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
@@ -587,36 +621,38 @@ def test__llm_util__analyse_text__override_pool_size(mock_cpu_count):
             ThreadPoolExecutor, "__exit__", return_value=None
         ) as mock_executor_exit,
     ):
-        llm_util.analyse_text(
+        llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["redaction string A", "redaction string B"] * 20,
         )
 
     max_workers = min(32, (os.cpu_count() or 1) + 4)
-    assert llm_util.config.max_concurrent_requests == max_workers
+    assert llm_text_analyser.config.max_concurrent_requests == max_workers
 
     mock_executor_init.assert_called_once_with(max_workers=max_workers)
     assert mock_executor_submit.call_count == 40
     mock_executor_exit.assert_called_once()
 
 
-@patch("core.util.llm_util.get_encoding")
+@patch(f"{MODULE}.get_encoding")
 @patch("time.sleep", return_value=None)
-def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep, mock_get_encoding):
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser__analyse_text__budget_exceeded(
+    mock_time_sleep, mock_get_encoding
+):
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         budget=12.0,
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
-    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
+    with patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [
             create_mock_chat_completion(["string A"]),
             create_mock_chat_completion(["string B"]),
         ]
-        actual_result = llm_util.analyse_text(
+        actual_result = llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["redaction string A", "redaction string B"],
         )
@@ -627,62 +663,62 @@ def test__llm_util__analyse_text__budget_exceeded(mock_time_sleep, mock_get_enco
     )
 
 
-def test__llm_util___check_budget__raises_when_exceeded():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser___check_budget__raises_when_exceeded():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         budget=10.0,
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.total_cost = 10.0
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.total_cost = 10.0
 
     with pytest.raises(RuntimeError, match="Budget of £10.00 exceeded"):
-        llm_util._check_budget()
+        llm_text_analyser._check_budget()
 
 
-def test__llm_util___check_budget__no_raise_when_under_budget():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser___check_budget__no_raise_when_under_budget():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         budget=10.0,
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.total_cost = 5.0
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.total_cost = 5.0
 
     # Should not raise
-    llm_util._check_budget()
+    llm_text_analyser._check_budget()
 
 
-def test__llm_util___check_budget__no_raise_when_no_budget_set():
-    llm_util_config = LLMUtilConfig(
+def test__llm_text_analyser___check_budget__no_raise_when_no_budget_set():
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.total_cost = 99999.0
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.total_cost = 99999.0
 
     # Should not raise when no budget configured
-    llm_util._check_budget()
+    llm_text_analyser._check_budget()
 
 
-@patch("core.util.llm_util.get_encoding")
-def test__llm_util__analyse_text__single_chunk_sequential(mock_get_encoding):
+@patch(f"{MODULE}.get_encoding")
+def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_encoding):
     """When there is only 1 chunk, max_workers=1 and processing is sequential
     (no ThreadPoolExecutor)"""
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.request_semaphore = Mock()
-    llm_util.token_semaphore = Mock()
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
     with (
-        patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain,
+        patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain,
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
     ):
         mock_invoke_chain.return_value = create_mock_chat_completion(["string A"])
-        actual_result = llm_util.analyse_text(
+        actual_result = llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["single chunk"],
         )
@@ -694,17 +730,19 @@ def test__llm_util__analyse_text__single_chunk_sequential(mock_get_encoding):
     assert actual_result.metadata.request_count == 1
 
 
-@patch.object(LLMUtil, "analyse_text", LLMUtil.analyse_text.__wrapped__)
-def test__llm_util__analyse_text__max_workers_limited_by_chunk_count():
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+def test__llm_text_analyser__analyse_text__max_workers_limited_by_chunk_count():
     """max_workers should be min(max_concurrent_requests, chunk_count)"""
-    llm_util_config = LLMUtilConfig(model="gpt-4.1", max_concurrent_requests=10)
-    llm_util = LLMUtil(llm_util_config)
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-4.1", max_concurrent_requests=10
+    )
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     with (
         patch.object(
             ThreadPoolExecutor, "submit", return_value=None
         ) as mock_executor_submit,
-        patch("core.util.llm_util.as_completed", return_value=[]),
+        patch(f"{MODULE}.as_completed", return_value=[]),
         patch.object(
             ThreadPoolExecutor, "__init__", return_value=None
         ) as mock_executor_init,
@@ -712,7 +750,7 @@ def test__llm_util__analyse_text__max_workers_limited_by_chunk_count():
             ThreadPoolExecutor, "__exit__", return_value=None
         ) as mock_executor_exit,
     ):
-        llm_util.analyse_text(
+        llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["chunk A", "chunk B", "chunk C"],  # 3 chunks < 10 workers
         )
@@ -723,25 +761,27 @@ def test__llm_util__analyse_text__max_workers_limited_by_chunk_count():
     mock_executor_exit.assert_called_once()
 
 
-@patch("core.util.llm_util.get_encoding")
-def test__llm_util__analyse_text__sequential_budget_exceeded(mock_get_encoding):
+@patch(f"{MODULE}.get_encoding")
+def test__llm_text_analyser__analyse_text__sequential_budget_exceeded(
+    mock_get_encoding,
+):
     """Budget check in sequential path should stop processing after budget is exceeded"""
-    llm_util_config = LLMUtilConfig(
+    llm_text_analyser_config = LLMTextAnalyserConfig(
         model="gpt-4.1",
         budget=12.0,
         max_concurrent_requests=1,
     )
-    llm_util = LLMUtil(llm_util_config)
-    llm_util.input_token_cost = 1
-    llm_util.output_token_cost = 2
+    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
 
-    with patch.object(LLMUtil, "invoke_chain") as mock_invoke_chain:
+    with patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [
             create_mock_chat_completion(["string A"]),
             create_mock_chat_completion(["string B"]),
             create_mock_chat_completion(["string C"]),
         ]
-        actual_result = llm_util.analyse_text(
+        actual_result = llm_text_analyser.analyse_text(
             system_prompt="system prompt",
             text_chunks=["chunk A", "chunk B", "chunk C"],
         )

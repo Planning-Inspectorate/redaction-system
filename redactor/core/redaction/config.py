@@ -1,42 +1,8 @@
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
+from core.analysis.text import LLMTextAnalysisConfig
 from core.util.types import PydanticImage
-
-
-class LLMUtilConfig(BaseModel):
-    model: str
-    """The LLM model to use"""
-    max_tokens: int | None = 1000
-    """Maximum number of tokens per completion"""
-    temperature: float | None = 0.5
-    """LLM sampling temperature"""
-    request_rate_limit: int | None = None
-    """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
-    token_rate_limit: int | None = None
-    """Number of tokens allowed per minute. Defaults to 20% of model max TPM."""
-    max_concurrent_requests: int | None = None
-    """Number of concurrent requests to allow. Assigns the number of threads."""
-    token_encoding_name: str | None = None
-    """The token encoding name to use for estimating token counts"""
-    n: int | None = 1
-    """Number of completions to generate per prompt"""
-    budget: float | None = None
-    """The budget in GBP for LLM usage"""
-    token_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring tokens from the token semaphore"""
-    request_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring request semaphore"""
-
-    def __init__(self, **data):
-        super().__init__(**data)
-        if self.token_encoding_name is None:
-            if self.model.startswith("gpt-5") or self.model.startswith("gpt-4o"):
-                self.token_encoding_name = "o200k_base"  # nosec: B105
-            elif self.model.startswith("gpt-4") or self.model.startswith("gpt-3.5"):
-                self.token_encoding_name = "cl100k_base"  # nosec: B105
-            else:
-                self.token_encoding_name = "p50k_base"  # nosec: B105
 
 
 class RedactionConfig(BaseModel):
@@ -51,7 +17,7 @@ class TextRedactionConfig(RedactionConfig):
     """The source text to redact"""
 
 
-class LLMTextRedactionConfigBase(RedactionConfig, LLMUtilConfig):
+class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalysisConfig):
     system_prompt: str
     """The system prompt for the LLM"""
     redaction_terms: list[str]
