@@ -9,6 +9,7 @@ from typing import Any, ClassVar
 
 import pymupdf
 
+from core.analysis.images import AzureVisionUtil
 from core.redaction.config import RedactionConfig
 from core.redaction.exceptions import (
     DuplicateFileProcessorNameException,
@@ -27,7 +28,6 @@ from core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
 )
-from core.util.image_analysis import AzureVisionUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import MetricUtil, TimerUtil
 from core.util.pdf_util import (

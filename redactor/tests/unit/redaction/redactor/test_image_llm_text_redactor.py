@@ -4,10 +4,10 @@ from unittest.mock import Mock, patch
 from PIL import Image
 from tests.unit_test.redaction.redactor.util import TestImageTextRedactorBase
 
+from core.analysis.text import LLMTextAnalyser
 from core.redaction.config import ImageLLMTextRedactionConfig
 from core.redaction.redactor import ImageLLMTextRedactor
 from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
-from core.util.llm_util import LLMUtil
 
 
 def test_get_name():
@@ -113,9 +113,9 @@ class TestAnalyseImageText(TestImageLLMTextRedactor):
         )
         with (
             patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
-            patch.object(LLMUtil, "__init__", return_value=None),
+            patch.object(LLMTextAnalyser, "__init__", return_value=None),
             patch.object(
-                LLMUtil, "analyse_text", return_value=mock_llm_result
+                LLMTextAnalyser, "analyse_text", return_value=mock_llm_result
             ) as mock_analyse_text,
         ):
             inst = ImageLLMTextRedactor()
@@ -135,7 +135,7 @@ class TestAnalyseImageText(TestImageLLMTextRedactor):
         """
         - Given all images have empty text content
         - When I call _analyse_image_text
-        - Then it should return None without calling LLMUtil
+        - Then it should return None without calling LLMTextAnalyser
         """
         images = [Image.new("RGB", (100, 100))]
         config = self.create_config(images=images)
@@ -144,8 +144,10 @@ class TestAnalyseImageText(TestImageLLMTextRedactor):
         ]
         with (
             patch.object(ImageLLMTextRedactor, "__init__", return_value=None),
-            patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_init,
-            patch.object(LLMUtil, "analyse_text") as mock_analyse_text,
+            patch.object(
+                LLMTextAnalyser, "__init__", return_value=None
+            ) as mock_llm_init,
+            patch.object(LLMTextAnalyser, "analyse_text") as mock_analyse_text,
         ):
             inst = ImageLLMTextRedactor()
             inst.config = config

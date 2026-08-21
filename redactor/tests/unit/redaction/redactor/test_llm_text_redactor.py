@@ -1,12 +1,12 @@
 from unittest.mock import patch
 
+from core.analysis.text import LLMTextAnalyser
 from core.redaction.config import (
     LLMTextRedactionConfig,
     RedactionConfig,
 )
 from core.redaction.redactor import LLMTextRedactor
 from core.redaction.result import LLMTextRedactionResult
-from core.util.llm_util import LLMUtil
 
 
 def test__llm_text_redactor__get_name():
@@ -57,15 +57,17 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     )
 
     with (
-        patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init,
         patch.object(
-            LLMUtil, "analyse_text", return_value=mock_llm_result
+            LLMTextAnalyser, "__init__", return_value=None
+        ) as mock_llm_text_analyser_init,
+        patch.object(
+            LLMTextAnalyser, "analyse_text", return_value=mock_llm_result
         ) as mock_analyse_text,
     ):
         LLMTextRedactor.config = config
         LLMTextRedactor()._analyse_text("some text to analyse")
 
-    mock_llm_util_init.assert_called_once_with(config)
+    mock_llm_text_analyser_init.assert_called_once_with(config)
     mock_analyse_text.assert_called_once()
 
 
@@ -76,7 +78,7 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
     """
     - Given I have empty text to analyse
     - When I call LLMTextRedactor._analyse_text with empty string
-    - Then it should return an empty LLMTextRedactionResult without calling LLMUtil
+    - Then it should return an empty LLMTextRedactionResult without calling LLMTextAnalyser
     """
     config = LLMTextRedactionConfig(
         name="config name",
@@ -87,14 +89,16 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
     )
 
     with (
-        patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init,
-        patch.object(LLMUtil, "analyse_text") as mock_analyse_text,
+        patch.object(
+            LLMTextAnalyser, "__init__", return_value=None
+        ) as mock_llm_text_analyser_init,
+        patch.object(LLMTextAnalyser, "analyse_text") as mock_analyse_text,
     ):
         LLMTextRedactor.config = config
         result = LLMTextRedactor()._analyse_text("")
 
-    # LLMUtil should never be instantiated or called
-    mock_llm_util_init.assert_not_called()
+    # LLMTextAnalyser should never be instantiated or called
+    mock_llm_text_analyser_init.assert_not_called()
     mock_analyse_text.assert_not_called()
 
     assert isinstance(result, LLMTextRedactionResult)
@@ -110,7 +114,7 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
     """
     - Given text_to_analyse is None
     - When I call LLMTextRedactor._analyse_text with None
-    - Then it should return an empty LLMTextRedactionResult without calling LLMUtil
+    - Then it should return an empty LLMTextRedactionResult without calling LLMTextAnalyser
     """
     config = LLMTextRedactionConfig(
         name="config name",
@@ -120,9 +124,11 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
         redaction_terms=["rule A"],
     )
 
-    with patch.object(LLMUtil, "__init__", return_value=None) as mock_llm_util_init:
+    with patch.object(
+        LLMTextAnalyser, "__init__", return_value=None
+    ) as mock_llm_text_analyser_init:
         LLMTextRedactor.config = config
         result = LLMTextRedactor()._analyse_text(None)
 
-    mock_llm_util_init.assert_not_called()
+    mock_llm_text_analyser_init.assert_not_called()
     assert result.redaction_strings == ()

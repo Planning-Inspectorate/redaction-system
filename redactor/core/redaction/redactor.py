@@ -7,6 +7,8 @@ from typing import Any, ClassVar
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from PIL import Image
 
+from core.analysis.images import AzureVisionUtil, SignatureDetector
+from core.analysis.text import LLMTextAnalyser
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
     ImageRedactionConfig,
@@ -27,8 +29,6 @@ from core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
 )
-from core.util.image_analysis import AzureVisionUtil, SignatureDetector
-from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
 from core.util.text_util import get_normalised_words
@@ -159,10 +159,10 @@ class LLMTextRedactor(TextRedactor):
         )
 
         # Initialise LLM interface
-        llm_util = LLMUtil(self.config)
+        llm_text_analyser = LLMTextAnalyser(self.config)
 
         # Identify redaction strings
-        llm_redaction_result = llm_util.analyse_text(
+        llm_redaction_result = llm_text_analyser.analyse_text(
             system_prompt,
             text_chunks,
         )
@@ -672,10 +672,12 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         system_prompt = self.config.create_system_prompt()
 
         # Initialise LLM interface
-        llm_util = LLMUtil(self.config)
+        llm_text_analyser = LLMTextAnalyser(self.config)
 
         # Identify redaction strings
-        llm_redaction_result = llm_util.analyse_text(system_prompt, text_chunks)
+        llm_redaction_result = llm_text_analyser.analyse_text(
+            system_prompt, text_chunks
+        )
 
         redaction_strings = llm_redaction_result.redaction_strings
         for image in image_text_content:

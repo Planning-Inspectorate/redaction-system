@@ -18,8 +18,8 @@ from requests import post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
+from core.analysis.utils import get_max_workers
 from core.util.logging_util import LoggingUtil, log_to_appins
-from core.util.multiprocessing_util import get_max_workers
 
 load_dotenv(verbose=True)
 
