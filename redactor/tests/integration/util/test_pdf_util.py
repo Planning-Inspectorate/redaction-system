@@ -3,7 +3,7 @@ from math import isclose
 
 import pymupdf
 from pymupdf import Rect
-from tests.util.util import assert_instances_to_redact_approx_equal
+from tests.utils.util import assert_instances_to_redact_approx_equal
 
 from core.util.pdf_util import PDFUtil
 

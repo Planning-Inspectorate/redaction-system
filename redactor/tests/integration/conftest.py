@@ -1,4 +1,4 @@
-from tests.util.conftest_util import (  # noqa: F401
+from tests.utils.conftest_util import (  # noqa: F401
     configure_session,
     session_setup,
     session_teardown,

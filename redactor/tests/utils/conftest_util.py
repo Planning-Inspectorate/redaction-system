@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 from filelock import FileLock
-from tests.util.test_case import TestCase
+from tests.utils.test_case import TestCase
 
 
 def quiet_azure_noise_early():

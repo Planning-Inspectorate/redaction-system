@@ -14,7 +14,7 @@ from tests.e2e.utils import (
     build_payload,
     trigger_and_wait,
 )
-from tests.util.util import ServiceBusUtil
+from tests.utils.util import ServiceBusUtil
 
 logger = logging.getLogger("e2e")
 

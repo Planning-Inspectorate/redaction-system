@@ -2,7 +2,7 @@ import contextlib
 from unittest import mock
 
 from PIL import Image
-from tests.util.util import compare_unashable_lists
+from tests.utils.util import compare_unashable_lists
 
 from core.analysis.images import AzureVisionUtil, SignatureDetector
 from core.redaction.config import ImageRedactionConfig

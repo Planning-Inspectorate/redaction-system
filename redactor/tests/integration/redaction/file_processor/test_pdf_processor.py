@@ -6,7 +6,7 @@ from string import punctuation
 
 import pymupdf
 from pymupdf import Rect
-from tests.util.util import (
+from tests.utils.util import (
     assert_instances_to_redact_approx_equal,
     assert_rect_approx_equal,
 )

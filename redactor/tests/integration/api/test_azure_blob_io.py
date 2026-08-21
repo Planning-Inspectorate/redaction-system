@@ -11,7 +11,7 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
-from tests.util.test_case import TestCase
+from tests.utils.test_case import TestCase
 
 from core.api.io import AzureBlobIO
 
