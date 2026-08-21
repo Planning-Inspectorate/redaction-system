@@ -96,8 +96,7 @@ def send_failure_notification(params):
     """
     Lightweight activity to send a service bus failure message when trigger_task times out or fails
     """
-    from core.api.enum import PINSService
-    from core.api.service_bus_util import ServiceBusUtil
+    from core.api.utils import PINSService, ServiceBusUtil
 
     request_params: dict[str, Any] = params["request_params"]
 

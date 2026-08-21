@@ -6,10 +6,9 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from azure.storage.blob import BlobClient, ContainerClient
 
-from core.api.enum import PINSService
 from core.api.io import AzureBlobIO, IOFactory
 from core.api.redaction_manager import RedactionManager
-from core.api.service_bus_util import ServiceBusUtil
+from core.api.utils import PINSService, ServiceBusUtil
 from core.redaction.config_processor import ConfigProcessor
 from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import FileProcessorFactory

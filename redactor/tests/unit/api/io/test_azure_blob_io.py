@@ -4,7 +4,7 @@ import pytest
 
 # Import the module and class under test
 from core.api import azure_blob_io
-from core.api.io.azure_blob_io import AzureBlobIO
+from core.api.io import AzureBlobIO
 from core.util.logging_util import LoggingUtil
 
 
