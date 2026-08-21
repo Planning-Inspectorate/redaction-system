@@ -1,4 +1,4 @@
-from core.util.metric_util import MetricUtil
+from core.utils import MetricUtil
 
 
 def test__metric_util__combine_metrics():

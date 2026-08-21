@@ -11,7 +11,7 @@ from core.api.redaction_manager import NothingToRedactException, RedactionManage
 from core.api.utils import PINSService, ServiceBusUtil
 from core.redaction.config import ConfigProcessor
 from core.redaction.file_processor import FileProcessorFactory
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 MODULE = "core.api.redaction_manager"
 

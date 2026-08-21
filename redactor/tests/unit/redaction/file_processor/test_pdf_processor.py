@@ -10,18 +10,18 @@ from PIL import Image
 
 from core.analysis.images import AzureVisionUtil
 from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
-from core.types import (
-    ImageLLMTextRedactionResult,
-    ImageRedactionResult,
-    TextRedactionResult,
-)
-from core.util.pdf_util import (
+from core.redaction.utils.pdf_util import (
     PDFImageMetadata,
     PDFLineMetadata,
     PDFPageMetadata,
     PDFUtil,
 )
-from core.util.text_util import get_normalised_words, is_english_text
+from core.redaction.utils.text_util import get_normalised_words, is_english_text
+from core.types import (
+    ImageLLMTextRedactionResult,
+    ImageRedactionResult,
+    TextRedactionResult,
+)
 
 
 @pytest.fixture(autouse=True)

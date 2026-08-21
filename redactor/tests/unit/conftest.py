@@ -7,7 +7,7 @@ from tests.utils.conftest_util import (  # noqa: F401
     session_teardown,
 )
 
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 
 @pytest.fixture(autouse=True)

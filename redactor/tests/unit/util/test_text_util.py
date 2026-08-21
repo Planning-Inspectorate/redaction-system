@@ -1,4 +1,4 @@
-from core.util.text_util import (
+from core.redaction.utils.text_util import (
     get_normalised_words,
     is_english_text,
     normalise_punctuation_unidecode,

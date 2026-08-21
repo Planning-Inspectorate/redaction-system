@@ -20,7 +20,7 @@ from core.redaction.config import ConfigProcessor
 from core.redaction.file_processor import (
     FileProcessorFactory,
 )
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 load_dotenv(verbose=True, override=True)
 
@@ -753,7 +753,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
-        from core.util.metric_util import TimerUtil
+        from core.utils import TimerUtil
 
         base_response = self._construct_base_response(params)
 

@@ -17,7 +17,7 @@ from core.redaction.config import (
     LLMTextRedactionConfig,
 )
 from core.redaction.file_processor import PDFProcessor
-from core.util.pdf_util import PDFUtil
+from core.redaction.utils.pdf_util import PDFUtil
 
 pdf_dir = os.path.join("test", "resources", "pdf")
 

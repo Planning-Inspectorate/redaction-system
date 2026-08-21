@@ -16,7 +16,7 @@ from core.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from core.util.logging_util import LoggingUtil
+from core.utils import LoggingUtil
 
 MODULE = "core.analysis.text"
 
