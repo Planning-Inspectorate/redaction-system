@@ -1,7 +1,7 @@
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
-from core.analysis.text import LLMTextAnalysisConfig
+from core.analysis.text import LLMTextAnalyserConfig
 from core.types import PydanticImage
 
 
@@ -17,7 +17,7 @@ class TextRedactionConfig(RedactionConfig):
     """The source text to redact"""
 
 
-class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalysisConfig):
+class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
     system_prompt: str
     """The system prompt for the LLM"""
     redaction_terms: list[str]

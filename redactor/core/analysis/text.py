@@ -65,7 +65,7 @@ def update_max_tokens(retry_state):
     )
 
 
-class LLMTextAnalysisConfig(BaseModel):
+class LLMTextAnalyserConfig(BaseModel):
     model: str
     """The LLM model to use"""
     max_tokens: int | None = 1000
@@ -124,9 +124,9 @@ class LLMTextAnalyser:
 
     def __init__(
         self,
-        config: LLMTextAnalysisConfig,
+        config: LLMTextAnalyserConfig,
     ):
-        self.config: LLMTextAnalysisConfig = config
+        self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
         self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
