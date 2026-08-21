@@ -30,6 +30,13 @@ def _mock_init():
         self.run_metrics = {}
         self.terms_found = {}
 
+        self.pdf_text = None
+        self.rendered_pdf_text = None
+        self.pdf_images = []
+        self.pages_metadata = []
+        self.redaction_rules = []
+        self.redaction_results = []
+
     with patch.object(PDFProcessor, "__init__", init_side_effect):
         yield
 
