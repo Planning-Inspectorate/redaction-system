@@ -157,7 +157,7 @@ class TestGetClient(TestAzureVisionUtilBase):
     @pytest.mark.noendpointfixt
     def test_returns_endpoint_from_env(self, monkeypatch):
         monkeypatch.setenv("AZURE_VISION_ENDPOINT", "http://test-endpoint")
-        with patch("core.util.image_analysis.ImageAnalysisClient") as mock_client:
+        with patch("core.analysis.image_analysis.ImageAnalysisClient") as mock_client:
             client = AzureVisionUtil._get_client()
         assert client is not None
         mock_client.assert_called_once()
@@ -476,7 +476,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
         ]
 
         with patch(
-            "core.util.image_analysis.post",
+            "core.analysis.image_analysis.post",
             return_value=self._mock_response(detections),
         ):
             result = SignatureDetector.detect_signatures(
@@ -489,7 +489,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
         image = Image.new("RGB", (100, 100))
 
         with patch(
-            "core.util.image_analysis.post", return_value=self._mock_response([])
+            "core.analysis.image_analysis.post", return_value=self._mock_response([])
         ):
             result = SignatureDetector.detect_signatures(
                 image, confidence_threshold=0.5
@@ -518,7 +518,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
         ]
 
         with patch(
-            "core.util.image_analysis.post",
+            "core.analysis.image_analysis.post",
             return_value=self._mock_response(detections),
         ):
             SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
@@ -539,7 +539,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
             {"image": image, "signatures": cached_detections}
         ]
 
-        with patch("core.util.image_analysis.post") as mock_post:
+        with patch("core.analysis.image_analysis.post") as mock_post:
             result = SignatureDetector.detect_signatures(
                 image, confidence_threshold=0.5
             )
@@ -551,7 +551,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
         image = Image.new("RGB", (100, 100))
 
         with patch(
-            "core.util.image_analysis.post", return_value=self._mock_response([])
+            "core.analysis.image_analysis.post", return_value=self._mock_response([])
         ) as mock_post:
             SignatureDetector.detect_signatures(image, confidence_threshold=0.7)
 
