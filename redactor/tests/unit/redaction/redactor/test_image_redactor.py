@@ -4,10 +4,10 @@ from unittest import mock
 from PIL import Image
 from tests.util.util import compare_unashable_lists
 
+from core.analysis.images import AzureVisionUtil, SignatureDetector
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.redaction.result import ImageRedactionResult
-from core.util.image_analysis import AzureVisionUtil, SignatureDetector
 
 
 class TestGetName:

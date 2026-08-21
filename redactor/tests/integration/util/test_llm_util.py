@@ -1,9 +1,9 @@
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
 
+from core.analysis.text import LLMUtil
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import LLMTextRedactionResult
-from core.util.llm_util import LLMUtil
 
 
 class SampleResultFormat(BaseModel):

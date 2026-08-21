@@ -5,7 +5,7 @@ import pytest
 from PIL import Image
 from tests.util.util import compare_unashable_lists
 
-from core.util.image_analysis import (
+from core.analysis.images import (
     AzureVisionUtil,
     ImageAnalysisUtil,
     SignatureDetector,

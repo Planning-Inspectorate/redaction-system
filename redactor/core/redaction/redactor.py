@@ -7,6 +7,8 @@ from typing import Any, ClassVar
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from PIL import Image
 
+from core.analysis.images import AzureVisionUtil, SignatureDetector
+from core.analysis.text import LLMUtil
 from core.redaction.config import (
     ImageLLMTextRedactionConfig,
     ImageRedactionConfig,
@@ -27,8 +29,6 @@ from core.redaction.result import (
     RedactionResult,
     TextRedactionResult,
 )
-from core.util.image_analysis import AzureVisionUtil, SignatureDetector
-from core.util.llm_util import LLMUtil
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
 from core.util.text_util import get_normalised_words

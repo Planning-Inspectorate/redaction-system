@@ -30,6 +30,7 @@ from tenacity.retry import (
 )
 from tiktoken import get_encoding
 
+from core.analysis.utils import TokenSemaphore, get_max_workers
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import (
     LLMRedactionResultFormat,
@@ -37,7 +38,6 @@ from core.redaction.result import (
 )
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
-from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
 

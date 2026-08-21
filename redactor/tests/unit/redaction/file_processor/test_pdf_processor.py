@@ -8,6 +8,7 @@ import pymupdf
 import pytest
 from PIL import Image
 
+from core.analysis.images import AzureVisionUtil
 from core.redaction.exceptions import NonEnglishContentException
 from core.redaction.file_processor import PDFProcessor
 from core.redaction.result import (
@@ -15,7 +16,6 @@ from core.redaction.result import (
     ImageRedactionResult,
     TextRedactionResult,
 )
-from core.util.image_analysis import AzureVisionUtil
 from core.util.pdf_util import (
     PDFImageMetadata,
     PDFLineMetadata,

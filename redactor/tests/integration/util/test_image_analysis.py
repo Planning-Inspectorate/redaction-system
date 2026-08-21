@@ -4,7 +4,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from core.util.image_analysis import (
+from core.analysis.images import (
     AzureVisionUtil,
     ImageAnalysisUtil,
     SignatureDetector,

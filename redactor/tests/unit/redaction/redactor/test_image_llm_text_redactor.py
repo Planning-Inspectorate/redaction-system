@@ -4,10 +4,10 @@ from unittest.mock import Mock, patch
 from PIL import Image
 from tests.unit_test.redaction.redactor.util import TestImageTextRedactorBase
 
+from core.analysis.text import LLMUtil
 from core.redaction.config import ImageLLMTextRedactionConfig
 from core.redaction.redactor import ImageLLMTextRedactor
 from core.redaction.result import ImageRedactionResult, LLMTextRedactionResult
-from core.util.llm_util import LLMUtil
 
 
 def test_get_name():

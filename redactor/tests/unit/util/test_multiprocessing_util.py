@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
 
-from core.util.multiprocessing_util import TokenSemaphore, get_max_workers
+from core.analysis.utils import TokenSemaphore, get_max_workers
 
 
 def test__token_semaphore__acquire():

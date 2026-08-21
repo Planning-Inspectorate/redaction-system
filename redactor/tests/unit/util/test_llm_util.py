@@ -6,12 +6,12 @@ import pytest
 from openai import LengthFinishReasonError, RateLimitError
 from tenacity import stop_after_attempt, wait_none
 
+from core.analysis.text import LLMUtil, handle_last_retry_error, update_max_tokens
 from core.redaction.config import LLMUtilConfig
 from core.redaction.result import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from core.util.llm_util import LLMUtil, handle_last_retry_error, update_max_tokens
 from core.util.logging_util import LoggingUtil
 
 
