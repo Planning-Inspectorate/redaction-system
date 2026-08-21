@@ -16,11 +16,6 @@ from core.redaction.config import (
     RedactionConfig,
     TextRedactionConfig,
 )
-from core.redaction.exceptions import (
-    DuplicateRedactorNameException,
-    IncorrectRedactionConfigClassException,
-    RedactorNameNotFoundException,
-)
 from core.redaction.result import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
@@ -32,6 +27,18 @@ from core.redaction.result import (
 from core.util.logging_util import LoggingUtil, log_to_appins
 from core.util.metric_util import TimerUtil
 from core.util.text_util import get_normalised_words
+
+
+class IncorrectRedactionConfigClassException(Exception):  # pragma: no cover
+    pass
+
+
+class DuplicateRedactorNameException(Exception):  # pragma: no cover
+    pass
+
+
+class RedactorNameNotFoundException(Exception):  # pragma: no cover
+    pass
 
 
 class Redactor(ABC):

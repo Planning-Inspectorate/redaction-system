@@ -11,12 +11,6 @@ import pymupdf
 
 from core.analysis.images import AzureVisionUtil
 from core.redaction.config import RedactionConfig
-from core.redaction.exceptions import (
-    DuplicateFileProcessorNameException,
-    FileProcessorNameNotFoundException,
-    NonEnglishContentException,
-    UnprocessedRedactionResultException,
-)
 from core.redaction.redactor import (
     ImageRedactor,
     Redactor,
@@ -36,6 +30,23 @@ from core.util.pdf_util import (
     PDFUtil,
 )
 from core.util.text_util import is_english_text
+
+
+class UnprocessedRedactionResultException(Exception):  # pragma: no cover
+    pass
+
+
+class DuplicateFileProcessorNameException(Exception):  # pragma: no cover
+    pass
+
+
+class FileProcessorNameNotFoundException(Exception):  # pragma: no cover
+    pass
+
+
+class NonEnglishContentException(Exception):  # pragma: no cover
+    """Raised when a document is detected as non-English or insufficient
+    English content"""
 
 
 class FileProcessor(ABC):
