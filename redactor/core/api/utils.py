@@ -12,8 +12,16 @@ from azure.identity.aio import (
 )
 from azure.servicebus import ServiceBusMessage
 from azure.servicebus.aio import ServiceBusClient
+from strenum import StrEnum
 
-from core.util.enum import PINSService
+
+class PINSService(StrEnum):
+    """
+    Represents a service in PINS
+    """
+
+    CBOS = "CBOS"
+    REDACTION_SYSTEM = "REDACTION_SYSTEM"
 
 
 class ServiceBusUtil:
