@@ -29,10 +29,7 @@ class TestImageTextRedactor:
         redactor_inst = ImageTextRedactor(config)
         result = redactor_inst.redact()
 
-        redaction_boxes = (
-            (420, 488, 478, 519),
-            (338, 488, 413, 521),
-        )
+        redaction_boxes = ((338, 488, 478, 521),)
 
         assert isinstance(result, ImageRedactionResult)
         assert len(result.redaction_results) == 1

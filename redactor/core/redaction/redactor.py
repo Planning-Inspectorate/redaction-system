@@ -20,7 +20,9 @@ from core.redaction.exceptions import (
     RedactorNameNotFoundException,
 )
 from core.redaction.result import (
+    ImageLLMTextRedactionResult,
     ImageRedactionResult,
+    ImageTextRedactionResult,
     LLMTextRedactionResult,
     RedactionResult,
     TextRedactionResult,
@@ -167,7 +169,7 @@ class LLMTextRedactor(TextRedactor):
         return LLMTextRedactionResult(
             rule_name=self.config.name,
             run_metrics=llm_redaction_result.run_metrics,
-            redaction_strings=llm_redaction_result.redaction_strings,
+            redaction_strings=tuple(llm_redaction_result.redaction_strings),
             metadata=llm_redaction_result.metadata,
         )
 
@@ -306,6 +308,10 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
         return "ImageTextRedaction"
 
     @classmethod
+    def get_redaction_result_class(cls):
+        return ImageTextRedactionResult
+
+    @classmethod
     def detect_number_plates(cls, text_to_analyse: str) -> tuple[str]:
         """
         Detect number plates in the given text
@@ -346,6 +352,79 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             )
         )
 
+    @staticmethod
+    def _check_subsequent_words(
+        index: int,
+        text_rect_map: list[tuple[str, tuple[int, int, int, int]]],
+        words_to_redact: list[str],
+        bounding_box: tuple[int, int, int, int],
+        margin: int = 5,
+    ) -> list[tuple[int, int, int, int]] | None:
+        """
+        Check if the subsequent words in the text_rect_map match the words_to_redact.
+        If they do, return the bounding boxes for the matched words. If not, return None.
+
+        :param int index: The index of the first word in the text_rect_map that matched
+        :param list[tuple[str, tuple[int, int, int, int]]] text_rect_map: A list of
+        tuples of the form (text_at_box, bounding_box)
+        :param list[str] words_to_redact: A list of words to redact
+        :param tuple[int, int, int, int] bounding_box: The bounding box of the first word
+        :param int margin: A margin to allow for slight misalignment of words on the same line
+
+        :return list[tuple[int, int, int, int]] | None: A list of bounding boxes for
+        the matched words, or None if not all words matched
+        """
+        # Check subsequent words
+        boxes = []
+        line_bbox = {
+            "x0": bounding_box[0],
+            "y0": bounding_box[1],
+            "x1": bounding_box[2],
+            "y1": bounding_box[3],
+        }
+
+        while index + 1 < len(text_rect_map) and words_to_redact:
+            # Get next word to redact
+            word = words_to_redact.pop(0)
+            next_text, next_bounding_box = text_rect_map[index + 1]
+
+            text_normalised_words = get_normalised_words(next_text)
+            if text_normalised_words:
+                text_normalised = text_normalised_words[0]
+                if word == text_normalised:
+                    # Check if the next word is on the same line as the previous word
+                    x0, y0, x1, y1 = next_bounding_box
+                    if (
+                        y0 <= line_bbox["y0"] + margin
+                        and y1 >= line_bbox["y1"] - margin
+                    ):
+                        line_bbox.update(
+                            {
+                                "y0": min(line_bbox["y0"], y0),
+                                "x1": max(line_bbox["x1"], x1),
+                                "y1": max(line_bbox["y1"], y1),
+                            }
+                        )
+                    else:
+                        # Record previous line
+                        boxes.append(tuple(line_bbox.values()))
+                        # Start a new line bbox
+                        line_bbox.update(
+                            {
+                                "x0": x0,
+                                "y0": y0,
+                                "x1": x1,
+                                "y1": y1,
+                            }
+                        )
+                    if not words_to_redact:  # All words matched
+                        boxes.append(tuple(line_bbox.values()))
+                        return boxes
+                    index += 1
+                else:
+                    continue
+        return None
+
     @classmethod
     def examine_redaction_boxes(
         cls,
@@ -382,23 +461,12 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 # Proceed only if the first word matches
                 normalised_words = get_normalised_words(text_at_box)
                 if normalised_words and first_word == normalised_words[0]:
-                    boxes = [bounding_box]
-                    i_copy = i
                     # Check subsequent words
-                    while i_copy + 1 < len(text_rect_map) and words_to_redact_copy:
-                        word = words_to_redact_copy.pop(0)
-                        next_text, next_bounding_box = text_rect_map[i_copy + 1]
-                        text_normalised_words = get_normalised_words(next_text)
-                        if text_normalised_words:
-                            text_normalised = text_normalised_words[0]
-                            if word == text_normalised:
-                                boxes.append(next_bounding_box)
-                                if not words_to_redact_copy:
-                                    # All words matched
-                                    text_rects_to_redact.extend(boxes)
-                                i_copy += 1
-                            else:
-                                continue
+                    bounding_boxes = cls._check_subsequent_words(
+                        i, text_rect_map, words_to_redact_copy, bounding_box
+                    )
+                    if bounding_boxes:
+                        text_rects_to_redact.extend(bounding_boxes)
 
         return text_rects_to_redact
 
@@ -415,7 +483,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
     def _get_number_plate_redactions(
         self, text_content, text_rect_map
-    ) -> tuple[list[tuple], float, float]:
+    ) -> tuple[tuple[str], list[tuple], float, float]:
         # Detect number plates using regex
         with TimerUtil() as timer:
             redaction_strings = self.detect_number_plates(text_content)
@@ -437,14 +505,16 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                         )
         bbox_time = timer.elapsed_time
 
-        return (
-            text_rects_to_redact,
-            number_plate_detection_time,
-            bbox_time,
-        )
+        return {
+            "redaction_strings": redaction_strings,
+            "text_rects_to_redact": text_rects_to_redact,
+            "number_plate_detection_time": number_plate_detection_time,
+            "bbox_time": bbox_time,
+        }
 
     @log_to_appins
-    def redact(self) -> ImageRedactionResult:
+    def redact(self) -> ImageTextRedactionResult:
+        # Initialisation
         self.config: ImageRedactionConfig
         init_result = self._init_redact()
         if init_result:  # If there are no images to analyse, return the initial result
@@ -461,7 +531,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                 LoggingUtil().log_info(
                     "No text detected in any images, skipping LLM analysis"
                 )
-                return ImageRedactionResult(
+                return ImageTextRedactionResult(
                     rule_name=self.config.name,
                     run_metrics=self.run_metrics,
                     redaction_results=(),
@@ -469,6 +539,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
 
             total_number_plate_time = 0.0
             total_bbox_time = 0.0
+            redaction_strings = []
             for image_to_redact, text_rect_map in image_text_rect_map:
                 # If image analysis failed, the full image will be returned
                 full_image_box = (0, 0, image_to_redact.width, image_to_redact.height)
@@ -498,17 +569,21 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
                         f"The following text was extracted from the image: '{text_content}'"
                     )
 
-                    text_rects_to_redact, number_plate_detection_time, bbox_time = (
-                        self._get_number_plate_redactions(text_content, text_rect_map)
+                    np_redaction_results = self._get_number_plate_redactions(
+                        text_content, text_rect_map
                     )
-                    total_number_plate_time += number_plate_detection_time
-                    total_bbox_time += bbox_time
+                    total_number_plate_time += np_redaction_results[
+                        "number_plate_detection_time"
+                    ]
+                    total_bbox_time += np_redaction_results["bbox_time"]
 
                     redaction_result = ImageRedactionResult.create_result(
-                        text_rects_to_redact, image_to_redact
+                        np_redaction_results["text_rects_to_redact"], image_to_redact
                     )
                     if redaction_result:
                         results.append(redaction_result)
+
+                    redaction_strings.extend(np_redaction_results["redaction_strings"])
 
                 except Exception as e:  # noqa: BLE001
                     LoggingUtil().log_exception_with_message(
@@ -523,10 +598,11 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             }
         )
 
-        return ImageRedactionResult(
+        return ImageTextRedactionResult(
             rule_name=self.config.name,
             run_metrics=self.run_metrics,
             redaction_results=tuple(results),
+            redaction_strings=tuple(redaction_strings) if results else (),
         )
 
 
@@ -544,9 +620,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
     def get_redaction_config_class(cls):
         return ImageLLMTextRedactionConfig
 
+    @classmethod
+    def get_redaction_config_result(cls):
+        return ImageLLMTextRedactionResult
+
     def _analyse_image_text(
         self, image_text_rect_map: tuple[tuple[str, tuple[int, int, int, int]]]
-    ) -> tuple[dict[str, Any]]:
+    ) -> tuple[tuple[str, ...], tuple[dict[str, Any]]]:
         self.config: LLMTextRedactionConfig
 
         text_content = tuple(
@@ -555,7 +635,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         )
         if all(not text for text in text_content):
             LoggingUtil().log_info("No text to analyse, skipping LLM analysis")
-            return None
+            return (), ()
         image_text_content = tuple(
             {
                 "image": image_to_redact,
@@ -596,13 +676,13 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 if redaction_string in image["text_content"]:
                     image["redaction_strings"].append(redaction_string)
 
-        return image_text_content
+        return tuple(redaction_strings), image_text_content
 
     @classmethod
     def _create_redaction_result(
         cls,
         image_result: dict[str, Any],
-    ) -> ImageRedactionResult.Result | None:
+    ) -> tuple[ImageRedactionResult.Result, float]:
         image_to_redact = image_result["image"]
         text_rect_map = image_result["text_rect_map"]
         text_content = image_result["text_content"]
@@ -639,7 +719,7 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         return redaction_result, timer.elapsed_time
 
     @log_to_appins
-    def redact(self) -> ImageRedactionResult:
+    def redact(self) -> ImageLLMTextRedactionResult:
         self.config: ImageLLMTextRedactionConfig
         init_result = self._init_redact()
         if init_result:  # If there are no images to analyse, return the initial result
@@ -656,15 +736,15 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
                 LoggingUtil().log_info(
                     "No text detected in any images, skipping LLM analysis"
                 )
-                return ImageRedactionResult(
+                return ImageLLMTextRedactionResult(
                     rule_name=self.config.name,
                     run_metrics=self.run_metrics,
                     redaction_results=(),
                 )
 
             with TimerUtil() as llm_timer:
-                image_text_redaction_results = self._analyse_image_text(
-                    image_text_rect_map
+                redaction_strings, image_text_redaction_results = (
+                    self._analyse_image_text(image_text_rect_map)
                 )
             self.run_metrics["total_image_llm_analysis_time"] = llm_timer.elapsed_time
 
@@ -691,10 +771,11 @@ class ImageLLMTextRedactor(ImageTextRedactor, LLMTextRedactor):
         )
         self.run_metrics["total_image_text_analysis_time"] = timer.elapsed_time
 
-        return ImageRedactionResult(
+        return ImageLLMTextRedactionResult(
             rule_name=self.config.name,
             run_metrics=self.run_metrics,
             redaction_results=tuple(results),
+            redaction_strings=tuple(redaction_strings),
         )
 
 
