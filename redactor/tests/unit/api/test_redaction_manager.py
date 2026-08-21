@@ -9,7 +9,7 @@ from azure.storage.blob import BlobClient, ContainerClient
 from core.api.io import AzureBlobIO, IOFactory
 from core.api.redaction_manager import NothingToRedactException, RedactionManager
 from core.api.utils import PINSService, ServiceBusUtil
-from core.redaction.config import ConfigProcessor
+from core.redaction.config_processor import ConfigProcessor
 from core.redaction.file_processor import FileProcessorFactory
 from core.utils import LoggingUtil
 
