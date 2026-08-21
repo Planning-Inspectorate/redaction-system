@@ -1,11 +1,7 @@
-import os
-from io import BytesIO
-
-from PIL import Image
-
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageTextRedactor
 from core.types import ImageRedactionResult
+from tests.utils.resources import open_image
 
 
 class TestImageTextRedactor:
@@ -15,11 +11,7 @@ class TestImageTextRedactor:
         - When I call ImageTextRedactor.redact
         - Then the correct number plate should be identified as a redaction box
         """
-        with open(
-            os.path.join("test", "resources", "image", "image_with_number_plate.jpg"),
-            "rb",
-        ) as f:
-            image = Image.open(BytesIO(f.read()))
+        image = open_image("number_plate.jpg")
 
         config = ImageRedactionConfig(
             name="config name",

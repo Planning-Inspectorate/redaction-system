@@ -3,6 +3,7 @@ from math import isclose
 
 import pymupdf
 from pymupdf import Rect
+from tests.utils.resources import SOURCE_PDF, open_pdf
 from tests.utils.util import assert_instances_to_redact_approx_equal
 
 from core.redaction.utils.pdf_util import PDFUtil
@@ -15,8 +16,7 @@ class TestPDFUtil:
         I want to determine whether it exactly matches the text on the page
         If if is a multi-part redaction, I want to capture all parts of the redaction
         """
-        with open("test/resources/pdf/test__pdf_processor__source.pdf", "rb") as f:
-            document_bytes = BytesIO(f.read())
+        document_bytes = open_pdf(SOURCE_PDF)
         terms_to_redact = [
             "Riker",  # Single word redaction
             "Commander Data",  # Multi-word redaction

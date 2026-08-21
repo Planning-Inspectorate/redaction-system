@@ -171,4 +171,4 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    python3 redactor/tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/image_with_signature.png
+                    python3 redactor/tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/signature.png

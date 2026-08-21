@@ -1,4 +1,3 @@
-import os
 from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
@@ -7,6 +6,15 @@ import numpy as np
 import pymupdf
 import pytest
 from PIL import Image
+from tests.utils.resources import (
+    REDACTED_JPG,
+    SOURCE_PDF,
+    TEXT_IMAGE_PROPOSED_PDF,
+    TEXT_IMAGE_REDACTED_PDF,
+    TRANSLATED_IMAGE_PDF,
+    open_image,
+    open_pdf,
+)
 
 from core.analysis.images import AzureVisionUtil
 from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
@@ -879,10 +887,7 @@ class TestApplyProvisionalImageRedactions:
         - Then the redactions should be correctly applied to the document, and match a pre-baked example
         """
         # Load the test PDF and extract the source image
-        with open(
-            "test/resources/pdf/test__pdf_processor__translated_image.pdf", "rb"
-        ) as f:
-            doc_bytes = BytesIO(f.read())
+        doc_bytes = open_pdf(TRANSLATED_IMAGE_PDF)
         pdf = pymupdf.open(stream=doc_bytes)
         source_image = next(
             Image.open(BytesIO(pdf.extract_image(image[0]).get("image")))
@@ -945,26 +950,8 @@ class TestApplyProvisionalImageRedactions:
 
 class TestApply:
     def test_returns_highlighted_scrubbed_pdf(self):
-        with open(
-            os.path.join(
-                "test",
-                "resources",
-                "pdf",
-                "test__pdf_processor__text_and_image_proposed.pdf",
-            ),
-            "rb",
-        ) as f:
-            curated_doc_bytes = BytesIO(f.read())
-        with open(
-            os.path.join(
-                "test",
-                "resources",
-                "pdf",
-                "test__pdf_processor__text_and_image_redacted.pdf",
-            ),
-            "rb",
-        ) as f:
-            expected_redacted_doc_bytes = BytesIO(f.read())
+        curated_doc_bytes = open_pdf(TEXT_IMAGE_PROPOSED_PDF)
+        expected_redacted_doc_bytes = open_pdf(TEXT_IMAGE_REDACTED_PDF)
 
         actual_redacted_doc_bytes, redactions_applied = PDFProcessor().apply(
             curated_doc_bytes, {}
@@ -1001,12 +988,7 @@ class TestApply:
         )
 
         # Compare the image content of the redacted document to the expected redacted image
-        with open(
-            os.path.join("test", "resources", "image", "image_with_text_redacted.jpg"),
-            "rb",
-        ) as f:
-            expected_image_bytes = BytesIO(f.read())
-            expected_image = Image.open(expected_image_bytes)
+        expected_image = open_image(REDACTED_JPG)
         pdf_images = [
             Image.open(BytesIO(actual_redacted_doc.extract_image(xref[0]).get("image")))
             for page in actual_redacted_doc
@@ -1020,16 +1002,7 @@ class TestApply:
         )
 
     def test_scrubs_pdf_with_nothing_to_redact(self):
-        with open(
-            os.path.join(
-                "test",
-                "resources",
-                "pdf",
-                "test__pdf_processor__source.pdf",
-            ),
-            "rb",
-        ) as f:
-            raw_doc_bytes = BytesIO(f.read())
+        raw_doc_bytes = open_pdf(SOURCE_PDF)
 
         actual_redacted_doc_bytes, redactions_applied = PDFProcessor().apply(
             raw_doc_bytes, {}
@@ -1063,16 +1036,7 @@ class TestApply:
         - When I call apply
         - Then run_metrics should contain redaction_time and scrub_time as non-negative floats
         """
-        with open(
-            os.path.join(
-                "test",
-                "resources",
-                "pdf",
-                "test__pdf_processor__text_and_image_proposed.pdf",
-            ),
-            "rb",
-        ) as f:
-            curated_doc_bytes = BytesIO(f.read())
+        curated_doc_bytes = open_pdf(TEXT_IMAGE_PROPOSED_PDF)
 
         processor = PDFProcessor()
         processor.apply(curated_doc_bytes, {})

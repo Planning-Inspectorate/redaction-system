@@ -1,11 +1,9 @@
-import os
-from io import BytesIO
-
 from PIL import Image
 
 from core.redaction.config import ImageLLMTextRedactionConfig
 from core.redaction.redactor import ImageLLMTextRedactor
 from core.types import ImageRedactionResult
+from tests.utils.resources import open_image
 
 
 class TestRedact:
@@ -36,14 +34,7 @@ class TestRedact:
         - When I call ImageLLMTextRedactor.redact
         - Then the LLM should identify redaction strings and return matching bounding boxes
         """
-        image_path = os.path.join(
-            "test", "resources", "image", "image_with_number_plate.jpg"
-        )
-        if not os.path.exists(image_path):
-            return  # Skip if test resource not available
-
-        with open(image_path, "rb") as f:
-            image = Image.open(BytesIO(f.read()))
+        image = open_image("number_plate.jpg")
 
         config = ImageLLMTextRedactionConfig(
             name="config name",
@@ -67,14 +58,7 @@ class TestRedact:
         - Then all image text should be processed in a single batched LLM call
         (verifying the new efficient architecture works end-to-end)
         """
-        image_path = os.path.join(
-            "test", "resources", "image", "image_with_number_plate.jpg"
-        )
-        if not os.path.exists(image_path):
-            return  # Skip if test resource not available
-
-        with open(image_path, "rb") as f:
-            image = Image.open(BytesIO(f.read()))
+        image = open_image("number_plate.jpg")
 
         # Use the same image twice to simulate multiple images
         config = ImageLLMTextRedactionConfig(
