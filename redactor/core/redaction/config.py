@@ -2,7 +2,7 @@ from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 
 from core.analysis.text import LLMTextAnalyserConfig
-from core.util.types import PydanticImage
+from core.types import PydanticImage
 
 
 class RedactionConfig(BaseModel):

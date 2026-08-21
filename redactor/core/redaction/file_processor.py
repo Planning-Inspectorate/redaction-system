@@ -23,7 +23,7 @@ from core.redaction.redactor import (
     RedactorFactory,
     TextRedactor,
 )
-from core.redaction.result import (
+from core.types import (
     ImageRedactionResult,
     RedactionResult,
     TextRedactionResult,

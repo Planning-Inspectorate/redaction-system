@@ -7,7 +7,7 @@ from tests.utils.util import compare_unashable_lists
 from core.analysis.images import AzureVisionUtil, SignatureDetector
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
-from core.redaction.result import ImageRedactionResult
+from core.types import ImageRedactionResult
 
 
 class TestGetName:

@@ -7,8 +7,8 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.analysis.images import ImageAnalysisUtil
+from core.types import PydanticImage
 from core.util.text_util import get_normalised_words, normalise_text
-from core.util.types import PydanticImage
 
 # Minimum length of a redaction term's boundary word to allow it to match when
 # fused to an adjacent word by a missing space (e.g. "somethingMonica"). This

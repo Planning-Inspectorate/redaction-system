@@ -21,7 +21,7 @@ from core.redaction.exceptions import (
     IncorrectRedactionConfigClassException,
     RedactorNameNotFoundException,
 )
-from core.redaction.result import (
+from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     ImageTextRedactionResult,
