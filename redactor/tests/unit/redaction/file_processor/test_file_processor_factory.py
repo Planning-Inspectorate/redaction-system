@@ -2,8 +2,11 @@ from unittest import mock
 
 import pytest
 
-from core.redaction.exceptions import FileProcessorNameNotFoundException
-from core.redaction.file_processor import FileProcessor, FileProcessorFactory
+from core.redaction.file_processor import (
+    FileProcessor,
+    FileProcessorFactory,
+    FileProcessorNameNotFoundException,
+)
 
 
 class FileProcessorA(FileProcessor):
