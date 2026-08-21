@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import dataclasses
 import json
 import re
@@ -5,12 +7,14 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator
 from datetime import UTC, datetime
 from io import BytesIO
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import pymupdf
 
+if TYPE_CHECKING:
+    from core.redaction.config import RedactionConfig
+
 from core.analysis.images import AzureVisionUtil
-from core.redaction.config import RedactionConfig
 from core.redaction.redactor import (
     ImageRedactor,
     Redactor,

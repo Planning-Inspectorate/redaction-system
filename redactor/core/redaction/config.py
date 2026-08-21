@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import json
 import os
 from copy import deepcopy
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.prompts import PromptTemplate
 from pydantic import BaseModel, Field
 from yaml import safe_load
 
 from core.analysis.text import LLMTextAnalysisConfig
-from core.redaction.file_processor import FileProcessor
 from core.redaction.redactor import RedactorFactory
 from core.types import PydanticImage
+
+if TYPE_CHECKING:
+    from core.redaction.file_processor import FileProcessor
 
 
 class InvalidRedactionConfigException(Exception):  # pragma: no cover
