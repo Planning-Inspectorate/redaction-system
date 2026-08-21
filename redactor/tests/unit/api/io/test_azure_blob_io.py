@@ -3,7 +3,7 @@ from io import BytesIO
 import pytest
 
 # Import the module and class under test
-from core.api import azure_blob_io
+from core.api import io as azure_blob_io
 from core.api.io import AzureBlobIO
 from core.utils import LoggingUtil
 

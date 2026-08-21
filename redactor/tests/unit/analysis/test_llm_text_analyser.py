@@ -8,10 +8,10 @@ from tenacity import stop_after_attempt, wait_none
 
 from core.analysis.text import (
     LLMTextAnalyser,
+    LLMTextAnalyserConfig,
     handle_last_retry_error,
     update_max_tokens,
 )
-from core.redaction.config import LLMTextAnalyserConfig
 from core.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,

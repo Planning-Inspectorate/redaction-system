@@ -3,11 +3,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
-from tests.unit_test.redaction.redactor.util import TestImageTextRedactorBase
 
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageTextRedactor
 from core.types import ImageRedactionResult
+
+from .util import TestImageTextRedactorBase
 
 
 def test_get_name():
