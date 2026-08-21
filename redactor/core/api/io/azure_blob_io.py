@@ -9,7 +9,7 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 
-from core.io.storage_io import StorageIO
+from core.api.io.storage_io import StorageIO
 from core.util.logging_util import LoggingUtil
 
 

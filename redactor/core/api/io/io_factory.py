@@ -1,7 +1,7 @@
 from typing import ClassVar
 
-from core.io.azure_blob_io import AzureBlobIO
-from core.io.storage_io import StorageIO
+from core.api.io.azure_blob_io import AzureBlobIO
+from core.api.io.storage_io import StorageIO
 
 
 class IOFactory:

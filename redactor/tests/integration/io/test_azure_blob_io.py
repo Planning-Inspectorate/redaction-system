@@ -13,7 +13,7 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 from tests.util.test_case import TestCase
 
-from core.io.azure_blob_io import AzureBlobIO
+from core.api.io.azure_blob_io import AzureBlobIO
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
