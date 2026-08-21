@@ -6,15 +6,15 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from azure.storage.blob import BlobClient, ContainerClient
 
-from core.io.azure_blob_io import AzureBlobIO
-from core.io.io_factory import IOFactory
+from core.api.io import AzureBlobIO, IOFactory
+from core.api.redaction_manager import RedactionManager
+from core.api.utils import PINSService, ServiceBusUtil
 from core.redaction.config_processor import ConfigProcessor
 from core.redaction.exceptions import NothingToRedactException
 from core.redaction.file_processor import FileProcessorFactory
-from core.redaction_manager import RedactionManager
-from core.util.enum import PINSService
 from core.util.logging_util import LoggingUtil
-from core.util.service_bus_util import ServiceBusUtil
+
+MODULE = "core.api.redaction_manager"
 
 STORAGE_NAME = "pinsstredactiondevuks"
 
@@ -233,7 +233,7 @@ class TestRedact:
             patch.object(MockIO, "read", return_value=BytesIO(b"xyz")),
             patch.object(MockIO, "write"),
             patch.object(FileProcessorFactory, "get", return_value=MockRedactor),
-            patch("core.redaction_manager.datetime") as mock_datetime,
+            patch(f"{MODULE}.datetime") as mock_datetime,
             patch.object(RedactionManager, "save_dict_to_blob_json"),
             patch.object(
                 MockRedactor,
@@ -547,7 +547,7 @@ class TestApply:
             patch.object(FileProcessorFactory, "get", return_value=MockRedactor),
             patch.object(RedactionManager, "compare_and_save_redactions"),
             patch.object(RedactionManager, "save_dict_to_blob_json"),
-            patch("core.redaction_manager.datetime") as mock_datetime,
+            patch(f"{MODULE}.datetime") as mock_datetime,
             patch.object(
                 MockRedactor,
                 "get_final_redactions",
