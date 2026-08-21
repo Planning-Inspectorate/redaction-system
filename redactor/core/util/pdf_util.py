@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-from core.util.image_analysis import ImageAnalysisUtil
+from core.analysis.images import ImageAnalysisUtil
 from core.util.text_util import get_normalised_words, normalise_text
 from core.util.types import PydanticImage
 
