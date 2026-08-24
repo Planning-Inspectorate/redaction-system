@@ -64,7 +64,7 @@ where = ["redactor"]
 # `coverage` configurations
 [tool.coverage.run]
 source = [
-    "./"
+    "./redactor/"
 ]
 omit = [
     "tests/*",
@@ -98,7 +98,7 @@ dev = [
 ]
     
 [tool.ruff.lint.isort]
-known-first-party = ["core", "tests", "config"]
+known-first-party = ["src", "tests"]
 
 # `bandit' configurations
 [tool.bandit]
