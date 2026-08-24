@@ -43,7 +43,7 @@ extends:
           - checkout: self
             clean: true
 
-# Using install npm requires package.json. - Temp copy and paste from apps put in for testing purposes
+# Using install npm requires package.json. Does this pipeline actually need npm?
           # - template: ../steps/node_script.yml
           #   parameters:
           #     displayName: 'Install NPM' # Node.js (for Azure Functions Core Tools + Azurite)'
@@ -145,15 +145,27 @@ extends:
           #   inputs:
           #     version: '20.x'
 
-          - script: |
-              set -e
-              node --version
-              npm --version
-              npm i -g azure-functions-core-tools@4 --unsafe-perm true
-              npm i -g azurite --unsafe-perm true
-              func --version
-              azurite --version
-            displayName: 'Install Azure Functions Core Tools + Azurite'
+          - template: ../steps/node_script.yml
+            parameters:
+              displayName: 'Install NPM + Azure Functions Core Tools + Azurite'
+              nodeVersion: 22
+              script: |
+                npm ci
+                npm i -g azure-functions-core-tools@4 --unsafe-perm true
+                npm i -g azurite --unsafe-perm true
+              # workingDirectory: '$(System.DefaultWorkingDirectory)'
+              # environmentVariables:
+              #   npm_config_cache: $(npm_cache_dir)
+          # This script is just asking for versions?
+          # - script: |
+          #     set -e
+          #     node --version
+          #     npm --version
+          #     npm i -g azure-functions-core-tools@4 --unsafe-perm true
+          #     npm i -g azurite --unsafe-perm true
+          #     func --version
+          #     azurite --version
+          #   displayName: 'Install Azure Functions Core Tools + Azurite'
 
           - script: |
               set -e
