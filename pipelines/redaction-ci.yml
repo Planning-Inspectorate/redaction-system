@@ -29,7 +29,7 @@ resources:
       type: github
       endpoint: Planning-Inspectorate
       name: Planning-Inspectorate/common-pipeline-templates
-      ref: refs/tags/release/3.25.2
+      ref: refs/tags/release/3.30.0
 
 extends:
   template: stages/wrapper_ci.yml@templates
@@ -42,6 +42,15 @@ extends:
         steps:
           - checkout: self
             clean: true
+
+          - template: ../steps/node_script.yml
+            parameters:
+              displayName: 'Install NPM' # Node.js (for Azure Functions Core Tools + Azurite)'
+              nodeVersion: 20.x
+              script: npm ci
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              environmentVariables:
+                npm_config_cache: $(npm_cache_dir)
 
           - script: |
               set -e
