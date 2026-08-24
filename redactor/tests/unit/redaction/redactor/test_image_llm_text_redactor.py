@@ -2,12 +2,13 @@ import dataclasses
 from unittest.mock import Mock, patch
 
 from PIL import Image
-from tests.unit_test.redaction.redactor.util import TestImageTextRedactorBase
 
 from core.analysis.text import LLMTextAnalyser
 from core.redaction.config import ImageLLMTextRedactionConfig
 from core.redaction.redactor import ImageLLMTextRedactor
 from core.types import ImageRedactionResult, LLMTextRedactionResult
+
+from .utils import TestImageTextRedactorBase
 
 
 def test_get_name():
