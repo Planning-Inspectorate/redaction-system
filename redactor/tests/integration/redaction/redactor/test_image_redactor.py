@@ -1,6 +1,6 @@
 import pytest
 
-from core.analysis.images import AzureVisionUtil, SignatureDetector
+from core.analysis.images import AzureImageAnalyser, SignatureDetector
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.types import ImageRedactionResult
@@ -13,7 +13,7 @@ class TestRedact:
         """
         Clear the cache before each test to ensure that tests are independent
         """
-        AzureVisionUtil.clear_cache()
+        AzureImageAnalyser.clear_cache()
         SignatureDetector.clear_cache()
 
     def test_no_images_returns_empty_result(self):

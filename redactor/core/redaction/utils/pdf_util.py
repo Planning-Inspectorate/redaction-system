@@ -6,7 +6,7 @@ from numpy.typing import NDArray
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
-from ...analysis.images import ImageAnalysisUtil
+from ...analysis.images import ImageAnalyser
 from ...types import PydanticImage
 from .text_util import get_normalised_words, normalise_text
 
@@ -252,7 +252,7 @@ class PDFUtil:
                 image = Image.open(image_bytes)
 
                 # Check if the image is too small/large for Azure Vision to process
-                valid_image = ImageAnalysisUtil.check_image_size(image)
+                valid_image = ImageAnalyser.check_image_size(image)
                 if not valid_image:
                     continue
 

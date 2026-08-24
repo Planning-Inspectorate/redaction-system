@@ -2,12 +2,12 @@ import contextlib
 from unittest import mock
 
 from PIL import Image
-from tests.utils.util import compare_unashable_lists
 
-from core.analysis.images import AzureVisionUtil, SignatureDetector
+from core.analysis.images import AzureImageAnalyser, SignatureDetector
 from core.redaction.config import ImageRedactionConfig
 from core.redaction.redactor import ImageRedactor
 from core.types import ImageRedactionResult
+from tests.utils.util import compare_unashable_lists
 
 
 class TestGetName:
@@ -47,7 +47,7 @@ class TestImageRedactorBase:
     def mock_detectors(face_results, signature_results):
         with (
             mock.patch.object(
-                AzureVisionUtil,
+                AzureImageAnalyser,
                 "detect_faces_in_images",
                 return_value=face_results,
             ),
@@ -124,7 +124,9 @@ class TestRedact(TestImageRedactorBase):
         inst = self.setup_image_redactor(images=[])
 
         with (
-            mock.patch.object(AzureVisionUtil, "detect_faces_in_images") as mock_faces,
+            mock.patch.object(
+                AzureImageAnalyser, "detect_faces_in_images"
+            ) as mock_faces,
             mock.patch.object(
                 SignatureDetector, "detect_signatures_in_images"
             ) as mock_sigs,

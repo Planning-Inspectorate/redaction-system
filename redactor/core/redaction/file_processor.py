@@ -14,7 +14,7 @@ import pymupdf
 if TYPE_CHECKING:
     from core.redaction.config import RedactionConfig
 
-from ..analysis import AzureVisionUtil
+from ..analysis import AzureImageAnalyser
 from ..types import (
     ImageRedactionResult,
     RedactionResult,
@@ -590,7 +590,7 @@ class PDFProcessor(FileProcessor):
                 f"to extract text from PDF image."
             )
             with TimerUtil() as timer:
-                ocr_results = AzureVisionUtil.detect_text_in_images(
+                ocr_results = AzureImageAnalyser.detect_text_in_images(
                     [page.rendered_image.image for page in pages_without_text]
                 )
             self.run_metrics["rendered_page_ocr_time"] = timer.elapsed_time

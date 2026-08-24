@@ -231,7 +231,7 @@ class TestRedact(TestImageTextRedactor):
         """
         - Given I have a config with an empty images list
         - When I call ImageTextRedactor.redact
-        - Then it should return an empty ImageRedactionResult without calling AzureVisionUtil
+        - Then it should return an empty ImageRedactionResult without calling AzureImageAnalyser
         """
         r = self.patch_redactor_and_redact(images=[], text_rect_map=[])
 
