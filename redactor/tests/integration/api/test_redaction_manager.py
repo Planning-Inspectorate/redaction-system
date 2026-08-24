@@ -12,11 +12,12 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
-from tests.utils.test_case import TestCase
-from tests.utils.util import ServiceBusUtil
 
 from core.api.redaction_manager import RedactionManager
 from core.utils import LoggingUtil
+
+from tests.utils.test_case import TestCase
+from tests.utils.util import ServiceBusReceiver
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
@@ -177,7 +178,7 @@ class TestRedactionManager(TestCase):
             )
 
         try:
-            ServiceBusUtil().receive_service_bus_complete_messages()
+            ServiceBusReceiver().receive_service_bus_complete_messages()
         except Exception:  # noqa: BLE001
             logger.warning(
                 "Failed to clear service bus messages during teardown, but continuing"
@@ -204,7 +205,9 @@ class TestRedactionManager(TestCase):
         retry_delay = 10
         while current_wait_time < max_wait_time:
             try:
-                new_messages = ServiceBusUtil().extract_service_bus_complete_messages()
+                new_messages = (
+                    ServiceBusReceiver().extract_service_bus_complete_messages()
+                )
             except Exception:  # noqa: BLE001
                 new_messages = []
             new_messages = [str(x) for x in new_messages]

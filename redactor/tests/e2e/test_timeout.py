@@ -7,6 +7,7 @@ from pathlib import Path
 from time import sleep, time
 
 import pytest
+
 from tests.e2e.utils import (
     az_blob_exists,
     az_download,
@@ -14,7 +15,7 @@ from tests.e2e.utils import (
     build_payload,
     trigger_and_wait,
 )
-from tests.utils.util import ServiceBusUtil
+from tests.utils.util import ServiceBusReceiver
 
 logger = logging.getLogger("e2e")
 
@@ -66,7 +67,7 @@ def _poll_for_failure_message(
     job_id: str, max_wait_s: int = 120, interval_s: int = 10
 ) -> dict | None:
     """Poll the service bus completion topic for a failure message matching the job_id."""
-    sb_util = ServiceBusUtil()
+    sb_util = ServiceBusReceiver()
     elapsed = 0
     while elapsed < max_wait_s:
         try:
@@ -89,7 +90,7 @@ def _poll_for_failure_message(
 def _get_all_message_summaries() -> list[dict]:
     """Retrieve all messages from the completion topic for diagnostic purposes."""
     try:
-        messages = ServiceBusUtil().extract_service_bus_complete_messages()
+        messages = ServiceBusReceiver().extract_service_bus_complete_messages()
         return [
             {
                 "id": body.get("id"),
