@@ -49,7 +49,7 @@ extends:
               displayName: 'Install NPM' # Node.js (for Azure Functions Core Tools + Azurite)'
               nodeVersion: 22
               script: npm ci
-              workingDirectory: '$(System.DefaultWorkingDirectory)/redactor/test/e2e/e2e_test'
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redactor/'
               environmentVariables:
                 npm_config_cache: $(npm_cache_dir)
 
