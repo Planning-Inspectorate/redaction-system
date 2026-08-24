@@ -1,5 +1,6 @@
 import json
 import os
+from itertools import product
 from time import sleep
 from unittest import mock
 
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 
 from src.api.redaction_manager import RedactionManager
 from src.utils import LoggingUtil
+from tests.utils.resources import PDF_DIR, PROPOSED_PDF, SOURCE_PDF
 from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusReceiver
 
@@ -64,10 +66,8 @@ class TestRedactionManager(TestCase):
         ):
             # Open the source PDF and read its bytes
             if source_file is not None:
-                with open(
-                    os.path.join("test", "resources", "pdf", source_file),
-                    "rb",
-                ) as f:
+                file_path = PDF_DIR / source_file
+                with open(file_path, "rb") as f:
                     self.pdf_bytes = f.read()
 
             base_file_name = f"{RUN_ID}/{blob_file_name}"
@@ -142,39 +142,43 @@ class TestRedactionManager(TestCase):
         response = manager._try_process(test_params.params)
         return test_params, response
 
-    @classmethod
-    def session_setup(cls):
-        files_to_cleanup = [
-            "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-            "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-            "test__redaction__manager__try_apply__REDACTED.pdf",
-            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
+    @staticmethod
+    def generate_file_names():
+        file_base_names = [
+            "try_redact",
+            "try_redact_skip_redaction",
+            "try_redact_failure",
+            "try_redact_with_analytics",
+            "try_apply",
+            "try_apply_nothing_to_redact",
         ]
+        suffixes = [
+            "raw",
+            "curated",
+            "PROPOSED_REDACTIONS",
+            "REDACTED",
+        ]
+        return [
+            f"{base_name}__{suffix}.pdf"
+            for base_name, suffix in product(file_base_names, suffixes)
+        ]
+
+    @classmethod
+    def _session_cleanup(cls):
+        files_to_cleanup = cls.generate_file_names()
         for file_name in files_to_cleanup:
             cls.try_delete_blob(
                 cls.TEST_CONTAINER_CLIENT,
                 f"{RUN_ID}/{file_name}",
             )
 
+    @classmethod
+    def session_setup(cls):
+        cls._session_cleanup()
+
+    @classmethod
     def session_teardown(cls):
-        files_to_delete = [
-            "test__redaction__manager__try_redact__skip_redaction__PROPOSED_REDACTIONS.pdf",
-            "test__redaction__manager__try_redact__PROPOSED_REDACTIONS.pdf",
-            "test__redaction__manager__try_apply__REDACTED.pdf",
-            "test__redaction__manager__try_redact__raw.pdf",
-            "test__redaction__manager__try_redact__skip_redaction__raw.pdf",
-            "test__redaction__manager__try_redact__failure.pdf",
-            "test__redaction__manager__try_apply__curated.pdf",
-            "test__redaction__manager__try_redact__with_analytics_PROPOSED_REDACTIONS.pdf",
-            "test__redaction__manager__try_redact__with_analytics_REDACTED.pdf",
-            "test__redaction__manager__try_apply__nothing_to_redact__raw.pdf",
-            "test__redaction__manager__try_apply__nothing_to_redact__REDACTED.pdf",
-        ]
-        for file_name in files_to_delete:
-            cls.try_delete_blob(
-                cls.TEST_CONTAINER_CLIENT,
-                f"{RUN_ID}/{file_name}",
-            )
+        cls._session_cleanup()
 
         try:
             ServiceBusReceiver().receive_service_bus_complete_messages()
@@ -278,11 +282,12 @@ class TestRedactionManager(TestCase):
         - When I call RedactionManager.redact with skipRedaction=True
         - Then the original file should be downloaded from the source, and then immediately uploaded to the destination
         """
-        source_file = "test__pdf_processor__source.pdf"
-        blob_file_name = "test__redaction__manager__try_redact__skip_redaction"
         guid = f"{RUN_ID}-trmtrsr"
         params, response = self._invoke(
-            guid, blob_file_name, source_file=source_file, skip_redaction=True
+            guid,
+            "try_redact_skip_redaction",
+            source_file=SOURCE_PDF,
+            skip_redaction=True,
         )
 
         self.validate_process_status(response)
@@ -300,10 +305,8 @@ class TestRedactionManager(TestCase):
         """
 
         # Run test
-        source_file = "test__pdf_processor__source.pdf"
         guid = f"{RUN_ID}-trmtr"
-        blob_file_name = "test__redaction__manager__try_redact"
-        params, response = self._invoke(guid, blob_file_name, source_file=source_file)
+        params, response = self._invoke(guid, "try_redact", source_file=SOURCE_PDF)
 
         self.validate_process_status(response)
         blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
@@ -344,12 +347,10 @@ class TestRedactionManager(TestCase):
         # Upload test data to Azur
         # Run test
         guid = f"{RUN_ID}-trmtrf"
-        source_file = "test__pdf_processor__source.pdf"
-        blob_file_name = "test__redaction__manager__try_redact__failure"
         _, response = self._invoke(
             guid,
-            blob_file_name,
-            source_file=source_file,
+            "try_redact_failure",
+            source_file=SOURCE_PDF,
             override_params={"an example bad payload": None},
         )
 
@@ -360,10 +361,8 @@ class TestRedactionManager(TestCase):
     def test_applies_redactions(self):
         stage = "REDACT"
         guid = f"{RUN_ID}-trmta"
-        source_file = "test__pdf_processor__proposed.pdf"
-        blob_file_name = "test__redaction__manager__try_apply"
         params, response = self._invoke(
-            guid, blob_file_name, source_file=source_file, stage=stage
+            guid, "try_apply", source_file=PROPOSED_PDF, stage=stage
         )
 
         self.validate_process_status(response)
@@ -394,12 +393,11 @@ class TestRedactionManager(TestCase):
 
     def test_analytics_saved(self):
         redact_guid = f"{RUN_ID}:1"
-        source_file = "test__pdf_processor__source.pdf"
-        blob_file_name = "test__redaction__manager__try_redact__with_analytics"
+        blob_file_name = "try_redact_with_analytics"
 
         # Run first stage of redaction
         _, response = self._invoke(
-            redact_guid, blob_file_name, source_file=source_file, stage="ANALYSE"
+            redact_guid, blob_file_name, source_file=SOURCE_PDF, stage="ANALYSE"
         )
 
         # Apply redaction and check analytics
@@ -441,10 +439,8 @@ class TestRedactionManager(TestCase):
         # Upload a source PDF with no annotations
         # Run test
         guid = f"{RUN_ID}-trmtantr"
-        source_file = "test__pdf_processor__source.pdf"
-        blob_file_name = "test__redaction__manager__try_apply__nothing_to_redact"
         params, response = self._invoke(
-            guid, blob_file_name, source_file=source_file, stage="REDACT"
+            guid, "try_apply_nothing_to_redact", source_file=SOURCE_PDF, stage="REDACT"
         )
 
         self.validate_process_status(response, status="FAIL")
@@ -470,10 +466,8 @@ class TestRedactionManager(TestCase):
         # Upload a source PDF with annotations
         # Run test
         guid = f"{RUN_ID}-trmtas"
-        source_file = "test__pdf_processor__proposed.pdf"
-        blob_file_name = "test__redaction__manager__try_sanitise"
         params, response = self._invoke(
-            guid, blob_file_name, source_file=source_file, stage="SANITISE"
+            guid, "try_sanitise", source_file=PROPOSED_PDF, stage="SANITISE"
         )
 
         self.validate_process_status(response, status="SUCCESS")
