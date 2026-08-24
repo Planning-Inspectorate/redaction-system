@@ -3,12 +3,12 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
+
 from src.analysis.images import (
     AzureImageAnalyser,
     ImageAnalyser,
     SignatureDetector,
 )
-
 from tests.utils.util import compare_unashable_lists
 
 

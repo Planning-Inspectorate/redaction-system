@@ -4,6 +4,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
+from tenacity import stop_after_attempt, wait_none
+
 from src.analysis.text import (
     LLMTextAnalyser,
     LLMTextAnalyserConfig,
@@ -15,7 +17,6 @@ from src.types import (
     LLMTextRedactionResult,
 )
 from src.utils import LoggingUtil
-from tenacity import stop_after_attempt, wait_none
 
 MODULE = "src.analysis.text"
 

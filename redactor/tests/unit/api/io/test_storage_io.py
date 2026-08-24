@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+
 from src.api.io import StorageIO
 
 

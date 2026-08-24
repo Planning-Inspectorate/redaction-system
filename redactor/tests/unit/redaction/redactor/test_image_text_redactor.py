@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
+
 from src.redaction.config import ImageRedactionConfig
 from src.redaction.redactor import ImageTextRedactor
 from src.types import ImageRedactionResult

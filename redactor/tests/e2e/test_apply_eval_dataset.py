@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+
 from tests.e2e.apply_e2e_utils import (
     approx_greater_than,
     log_match_summary,
