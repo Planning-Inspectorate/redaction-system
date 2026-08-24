@@ -750,7 +750,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
-        from core.utils import TimerUtil
+        from src.utils import TimerUtil
 
         base_response = self._construct_base_response(params)
 

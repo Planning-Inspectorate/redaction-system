@@ -99,7 +99,7 @@ extends:
               source .venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
+              python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="src" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
               mv .coverage .coverage.unit
             displayName: 'Run unit tests'
@@ -117,7 +117,7 @@ extends:
               source .venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
-              python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
+              python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
               mv .coverage .coverage.integration
             displayName: 'Run integration tests'

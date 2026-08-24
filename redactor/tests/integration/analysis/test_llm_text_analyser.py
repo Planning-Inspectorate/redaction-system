@@ -1,8 +1,7 @@
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
-
-from core.analysis.text import LLMTextAnalyser, LLMTextAnalyserConfig
-from core.types import LLMTextRedactionResult
+from src.analysis.text import LLMTextAnalyser, LLMTextAnalyserConfig
+from src.types import LLMTextRedactionResult
 
 
 class SampleResultFormat(BaseModel):

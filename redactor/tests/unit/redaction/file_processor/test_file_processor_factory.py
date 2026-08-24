@@ -1,8 +1,7 @@
 from unittest import mock
 
 import pytest
-
-from core.redaction.file_processor import (
+from src.redaction.file_processor import (
     FileProcessor,
     FileProcessorFactory,
     FileProcessorNameNotFoundException,

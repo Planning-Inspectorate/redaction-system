@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pymupdf
 
 if TYPE_CHECKING:
-    from core.redaction.config import RedactionConfig
+    from src.redaction.config import RedactionConfig
 
 from ..analysis import AzureImageAnalyser
 from ..types import (
@@ -247,7 +247,7 @@ class PDFProcessor(FileProcessor):
         cls,
         annotations: tuple[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        from core.redaction.utils.pdf_util import ANNOT_HIGHLIGHT_COLOR
+        from src.redaction.utils.pdf_util import ANNOT_HIGHLIGHT_COLOR
 
         annotations_list = []
         for page in annotations:

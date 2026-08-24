@@ -2,11 +2,10 @@ import dataclasses
 from unittest.mock import Mock, patch
 
 from PIL import Image
-
-from core.analysis.text import LLMTextAnalyser
-from core.redaction.config import ImageLLMTextRedactionConfig
-from core.redaction.redactor import ImageLLMTextRedactor
-from core.types import ImageRedactionResult, LLMTextRedactionResult
+from src.analysis.text import LLMTextAnalyser
+from src.redaction.config import ImageLLMTextRedactionConfig
+from src.redaction.redactor import ImageLLMTextRedactor
+from src.types import ImageRedactionResult, LLMTextRedactionResult
 
 from .utils import TestImageTextRedactorBase
 
@@ -340,7 +339,7 @@ class TestRedact(TestImageLLMTextRedactor):
         - Then rendered images should be appended to the analysis pipeline and LLM should
         identify redaction strings from the rendered text
         """
-        from core.redaction.utils.pdf_util import PDFImageMetadata
+        from src.redaction.utils.pdf_util import PDFImageMetadata
 
         rendered_image = Image.new("RGB", (800, 600))
         rendered_metadata = PDFImageMetadata(

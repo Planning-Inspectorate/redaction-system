@@ -13,8 +13,8 @@ from azure.identity import (
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
-from core.api.redaction_manager import RedactionManager
-from core.utils import LoggingUtil
+from src.api.redaction_manager import RedactionManager
+from src.utils import LoggingUtil
 
 from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusReceiver

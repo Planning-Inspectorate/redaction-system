@@ -1,13 +1,14 @@
 from unittest.mock import patch
 
 import pytest
+
+from src.utils import LoggingUtil
+
 from tests.utils.conftest_util import (  # noqa: F401
     configure_session,
     session_setup,
     session_teardown,
 )
-
-from core.utils import LoggingUtil
 
 
 @pytest.fixture(autouse=True)
