@@ -153,9 +153,9 @@ extends:
                 npm ci
                 npm i -g azure-functions-core-tools@4 --unsafe-perm true
                 npm i -g azurite --unsafe-perm true
-              # workingDirectory: '$(System.DefaultWorkingDirectory)'
-              # environmentVariables:
-              #   npm_config_cache: $(npm_cache_dir)
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              environmentVariables:
+                npm_config_cache: $(npm_cache_dir)
           # This script is just asking for versions?
           # - script: |
           #     set -e
