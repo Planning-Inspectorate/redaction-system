@@ -5,6 +5,7 @@ from logging import Logger, getLogger
 from unittest.mock import call, patch
 
 import pytest
+
 from src.utils.logging import LoggingUtil, Singleton, log_to_appins
 
 

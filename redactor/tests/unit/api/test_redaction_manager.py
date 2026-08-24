@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 from azure.storage.blob import BlobClient, ContainerClient
+
 from src.api.io import AzureBlobIO, IOFactory
 from src.api.redaction_manager import NothingToRedactException, RedactionManager
 from src.api.utils import PINSService, ServiceBusUtil

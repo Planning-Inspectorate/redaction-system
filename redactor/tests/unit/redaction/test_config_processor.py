@@ -1,6 +1,7 @@
 from unittest import mock
 
 import pytest
+
 from src.redaction.config import (
     RedactionConfig,
 )

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pymupdf
 import pytest
+
 from tests.e2e.utils import (
     az_blob_exists,
     az_download,

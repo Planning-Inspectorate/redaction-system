@@ -2,6 +2,7 @@ import dataclasses
 from unittest.mock import Mock, patch
 
 from PIL import Image
+
 from src.analysis.text import LLMTextAnalyser
 from src.redaction.config import ImageLLMTextRedactionConfig
 from src.redaction.redactor import ImageLLMTextRedactor

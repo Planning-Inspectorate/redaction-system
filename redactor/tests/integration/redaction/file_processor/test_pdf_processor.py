@@ -11,7 +11,6 @@ from src.redaction.config import (
 )
 from src.redaction.file_processor import PDFProcessor
 from src.redaction.utils.pdf_util import PDFUtil
-
 from tests.utils.resources import (
     PRINTED_PDF,
     PROPOSED_PDF,
@@ -25,6 +24,7 @@ from tests.utils.util import (
     assert_instances_to_redact_approx_equal,
     assert_rect_approx_equal,
 )
+
 
 def get_pdf_annotations(pdf: pymupdf.Document, annotation_class):
     return [annotation for page in pdf for annotation in page.annots(annotation_class)]

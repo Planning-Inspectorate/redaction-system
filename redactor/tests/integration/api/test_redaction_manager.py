@@ -15,7 +15,6 @@ from dotenv import load_dotenv
 
 from src.api.redaction_manager import RedactionManager
 from src.utils import LoggingUtil
-
 from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusReceiver
 

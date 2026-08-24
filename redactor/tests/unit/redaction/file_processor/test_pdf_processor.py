@@ -6,6 +6,7 @@ import numpy as np
 import pymupdf
 import pytest
 from PIL import Image
+
 from src.analysis.images import AzureImageAnalyser
 from src.redaction.file_processor import NonEnglishContentException, PDFProcessor
 from src.redaction.utils.pdf_util import (
@@ -20,7 +21,6 @@ from src.types import (
     ImageRedactionResult,
     TextRedactionResult,
 )
-
 from tests.utils.resources import (
     REDACTED_JPG,
     SOURCE_PDF,

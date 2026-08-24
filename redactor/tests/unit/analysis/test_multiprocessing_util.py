@@ -2,6 +2,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+
 from src.analysis.utils import TokenSemaphore, get_max_workers
 
 
