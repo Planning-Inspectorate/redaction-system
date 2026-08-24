@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import pymupdf
 
 if TYPE_CHECKING:
-    from src.redaction.config import RedactionConfig
+    from .config import RedactionConfig
 
 from ..analysis import AzureImageAnalyser
 from ..monitoring import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
@@ -28,6 +28,7 @@ from .redactor import (
     TextRedactor,
 )
 from .utils import PDFImageMetadata, PDFPageMetadata, PDFUtil, is_english_text
+from .utils.pdf import ANNOT_HIGHLIGHT_COLOR
 
 
 class UnprocessedRedactionResultException(Exception):  # pragma: no cover
@@ -247,7 +248,6 @@ class PDFProcessor(FileProcessor):
         cls,
         annotations: tuple[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        from src.redaction.utils.pdf_util import ANNOT_HIGHLIGHT_COLOR
 
         annotations_list = []
         for page in annotations:

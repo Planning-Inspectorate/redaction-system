@@ -10,7 +10,7 @@ from src.redaction.config import (
     LLMTextRedactionConfig,
 )
 from src.redaction.file_processor import PDFProcessor
-from src.redaction.utils.pdf_util import PDFUtil
+from src.redaction.utils.pdf import PDFUtil
 from tests.utils.resources import (
     PRINTED_PDF,
     PROPOSED_PDF,

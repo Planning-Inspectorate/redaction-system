@@ -9,13 +9,13 @@ from PIL import Image
 
 from src.analysis.images import AzureImageAnalyser
 from src.redaction.file_processor import NonEnglishContentException, PDFProcessor
-from src.redaction.utils.pdf_util import (
+from src.redaction.utils.pdf import (
     PDFImageMetadata,
     PDFLineMetadata,
     PDFPageMetadata,
     PDFUtil,
 )
-from src.redaction.utils.text_util import get_normalised_words, is_english_text
+from src.redaction.utils.text import get_normalised_words, is_english_text
 from src.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
