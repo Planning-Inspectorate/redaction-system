@@ -125,13 +125,13 @@ def trigger_task(params):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from core.analysis import AzureVisionUtil, SignatureDetector
+    from core.analysis import AzureImageAnalyser, SignatureDetector
     from core.api import RedactionManager
     from core.utils import LoggingUtil
 
     # Clear static state from any previous invocation sharing this process
     LoggingUtil().clear_logs()
-    AzureVisionUtil.clear_cache()
+    AzureImageAnalyser.clear_cache()
     SignatureDetector.clear_cache()
 
     logger.info("Request params: %s", params)

@@ -32,7 +32,7 @@ def handle_last_retry_error(retry_state):
     )
 
 
-class ImageAnalysisUtil:
+class ImageAnalyser:
     CACHE_LOCK = Lock()
 
     class EndpointNotSetError(EnvironmentError):
@@ -160,7 +160,7 @@ class ImageAnalysisUtil:
         return tuple(responses)
 
 
-class AzureVisionUtil(ImageAnalysisUtil):
+class AzureImageAnalyser(ImageAnalyser):
     _IMAGE_TEXT_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
     _IMAGE_FACE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
@@ -360,7 +360,7 @@ class AzureVisionUtil(ImageAnalysisUtil):
         return text_detected
 
 
-class SignatureDetector(ImageAnalysisUtil):
+class SignatureDetector(ImageAnalyser):
     _IMAGE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
     _ENDPOINT: ClassVar[str | None] = None
 
@@ -417,7 +417,7 @@ class SignatureDetector(ImageAnalysisUtil):
     def detect_signatures(
         cls, image: Image.Image, confidence_threshold: float = 0.5
     ) -> tuple[tuple[float, float, float, float], ...]:
-        valid_image = AzureVisionUtil.check_image_size(image)
+        valid_image = AzureImageAnalyser.check_image_size(image)
         if not valid_image:
             LoggingUtil().log_info(
                 "Skipping signature detection for image due to size constraints."

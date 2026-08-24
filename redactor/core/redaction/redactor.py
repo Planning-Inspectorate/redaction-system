@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from PIL import Image
 
-from ..analysis import AzureVisionUtil, LLMTextAnalyser, SignatureDetector
+from ..analysis import AzureImageAnalyser, LLMTextAnalyser, SignatureDetector
 from ..types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
@@ -225,7 +225,7 @@ class ImageRedactor(Redactor):  # pragma: no cover
         thresholds = self.config.confidence_thresholds
         detection_results = []
         for detection_function, detection_type in [
-            (AzureVisionUtil.detect_faces_in_images, "face"),
+            (AzureImageAnalyser.detect_faces_in_images, "face"),
             (SignatureDetector.detect_signatures_in_images, "signature"),
         ]:
             with TimerUtil() as timer:
@@ -482,7 +482,7 @@ class ImageTextRedactor(ImageRedactor, TextRedactor):
             LoggingUtil().log_info("No images to analyse, skipping image text analysis")
             return [], 0.0
         with TimerUtil() as timer:
-            vision_util = AzureVisionUtil()
+            vision_util = AzureImageAnalyser()
             image_text_rect_map = vision_util.detect_text_in_images(self.config.images)
         return image_text_rect_map, timer.elapsed_time
 

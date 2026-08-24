@@ -1,8 +1,8 @@
 import pytest
 
 from core.analysis.images import (
-    AzureVisionUtil,
-    ImageAnalysisUtil,
+    AzureImageAnalyser,
+    ImageAnalyser,
     SignatureDetector,
 )
 from tests.utils.resources import open_image
@@ -11,15 +11,15 @@ from tests.utils.resources import open_image
 class TestCheckImageSize:
     def test_image_too_large(self):
         image = open_image("too_large.jpg")
-        assert not ImageAnalysisUtil.check_image_size(image)
+        assert not ImageAnalyser.check_image_size(image)
 
     def test_image_too_small(self):
         image = open_image("too_small.jpg")
-        assert not ImageAnalysisUtil.check_image_size(image)
+        assert not ImageAnalyser.check_image_size(image)
 
     def test_image_valid(self):
         image = open_image("horizontal.jpg")
-        assert ImageAnalysisUtil.check_image_size(image)
+        assert ImageAnalyser.check_image_size(image)
 
 
 class TestDetectFaces:
@@ -28,16 +28,16 @@ class TestDetectFaces:
         """
         Clear the cache before each test to ensure that tests are independent
         """
-        AzureVisionUtil.clear_cache()
+        AzureImageAnalyser.clear_cache()
 
     def test_identifies_faces(self):
         """
         - Given I have an image with two people in it (Darth Plagueis the wise scene from Revenge of the Sith)
-        - When I call AzureVisionUtil.detect_faces
+        - When I call AzureImageAnalyser.detect_faces
         - The two faces should be identified
         """
         image = open_image("faces.jpeg")
-        response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        response = AzureImageAnalyser().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
 
         expected_response = ((0, 2, 410, 430), (359, 7, 766, 431))
@@ -45,9 +45,11 @@ class TestDetectFaces:
 
     def test_uses_cached_response(self):
         image = open_image("faces.jpeg")
-        response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        response = AzureImageAnalyser().detect_faces(image, confidence_threshold=0.5)
         # Azure Vision seems to be deterministic from testing
-        new_response = AzureVisionUtil().detect_faces(image, confidence_threshold=0.5)
+        new_response = AzureImageAnalyser().detect_faces(
+            image, confidence_threshold=0.5
+        )
 
         expected_response = ((0, 2, 410, 430), (359, 7, 766, 431))
 
@@ -265,18 +267,18 @@ class TestDetectText:
     def test_returns_text_boxes(self):
         """
         - Given I have an image containing a lot of text
-        - When I call AzureVisionUtil.detect_text
+        - When I call AzureImageAnalyser.detect_text
         - The text content of the image should be extracted, with each line represented by a bounding box
         """
         image = open_image("text.jpg")
-        response = AzureVisionUtil().detect_text(image)
+        response = AzureImageAnalyser().detect_text(image)
 
         assert self.EXPECTED_TEXT_RESPONSE == response
 
     def test_uses_cached_response(self):
         image = open_image("text.jpg")
-        response = AzureVisionUtil().detect_text(image)
-        new_response = AzureVisionUtil().detect_text(image)
+        response = AzureImageAnalyser().detect_text(image)
+        new_response = AzureImageAnalyser().detect_text(image)
 
         assert self.EXPECTED_TEXT_RESPONSE == response
         assert response == new_response

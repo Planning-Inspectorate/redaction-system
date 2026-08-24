@@ -6,17 +6,8 @@ import numpy as np
 import pymupdf
 import pytest
 from PIL import Image
-from tests.utils.resources import (
-    REDACTED_JPG,
-    SOURCE_PDF,
-    TEXT_IMAGE_PROPOSED_PDF,
-    TEXT_IMAGE_REDACTED_PDF,
-    TRANSLATED_IMAGE_PDF,
-    open_image,
-    open_pdf,
-)
 
-from core.analysis.images import AzureVisionUtil
+from core.analysis.images import AzureImageAnalyser
 from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
 from core.redaction.utils.pdf_util import (
     PDFImageMetadata,
@@ -29,6 +20,15 @@ from core.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     TextRedactionResult,
+)
+from tests.utils.resources import (
+    REDACTED_JPG,
+    SOURCE_PDF,
+    TEXT_IMAGE_PROPOSED_PDF,
+    TEXT_IMAGE_REDACTED_PDF,
+    TRANSLATED_IMAGE_PDF,
+    open_image,
+    open_pdf,
 )
 
 
@@ -599,7 +599,7 @@ class TestExtractPDFTextContent(TestExamineApplyRedactionsBase):
                 return_value=page_metadata,
             ),
             patch.object(
-                AzureVisionUtil, "detect_text_in_images"
+                AzureImageAnalyser, "detect_text_in_images"
             ) as mock_detect_text_in_images,
         ):
             pdf_processor = PDFProcessor()
@@ -653,7 +653,7 @@ class TestExtractPDFTextContent(TestExamineApplyRedactionsBase):
                 return_value=page_metadata,
             ),
             patch.object(
-                AzureVisionUtil,
+                AzureImageAnalyser,
                 "detect_text_in_images",
                 return_value=detect_text_return_value,
             ) as mock_detect_text_in_images,
