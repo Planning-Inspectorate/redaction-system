@@ -138,10 +138,10 @@ extends:
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-          - task: UseNode@1
-            displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
-            inputs:
-              version: '20.x'
+          # - task: UseNode@1
+          #   displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
+          #   inputs:
+          #     version: '20.x'
 
           - script: |
               set -e
