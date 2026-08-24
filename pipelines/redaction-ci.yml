@@ -46,7 +46,7 @@ extends:
           - template: ../steps/node_script.yml
             parameters:
               displayName: 'Install NPM' # Node.js (for Azure Functions Core Tools + Azurite)'
-              nodeVersion: 20.x
+              nodeVersion: 20
               script: npm ci
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               environmentVariables:
