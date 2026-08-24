@@ -6,21 +6,21 @@ import numpy as np
 import pymupdf
 import pytest
 from PIL import Image
-
-from core.analysis.images import AzureImageAnalyser
-from core.redaction.file_processor import NonEnglishContentException, PDFProcessor
-from core.redaction.utils.pdf_util import (
+from src.analysis.images import AzureImageAnalyser
+from src.redaction.file_processor import NonEnglishContentException, PDFProcessor
+from src.redaction.utils.pdf_util import (
     PDFImageMetadata,
     PDFLineMetadata,
     PDFPageMetadata,
     PDFUtil,
 )
-from core.redaction.utils.text_util import get_normalised_words, is_english_text
-from core.types import (
+from src.redaction.utils.text_util import get_normalised_words, is_english_text
+from src.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
     TextRedactionResult,
 )
+
 from tests.utils.resources import (
     REDACTED_JPG,
     SOURCE_PDF,
@@ -529,7 +529,7 @@ class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
         with (
             patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[image]),
             patch(
-                "core.redaction.file_processor.RedactorFactory.get",
+                "src.redaction.file_processor.RedactorFactory.get",
                 side_effect=redactor_factory_get_side_effect,
             ),
         ):
@@ -710,7 +710,7 @@ class TestExtractPDFTextAndImages(TestExamineApplyRedactionsBase):
                 "extract_pdf_images",
                 return_value=[image_metadata],
             ),
-            patch("core.redaction.file_processor.is_english_text", return_value=True),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
         ):
             pdf_processor = PDFProcessor()
             pdf_processor._extract_pdf_text_and_images(file_bytes)
@@ -808,7 +808,7 @@ class TestRedact:
         with (
             patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
             patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[]),
-            patch("core.redaction.file_processor.is_english_text", return_value=True),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
             patch.object(
                 PDFProcessor,
                 "_apply_provisional_text_redactions",
@@ -820,7 +820,7 @@ class TestRedact:
                 return_value=file_bytes,
             ),
             patch(
-                "core.redaction.file_processor.RedactorFactory.get",
+                "src.redaction.file_processor.RedactorFactory.get",
                 return_value=lambda config: mock_redactor,
             ),
         ):

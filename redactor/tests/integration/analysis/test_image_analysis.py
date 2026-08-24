@@ -1,10 +1,10 @@
 import pytest
-
-from core.analysis.images import (
+from src.analysis.images import (
     AzureImageAnalyser,
     ImageAnalyser,
     SignatureDetector,
 )
+
 from tests.utils.resources import open_image
 
 

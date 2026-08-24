@@ -4,21 +4,20 @@ from unittest.mock import Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
-from tenacity import stop_after_attempt, wait_none
-
-from core.analysis.text import (
+from src.analysis.text import (
     LLMTextAnalyser,
     LLMTextAnalyserConfig,
     handle_last_retry_error,
     update_max_tokens,
 )
-from core.types import (
+from src.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from core.utils import LoggingUtil
+from src.utils import LoggingUtil
+from tenacity import stop_after_attempt, wait_none
 
-MODULE = "core.analysis.text"
+MODULE = "src.analysis.text"
 
 
 class MockLLMChatCompletion:

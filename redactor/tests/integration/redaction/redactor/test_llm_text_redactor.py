@@ -1,8 +1,8 @@
-from core.redaction.config import (
+from src.redaction.config import (
     LLMTextRedactionConfig,
 )
-from core.redaction.redactor import LLMTextRedactor
-from core.types import LLMTextRedactionResult
+from src.redaction.redactor import LLMTextRedactor
+from src.types import LLMTextRedactionResult
 
 
 class TestRedact:

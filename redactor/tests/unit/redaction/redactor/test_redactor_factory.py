@@ -1,8 +1,7 @@
 from unittest import mock
 
 import pytest
-
-from core.redaction.redactor import (
+from src.redaction.redactor import (
     DuplicateRedactorNameException,
     Redactor,
     RedactorFactory,

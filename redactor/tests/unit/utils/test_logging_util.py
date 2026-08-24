@@ -5,8 +5,7 @@ from logging import Logger, getLogger
 from unittest.mock import call, patch
 
 import pytest
-
-from core.utils.logging import LoggingUtil, Singleton, log_to_appins
+from src.utils.logging import LoggingUtil, Singleton, log_to_appins
 
 
 @pytest.mark.nologgerfixt

@@ -1,13 +1,12 @@
 from unittest import mock
 
 import pytest
-
-from core.redaction.config import (
+from src.redaction.config import (
     RedactionConfig,
 )
-from core.redaction.config_processor import ConfigProcessor
-from core.redaction.file_processor import FileProcessor
-from core.redaction.redactor import Redactor, RedactorFactory
+from src.redaction.config_processor import ConfigProcessor
+from src.redaction.file_processor import FileProcessor
+from src.redaction.redactor import Redactor, RedactorFactory
 
 
 class FileProcessorInst(FileProcessor):

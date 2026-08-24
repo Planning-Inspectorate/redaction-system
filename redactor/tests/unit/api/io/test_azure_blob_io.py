@@ -3,9 +3,9 @@ from io import BytesIO
 import pytest
 
 # Import the module and class under test
-from core.api import io as azure_blob_io
-from core.api.io import AzureBlobIO
-from core.utils import LoggingUtil
+from src.api import io as azure_blob_io
+from src.api.io import AzureBlobIO
+from src.utils import LoggingUtil
 
 
 class DummyManagedIdentityCredential:

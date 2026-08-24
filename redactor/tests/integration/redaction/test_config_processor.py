@@ -1,10 +1,10 @@
-from core.redaction.config import (
+from src.redaction.config import (
     ImageLLMTextRedactionConfig,
     ImageRedactionConfig,
     LLMTextRedactionConfig,
 )
-from core.redaction.config_processor import ConfigProcessor
-from core.redaction.file_processor import PDFProcessor
+from src.redaction.config_processor import ConfigProcessor
+from src.redaction.file_processor import PDFProcessor
 
 
 def test__config_processor__process_config():

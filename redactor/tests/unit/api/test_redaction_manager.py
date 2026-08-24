@@ -5,15 +5,14 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 from azure.storage.blob import BlobClient, ContainerClient
+from src.api.io import AzureBlobIO, IOFactory
+from src.api.redaction_manager import NothingToRedactException, RedactionManager
+from src.api.utils import PINSService, ServiceBusUtil
+from src.redaction.config_processor import ConfigProcessor
+from src.redaction.file_processor import FileProcessorFactory
+from src.utils import LoggingUtil
 
-from core.api.io import AzureBlobIO, IOFactory
-from core.api.redaction_manager import NothingToRedactException, RedactionManager
-from core.api.utils import PINSService, ServiceBusUtil
-from core.redaction.config_processor import ConfigProcessor
-from core.redaction.file_processor import FileProcessorFactory
-from core.utils import LoggingUtil
-
-MODULE = "core.api.redaction_manager"
+MODULE = "src.api.redaction_manager"
 
 STORAGE_NAME = "pinsstredactiondevuks"
 

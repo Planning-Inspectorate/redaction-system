@@ -1,8 +1,7 @@
 from unittest import mock
 
 import pytest
-
-from core.redaction.redactor import IncorrectRedactionConfigClassException, Redactor
+from src.redaction.redactor import IncorrectRedactionConfigClassException, Redactor
 
 
 class MyRedactorImpl(Redactor):

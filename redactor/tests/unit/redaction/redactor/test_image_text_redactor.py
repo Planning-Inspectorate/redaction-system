@@ -3,10 +3,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
-
-from core.redaction.config import ImageRedactionConfig
-from core.redaction.redactor import ImageTextRedactor
-from core.types import ImageRedactionResult
+from src.redaction.config import ImageRedactionConfig
+from src.redaction.redactor import ImageTextRedactor
+from src.types import ImageRedactionResult
 
 from .utils import TestImageTextRedactorBase
 

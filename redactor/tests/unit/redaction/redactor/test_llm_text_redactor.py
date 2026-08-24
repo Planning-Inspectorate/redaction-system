@@ -1,12 +1,12 @@
 from unittest.mock import patch
 
-from core.analysis.text import LLMTextAnalyser
-from core.redaction.config import (
+from src.analysis.text import LLMTextAnalyser
+from src.redaction.config import (
     LLMTextRedactionConfig,
     RedactionConfig,
 )
-from core.redaction.redactor import LLMTextRedactor
-from core.types import LLMTextRedactionResult
+from src.redaction.redactor import LLMTextRedactor
+from src.types import LLMTextRedactionResult
 
 
 def test__llm_text_redactor__get_name():
