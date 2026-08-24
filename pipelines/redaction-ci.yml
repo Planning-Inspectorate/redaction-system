@@ -29,11 +29,12 @@ resources:
       type: github
       endpoint: Planning-Inspectorate
       name: Planning-Inspectorate/common-pipeline-templates
-      ref: refs/tags/release/3.29.0
+      ref: refs/tags/release/3.30.0
 
 extends:
   template: stages/wrapper_ci.yml@templates
   parameters:
+    displayName: 'Python code style check'
     validateName: Redaction CI
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
@@ -49,32 +50,45 @@ extends:
               export PYTHONPATH=$(pwd)
               python3 -m ruff check redactor
               python3 -m ruff format --check redactor
-            displayName: 'Python code style check'
 
       - name: RunTestsJob
         steps:
           - checkout: self
             clean: true
           - checkout: templates
+
+          - template: steps/node_script.yml@templates
+            parameters:
+              displayName: 'Install npm' # Install Node.js (for Azure Functions Core Tools + Azurite)
+              nodeVersion: 20
+              script: npm ci
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redactor'
+              environmentVariables:
+                npm_config_cache: $(npm_cache_dir)
+
           - template: ../steps/azure_auth.yml@templates
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+              displayName: 'Install requirements'
+              script: |
+                set -e
+                cd redaction-system
+                python3 -m pip install -r redactor/requirements.txt
 
-          - script: | # Should we put this on the agent instead?
-              set -e
-              cd redaction-system
-              python3 -m pip install -r redactor/requirements.txt
-            displayName: 'Install requirements'
+          - template: ../steps/azure_auth.yml@templates
+            parameters:
+              displayName: 'Run unit tests'
+              script: |
+                set -e
+                cd redaction-system/redactor
+                export PYTHONPATH=$(pwd)
+                python3 -m pytest test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
+                python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
+                mv .coverage .coverage.unit
 
-          - script: | # Should we put this on the agent instead?
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
-              python3 -m pytest test/unit_test -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="core" --cov-report=xml:unit_test_coverage.xml
-              python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
-              mv .coverage .coverage.unit
-            displayName: 'Run unit tests'
-
+          # - template: ../steps/azure_auth.yml@templates
+          #   parameters:
+          #     displayName: 'Publish unit test results'
           - task: PublishTestResults@2
             displayName: 'Publish unit test results'
             condition: succeededOrFailed()
@@ -83,36 +97,24 @@ extends:
               testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-          - script: | # Should we put this on the agent instead?
-              set -e
-              cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
-              python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
-              python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
-              mv .coverage .coverage.integration
-            displayName: 'Run integration tests'
+          - template: ../steps/azure_auth.yml@templates
+            parameters:
+              displayName: 'Run integration tests'
+              script: |
+                set -e
+                cd redaction-system/redactor
+                export PYTHONPATH=$(pwd)
+                python3 -m pytest test/integration_test -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="core" --cov-report=xml:integration_test_coverage.xml
+                python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
+                mv .coverage .coverage.integration
 
-          - task: PublishTestResults@2
+          - task: PublishTestResults@2 # Replace these with the template?
             displayName: 'Publish integration test results'
             condition: succeededOrFailed()
             inputs:
               testResultsFiles: '**/integration_test_results.xml'
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
-#This needs to be reference the template node install
-
-          - template: ../steps/node_script.yml
-            parameters:
-              # displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)' # Do we even want a display name here? Just adds another stage in the pipeline?
-              nodeVersion: 20
-              script: npm ci
-              environmentVariables:
-                npm_config_cache: $(Pipeline.Workspace)/.npm # Does this need to match where the scripts are?
-
-          # - task: NodeTool@0
-          #   displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
-          #   inputs:
-          #     versionSpec: '20.x'
 
           - script: |
               set -e
