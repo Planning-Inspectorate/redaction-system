@@ -10,10 +10,12 @@ PERF_TIMEOUT_S ?= 7200
 run:
 	@echo "Starting Azurite..."
 	azurite > /tmp/azurite.log 2>&1 &
-	@echo "Starting Azure Functions on port $(FUNC_RECEIVER_PORT)..."
-	cd redactor && func start --port $(FUNC_RECEIVER_PORT)
-	@echo "Starting Azure Functions on port $(FUNC_PROCESSOR_PORT)..."
-	cd redactor && func start --port $(FUNC_PROCESSOR_PORT)
+	@echo "Starting Azure Functions receiver on port $(FUNC_RECEIVER_PORT)..."
+	cd receiver && func start --port $(FUNC_RECEIVER_PORT) > /tmp/func_receiver.log 2>&1 &
+	@echo "Starting Azure Functions processor on port $(FUNC_PROCESSOR_PORT)..."
+	cd redactor && func start --port $(FUNC_PROCESSOR_PORT) > /tmp/func_processor.log 2>&1 &
+	@echo "All services starting in the background. Logs: /tmp/azurite.log, /tmp/func_receiver.log, /tmp/func_processor.log"
+	@echo "Run 'make wait-receiver-func wait-processor-func' or 'make trigger' once they're up."
 
 trigger:
 	python3 scripts/trigger_redaction.py
