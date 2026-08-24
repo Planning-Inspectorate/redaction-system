@@ -13,7 +13,7 @@ from azure.servicebus.aio import ServiceBusClient
 from pymupdf import Rect
 
 
-class ServiceBusUtil:
+class ServiceBusReceiver:
     async def _extract_service_bus_messages(self, topic_name: str, subscription: str):
         """
         Asynchronously receive messages from the service bus
