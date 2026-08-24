@@ -160,7 +160,7 @@ extends:
                   inlineScript: |
                     python3 -m pip install pytest
                     python3 -m pip install dotenv
-                    python3 -m pytest redactor/test/smoke_test/test_connectivity.py
+                    python3 -m pytest redactor/tests/smoke/test_connectivity.py
                     
 
               - task: AzureCLI@2
@@ -171,4 +171,4 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    python3 redactor/test/smoke_test/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/test/resources/image/image_with_signature.png
+                    python3 redactor/tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/image_with_signature.png

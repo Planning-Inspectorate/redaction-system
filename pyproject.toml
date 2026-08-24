@@ -91,9 +91,9 @@ dev = [
 ]
     
 [tool.ruff.lint.isort]
-known-first-party = ["core", "test", "config"]
+known-first-party = ["core", "tests", "config"]
 
 # `bandit' configurations
 [tool.bandit]
-exclude_dirs = ["redactor/test"]
+exclude_dirs = ["redactor/tests"]
 skips = []
