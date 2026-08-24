@@ -96,7 +96,7 @@ def send_failure_notification(params):
     """
     Lightweight activity to send a service bus failure message when trigger_task times out or fails
     """
-    from src.api import PINSService, ServiceBusUtil
+    from src import PINSService, ServiceBusUtil
 
     request_params: dict[str, Any] = params["request_params"]
 
@@ -125,9 +125,7 @@ def trigger_task(params):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from src.analysis import AzureImageAnalyser, SignatureDetector
-    from src.api import RedactionManager
-    from src.monitoring import LoggingUtil
+    from src import AzureImageAnalyser, LoggingUtil, RedactionManager, SignatureDetector
 
     # Clear static state from any previous invocation sharing this process
     LoggingUtil().clear_logs()
@@ -155,7 +153,7 @@ async def test_llm_connection(
     This function is called via HTTP get and confirms that the function app can
     connect to the LLM
     """
-    from src.api import send_llm_message
+    from src import send_llm_message
 
     # Return a response with a simplified body
     return func.HttpResponse(
@@ -173,7 +171,7 @@ async def test_azure_vision_connection(
     This function is called via HTTP get and confirms that the function app can
     connect to Azure Computer Vision
     """
-    from src.api import analyse_image
+    from src import analyse_image
 
     # Return a response with a simplified body
     return func.HttpResponse(
@@ -191,7 +189,7 @@ async def test_service_bus_connection(
     This function is called via HTTP get and confirms that the function app can
     connect to the Back Office Service Bus
     """
-    from src.api import send_service_bus_message
+    from src import send_service_bus_message
 
     # Return a response with a simplified body
     return func.HttpResponse(
