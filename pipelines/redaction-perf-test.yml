@@ -64,8 +64,8 @@ extends:
           - script: |
               set -e
               cd redaction-system
-              python3 -m pip install -r redactor/requirements.txt
-            displayName: Install requirements
+              python3 -m pip install .
+            displayName: Install redactor package
 
           - script: |
               set -e
