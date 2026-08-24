@@ -18,7 +18,7 @@ from requests import post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
-from ..utils import LoggingUtil, log_to_appins
+from ..monitoring import LoggingUtil, log_to_appins
 from .utils import get_max_workers
 
 load_dotenv(verbose=True)

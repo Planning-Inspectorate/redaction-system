@@ -8,6 +8,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from PIL import Image
 
 from ..analysis import AzureImageAnalyser, LLMTextAnalyser, SignatureDetector
+from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
 from ..types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
@@ -16,7 +17,6 @@ from ..types import (
     RedactionResult,
     TextRedactionResult,
 )
-from ..utils import LoggingUtil, TimerUtil, log_to_appins
 from .config import (
     ImageLLMTextRedactionConfig,
     ImageRedactionConfig,

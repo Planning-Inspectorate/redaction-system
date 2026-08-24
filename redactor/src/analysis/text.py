@@ -32,8 +32,8 @@ from tenacity import (
 )
 from tiktoken import get_encoding
 
+from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
 from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
-from ..utils import LoggingUtil, TimerUtil, log_to_appins
 from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
