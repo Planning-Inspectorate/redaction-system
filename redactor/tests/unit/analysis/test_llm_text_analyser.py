@@ -12,11 +12,11 @@ from src.analysis.text import (
     handle_last_retry_error,
     update_max_tokens,
 )
+from src.monitoring import LoggingUtil
 from src.types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from src.utils import LoggingUtil
 
 MODULE = "src.analysis.text"
 

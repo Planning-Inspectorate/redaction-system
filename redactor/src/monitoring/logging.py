@@ -43,7 +43,7 @@ class LoggingUtil(metaclass=Singleton):
         log_file: Optional[str] # If provided, logs will be written to this file if app insights is not configured
         log_level: Optional[int] # The logging level, defaults to logging.INFO
     ```
-    from core.util.logging import LoggingUtil
+    from src.monitoring.logging import LoggingUtil
     LoggingUtil().log_info("Some logging message")
     @log_to_appins
     def my_function_that_will_have_automatic_logging_applied():

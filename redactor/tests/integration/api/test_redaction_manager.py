@@ -15,7 +15,7 @@ from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
 from src.api.redaction_manager import RedactionManager
-from src.utils import LoggingUtil
+from src.monitoring import LoggingUtil
 from tests.utils.resources import PDF_DIR, PROPOSED_PDF, SOURCE_PDF
 from tests.utils.test_case import TestCase
 from tests.utils.util import ServiceBusReceiver

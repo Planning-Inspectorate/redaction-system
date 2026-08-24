@@ -10,7 +10,7 @@ from azure.identity import (
 )
 from azure.storage.blob import BlobClient, BlobServiceClient, ContainerClient
 
-from ..utils import LoggingUtil
+from ..monitoring import LoggingUtil
 
 
 class StorageIO(ABC):

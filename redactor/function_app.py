@@ -127,7 +127,7 @@ def trigger_task(params):
     # Exceptions will instead be raised when this function is trigger
     from src.analysis import AzureImageAnalyser, SignatureDetector
     from src.api import RedactionManager
-    from src.utils import LoggingUtil
+    from src.monitoring import LoggingUtil
 
     # Clear static state from any previous invocation sharing this process
     LoggingUtil().clear_logs()

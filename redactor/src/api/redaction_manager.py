@@ -14,8 +14,8 @@ from azure.core.exceptions import ResourceExistsError
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
+from ..monitoring import LoggingUtil
 from ..redaction import ConfigProcessor, FileProcessorFactory
-from ..utils import LoggingUtil
 from .io import AzureBlobIO, IOFactory
 from .utils import PINSService, ServiceBusUtil
 
@@ -750,7 +750,7 @@ class RedactionManager:
         :param Callable payload_validator: Validation function for the payload
         :param Callable redaction_function: Redaction process function to run
         """
-        from src.utils import TimerUtil
+        from src.monitoring import TimerUtil
 
         base_response = self._construct_base_response(params)
 

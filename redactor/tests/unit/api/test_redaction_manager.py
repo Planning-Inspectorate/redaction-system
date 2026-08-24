@@ -9,9 +9,9 @@ from azure.storage.blob import BlobClient, ContainerClient
 from src.api.io import AzureBlobIO, IOFactory
 from src.api.redaction_manager import NothingToRedactException, RedactionManager
 from src.api.utils import PINSService, ServiceBusUtil
+from src.monitoring import LoggingUtil
 from src.redaction.config_processor import ConfigProcessor
 from src.redaction.file_processor import FileProcessorFactory
-from src.utils import LoggingUtil
 
 MODULE = "src.api.redaction_manager"
 

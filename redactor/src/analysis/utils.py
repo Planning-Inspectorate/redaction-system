@@ -1,7 +1,7 @@
 import os
 from threading import Condition, Lock
 
-from ..utils import LoggingUtil, log_to_appins
+from ..monitoring import LoggingUtil, log_to_appins
 
 
 class TokenSemaphore:

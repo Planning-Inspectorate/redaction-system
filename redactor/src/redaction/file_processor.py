@@ -15,12 +15,12 @@ if TYPE_CHECKING:
     from src.redaction.config import RedactionConfig
 
 from ..analysis import AzureImageAnalyser
+from ..monitoring import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
 from ..types import (
     ImageRedactionResult,
     RedactionResult,
     TextRedactionResult,
 )
-from ..utils import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
 from .redactor import (
     ImageRedactor,
     Redactor,
