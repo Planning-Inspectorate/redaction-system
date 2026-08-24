@@ -7,13 +7,13 @@ import pymupdf
 import pytest
 from PIL import Image
 
-from src.redaction.utils.pdf_util import (
+from src.redaction.utils.pdf import (
     PDFImageMetadata,
     PDFLineMetadata,
     PDFPageMetadata,
     PDFUtil,
 )
-from src.redaction.utils.text_util import get_normalised_words
+from src.redaction.utils.text import get_normalised_words
 from tests.utils.resources import SOURCE_PDF, TRANSLATED_IMAGE_PDF, open_image, open_pdf
 
 

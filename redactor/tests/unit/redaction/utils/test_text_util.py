@@ -1,4 +1,4 @@
-from src.redaction.utils.text_util import (
+from src.redaction.utils.text import (
     get_normalised_words,
     is_english_text,
     normalise_punctuation_unidecode,
