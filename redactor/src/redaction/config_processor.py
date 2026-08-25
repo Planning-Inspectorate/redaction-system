@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from pathlib import Path
+from importlib import resources
 from typing import TYPE_CHECKING, Any
 
 from yaml import safe_load
@@ -177,13 +177,13 @@ class ConfigProcessor:
         """
         Read the given yaml config file as a json object
 
-        :param str config_name: The config file name under `config/` to load.
+        :param str config_name: The config file name under `src/config/` to load.
         Default is `default`
         :return Dict[str, Any]: The content of the yaml file as a dictionary
         """
-        config_path = (
-            Path(__file__).resolve().parents[2] / "config" / f"{config_name}.yaml"
-        )
-        with open(config_path, "r") as f:
+        # Resolved via the installed `src.config` package so this works whether
+        # running from source or from an installed wheel/site-packages copy.
+        config_resource = resources.files("src.config") / f"{config_name}.yaml"
+        with config_resource.open("r") as f:
             config = safe_load(f)
         return config

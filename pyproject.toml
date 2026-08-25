@@ -61,6 +61,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["redactor"]
 
+[tool.setuptools.package-data]
+"src.config" = ["*.yaml"]
+
 # `coverage` configurations
 [tool.coverage.run]
 source = [
