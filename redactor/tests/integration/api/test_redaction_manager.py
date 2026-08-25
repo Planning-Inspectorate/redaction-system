@@ -53,7 +53,7 @@ class TestRedactionManager(TestCase):
     )
     ANALYTICS_CONTAINER_CLIENT = BLOB_SERVICE_CLIENT.get_container_client("analytics")
 
-    class TestParams:
+    class Params:
         def __init__(
             self,
             source_file: str,
@@ -119,7 +119,7 @@ class TestRedactionManager(TestCase):
         override_params: dict[str, any] | None = None,
     ):
         # Build parameters for RedactionManager._try_process
-        test_params = cls.TestParams(
+        test_params = cls.Params(
             source_file,
             blob_file_name,
             stage=stage,
