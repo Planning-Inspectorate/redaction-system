@@ -63,8 +63,18 @@ def test__config_processor__load_config():
         "redaction_rules": [{"redactor_type": "LLMTextRedaction"}],
         "provisional_redactions": None,
     }
+
+    # Fake traversable matching the `resources.files(...) / name` -> `.open()` usage
+    class _FakeConfigResource:
+        def __truediv__(self, _name):
+            return self
+
+        def open(self, *_args, **_kwargs):
+            return mock.mock_open(read_data=mock_config_file_content)()
+
     with mock.patch(
-        "builtins.open", mock.mock_open(read_data=mock_config_file_content)
+        "src.redaction.config_processor.resources.files",
+        return_value=_FakeConfigResource(),
     ):
         assert ConfigProcessor.load_config("some_file") == expected_output
 
