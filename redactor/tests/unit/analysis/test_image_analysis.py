@@ -9,7 +9,7 @@ from src.analysis.images import (
     ImageAnalyser,
     SignatureDetector,
 )
-from tests.utils.util import compare_unashable_lists
+from tests.utils.util import compare_unhashable_lists
 
 
 class ImageAnalysisError(Exception):
@@ -76,7 +76,7 @@ class TestImageDetection:
             lambda img: ((images.index(img),),),
         )
 
-        compare_unashable_lists(expected, results)
+        compare_unhashable_lists(expected, results)
 
     def test_passes_kwargs_to_detection_function(self):
         images = [Image.new("RGB", (51, 51))]
@@ -115,7 +115,7 @@ class TestImageDetection:
 
         results = ImageAnalyser._image_detection(images, "text", failing_detector)
 
-        compare_unashable_lists(expected_results, results)
+        compare_unhashable_lists(expected_results, results)
 
 
 class TestAzureImageAnalyserBase:
@@ -251,7 +251,7 @@ class TestDetectFacesInImages(TestAzureImageAnalyserBase):
         ):
             actual_results = AzureImageAnalyser.detect_faces_in_images(images, 0.1)
 
-        compare_unashable_lists(expected_results, actual_results)
+        compare_unhashable_lists(expected_results, actual_results)
 
     def test_redacts_full_image_on_exception(self):
         images = [Image.new("RGB", (51, 51), i) for i in range(3)]
@@ -377,7 +377,7 @@ class TestDetectTextInImages(TestAzureImageAnalyserBase):
         ):
             actual_results = AzureImageAnalyser.detect_text_in_images(images)
 
-        compare_unashable_lists(expected_results, actual_results)
+        compare_unhashable_lists(expected_results, actual_results)
 
     def test_redacts_full_image_on_exception(self):
         images = [Image.new("RGB", (51, 51), i) for i in range(3)]
@@ -574,7 +574,7 @@ class TestDetectSignaturesInImages:
             (img, (("Signature Detected", (i, i, i, i)),))
             for i, img in enumerate(images)
         ]
-        compare_unashable_lists(expected, actual)
+        compare_unhashable_lists(expected, actual)
 
     def test_redacts_full_image_on_exception(self):
         images = [Image.new("RGB", (51, 51), i) for i in range(3)]
