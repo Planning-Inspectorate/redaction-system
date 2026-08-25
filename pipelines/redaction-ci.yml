@@ -147,10 +147,9 @@ extends:
 
           - template: ../steps/node_script.yml
             parameters:
-              displayName: 'Install NPM + Azure Functions Core Tools + Azurite'
+              displayName: 'Install Azure Functions Core Tools + Azurite'
               nodeVersion: 22
               script: |
-                npm ci
                 npm i -g azure-functions-core-tools@4 --unsafe-perm true
                 npm i -g azurite --unsafe-perm true
               workingDirectory: '$(System.DefaultWorkingDirectory)'
