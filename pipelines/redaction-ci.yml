@@ -339,15 +339,6 @@ extends:
             displayName: 'Run e2e tests'
 
           - script: |
-              echo "=== PROCESSOR FUNCTION HOST LOG (last 300 lines) ==="
-              tail -n 300 redaction-system/func-host-processor.log || true
-              echo ""
-              echo "=== RECEIVER FUNCTION HOST LOG (last 100 lines) ==="
-              tail -n 100 redaction-system/func-host-receiver.log || true
-            displayName: 'Dump function host logs'
-            condition: always()
-
-          - script: |
               set +e
               echo "Stopping Functions host..."
               if [ -f redaction-system/func-host.pid ]; then
@@ -365,7 +356,7 @@ extends:
 
               echo "Done"
             displayName: 'Stop local Functions host + Azurite'
-            condition: always()
+            condition: succeededOrFailed()
 
           - task: PublishBuildArtifacts@1
             displayName: 'Publish e2e receiver log'
