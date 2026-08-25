@@ -102,7 +102,7 @@ class ServiceBusReceiver:
         )
 
 
-def compare_unashable_lists(expected_results, actual_results):
+def compare_unhashable_lists(expected_results, actual_results):
     """
     Compare two lists. This is used for comparing unhashable elements when you do not care about the order
     """

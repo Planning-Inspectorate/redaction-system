@@ -7,7 +7,7 @@ from src.analysis.images import AzureImageAnalyser, SignatureDetector
 from src.redaction.config import ImageRedactionConfig
 from src.redaction.redactor import ImageRedactor
 from src.types import ImageRedactionResult
-from tests.utils.util import compare_unashable_lists
+from tests.utils.util import compare_unhashable_lists
 
 
 class TestGetName:
@@ -98,7 +98,7 @@ class TestCreateRedactionResults(TestImageRedactorBase):
                 names=("Face Detected", "Signature Detected"),
             ),
         )
-        compare_unashable_lists(expected_results, actual_results)
+        compare_unhashable_lists(expected_results, actual_results)
 
     def test_no_result_with_no_detections(self):
         images = [Image.new("RGB", (100, 100))]
@@ -116,7 +116,7 @@ class TestCreateRedactionResults(TestImageRedactorBase):
                 names=("Signature Detected",),
             ),
         )
-        compare_unashable_lists(expected_results, actual_results)
+        compare_unhashable_lists(expected_results, actual_results)
 
 
 class TestRedact(TestImageRedactorBase):
@@ -168,7 +168,7 @@ class TestRedact(TestImageRedactorBase):
                 names=("Signature Detected",),
             ),
         ]
-        compare_unashable_lists(expected_results, actual.redaction_results)
+        compare_unhashable_lists(expected_results, actual.redaction_results)
 
     def test_no_detections_returns_empty(self):
         images = [Image.new("RGB", (100, 100))]
