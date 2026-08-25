@@ -156,6 +156,7 @@ extends:
                 --silent \
                 --location .azurite \
                 --debug .azurite/azurite-debug.log \
+                --skipApiVersionCheck \
                 > azurite.log 2>&1 &
               echo $! > azurite.pid
 
