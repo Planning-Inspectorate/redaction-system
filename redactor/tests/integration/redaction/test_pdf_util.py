@@ -5,8 +5,7 @@ import pymupdf
 from pymupdf import Rect
 
 from src.redaction.utils.pdf import PDFUtil
-from tests.utils.resources import SOURCE_PDF, open_pdf
-from tests.utils.util import assert_instances_to_redact_approx_equal
+from tests.utils import SOURCE_PDF, assert_instances_to_redact_approx_equal, open_pdf
 
 
 class TestPDFUtil:

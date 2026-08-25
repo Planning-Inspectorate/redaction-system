@@ -1,6 +1,6 @@
 import dataclasses
 
-from redactor.src.types import (
+from src.types import (
     ImageRedactionResult,
     ImageTextRedactionResult,
 )

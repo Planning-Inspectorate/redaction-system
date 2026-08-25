@@ -5,7 +5,7 @@ from src.analysis.images import (
     ImageAnalyser,
     SignatureDetector,
 )
-from tests.utils.resources import open_image
+from tests.utils import open_image
 
 
 class TestCheckImageSize:

@@ -11,18 +11,16 @@ from src.redaction.config import (
 )
 from src.redaction.file_processor import PDFProcessor
 from src.redaction.utils.pdf import PDFUtil
-from tests.utils.resources import (
+from tests.utils import (
     PRINTED_PDF,
     PROPOSED_PDF,
     REDACTED_PDF,
     SIGNATURE_PDF,
     SOURCE_IMAGE_PDF,
     SOURCE_PDF,
-    open_pdf,
-)
-from tests.utils.util import (
     assert_instances_to_redact_approx_equal,
     assert_rect_approx_equal,
+    open_pdf,
 )
 
 

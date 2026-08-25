@@ -14,7 +14,7 @@ from src.redaction.utils.pdf import (
     PDFUtil,
 )
 from src.redaction.utils.text import get_normalised_words
-from tests.utils.resources import SOURCE_PDF, TRANSLATED_IMAGE_PDF, open_image, open_pdf
+from tests.utils import SOURCE_PDF, TRANSLATED_IMAGE_PDF, open_image, open_pdf
 
 
 def create_mock_page_metadata(
