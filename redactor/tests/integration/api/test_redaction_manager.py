@@ -187,12 +187,14 @@ class TestRedactionManager(TestCase):
 
     @staticmethod
     def try_delete_blob(container_client: ContainerClient, blob_path: str):
-        try:
-            container_client.delete_blob(blob_path)
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "Failed to delete blob '%s' during teardown, but continuing", blob_path
-            )
+        if container_client.get_blob_client(blob_path).exists():
+            try:
+                container_client.delete_blob(blob_path)
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Failed to delete blob '%s' during teardown, but continuing",
+                    blob_path,
+                )
 
     @staticmethod
     def extract_pdf_highlights(pdf_bytes: bytes):
