@@ -9,7 +9,7 @@ from uuid import uuid4
 import pytest
 from filelock import FileLock
 
-from tests.utils.test_case import TestCase
+from tests.utils import TestCase
 
 
 def quiet_azure_noise_early():
@@ -62,45 +62,43 @@ def import_all_testing_modules():
     """
     Import all test modules
     """
-    # Extract all testing modules under the `test/` directory
-    module_content_to_exclude = {"__init__.py", "__pycache__", "conftest.py"}
-    python_modules_to_load = []
+    # Extract all testing modules under the `tests/` directory
     test_dir = os.path.dirname(__file__)
     files_to_explore = [
-        x
-        for x in os.listdir(test_dir)
-        if "test" in x and os.path.isdir(os.path.join(test_dir, x))
+        x for x in os.listdir(test_dir) if os.path.isdir(os.path.join(test_dir, x))
     ]
+
+    modules_to_load = []
     while files_to_explore:
         file = files_to_explore.pop(0)
-        current_path = os.path.join(test_dir, file)
-        if os.path.isfile(current_path):
-            if file.endswith(".py") and all(
-                x not in file for x in module_content_to_exclude
-            ):
-                python_modules_to_load.append(file)
+        file_path = os.path.join(test_dir, file)
+
+        if os.path.isfile(file_path):
+            if file.endswith(".py") and "test_" in file:
+                modules_to_load.append(file.replace(".py", "").replace(os.sep, "."))
         else:
+            rel_path = os.path.relpath(file_path, test_dir)
             files_to_explore.extend(
-                [os.path.join(current_path, x) for x in os.listdir(current_path)]
+                [os.path.join(rel_path, x) for x in os.listdir(file_path)]
             )
-    python_modules_to_load_cleaned = sorted(
-        [x.replace(".py", "").replace(os.sep, ".") for x in python_modules_to_load]
-    )
-    python_modules_to_load_cleaned = [
-        f"test.{x}" if not x.startswith("test") else x
-        for x in python_modules_to_load_cleaned
+
+    modules_cleaned = [
+        f"tests.{x}" if not x.startswith("test") else x for x in sorted(modules_to_load)
     ]
     # Import all testing modules
-    for module_to_import in python_modules_to_load_cleaned:
-        importlib.import_module(module_to_import, package="test")
-    return python_modules_to_load_cleaned
+    for module_to_import in modules_cleaned:
+        try:
+            importlib.import_module(module_to_import, package="redactor")
+        except (ValueError, ModuleNotFoundError):
+            pass
+    return modules_cleaned
 
 
 def extract_all_test_cases():
     """
     Iterate through the imported modules to select all TestCase instances
     """
-    test_modules = [module for module in sys.modules if module.startswith("test.")]
+    test_modules = [module for module in sys.modules if module.startswith("tests.")]
     return {
         obj
         for module in test_modules

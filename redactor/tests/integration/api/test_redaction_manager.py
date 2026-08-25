@@ -16,9 +16,7 @@ from dotenv import load_dotenv
 
 from src.api.redaction_manager import RedactionManager
 from src.monitoring import LoggingUtil
-from tests.utils.resources import PDF_DIR, PROPOSED_PDF, SOURCE_PDF
-from tests.utils.test_case import TestCase
-from tests.utils.util import ServiceBusReceiver
+from tests.utils import PDF_DIR, PROPOSED_PDF, SOURCE_PDF, ServiceBusReceiver, TestCase
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")

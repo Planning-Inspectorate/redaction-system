@@ -21,7 +21,7 @@ from src.types import (
     ImageRedactionResult,
     TextRedactionResult,
 )
-from tests.utils.resources import (
+from tests.utils import (
     REDACTED_JPG,
     SOURCE_PDF,
     TEXT_IMAGE_PROPOSED_PDF,

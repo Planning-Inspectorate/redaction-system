@@ -3,7 +3,7 @@ from PIL import Image
 from src.redaction.config import ImageLLMTextRedactionConfig
 from src.redaction.redactor import ImageLLMTextRedactor
 from src.types import ImageRedactionResult
-from tests.utils.resources import open_image
+from tests.utils import open_image
 
 
 class TestRedact:

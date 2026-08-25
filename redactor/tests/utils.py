@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
+from io import BytesIO
 from math import isclose
+from pathlib import Path
 
 from azure.identity.aio import (
     AzureCliCredential,
@@ -10,7 +12,75 @@ from azure.identity.aio import (
 )
 from azure.servicebus import ServiceBusReceiveMode
 from azure.servicebus.aio import ServiceBusClient
+from PIL import Image
 from pymupdf import Rect
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+RESOURCES_DIR = REPO_ROOT / "tests" / "resources"
+PDF_DIR = RESOURCES_DIR / "pdf"
+IMAGE_DIR = RESOURCES_DIR / "image"
+
+SOURCE_PDF = "source.pdf"
+PROPOSED_PDF = "proposed.pdf"
+REDACTED_PDF = "redacted.pdf"
+
+SOURCE_IMAGE_PDF = "source_image.pdf"
+TRANSLATED_IMAGE_PDF = "translated_image.pdf"
+
+SIGNATURE_PDF = "signature.pdf"
+PRINTED_PDF = "printed.pdf"
+
+TEXT_IMAGE_PDF = "text_and_image.pdf"
+TEXT_IMAGE_PROPOSED_PDF = "text_and_image_proposed.pdf"
+TEXT_IMAGE_REDACTED_PDF = "text_and_image_redacted.pdf"
+
+REDACTED_JPG = "text_redacted.jpg"
+
+
+def open_pdf(file_name: str) -> BytesIO:
+    file_path = PDF_DIR / file_name
+    with open(file_path, "rb") as f:
+        document_bytes = BytesIO(f.read())
+    return document_bytes
+
+
+def open_image(file_name: str) -> BytesIO:
+    file_path = IMAGE_DIR / file_name
+    with open(file_path, "rb") as f:
+        image_bytes = BytesIO(f.read())
+        image = Image.open(image_bytes)
+    return image
+
+
+class TestCase:
+    """
+    Represents a test case with setup and teardown methods. This is to support using pytestx-dist, whic
+    does not respect pytest's session-level fixtures
+
+    If you need a setup or teardown to be called at the session-level withpytest-xdist, then
+    create your test using the test case as the parent class, and implement one of the below methods
+    """
+
+    def session_setup(self):
+        """
+        Called once before testing begins
+        """
+
+    def session_teardown(self):
+        """
+        Called once after all tests have finished
+        """
+
+    def setup(self):
+        """
+        Called before each test
+        """
+
+    def teardown(self):
+        """
+        Called after each test
+        """
 
 
 class ServiceBusReceiver:

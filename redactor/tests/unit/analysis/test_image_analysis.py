@@ -9,7 +9,7 @@ from src.analysis.images import (
     ImageAnalyser,
     SignatureDetector,
 )
-from tests.utils.util import compare_unhashable_lists
+from tests.utils import compare_unhashable_lists
 
 
 class ImageAnalysisError(Exception):

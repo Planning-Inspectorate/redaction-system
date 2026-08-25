@@ -1,7 +1,7 @@
 from src.redaction.config import ImageRedactionConfig
 from src.redaction.redactor import ImageTextRedactor
 from src.types import ImageRedactionResult
-from tests.utils.resources import open_image
+from tests.utils import open_image
 
 
 class TestImageTextRedactor:

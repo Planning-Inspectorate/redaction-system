@@ -7,7 +7,7 @@ from src.analysis.images import AzureImageAnalyser, SignatureDetector
 from src.redaction.config import ImageRedactionConfig
 from src.redaction.redactor import ImageRedactor
 from src.types import ImageRedactionResult
-from tests.utils.util import compare_unhashable_lists
+from tests.utils import compare_unhashable_lists
 
 
 class TestGetName:

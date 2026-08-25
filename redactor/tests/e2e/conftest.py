@@ -5,12 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.e2e.utils import function_start_url
-from tests.utils.conftest_util import (  # noqa: F401
+from tests.config import (  # noqa: F401
     configure_session,
     session_setup,
     session_teardown,
 )
+from tests.e2e.utils import function_start_url
 
 
 def _env(name: str, default: str | None = None) -> str | None:
