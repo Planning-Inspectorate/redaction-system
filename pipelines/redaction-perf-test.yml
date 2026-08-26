@@ -76,7 +76,8 @@ extends:
               export PYTHONUNBUFFERED=1
 
               # Pull env-specific pipeline variables (macro expansion), then export as env vars for pytest
-              export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_${{ upper(parameters.env) }})"
+              export E2E_FUNCTION_RECEIVER_BASE_URL="$(E2E_FUNCTION_RECEIVER_BASE_URL_${{ upper(parameters.env) }})"
+              export E2E_FUNCTION_PROCESSOR_BASE_URL="$(E2E_FUNCTION_PROCESSOR_BASE_URL_${{ upper(parameters.env) }})"
               export E2E_FUNCTION_KEY="$(FUNCTION_APP_KEY_${{ upper(parameters.env) }})"
               export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_${{ upper(parameters.env) }})"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
@@ -98,7 +99,8 @@ extends:
               export PERF_FIXTURE_PDF="${{ parameters.perfFixturePdf }}"
 
               echo "env=${{ parameters.env }}"
-              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
+              echo "E2E_FUNCTION_RECEIVER_BASE_URL=${E2E_FUNCTION_RECEIVER_BASE_URL}"
+              echo "E2E_FUNCTION_PROCESSOR_BASE_URL=${E2E_FUNCTION_PROCESSOR_BASE_URL}"
               echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
               echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
               echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
