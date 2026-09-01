@@ -173,7 +173,7 @@ extends:
 
               echo "Starting Azurite..."
               mkdir -p .azurite
-              nohup azurite \
+              nohup npx -y azurite \
                 --silent \
                 --location .azurite \
                 --debug .azurite/azurite-debug.log \
@@ -236,7 +236,7 @@ extends:
               JSON
 
               echo "Starting Functions host..."
-              nohup func start --python --port 7072 --verbose > ../func-host-receiver.log 2>&1 &
+              nohup npx -p azure-functions-core-tools@4 func start --python --port 7072 --verbose > ../func-host-receiver.log 2>&1 &
               echo $! > ../func-host.pid
 
               echo "Waiting for Functions host (/admin/host/status)..."
@@ -293,7 +293,7 @@ extends:
               JSON
 
               echo "Starting Functions host (orchestrator + activity only, no Service Bus trigger)..."
-              nohup func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host-processor.log 2>&1 &
+              nohup npx -p azure-functions-core-tools@4 func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host-processor.log 2>&1 &
               echo $! > ../func-host.pid
 
               echo "Waiting for Functions host (/admin/host/status)..."
