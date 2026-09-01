@@ -25,7 +25,7 @@ pytest-xdist==3.8.0
 pytest-cov==7.1.0
 pytest-rerunfailures==16.4
 PyYAML==6.0.3
-ruff==0.16.0
+ruff==0.16.4
 tiktoken==0.13.0
 unidecode==1.4.0
 StrEnum==0.4.15  # Not ideal, but this is needed due to compatibility issues between ADO agents and the Function App
