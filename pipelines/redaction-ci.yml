@@ -29,7 +29,7 @@ resources:
       type: github
       endpoint: Planning-Inspectorate
       name: Planning-Inspectorate/common-pipeline-templates
-      ref: refs/tags/release/3.25.2
+      ref: refs/tags/release/3.30.0
 
 extends:
   template: stages/wrapper_ci.yml@templates
@@ -130,164 +130,200 @@ extends:
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
-          - task: UseNode@1
-            displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
-            inputs:
-              version: '20.x'
+          # - task: UseNode@1
+          #   displayName: 'Install Node.js (for Azure Functions Core Tools + Azurite)'
+          #   inputs:
+          #     version: '20.x'
 
-          - script: |
-              set -e
-              node --version
-              npm --version
-              npm i -g azure-functions-core-tools@4 --unsafe-perm true
-              npm i -g azurite --unsafe-perm true
-              func --version
-              azurite --version
-            displayName: 'Install Azure Functions Core Tools + Azurite'
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Install npm'
+              nodeVersion: 22
+              script: npm ci
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redaction-system'
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm
 
-          - script: |
-              set -e
-              source .venv/bin/activate
-              cd redaction-system
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Install Azure Functions Core Tools + Azurite'
+              nodeVersion: 22
+              script: |
+                sudo env "PATH=$PATH" npm i -g azure-functions-core-tools@4 --unsafe-perm true
+                sudo env "PATH=$PATH" npm i -g azurite --unsafe-perm true
+              workingDirectory: '$(System.DefaultWorkingDirectory)'
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm
+                
+          # This script is just asking for versions?
+          # - script: |
+          #     set -e
+          #     node --version
+          #     npm --version
+          #     npm i -g azure-functions-core-tools@4 --unsafe-perm true
+          #     npm i -g azurite --unsafe-perm true
+          #     func --version
+          #     azurite --version
+          #   displayName: 'Install Azure Functions Core Tools + Azurite'
 
-              echo "Starting Azurite..."
-              mkdir -p .azurite
-              nohup azurite \
-                --silent \
-                --location .azurite \
-                --debug .azurite/azurite-debug.log \
-                > azurite.log 2>&1 &
-              echo $! > azurite.pid
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Start Azurite (background) + wait'
+              nodeVersion: 22
+              script: |
+                set -e
+                source ../.venv/bin/activate
 
-              echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
-              for i in {1..60}; do
-                if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
-                  echo "Azurite ports are open"
-                  exit 0
+                echo "Starting Azurite..."
+                mkdir -p .azurite
+                nohup npx -y azurite \
+                  --silent \
+                  --location .azurite \
+                  --debug .azurite/azurite-debug.log \
+                  > azurite.log 2>&1 &
+                echo $! > azurite.pid
+
+                echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
+                for i in {1..60}; do
+                  if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
+                    echo "Azurite ports are open"
+                    exit 0
+                  fi
+                  sleep 2
+                done
+
+                echo "Azurite did not become ready. Last 200 lines:"
+                tail -n 200 azurite.log || true
+                tail -n 200 .azurite/azurite-debug.log || true
+                exit 1
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redaction-system'
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm
+
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Start local Azure Functions receiver host (background) + wait'
+              nodeVersion: 22
+              script: |
+                set -e
+                source ../.venv/bin/activate
+
+                echo "Creating local.settings.json for Functions host..."
+
+                APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
+                # In PR builds, Azure DevOps may leave this as the literal placeholder.
+                if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
+                  echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
+                  APPINS=""
+                  # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
+                  export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
+                  export OTEL_TRACES_EXPORTER=none
+                  export OTEL_METRICS_EXPORTER=none
+                  export OTEL_LOGS_EXPORTER=none
                 fi
-                sleep 2
-              done
 
-              echo "Azurite did not become ready. Last 200 lines:"
-              tail -n 200 azurite.log || true
-              tail -n 200 .azurite/azurite-debug.log || true
-              exit 1
-            displayName: 'Start Azurite (background) + wait'
+                cat > local.settings.json <<JSON
+                {
+                  "IsEncrypted": false,
+                  "Values": {
+                    "FUNCTIONS_WORKER_RUNTIME": "python",
+                    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+                    "AzureWebJobsSecretStorageType": "files",
+                    "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
 
-          - script: |
-              set -e
-              source .venv/bin/activate
-              cd redaction-system/receiver
-
-              echo "Creating local.settings.json for Functions host..."
-
-              APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
-              # In PR builds, Azure DevOps may leave this as the literal placeholder.
-              if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
-                echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
-                APPINS=""
-                # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
-                export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
-                export OTEL_TRACES_EXPORTER=none
-                export OTEL_METRICS_EXPORTER=none
-                export OTEL_LOGS_EXPORTER=none
-              fi
-
-              cat > local.settings.json <<JSON
-              {
-                "IsEncrypted": false,
-                "Values": {
-                  "FUNCTIONS_WORKER_RUNTIME": "python",
-                  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-                  "AzureWebJobsSecretStorageType": "files",
-                  "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
-
-                  "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
-                  "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
-                  "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
-                },
-                "Host": {
-                  "LocalHttpPort": 7072,
-                  "CORS": "*",
-                  "CORSCredentials": false
+                    "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
+                    "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
+                    "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
+                  },
+                  "Host": {
+                    "LocalHttpPort": 7072,
+                    "CORS": "*",
+                    "CORSCredentials": false
+                  }
                 }
-              }
-              JSON
+                JSON
 
-              echo "Starting Functions host..."
-              nohup func start --python --port 7072 --verbose > ../func-host-receiver.log 2>&1 &
-              echo $! > ../func-host.pid
+                echo "Starting Functions host..."
+                nohup npx -p azure-functions-core-tools@4 func start --python --port 7072 --verbose > ../func-host-receiver.log 2>&1 &
+                echo $! > ../func-host.pid
 
-              echo "Waiting for Functions host (/admin/host/status)..."
-              for i in {1..60}; do
-                if curl -sSf http://localhost:7072/admin/host/status >/dev/null 2>&1; then
-                  echo "Functions host is up"
-                  exit 0
+                echo "Waiting for Functions host (/admin/host/status)..."
+                for i in {1..60}; do
+                  if curl -sSf http://localhost:7072/admin/host/status >/dev/null 2>&1; then
+                    echo "Functions host is up"
+                    exit 0
+                  fi
+                  sleep 2
+                done
+
+                echo "Functions host did not become ready. Last 200 lines:"
+                tail -n 200 ../func-host-receiver.log || true
+                exit 1
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redaction-system/receiver'
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Start local Azure Functions processor host (background) + wait'
+              nodeVersion: 22
+              script: |
+                set -e
+                source ../.venv/bin/activate
+
+                echo "Creating local.settings.json for Functions host..."
+
+                APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
+                # In PR builds, Azure DevOps may leave this as the literal placeholder.
+                if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
+                  echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
+                  APPINS=""
+                  # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
+                  export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
+                  export OTEL_TRACES_EXPORTER=none
+                  export OTEL_METRICS_EXPORTER=none
+                  export OTEL_LOGS_EXPORTER=none
                 fi
-                sleep 2
-              done
 
-              echo "Functions host did not become ready. Last 200 lines:"
-              tail -n 200 ../func-host-receiver.log || true
-              exit 1
-            displayName: 'Start local Azure Functions receiver host (background) + wait'
-          - script: |
-              set -e
-              source .venv/bin/activate
-              cd redaction-system/redactor
+                cat > local.settings.json <<JSON
+                {
+                  "IsEncrypted": false,
+                  "Values": {
+                    "FUNCTIONS_WORKER_RUNTIME": "python",
+                    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+                    "AzureWebJobsSecretStorageType": "files",
+                    "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
 
-              echo "Creating local.settings.json for Functions host..."
-
-              APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
-              # In PR builds, Azure DevOps may leave this as the literal placeholder.
-              if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
-                echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
-                APPINS=""
-                # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
-                export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
-                export OTEL_TRACES_EXPORTER=none
-                export OTEL_METRICS_EXPORTER=none
-                export OTEL_LOGS_EXPORTER=none
-              fi
-
-              cat > local.settings.json <<JSON
-              {
-                "IsEncrypted": false,
-                "Values": {
-                  "FUNCTIONS_WORKER_RUNTIME": "python",
-                  "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-                  "AzureWebJobsSecretStorageType": "files",
-                  "AZURE_IDENTITY_DISABLE_MANAGED_IDENTITY": "true",
-
-                  "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
-                  "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
-                  "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
-                },
-                "Host": {
-                  "LocalHttpPort": 7071,
-                  "CORS": "*",
-                  "CORSCredentials": false
+                    "OPENAI_ENDPOINT": "$(OPENAI_ENDPOINT)",
+                    "AZURE_VISION_ENDPOINT": "$(AZURE_VISION_ENDPOINT)",
+                    "APP_INSIGHTS_CONNECTION_STRING": "${APPINS}"
+                  },
+                  "Host": {
+                    "LocalHttpPort": 7071,
+                    "CORS": "*",
+                    "CORSCredentials": false
+                  }
                 }
-              }
-              JSON
+                JSON
 
-              echo "Starting Functions host (orchestrator + activity only, no Service Bus trigger)..."
-              nohup func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host-processor.log 2>&1 &
-              echo $! > ../func-host.pid
+                echo "Starting Functions host (orchestrator + activity only, no Service Bus trigger)..."
+                nohup npx -p azure-functions-core-tools@4 func start --python --port 7071 --functions trigger_orchestrator trigger_task send_failure_notification --verbose > ../func-host-processor.log 2>&1 &
+                echo $! > ../func-host.pid
 
-              echo "Waiting for Functions host (/admin/host/status)..."
-              for i in {1..60}; do
-                if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
-                  echo "Functions host is up"
-                  exit 0
-                fi
-                sleep 2
-              done
+                echo "Waiting for Functions host (/admin/host/status)..."
+                for i in {1..60}; do
+                  if curl -sSf http://localhost:7071/admin/host/status >/dev/null 2>&1; then
+                    echo "Functions host is up"
+                    exit 0
+                  fi
+                  sleep 2
+                done
 
-              echo "Functions host did not become ready. Last 200 lines:"
-              tail -n 200 ../func-host-processor.log || true
-              exit 1
-            displayName: 'Start local Azure Functions processor host (background) + wait'
+                echo "Functions host did not become ready. Last 200 lines:" 
+                tail -n 200 ../func-host-processor.log || true
+                exit 1
+              workingDirectory: '$(System.DefaultWorkingDirectory)/redaction-system/redactor'
+              environmentVariables:
+                npm_config_cache: $(Pipeline.Workspace)/.npm
 
           - script: |
               set -e
