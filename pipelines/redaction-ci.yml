@@ -140,8 +140,8 @@ extends:
               displayName: 'Install Azure Functions Core Tools + Azurite'
               nodeVersion: 22
               script: |
-                npm i -g azure-functions-core-tools@4 --unsafe-perm true
-                npm i -g azurite --unsafe-perm true
+                sudo npm i -g azure-functions-core-tools@4 --unsafe-perm true
+                sudo npm i -g azurite --unsafe-perm true
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               environmentVariables:
                 npm_config_cache: $(npm_cache_dir)
