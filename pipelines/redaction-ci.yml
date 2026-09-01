@@ -173,7 +173,6 @@ extends:
               script: |
                 set -e
                 source ../.venv/bin/activate
-                cd redaction-system
 
                 echo "Starting Azurite..."
                 mkdir -p .azurite
@@ -208,7 +207,6 @@ extends:
               script: |
                 set -e
                 source ../.venv/bin/activate
-                cd redaction-system/receiver
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -271,7 +269,6 @@ extends:
               script: |
                 set -e
                 source ../.venv/bin/activate
-                cd redaction-system/redactor
 
                 echo "Creating local.settings.json for Functions host..."
 
