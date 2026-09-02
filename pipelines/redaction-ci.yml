@@ -206,7 +206,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source ../.venv/bin/activate
+                source ../../.venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -262,13 +262,14 @@ extends:
               workingDirectory: '$(System.DefaultWorkingDirectory)/redaction-system/receiver'
               environmentVariables:
                 npm_config_cache: $(Pipeline.Workspace)/.npm
+
           - template: ../steps/node_script.yml@templates
             parameters:
               displayName: 'Start local Azure Functions processor host (background) + wait'
               nodeVersion: 22
               script: |
                 set -e
-                source ../.venv/bin/activate
+                source ../../.venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
