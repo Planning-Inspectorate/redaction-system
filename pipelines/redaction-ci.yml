@@ -137,7 +137,7 @@ extends:
               script: |
                 node --version
                 npm --version
-                sudo npm i -g azure-functions-core-tools@4 --unsafe-perm true
+                sudo env PATH=$PATH npm i -g azure-functions-core-tools@4 --unsafe-perm true
                 sudo npm i -g azurite --unsafe-perm true
                 func --version
                 azurite --version
