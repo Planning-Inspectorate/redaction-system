@@ -61,16 +61,26 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["redactor"]
 
+[tool.setuptools.package-data]
+"src.config" = ["*.yaml"]
+
 # `coverage` configurations
 [tool.coverage.run]
 source = [
-    "./"
+    "./redactor/"
 ]
+omit = [
+    "tests/*",
+    "function_app.py",
+]
+concurrency = "multiprocessing"
 
 [tool.coverage.report]
-exclude_lines = [
-    "if __name__ == .__main__.:"
+exclude_also = [
+    "@abstractmethod",
+    "if __name__ == .__main__.:,"
 ]
+show_missing = "true"
 
 [dependency-groups]
 dev = [
@@ -91,9 +101,9 @@ dev = [
 ]
     
 [tool.ruff.lint.isort]
-known-first-party = ["core", "test", "config"]
+known-first-party = ["src", "tests"]
 
 # `bandit' configurations
 [tool.bandit]
-exclude_dirs = ["redactor/test"]
+exclude_dirs = ["redactor/tests"]
 skips = []

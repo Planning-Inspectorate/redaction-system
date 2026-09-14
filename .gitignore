@@ -237,18 +237,17 @@ __queuestorage__
 __azurite_db*__.json
 host.json
 
-
+# Local VS Code settings
 .vscode
 **.env
 samples
 scratch
 
-# PDF redaction outputs
-*_PROVISIONAL.pdf
-*_REDACTED.pdf
-
 # Profile outputs
 *.profile
 memoryProfile/
 
+# Ignore model files
 signature_detector/model
+
+docs/
