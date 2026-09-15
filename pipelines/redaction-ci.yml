@@ -306,7 +306,7 @@ extends:
               environmentVariables:
                 npm_config_cache: $(Pipeline.Workspace)/.npm
 
-            - script: |
+          - script: |
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system
@@ -338,7 +338,7 @@ extends:
               echo "Warm-up complete"
             displayName: 'Warm up Durable Functions orchestrator'
 
-            - script: |
+          - script: |
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
