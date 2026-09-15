@@ -249,7 +249,6 @@ extends:
               script: |
                 set -e
                 source $(System.DefaultWorkingDirectory)/.venv/bin/activate
-                cd redaction-system
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -309,7 +308,6 @@ extends:
           - script: |
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
-              cd redaction-system
 
               echo "Warming up Durable Functions orchestrator..."
               ORCH_URL="http://localhost:7071/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
