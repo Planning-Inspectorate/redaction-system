@@ -249,6 +249,7 @@ extends:
               script: |
                 set -e
                 source .venv/bin/activate
+                cd redaction-system
 
                 echo "Creating local.settings.json for Functions host..."
 
