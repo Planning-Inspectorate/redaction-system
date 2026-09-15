@@ -179,21 +179,26 @@ extends:
               environmentVariables:
                 npm_config_cache: $(Pipeline.Workspace)/.npm
 
-              echo "Starting Azurite..."
-              mkdir -p .azurite
-              nohup azurite \
-                --silent \
-                --location .azurite \
-                --debug .azurite/azurite-debug.log \
-                --skipApiVersionCheck \
-                > azurite.log 2>&1 &
-              echo $! > azurite.pid
+          - template: ../steps/node_script.yml@templates
+            parameters:
+              displayName: 'Start local Azure Functions receiver host (background) + wait'
+              nodeVersion: 22
+              script: |
+                set -e
+                source ../.venv/bin/activate
 
-              echo "Waiting for Azurite ports (10000 blob, 10001 queue, 10002 table)..."
-              for i in {1..60}; do
-                if (nc -z 127.0.0.1 10000) && (nc -z 127.0.0.1 10001) && (nc -z 127.0.0.1 10002); then
-                  echo "Azurite ports are open"
-                  exit 0
+                echo "Creating local.settings.json for Functions host..."
+
+                APPINS="$(APP_INSIGHTS_CONNECTION_STRING)"
+                # In PR builds, Azure DevOps may leave this as the literal placeholder.
+                if [ -z "${APPINS}" ] || [ "${APPINS}" = "\$(APP_INSIGHTS_CONNECTION_STRING)" ]; then
+                  echo "APP_INSIGHTS_CONNECTION_STRING not set (or placeholder). Disabling telemetry for local Functions host."
+                  APPINS=""
+                  # Disable exporters for this job so the Functions host doesn't crash on invalid AI config.
+                  export AZURE_MONITOR_OPENTELEMETRY_ENABLED=false
+                  export OTEL_TRACES_EXPORTER=none
+                  export OTEL_METRICS_EXPORTER=none
+                  export OTEL_LOGS_EXPORTER=none
                 fi
 
                 cat > local.settings.json <<JSON
