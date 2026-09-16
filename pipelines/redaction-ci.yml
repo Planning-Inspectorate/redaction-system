@@ -139,8 +139,6 @@ extends:
                 npm --version
                 npx -p azure-functions-core-tools@4 func --version
                 npx -y azurite --version
-                func --version
-                azurite --version
               workingDirectory: '$(System.DefaultWorkingDirectory)'
               environmentVariables:
                 npm_config_cache: $(Pipeline.Workspace)/.npm
