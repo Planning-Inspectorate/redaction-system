@@ -335,8 +335,8 @@ extends:
             displayName: 'Warm up Durable Functions orchestrator'
 
           - script: |
-                set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              set -e
+              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
