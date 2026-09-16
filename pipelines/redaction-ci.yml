@@ -89,14 +89,14 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system
               python3 -m pip install .
             displayName: 'Install redactor package'
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
               python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="src" --cov-report=xml:unit_test_coverage.xml
@@ -114,7 +114,7 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
               python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
@@ -149,7 +149,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+                source .venv/bin/activate
 
                 echo "Starting Azurite..."
                 mkdir -p .azurite
@@ -183,7 +183,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+                source .venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -246,7 +246,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+                source .venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -305,7 +305,7 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
 
               echo "Warming up Durable Functions orchestrator..."
               ORCH_URL="http://localhost:7071/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
@@ -336,7 +336,7 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system/redactor
               export PYTHONPATH=$(pwd)
 
@@ -388,7 +388,7 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system/redactor
               python3 -m coverage combine
               python3 -m coverage report
@@ -408,7 +408,7 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              source .venv/bin/activate
               cd redaction-system/redactor
               python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
             displayName: 'Fail if test coverage is below the threshold'
