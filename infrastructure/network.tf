@@ -20,7 +20,7 @@ resource "azurerm_subnet" "redaction_system" {
 
   service_endpoint {
     service = "Microsoft.Storage"
-  }                 
+  }
 }
 
 resource "azurerm_subnet" "function_app" {
@@ -32,7 +32,7 @@ resource "azurerm_subnet" "function_app" {
 
   service_endpoint {
     service = "Microsoft.Storage"
-  }     
+  }
 
   delegation {
     name = "functionAppDelegation"
@@ -49,51 +49,51 @@ resource "azurerm_subnet" "function_app" {
 ############################################################################
 
 resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
-  for_each              = { for idx, val in local.storage_subresources : idx => val }
-  name                  = "${local.org}-vnetlink-${each.value}-${local.service_name}-${var.environment}"
+  for_each            = { for idx, val in local.storage_subresources : idx => val }
+  name                = "${local.org}-vnetlink-${each.value}-${local.service_name}-${var.environment}"
   private_dns_zone_id = data.azurerm_private_dns_zone.storage[each.key].id
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-  provider              = azurerm.tooling
-  resolution_policy     = "NxDomainRedirect"
+  virtual_network_id  = azurerm_virtual_network.redaction_system.id
+  provider            = azurerm.tooling
+  resolution_policy   = "NxDomainRedirect"
 
   tags = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "function" {
-  name                  = "${local.org}-vnetlink-functions-${local.service_name}-${var.environment}"
+  name                = "${local.org}-vnetlink-functions-${local.service_name}-${var.environment}"
   private_dns_zone_id = data.azurerm_private_dns_zone.function.id
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-  provider              = azurerm.tooling
-  resolution_policy     = "NxDomainRedirect"
+  virtual_network_id  = azurerm_virtual_network.redaction_system.id
+  provider            = azurerm.tooling
+  resolution_policy   = "NxDomainRedirect"
 
   tags = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
-  name                  = "${local.org}-vnetlink-ai-${local.service_name}-${var.environment}"
+  name                = "${local.org}-vnetlink-ai-${local.service_name}-${var.environment}"
   private_dns_zone_id = data.azurerm_private_dns_zone.ai.id
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-  provider              = azurerm.tooling
-  resolution_policy     = "NxDomainRedirect"
+  virtual_network_id  = azurerm_virtual_network.redaction_system.id
+  provider            = azurerm.tooling
+  resolution_policy   = "NxDomainRedirect"
 
   tags = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
-  name                  = "${local.org}-vnetlink-openai-${local.service_name}-${var.environment}"
+  name                = "${local.org}-vnetlink-openai-${local.service_name}-${var.environment}"
   private_dns_zone_id = data.azurerm_private_dns_zone.openai.id
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-  provider              = azurerm.tooling
-  resolution_policy     = "NxDomainRedirect"
+  virtual_network_id  = azurerm_virtual_network.redaction_system.id
+  provider            = azurerm.tooling
+  resolution_policy   = "NxDomainRedirect"
 
   tags = local.tags
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
-  name                  = "${local.org}-vnetlink-servicebus-${local.service_name}-${var.environment}"
+  name                = "${local.org}-vnetlink-servicebus-${local.service_name}-${var.environment}"
   private_dns_zone_id = data.azurerm_private_dns_zone.servicebus.id
-  virtual_network_id    = azurerm_virtual_network.redaction_system.id
-  provider              = azurerm.tooling
+  virtual_network_id  = azurerm_virtual_network.redaction_system.id
+  provider            = azurerm.tooling
 
   tags = local.tags
 }
