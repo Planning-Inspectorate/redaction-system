@@ -16,8 +16,11 @@ resource "azurerm_subnet" "redaction_system" {
   resource_group_name               = azurerm_resource_group.primary.name
   address_prefixes                  = [var.subnet_cidr_block]
   virtual_network_name              = azurerm_virtual_network.redaction_system.name
-  service_endpoints                 = ["Microsoft.Storage"]
   private_endpoint_network_policies = "Enabled"
+
+  service_endpoint {
+    service = "Microsoft.Storage"
+  }                 
 }
 
 resource "azurerm_subnet" "function_app" {
@@ -25,8 +28,11 @@ resource "azurerm_subnet" "function_app" {
   resource_group_name               = azurerm_resource_group.primary.name
   address_prefixes                  = [var.functionapp_cidr_block]
   virtual_network_name              = azurerm_virtual_network.redaction_system.name
-  service_endpoints                 = ["Microsoft.Storage"]
   private_endpoint_network_policies = "Enabled"
+
+  service_endpoint {
+    service = "Microsoft.Storage"
+  }     
 
   delegation {
     name = "functionAppDelegation"
@@ -45,8 +51,7 @@ resource "azurerm_subnet" "function_app" {
 resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
   for_each              = { for idx, val in local.storage_subresources : idx => val }
   name                  = "${local.org}-vnetlink-${each.value}-${local.service_name}-${var.environment}"
-  resource_group_name   = var.tooling_config.network_rg
-  private_dns_zone_name = data.azurerm_private_dns_zone.storage[each.key].name
+  private_dns_zone_id = data.azurerm_private_dns_zone.storage[each.key].id
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
   resolution_policy     = "NxDomainRedirect"
@@ -56,8 +61,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "storage" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "function" {
   name                  = "${local.org}-vnetlink-functions-${local.service_name}-${var.environment}"
-  resource_group_name   = var.tooling_config.network_rg
-  private_dns_zone_name = data.azurerm_private_dns_zone.function.name
+  private_dns_zone_id = data.azurerm_private_dns_zone.function.id
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
   resolution_policy     = "NxDomainRedirect"
@@ -67,8 +71,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "function" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
   name                  = "${local.org}-vnetlink-ai-${local.service_name}-${var.environment}"
-  resource_group_name   = var.tooling_config.network_rg
-  private_dns_zone_name = data.azurerm_private_dns_zone.ai.name
+  private_dns_zone_id = data.azurerm_private_dns_zone.ai.id
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
   resolution_policy     = "NxDomainRedirect"
@@ -78,8 +81,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "ai" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
   name                  = "${local.org}-vnetlink-openai-${local.service_name}-${var.environment}"
-  resource_group_name   = var.tooling_config.network_rg
-  private_dns_zone_name = data.azurerm_private_dns_zone.openai.name
+  private_dns_zone_id = data.azurerm_private_dns_zone.openai.id
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
   resolution_policy     = "NxDomainRedirect"
@@ -89,8 +91,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "open_ai" {
 
 resource "azurerm_private_dns_zone_virtual_network_link" "servicebus" {
   name                  = "${local.org}-vnetlink-servicebus-${local.service_name}-${var.environment}"
-  resource_group_name   = var.tooling_config.network_rg
-  private_dns_zone_name = data.azurerm_private_dns_zone.servicebus.name
+  private_dns_zone_id = data.azurerm_private_dns_zone.servicebus.id
   virtual_network_id    = azurerm_virtual_network.redaction_system.id
   provider              = azurerm.tooling
 
