@@ -37,6 +37,8 @@ extends:
     validateName: Redaction CI
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
+    pool:
+      name: pins-template-test
     validationJobs:
       - name: ValidateCode
         steps:
@@ -45,18 +47,9 @@ extends:
 
           - script: |
               set -e
-              sudo add-apt-repository ppa:deadsnakes/ppa -y
-              sudo apt-get update
-              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
-              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
-              python3 -m ensurepip --upgrade
-              python3 -m pip install --force-reinstall --no-binary cffi cffi
-              python3 --version
-            displayName: 'Install Python 3.13'
-
-          - script: |
-              set -e
               cd redaction-system
+              source ~/.bashrc
+              pyenv shell 3.13
               python3 -m pip install ruff
               export PYTHONPATH=$(pwd)
               python3 -m ruff check
@@ -70,27 +63,29 @@ extends:
 
           - checkout: templates
 
-          - script: |
-              set -e
-              sudo add-apt-repository ppa:deadsnakes/ppa -y
-              sudo apt-get update
-              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
-              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
-              python3 --version
-              python3 -m venv $(System.DefaultWorkingDirectory)/.venv
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
-              python3 -m ensurepip --upgrade
-              python3 -m pip install --force-reinstall --no-binary cffi cffi
-            displayName: 'Install Python 3.13'
-
           - template: ../steps/azure_auth.yml@templates
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
           - script: |
               set -e
+              python3 --version
+              source ~/.bashrc
+              pyenv shell 3.13
+              python3 -m venv $(System.DefaultWorkingDirectory)/.venv
+              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              python3 -m ensurepip --upgrade
+              python3 -m pip install --force-reinstall --no-binary cffi cffi
+              python3 --version
+            displayName: 'Create venv'
+
+          - script: |
+              set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system
+              source ~/.bashrc
+              pyenv shell 3.13
+              python3 --version
               python3 -m pip install .
             displayName: 'Install redactor package'
 
@@ -98,6 +93,8 @@ extends:
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
+              source ~/.bashrc
+              pyenv shell 3.13
               export PYTHONPATH=$(pwd)
               python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="src" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
@@ -116,6 +113,8 @@ extends:
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
+              source ~/.bashrc
+              pyenv shell 3.13
               export PYTHONPATH=$(pwd)
               python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
