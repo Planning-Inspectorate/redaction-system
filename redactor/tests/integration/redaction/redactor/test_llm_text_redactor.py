@@ -14,12 +14,13 @@ class TestRedact:
         - When we pass the config to the LLMTextRedactor
         - Then the LLMTextRedactor should respond with a LLMTextRedactionResult that contains some expected result strings
         """
-        # To boost the overall quality of the result, and to make the test stricter, extra context has been added to the system prompt here
+        # To boost the overall quality of the result, and to make the test stricter, extra context has been added to the prompt here
         config = {
             "name": "config name",
             "redactor_type": "LLMTextRedaction",
             "model": "gpt-5.6-luna",
-            "system_prompt": (
+            "role": "You are an assistant that extracts requested terms from a given text.",
+            "task": (
                 "You will be sent text to analyse. The text is a quote from Star Wars. "
                 "Please find all strings in the text that adhere to the following rules: "
             ),
@@ -81,7 +82,8 @@ class TestRedact:
             redactor_type="LLMTextRedaction",
             model="gpt-5.6-luna",
             text="",
-            system_prompt="Identify redaction strings",
+            role="some role",
+            task="Identify redaction strings",
             redaction_terms=["Names"],
         )
         redactor_inst = LLMTextRedactor(config)
@@ -102,7 +104,8 @@ class TestRedact:
             redactor_type="LLMTextRedaction",
             model="gpt-5.6-luna",
             text=None,
-            system_prompt="Identify redaction strings",
+            role="some role",
+            task="Identify redaction strings",
             redaction_terms=["Names"],
         )
         redactor_inst = LLMTextRedactor(config)
