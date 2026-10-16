@@ -36,7 +36,8 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="some system prompt",
+        role="some role",
+        task="some task",
         redaction_terms=[
             "rule A",
             "rule B",
@@ -86,7 +87,8 @@ def test__llm_text_redactor___analyse_text__uses_config_chunk_size(
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="some system prompt",
+        role="some role",
+        task="some task",
         redaction_terms=["rule A"],
         chunk_size=20,
         chunk_overlap=0,
@@ -121,7 +123,8 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="some system prompt",
+        role="some role",
+        task="some task",
         redaction_terms=["rule A"],
     )
 
@@ -157,7 +160,8 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="some system prompt",
+        role="some role",
+        task="some task",
         redaction_terms=["rule A"],
     )
 
