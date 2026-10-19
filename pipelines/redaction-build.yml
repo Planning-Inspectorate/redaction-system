@@ -40,6 +40,7 @@ extends:
           - script: |
               set -e
               rm -rf $(Build.SourcesDirectory)/redactor/tests/*
+              rm -rf $(Build.SourcesDirectory)/redactor/eval/*
               rm -rf $(Build.SourcesDirectory)/redactor/__pycache__/*
               rm -rf $(Build.SourcesDirectory)/redactor/*/__pycache__/*
             displayName: 'Remove files before archiving'
