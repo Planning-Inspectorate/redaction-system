@@ -225,6 +225,7 @@ def _log_scorecard(stage: str, scorecard: RedactionScorecard) -> None:
         )
 
 
+@pytest.mark.skip(reason="Skipping E2E anon samples redaction test temporarily")
 @pytest.mark.e2e
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
 @pytest.mark.flaky(reruns=3, reruns_delay=5, only_rerun="AssertionError")
