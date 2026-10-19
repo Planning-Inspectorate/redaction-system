@@ -59,6 +59,7 @@ class Document:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Document":
+        """Build a Document from its JSON-style dict (as stored in a JSONL corpus)"""
         return cls(
             id=data["id"],
             doc_type=data["doc_type"],
@@ -69,14 +70,17 @@ class Document:
         )
 
     def to_dict(self) -> dict:
+        """Convert the document, including its entities, to a plain dict"""
         return asdict(self)
 
     def positives(self, rule: str | None = None) -> tuple[Entity, ...]:
+        """Entities that should be redacted, optionally only those of one rule"""
         return tuple(
             e for e in self.entities if e.redact and (rule is None or e.rule == rule)
         )
 
     def negatives(self, rule: str | None = None) -> tuple[Entity, ...]:
+        """Entities that must not be redacted, optionally only those of one rule"""
         return tuple(
             e
             for e in self.entities
@@ -137,6 +141,7 @@ def load_corpus(
 
 
 def write_corpus(path: Path | str, documents: list[Document]):
+    """Write documents to a JSONL file, one document per line"""
     with Path(path).open("w", encoding="utf-8") as f:
         f.writelines(
             json.dumps(document.to_dict(), ensure_ascii=False) + "\n"
