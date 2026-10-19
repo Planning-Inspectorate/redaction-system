@@ -116,10 +116,9 @@ def extract_highlight_terms(pdf_path: Path) -> list[str]:
         for page in pdf:
             for annot in page.annots(types=[pymupdf.PDF_ANNOT_HIGHLIGHT]):
                 info = annot.info
-                if info.get("title") == "REDACTION CANDIDATE":
-                    content = info.get("content", "")
-                    if content:
-                        terms.append(content)
+                content = info.get("content", "")
+                if content:
+                    terms.append(content)
     finally:
         pdf.close()
     return terms
@@ -225,7 +224,6 @@ def _log_scorecard(stage: str, scorecard: RedactionScorecard) -> None:
         )
 
 
-@pytest.mark.skip(reason="Skipping E2E anon samples redaction test temporarily")
 @pytest.mark.e2e
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
 @pytest.mark.flaky(reruns=3, reruns_delay=5, only_rerun="AssertionError")
