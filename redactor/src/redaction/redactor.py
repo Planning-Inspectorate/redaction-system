@@ -277,7 +277,6 @@ class ImageRedactor(Redactor):  # pragma: no cover
                 if len(objects_detected) == 0:
                     continue
 
-                print(objects_detected)
                 for name, box in objects_detected:
                     bounding_boxes.append(box)
                     object_names.append(name)
