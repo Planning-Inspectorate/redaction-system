@@ -1,7 +1,6 @@
 import pytest
-
-from tests.eval.corpus import Document, Entity
-from tests.eval.scoring import (
+from eval.corpus import Document, Entity
+from eval.scoring import (
     ScoreCounts,
     boundary_split_entities,
     coverage,

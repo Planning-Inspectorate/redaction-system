@@ -1,8 +1,7 @@
 import json
 
 import pytest
-
-from tests.eval.corpus import (
+from eval.corpus import (
     CorpusValidationError,
     Document,
     Entity,

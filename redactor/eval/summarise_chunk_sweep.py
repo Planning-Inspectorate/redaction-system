@@ -24,10 +24,11 @@ Example:
 import argparse
 import csv
 import json
-import random
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import numpy as np
 
 from src.analysis.text import LLMTextAnalyser
 
@@ -250,10 +251,11 @@ def bootstrap_f_beta_differences(
     if not doc_ids or reference not in per_doc:
         return {}
 
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     differences = defaultdict(list)
+    doc_ids_array = np.array(doc_ids, dtype=object)
     for _ in range(iterations):
-        sample = [rng.choice(doc_ids) for _ in doc_ids]
+        sample = rng.choice(doc_ids_array, size=len(doc_ids)).tolist()
         scores = {}
         for variant, docs in per_doc.items():
             counts = ScoreCounts()

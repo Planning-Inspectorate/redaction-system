@@ -3,12 +3,10 @@ from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
-
-from src.types import LLMTextRedactionResult
-from tests.eval import run_chunk_sweep, summarise_chunk_sweep
-from tests.eval.corpus import Document, Entity, write_corpus
-from tests.eval.scoring import ScoreCounts
-from tests.eval.summarise_chunk_sweep import (
+from eval import run_chunk_sweep, summarise_chunk_sweep
+from eval.corpus import Document, Entity, write_corpus
+from eval.scoring import ScoreCounts
+from eval.summarise_chunk_sweep import (
     ALL_RULES,
     Guardrails,
     ScoredRun,
@@ -17,6 +15,8 @@ from tests.eval.summarise_chunk_sweep import (
     select_variant,
     summarise,
 )
+
+from src.types import LLMTextRedactionResult
 
 
 def test_overlap_for():
