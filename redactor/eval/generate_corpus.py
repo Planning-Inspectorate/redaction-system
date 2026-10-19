@@ -20,9 +20,9 @@ import argparse
 import hashlib
 import json
 import os
-import random
 from pathlib import Path
 
+import numpy as np
 from azure.identity import (
     AzureCliCredential,
     ChainedTokenCredential,
@@ -288,7 +288,8 @@ class CorpusGenerator:
         self, doc_id: str, scenario: dict, target_tokens: int, split: str
     ) -> tuple[Document | None, list[str]]:
         encoding = get_encoding("o200k_base")
-        rng = random.Random(doc_id)
+        doc_seed = int(hashlib.sha256(doc_id.encode()).hexdigest(), 16)
+        rng = np.random.default_rng(doc_seed)
         sections: list[str] = []
         entities: dict[str, Entity] = {}
         cast: list[str] = []
@@ -367,12 +368,13 @@ def main(argv=None):
     generator = CorpusGenerator(
         args.model, guideline_summary(args.config), audit=not args.no_audit
     )
-    rng = random.Random(args.seed)
+    rng = np.random.default_rng(args.seed)
     sizes, weights = zip(*LENGTH_BUCKETS, strict=True)
+    probabilities = np.array(weights) / sum(weights)
     with out_path.open("a", encoding="utf-8") as out:
         for index in range(args.documents):
             scenario = SCENARIOS[index % len(SCENARIOS)]
-            target_tokens = rng.choices(sizes, weights)[0]
+            target_tokens = int(rng.choice(sizes, p=probabilities))
             doc_id = f"syn-{index:04d}-{scenario['doc_type']}"
             if doc_id in existing_ids:
                 continue
