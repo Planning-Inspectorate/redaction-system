@@ -37,6 +37,10 @@ ANALYSER_REFRESH_SECONDS = 45 * 60
 def load_rule_configs(
     config_name: str, rules: list[str]
 ) -> dict[str, LLMTextRedactionConfig]:
+    """Load the named config and return its LLM rule configs, keyed by rule name
+
+    :raises ValueError: If any requested rule is not in the config.
+    """
     parsed = ConfigProcessor.validate_and_parse_redaction_config(
         ConfigProcessor.load_config(config_name)
     )
@@ -52,10 +56,12 @@ def load_rule_configs(
 
 
 def overlap_for(chunk_size: int, overlap_ratio: float) -> int:
+    """Chunk overlap in tokens for a ratio of the chunk size, kept below the size"""
     return min(round(chunk_size * overlap_ratio), chunk_size - 1)
 
 
 def row_key(row: dict) -> tuple:
+    """Identify a result row by the run it represents, used to skip finished work"""
     return (
         row["rule"],
         row["chunk_size"],
@@ -66,6 +72,7 @@ def row_key(row: dict) -> tuple:
 
 
 def load_completed_keys(out_path: Path) -> set[tuple]:
+    """Return the keys of rows already in the output file (empty if it is missing)"""
     if not out_path.exists():
         return set()
     with out_path.open(encoding="utf-8") as f:
@@ -76,9 +83,11 @@ class AnalyserPool:
     """Caches one LLMTextAnalyser per rule, recreating it before its token expires"""
 
     def __init__(self):
+        """Start with no cached analysers"""
         self._analysers: dict[str, tuple[float, LLMTextAnalyser]] = {}
 
     def get(self, rule: str, config: LLMTextRedactionConfig) -> LLMTextAnalyser:
+        """Return the rule's analyser, with its token and cost counters reset to zero"""
         created, analyser = self._analysers.get(rule, (0.0, None))
         if analyser is None or time.monotonic() - created > ANALYSER_REFRESH_SECONDS:
             analyser = LLMTextAnalyser(config)
@@ -159,6 +168,13 @@ def run_task(
 
 
 def run_sweep(args: argparse.Namespace):
+    """
+    Run every rule over each corpus document at each chunk size, logging results.
+
+    Each (rule, chunk size, repeat, document) run appends one JSON row (predictions,
+    token counts, cost, latency) to the output file. Runs already in the file are
+    skipped, so the sweep can be resumed, and it stops once the budget is spent.
+    """
     documents = load_corpus(args.corpus, split=args.split)
     if args.limit:
         documents = documents[: args.limit]
@@ -263,6 +279,7 @@ def run_sweep(args: argparse.Namespace):
 
 
 def parse_args(argv=None) -> argparse.Namespace:
+    """Define and parse the command line arguments for the sweep"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--corpus", required=True, help="Path to a JSONL corpus")
     parser.add_argument("--split", choices=["dev", "test"], default="dev")

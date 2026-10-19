@@ -236,6 +236,11 @@ list if the labels are complete.
 
 class CorpusGenerator:
     def __init__(self, model: str, guidelines: str, audit: bool = True):
+        """
+        :param model: Name of the Azure OpenAI deployment used to generate text.
+        :param guidelines: Labelling guidance, as built by `guideline_summary`.
+        :param audit: If True, a second LLM pass looks for entities the generator missed.
+        """
         token_provider = get_bearer_token_provider(
             ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential()),
             "https://cognitiveservices.azure.com/.default",
@@ -250,6 +255,7 @@ class CorpusGenerator:
         self.audit = audit
 
     def _parse(self, instructions: str, prompt: str, response_format):
+        """Call the model with a structured-output schema and return the parsed object"""
         response = self.client.chat.completions.parse(
             model=self.model,
             messages=[
@@ -264,6 +270,13 @@ class CorpusGenerator:
     def generate_section(
         self, doc_type: str, brief: str, cast: list[str], previous: str
     ) -> GeneratedSection:
+        """
+        Generate one section of a document along with its entity labels.
+
+        :param brief: Description of what the section should contain.
+        :param cast: People introduced so far, so they can be reused for continuity.
+        :param previous: Text generated so far; its tail is used to continue from.
+        """
         prompt = (
             f"Document type: {doc_type}\n"
             f"Section brief: {brief}\n"
@@ -290,6 +303,17 @@ class CorpusGenerator:
     def generate_document(
         self, doc_id: str, scenario: dict, target_tokens: int, split: str
     ) -> tuple[Document | None, list[str]]:
+        """
+        Build a labelled document by generating sections until the target length.
+
+        Labels that use an unknown rule or are not verbatim in the text are dropped
+        with a warning. The document is rejected (None) if labels conflict or fail
+        validation.
+
+        :param scenario: Dict with the `doc_type` and section `brief`.
+        :param target_tokens: Approximate document length in tokens.
+        :return: The document (or None) and any warnings or problems found.
+        """
         encoding = get_encoding("o200k_base")
         doc_seed = int(hashlib.sha256(doc_id.encode()).hexdigest(), 16)
         rng = np.random.default_rng(doc_seed)
@@ -345,11 +369,16 @@ class CorpusGenerator:
 
 
 def assign_split(doc_id: str, test_fraction: float) -> str:
+    """Deterministically assign a document to "test" or "dev" by hashing its id"""
     bucket = int(hashlib.sha256(doc_id.encode()).hexdigest(), 16) % 1000
     return "test" if bucket < test_fraction * 1000 else "dev"
 
 
 def main(argv=None):
+    """Command line entry point: generate documents and append them to --out.
+
+    Documents whose ids are already in the output file are skipped, so an
+    interrupted run can be resumed."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--model", required=True, help="Generator model deployment")
     parser.add_argument("--documents", type=int, default=120)
