@@ -72,13 +72,16 @@ class VariantSummary:
 
     @property
     def cost_per_1k_doc_tokens(self) -> float:
+        """Cost in GBP per 1,000 tokens of document text processed"""
         return 1000 * self.cost_gbp / self.doc_tokens if self.doc_tokens else 0.0
 
     @property
     def failed_chunk_rate(self) -> float:
+        """Fraction of chunks whose LLM call failed"""
         return self.failed_chunks / self.chunk_count if self.chunk_count else 0.0
 
     def to_row(self, beta: float) -> dict:
+        """Flatten the summary into a rounded dict of metrics for a CSV/report row"""
         boundary_recall = self.counts.boundary_recall
         return {
             "chunk_size": self.variant[0],
@@ -206,6 +209,7 @@ def consistency(runs: list[ScoredRun]) -> float:
 
 
 def summarise(scored: list[ScoredRun]) -> dict[tuple[Variant, str], VariantSummary]:
+    """Aggregate scored runs into one summary per (variant, rule)"""
     grouped = defaultdict(list)
     for run in scored:
         grouped[(run.variant, run.rule)].append(run)
@@ -338,6 +342,7 @@ def select_variant(
 def best_variant(
     summaries: dict[tuple[Variant, str], VariantSummary], rule: str, beta: float
 ) -> Variant | None:
+    """Return the variant with the highest F-beta for a rule, or None if no data"""
     candidates = [v for v, r in summaries if r == rule]
     if not candidates:
         return None
@@ -345,6 +350,10 @@ def best_variant(
 
 
 def parse_recall_floors(values: list[str]) -> dict[str, float]:
+    """Parse "rule=minimum" strings into a dict of per-rule recall floors
+
+    :raises argparse.ArgumentTypeError: If a rule is unknown or the floor is missing.
+    """
     floors = {}
     for value in values:
         rule, _, floor = value.partition("=")
@@ -355,6 +364,7 @@ def parse_recall_floors(values: list[str]) -> dict[str, float]:
 
 
 def main(argv=None):
+    """Command line entry point: score sweep results and write summaries to --out-dir"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--corpus", required=True)
     parser.add_argument("--results", required=True, nargs="+")
