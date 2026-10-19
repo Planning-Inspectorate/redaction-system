@@ -28,6 +28,7 @@ _GROUP_HEADING = re.compile(r"^\s*Group [AB]\s*$\n?", re.MULTILINE)
 
 
 def extract_pdf_text(path: Path) -> str:
+    """Extract the text of every page of a PDF, separating pages with blank lines"""
     with pymupdf.open(path) as pdf:
         return "\n\n".join(page.get_text() for page in pdf)
 
@@ -62,6 +63,17 @@ def label_document(
     negatives: list[str],
     source: str,
 ) -> tuple[Document, list[str]]:
+    """
+    Build a corpus Document from text and legacy lists of terms to (not) redact.
+
+    Terms are matched verbatim against the text; terms not found are skipped and
+    duplicates are only labelled once.
+
+    :param positives: Terms that should be redacted.
+    :param negatives: Terms that look sensitive but should not be redacted.
+    :param source: Name of the file the text came from.
+    :return: The document, and the input terms that were found in the text.
+    """
     entities = []
     found = set()
     for terms, redact in ((positives, True), (negatives, False)):
@@ -89,6 +101,15 @@ def label_document(
 
 
 def convert(data_dir: Path = E2E_DATA) -> tuple[list[Document], list[str]]:
+    """
+    Convert the existing e2e PDFs and term lists into labelled corpus documents.
+
+    Produces one document per anonymisation sample plus one for the evaluation
+    dataset, and validates every document's labels.
+
+    :return: The documents, and the terms that could not be found in the text.
+    :raises ValueError: If a document's labels are invalid.
+    """
     documents = []
     used_terms = set()
 
@@ -136,6 +157,7 @@ def convert(data_dir: Path = E2E_DATA) -> tuple[list[Document], list[str]]:
 
 
 def main(argv=None):
+    """Command line entry point: convert the samples and write them to --out"""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)

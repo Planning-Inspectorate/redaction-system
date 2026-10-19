@@ -16,6 +16,7 @@ _WORD = re.compile(r"[^\W_]+(?:[@][^\W_]+)?", re.UNICODE)
 
 
 def normalise_words(text: str) -> tuple[str, ...]:
+    """Lower-case text, strip possessives and split it into a tuple of words"""
     return tuple(_WORD.findall(_POSSESSIVE.sub("", text).casefold()))
 
 
@@ -68,6 +69,7 @@ class ScoreCounts:
     boundary_true_positives: int = 0
 
     def __add__(self, other: "ScoreCounts") -> "ScoreCounts":
+        """Sum every counter, so counts from several documents can be combined"""
         return ScoreCounts(
             **{
                 f.name: getattr(self, f.name) + getattr(other, f.name)
@@ -77,15 +79,18 @@ class ScoreCounts:
 
     @property
     def precision(self) -> float:
+        """Share of predictions that were correct (1.0 if there are none)"""
         denominator = self.correct_predictions + self.false_positives
         return self.correct_predictions / denominator if denominator else 1.0
 
     @property
     def recall(self) -> float:
+        """Share of positive entities that were redacted (1.0 if there are none)"""
         return self.true_positives / self.positives if self.positives else 1.0
 
     @property
     def hard_negative_fp_rate(self) -> float:
+        """Share of hard negatives (look sensitive, must be kept) wrongly redacted"""
         return (
             self.hard_negative_hits / self.hard_negatives
             if self.hard_negatives
@@ -94,11 +99,13 @@ class ScoreCounts:
 
     @property
     def boundary_recall(self) -> float | None:
+        """Recall for entities split across chunks, or None if there were none"""
         if not self.boundary_positives:
             return None
         return self.boundary_true_positives / self.boundary_positives
 
     def f_beta(self, beta: float = 2.0) -> float:
+        """F-beta score of these counts' precision and recall"""
         return f_beta(self.precision, self.recall, beta)
 
 
