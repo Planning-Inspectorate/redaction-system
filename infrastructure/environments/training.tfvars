@@ -12,6 +12,10 @@ storage_containers = [
 
 openai_quota = 300
 
+openai_quotas = {
+  gpt_56_luna = 300
+}
+
 budget_alert_config = {
   expected_cost = 1000
 }
