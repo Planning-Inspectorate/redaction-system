@@ -107,6 +107,9 @@ For `LLMTextRedaction` rules, each rule has:
   (e.g. "do not redact the author's own name")
 - `examples` *(optional)* — short worked examples illustrating correct redaction decisions for
   ambiguous cases, phrased as "text — decision, because reason"
+- `chunk_size` / `chunk_overlap` *(optional)* — how the text is split before being sent to the
+  LLM, in **tokens** (default 1500 / 60). Image rules inherit these from the text rule they
+  reference. See [tests/eval](../../tests/eval/README.md) for how to choose them.
 
 `LLMTextRedactionConfig.create_system_prompt()` (in `config.py`) compiles these fields into
 the actual system prompt sent to the LLM, wrapping `role`, `task`, `redaction_terms`,
