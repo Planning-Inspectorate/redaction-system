@@ -22,36 +22,49 @@ class TextRedactionConfig(RedactionConfig):
 
 
 class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
-    system_prompt: str
-    """The system prompt for the LLM"""
+    role: str
+    """A short statement of the assistant's role and the domain context for the
+    redaction task"""
+    task: str
+    """The specific instruction describing what counts as personal data here and how
+    to apply it consistently"""
     redaction_terms: list[str]
     """A list of redaction rule strings to apply"""
-    constraints: list[str] = None
-    """A list of constraint strings to apply"""
-    output_format: str = (
-        "<OutputFormat> You respond in JSON format. You return the "
-        "successfully extracted terms from the text in JSON list named "
-        '"terms". List them as they appear in the text. '
-        "</OutputFormat>"
-    )
+    must_redact: list[str] = None
+    """A list of additional rules clarifying what must be redacted"""
+    do_not_redact: list[str] = None
+    """A list of exceptions/exclusions describing what must never be redacted"""
+    examples: list[str] = None
+    """A list of worked examples illustrating correct redaction decisions for
+    ambiguous cases"""
 
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
     def create_system_prompt(self) -> str:
         system_prompt_list: list[str] = []
-        # Add the system role and redaction_terms to redact
-        system_prompt_list.append(xml_format(self.system_prompt, "SystemRole"))
+        # Add the role, task and redaction_terms to redact
+        system_prompt_list.append(xml_format(self.role, "Role"))
+        system_prompt_list.append(xml_format(self.task, "Task"))
         system_prompt_list.append(
             xml_format(self.redaction_terms, "Terms", as_list=True)
         )
 
-        # Add the output format instructions
-        system_prompt_list.append(self.output_format)
-
-        # Add any constraints to the System prompt
-        if self.constraints:
+        # Add any rules clarifying what must be redacted
+        if self.must_redact:
             system_prompt_list.append(
-                xml_format(self.constraints, "Constraints", as_list=True)
+                xml_format(self.must_redact, "MustRedact", as_list=True)
+            )
+
+        # Add any exceptions/exclusions describing what must never be redacted
+        if self.do_not_redact:
+            system_prompt_list.append(
+                xml_format(self.do_not_redact, "DoNotRedact", as_list=True)
+            )
+
+        # Add any worked examples
+        if self.examples:
+            system_prompt_list.append(
+                xml_format(self.examples, "Examples", as_list=True)
             )
 
         # Add the defined redaction rules to the System prompt
