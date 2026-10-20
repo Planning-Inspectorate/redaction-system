@@ -89,7 +89,7 @@ class ImageRedactionConfig(RedactionConfig):
 
         face_detection: float | None = Field(0.5, ge=0.0, le=1.0)
         """Confidence threshold for face detection model"""
-        signature_detection: float | None = Field(0.5, ge=0.0, le=1.0)
+        signature_detection: float | None = Field(0.7, ge=0.0, le=1.0)
         """Confidence threshold for signature detection model"""
 
     confidence_thresholds: ConfidenceThresholdConfig = ConfidenceThresholdConfig()
