@@ -20,7 +20,9 @@ import argparse
 import hashlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Lock
 
 import numpy as np
 from azure.identity import (
@@ -356,6 +358,12 @@ def main(argv=None):
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--no-audit", action="store_true")
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Number of documents to generate in parallel",
+    )
     args = parser.parse_args(argv)
 
     out_path = Path(args.out)
@@ -371,14 +379,21 @@ def main(argv=None):
     rng = np.random.default_rng(args.seed)
     sizes, weights = zip(*LENGTH_BUCKETS, strict=True)
     probabilities = np.array(weights) / sum(weights)
+
+    tasks = []
+    for index in range(args.documents):
+        scenario = SCENARIOS[index % len(SCENARIOS)]
+        target_tokens = int(rng.choice(sizes, p=probabilities))
+        doc_id = f"syn-{index:04d}-{scenario['doc_type']}"
+        if doc_id in existing_ids:
+            continue
+        split = assign_split(doc_id, args.test_fraction)
+        tasks.append((doc_id, scenario, target_tokens, split))
+
+    write_lock = Lock()
     with out_path.open("a", encoding="utf-8") as out:
-        for index in range(args.documents):
-            scenario = SCENARIOS[index % len(SCENARIOS)]
-            target_tokens = int(rng.choice(sizes, p=probabilities))
-            doc_id = f"syn-{index:04d}-{scenario['doc_type']}"
-            if doc_id in existing_ids:
-                continue
-            split = assign_split(doc_id, args.test_fraction)
+
+        def build_document(doc_id, scenario, target_tokens, split):
             for attempt in range(1, args.max_attempts + 1):
                 document, warnings = generator.generate_document(
                     doc_id, scenario, target_tokens, split
@@ -386,15 +401,25 @@ def main(argv=None):
                 for warning in warnings:
                     print(f"  {doc_id}: {warning}")
                 if document:
-                    out.write(json.dumps(document.to_dict(), ensure_ascii=False) + "\n")
-                    out.flush()
+                    # Serialise writes since multiple threads share the output file
+                    with write_lock:
+                        out.write(
+                            json.dumps(document.to_dict(), ensure_ascii=False) + "\n"
+                        )
+                        out.flush()
                     print(
                         f"{doc_id}: {split}, ~{target_tokens} tokens, "
                         f"{len(document.positives())} positives, "
                         f"{len(document.negatives())} hard negatives"
                     )
-                    break
+                    return
                 print(f"{doc_id}: attempt {attempt} failed, retrying")
+
+        max_workers = min(args.max_workers, len(tasks)) or 1
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(build_document, *task) for task in tasks]
+            for future in as_completed(futures):
+                future.result()
 
 
 if __name__ == "__main__":
