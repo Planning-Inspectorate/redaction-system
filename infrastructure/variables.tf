@@ -85,8 +85,10 @@ variable "openai_quotas" {
   description = "The quota allocations for the Open AI deployments, which equates to x thousand tokens per minute"
   type = object({
     gpt_56_luna = number
+    gpt_6_sol   = number
   })
   default = {
     gpt_56_luna = 3000
+    gpt_6_sol   = 3000
   }
 }

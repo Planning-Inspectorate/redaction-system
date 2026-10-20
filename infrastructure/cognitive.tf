@@ -47,6 +47,22 @@ resource "azurerm_cognitive_deployment" "open_ai_gpt_56_luna" {
   }
 }
 
+resource "azurerm_cognitive_deployment" "open_ai_gpt_6_sol" {
+  name                 = "gpt-6-sol"
+  cognitive_account_id = azurerm_cognitive_account.open_ai.id
+
+  model {
+    format  = "OpenAI"
+    name    = "gpt-6-sol"
+    version = "2026-09-22"
+  }
+
+  sku {
+    name     = "DataZoneStandard"
+    capacity = var.openai_quotas.gpt_6_sol
+  }
+}
+
 resource "azurerm_cognitive_account" "computer_vision" {
   #checkov:skip=CKV2_AZURE_22: Customer Managed Keys not implemented
   name                               = "${local.org}-cv-${local.resource_suffix}"
