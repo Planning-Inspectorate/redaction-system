@@ -18,7 +18,8 @@ class TestRedact:
             redactor_type="ImageLLMTextRedaction",
             model="gpt-4.1",
             images=[],
-            system_prompt="Identify redaction strings",
+            role="some role",
+            task="Identify redaction strings",
             redaction_terms=["Names"],
         )
         redactor_inst = ImageLLMTextRedactor(config)
@@ -41,7 +42,8 @@ class TestRedact:
             redactor_type="ImageLLMTextRedaction",
             model="gpt-4.1",
             images=[image],
-            system_prompt="Identify any number plates or registration numbers in the text",
+            role="some role",
+            task="Identify any number plates or registration numbers in the text",
             redaction_terms=["Number plates", "Registration numbers"],
         )
         redactor_inst = ImageLLMTextRedactor(config)
@@ -66,7 +68,8 @@ class TestRedact:
             redactor_type="ImageLLMTextRedaction",
             model="gpt-4.1",
             images=[image.copy(), image.copy()],
-            system_prompt="Identify any number plates or registration numbers in the text",
+            role="some role",
+            task="Identify any number plates or registration numbers in the text",
             redaction_terms=["Number plates", "Registration numbers"],
         )
         redactor_inst = ImageLLMTextRedactor(config)
@@ -94,7 +97,8 @@ class TestAnalyseImageText:
                 Image.new("RGB", (100, 100)),
                 Image.new("RGB", (100, 100)),
             ],
-            system_prompt="Identify any person names in the text",
+            role="some role",
+            task="Identify any person names in the text",
             redaction_terms=["Names"],
         )
         image_text_rect_map = [
@@ -145,7 +149,8 @@ class TestAnalyseImageText:
             redactor_type="ImageLLMTextRedaction",
             model="gpt-4.1",
             images=[Image.new("RGB", (100, 100))],
-            system_prompt="Identify any person names in the text",
+            role="some role",
+            task="Identify any person names in the text",
             redaction_terms=["Names"],
         )
         image_text_rect_map = [

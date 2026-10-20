@@ -89,11 +89,14 @@ def test__update_max_tokens__limit():
 
 
 def test__llm_text_analyser____init__():
-    llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
-        token_rate_limit=2000,
-    )
-    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    mock_token = Mock()
+    mock_token.token = "mock_token"
+    with patch(f"{MODULE}.ChainedTokenCredential.get_token", return_value=mock_token):
+        llm_text_analyser_config = LLMTextAnalyserConfig(
+            model="gpt-4.1",
+            token_rate_limit=2000,
+        )
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     assert llm_text_analyser.config.token_rate_limit == 2000
     assert llm_text_analyser.config.token_encoding_name == "cl100k_base"
@@ -319,6 +322,26 @@ def test__llm_text_analyser___compute_costs():
     assert llm_text_analyser.input_token_count == 10
     assert llm_text_analyser.output_token_count == 15
     assert llm_text_analyser.total_cost == 40
+
+
+def test__llm_text_analyser___compute_costs__cached_and_reasoning_tokens():
+    """
+    - Given an LLM usage object that includes cached input and reasoning token details
+    - When I call _compute_costs
+    - Then the cached and reasoning token counts should be accumulated
+    """
+    llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-4.1"))
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.output_token_cost = 2
+    usage = MockLLMChatCompletionUsage(prompt_tokens=10, completion_tokens=15)
+    usage.prompt_tokens_details = Mock(cached_tokens=6)
+    usage.completion_tokens_details = Mock(reasoning_tokens=9)
+
+    llm_text_analyser._compute_costs(usage)
+    llm_text_analyser._compute_costs(usage)
+
+    assert llm_text_analyser.cached_input_token_count == 12
+    assert llm_text_analyser.reasoning_token_count == 18
 
 
 @patch.object(
@@ -728,6 +751,63 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_enco
 
     assert actual_result.redaction_strings == ("string A",)
     assert actual_result.metadata.request_count == 1
+
+
+@patch(f"{MODULE}.get_encoding")
+def test__llm_text_analyser__analyse_text__sequential_failed_chunk_counted(
+    mock_get_encoding,
+):
+    """
+    - Given a chunk whose analysis returns no result after all retries
+    - When analyse_text processes chunks sequentially
+    - Then processing should continue and the failure should be counted in metadata
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-4.1", max_concurrent_requests=1)
+    )
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=[None, (create_mock_chat_completion(["string B"]), ["string B"])],
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B"],
+        )
+
+    assert actual_result.redaction_strings == ("string B",)
+    assert actual_result.metadata.request_count == 2
+    assert actual_result.metadata.failed_chunk_count == 1
+
+
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+def test__llm_text_analyser__analyse_text__parallel_failed_chunk_counted():
+    """
+    - Given a chunk whose analysis returns no result after all retries
+    - When analyse_text processes chunks in parallel
+    - Then the failure should be counted in metadata
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-4.1", max_concurrent_requests=4)
+    )
+    results = {
+        "chunk A": None,
+        "chunk B": (create_mock_chat_completion(["string B"]), ["string B"]),
+    }
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=lambda system_prompt, user_prompt: results[user_prompt],
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B"],
+        )
+
+    assert actual_result.redaction_strings == ("string B",)
+    assert actual_result.metadata.failed_chunk_count == 1
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)

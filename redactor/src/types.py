@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from PIL.Image import Image
 from pydantic import (
     BaseModel,
+    Field,
     GetCoreSchemaHandler,
     GetJsonSchemaHandler,
 )
@@ -140,6 +141,12 @@ class LLMTextRedactionResult(TextRedactionResult):
         output_token_count: int = field(default=0)
         total_token_count: int = field(default=0)
         total_cost: float = field(default=0.0)
+        cached_input_token_count: int = field(default=0)
+        """Input tokens served from the prompt cache (a subset of input_token_count)"""
+        reasoning_token_count: int = field(default=0)
+        """Reasoning tokens used by the model (a subset of output_token_count)"""
+        failed_chunk_count: int = field(default=0)
+        """Chunks that returned no result after all retries, e.g. due to truncation"""
 
     metadata: LLMResultMetadata = field(default=None)
     """Any metadata provided by the LLM"""
@@ -151,4 +158,10 @@ class ImageLLMTextRedactionResult(LLMTextRedactionResult, ImageRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
+    redaction_strings: list[str] = Field(
+        description=(
+            "The exact text spans to redact, copied verbatim from the input text. "
+            "Do not paraphrase, expand, shorten, or normalise the wording. Do not "
+            "include duplicate entries. Return an empty list if nothing qualifies."
+        )
+    )

@@ -157,6 +157,8 @@ class LLMTextAnalyser:
 
         self.input_token_count = 0
         self.output_token_count = 0
+        self.cached_input_token_count = 0
+        self.reasoning_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
@@ -399,6 +401,15 @@ class LLMTextAnalyser:
         self.input_token_count += prompt_tokens
         self.output_token_count += completion_tokens
 
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        completion_details = getattr(usage, "completion_tokens_details", None)
+        self.cached_input_token_count += (
+            getattr(prompt_details, "cached_tokens", None) or 0
+        )
+        self.reasoning_token_count += (
+            getattr(completion_details, "reasoning_tokens", None) or 0
+        )
+
         self.total_cost += (
             prompt_tokens * self.input_token_cost
             + completion_tokens * self.output_token_cost
@@ -439,6 +450,7 @@ class LLMTextAnalyser:
             request_counter = 0
             text_to_redact = []
             responses: list[ParsedChatCompletion] = []
+            failed_chunk_count = 0
 
             # Check max concurrent requests
             if self.config.max_concurrent_requests > 32:
@@ -461,12 +473,20 @@ class LLMTextAnalyser:
             elif max_workers == 1:
                 # Process chunks sequentially if only one worker is allowed
                 for chunk in text_chunks:
-                    response, redaction_strings = self._analyse_text_chunk(
-                        system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)
-                    )
-                    responses.append(response)
-                    text_to_redact.extend(redaction_strings)
                     request_counter += 1
+                    try:
+                        response, redaction_strings = self._analyse_text_chunk(
+                            system_prompt,
+                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                        )
+                        responses.append(response)
+                        text_to_redact.extend(redaction_strings)
+                    except Exception as e:  # noqa: BLE001
+                        failed_chunk_count += 1
+                        LoggingUtil().log_exception_with_message(
+                            f"Error processing chunk {hash(chunk)}",
+                            e,
+                        )
 
                     # Check budget after each request
                     try:
@@ -495,6 +515,7 @@ class LLMTextAnalyser:
                             responses.append(response)
                             text_to_redact.extend(redaction_strings)
                         except Exception as e:  # noqa: BLE001
+                            failed_chunk_count += 1
                             LoggingUtil().log_exception_with_message(
                                 f"Error processing chunk {hash(chunk)}",
                                 e,
@@ -517,6 +538,9 @@ class LLMTextAnalyser:
             output_token_count=self.output_token_count,
             total_token_count=self.input_token_count + self.output_token_count,
             total_cost=self.total_cost,
+            cached_input_token_count=self.cached_input_token_count,
+            reasoning_token_count=self.reasoning_token_count,
+            failed_chunk_count=failed_chunk_count,
         )
         run_metrics = {
             "llm_analysis_time": timer.elapsed_time,
