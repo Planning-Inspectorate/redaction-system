@@ -75,12 +75,6 @@ variable "storage_containers" {
   type        = list(string)
 }
 
-variable "openai_quota" {
-  description = "The quota allocation for the Open AI deployment, which equates to x thousand tokens per minute"
-  type        = number
-  default     = 1000
-}
-
 variable "openai_quotas" {
   description = "The quota allocations for the Open AI deployments, which equates to x thousand tokens per minute"
   type = object({

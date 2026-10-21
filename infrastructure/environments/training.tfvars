@@ -10,8 +10,6 @@ storage_containers = [
   "analytics"
 ]
 
-openai_quota = 300
-
 budget_alert_config = {
   expected_cost = 1000
 }
