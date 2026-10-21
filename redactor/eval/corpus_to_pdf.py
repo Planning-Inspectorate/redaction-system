@@ -10,7 +10,9 @@ Each document becomes one PDF. Every occurrence of a labelled entity is highligh
 The annotation's title is the entity's rule and its content is the entity text, as in the
 redactor's own annotations. Its subject holds the label as JSON (rule, category, redact
 and rationale). Spans are found like the redactor finds them: on normalised words, so
-case and punctuation are ignored and "Ms" does not match inside "terms".
+case and punctuation are ignored and "Ms" does not match inside "terms". As in the
+redactor, the name part of an email address ("ada.merrin") matches the address it is in,
+and only that part of the address is highlighted.
 
 Example (run from the `redactor` directory):
 
@@ -27,7 +29,12 @@ from pathlib import Path
 
 import pymupdf
 
-from src.redaction.utils.pdf import ANNOT_HIGHLIGHT_COLOR
+from src.redaction.utils.pdf import ANNOT_HIGHLIGHT_COLOR, PDFUtil
+from src.redaction.utils.text import (
+    email_name_part_span,
+    get_normalised_words,
+    normalise_text,
+)
 
 from .corpus import RULE_NAMES, Document, Entity, load_corpus
 from .scoring import find_subsequence, normalise_words
@@ -80,11 +87,39 @@ def index_tokens(pdf: pymupdf.Document) -> list[Token]:
     return tokens
 
 
-def locate(tokens: list[Token], text: str) -> list[tuple[int, pymupdf.Rect]]:
-    """Find every occurrence of the text, as one (page number, rect) per line it spans"""
+def index_email_words(pdf: pymupdf.Document) -> list[tuple[str, int, pymupdf.Rect]]:
+    """Email addresses in the PDF, as (normalised address, page number, rect), so a
+    term that is only the name part of an address can be matched to it"""
+    return [
+        (normalise_text(word), page.number, pymupdf.Rect(x0, y0, x1, y1))
+        for page in pdf
+        for x0, y0, x1, y1, word, *_ in page.get_text("words")
+        if "@" in normalise_text(word)
+    ]
+
+
+def locate(
+    tokens: list[Token],
+    text: str,
+    email_words: list[tuple[str, int, pymupdf.Rect]] = (),
+    pdf: pymupdf.Document | None = None,
+) -> list[tuple[int, pymupdf.Rect]]:
+    """Find every occurrence of the text, as one (page number, rect) per line it spans.
+    A single-word text also matches the email address it is the name part of, narrowed
+    to that part if the PDF is given."""
     needle = normalise_words(text)
     haystack = tuple(token[0] for token in tokens)
     found = []
+    words = get_normalised_words(text)
+    if len(words) == 1:
+        for address, page_number, rect in email_words:
+            if span := email_name_part_span(address, words[0].casefold()):
+                edges = pdf and PDFUtil.get_character_edges(
+                    pdf[page_number], rect, address, span
+                )
+                if edges:
+                    rect = pymupdf.Rect(edges[0], rect.y0, edges[1], rect.y1)
+                found.append((page_number, rect))
     for start in find_subsequence(haystack, needle):
         lines: dict[tuple[int, int, int], list[Token]] = defaultdict(list)
         for token in tokens[start : start + len(needle)]:
@@ -143,11 +178,12 @@ def convert_document(
         }
     )
     tokens = index_tokens(pdf)
+    email_words = index_email_words(pdf)
     counts = {}
     for entity in document.entities:
         if entity.rule not in rules or not (entity.redact or include_keep):
             continue
-        matches = locate(tokens, entity.text)
+        matches = locate(tokens, entity.text, email_words, pdf)
         for page_number, rect in matches:
             add_highlight(pdf[page_number], rect, entity)
         counts[entity.text] = len(matches)

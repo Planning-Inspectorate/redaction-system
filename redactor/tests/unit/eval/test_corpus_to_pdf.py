@@ -2,10 +2,10 @@ import json
 
 import pymupdf
 import pytest
+from eval import corpus_to_pdf
 from eval.corpus import RULE_NAMES, Document, Entity, write_corpus
 from eval.corpus_to_pdf import KEEP_HIGHLIGHT_COLOR, convert_document
 
-from eval import corpus_to_pdf
 from src.redaction.utils.pdf import ANNOT_HIGHLIGHT_COLOR
 
 TEXT = (
@@ -171,3 +171,34 @@ def test_main__writes_a_pdf_per_document(tmp_path, capsys):
     assert "3 highlights for 3 of 3 entities" in capsys.readouterr().out
     saved = pymupdf.open(tmp_path / "pdfs" / "doc-1.pdf")
     assert len(_highlights(saved)) == 3
+
+
+def test_convert_document__highlights_only_the_name_part_of_an_email():
+    """
+    - Given an entity that is only the name part of an email address
+    - When I convert the document
+    - Then only that part of the address is highlighted, and the domain is not matched
+    """
+    text = "Email Ada.Merrin@post.invalid or write to the post office."
+    document = _document(
+        [
+            Entity("ada.merrin", "contact_identity_info", "email_name", True),
+            Entity("post", "contact_identity_info", "domain", True),
+        ],
+        text,
+    )
+
+    pdf, counts = convert_document(document, list(RULE_NAMES))
+
+    assert counts == {"ada.merrin": 1, "post": 1}
+    page = pdf[0]
+    annotations = {a.info["content"]: a for a in page.annots()}
+    vertices = annotations["ada.merrin"].vertices
+    name_part = pymupdf.Rect(*vertices[0], *vertices[-1])
+    expected = page.search_for("Ada.Merrin")[0]
+    assert (name_part.x0, name_part.x1) == pytest.approx(
+        (expected.x0, expected.x1), abs=0.5
+    )
+    # "post" only matches the word in "post office", not the email domain
+    highlights = {h["content"]: h["text"] for h in _highlights(pdf)}
+    assert highlights["post"] == "post"
