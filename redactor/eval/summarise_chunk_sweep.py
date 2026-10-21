@@ -316,6 +316,61 @@ def bootstrap_f_beta_differences(
     return intervals
 
 
+def bootstrap_mean_f_beta_differences(
+    scored: list[ScoredRun],
+    rule: str,
+    reference: Variant,
+    beta: float = 2.0,
+    iterations: int = 10000,
+    seed: int = 0,
+) -> dict[Variant, dict[str, float | int]]:
+    """
+    Paired bootstrap of the difference in mean per-document F-beta against a reference.
+
+    1. Per-document F-beta is averaged over repeats for each variant.
+    2. Per-document differences (variant - reference) are taken on the documents
+       both variants scored.
+    3. Documents are resampled with replacement and the mean difference recomputed
+       to give a 95% percentile interval.
+    """
+    per_doc: dict[Variant, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    for run in scored:
+        if run.rule == rule:
+            per_doc[run.variant][run.doc_id].append(run.counts.f_beta(beta))
+    if reference not in per_doc:
+        return {}
+    doc_means = {
+        variant: {doc_id: float(np.mean(v)) for doc_id, v in docs.items()}
+        for variant, docs in per_doc.items()
+    }
+
+    rng = np.random.default_rng(seed)
+    results = {}
+    for variant, means in doc_means.items():
+        shared = sorted(means.keys() & doc_means[reference].keys())
+        if not shared:
+            continue
+        diffs = np.array([means[d] - doc_means[reference][d] for d in shared])
+        if variant == reference:
+            lower = upper = 0.0
+        else:
+            idx = rng.integers(0, len(diffs), size=(iterations, len(diffs)))
+            boot_means = diffs[idx].mean(axis=1)
+            lower, upper = np.percentile(boot_means, [2.5, 97.5])
+        results[variant] = {
+            "mean_difference": float(diffs.mean()),
+            "ci_lower": float(lower),
+            "ci_upper": float(upper),
+            "ci_width": float(upper - lower),
+            # An interval excluding zero resolves the difference; otherwise more samples are needed
+            "conclusive": bool(variant != reference and (lower > 0 or upper < 0)),
+            "n_documents": len(diffs),
+        }
+    return results
+
+
 @dataclass
 class Guardrails:
     recall_floors: dict[str, float] = field(default_factory=dict)
@@ -565,7 +620,17 @@ def main(argv=None):
             scored, rule, best, args.beta, args.bootstrap_iterations
         )
         chosen, reasons = select_variant(summaries, intervals, guardrails, rule)
+        mean_diffs = bootstrap_mean_f_beta_differences(
+            scored, rule, best, args.beta, args.bootstrap_iterations
+        )
         recommendation[rule] = {
+            "mean_f_beta_difference_ci": {
+                f"{v[0]}/{v[1]}": {
+                    k: x if isinstance(x, bool) else round(x, 4)
+                    for k, x in stats.items()
+                }
+                for v, stats in sorted(mean_diffs.items())
+            },
             "best_f_beta_variant": best,
             "recommended_variant": chosen,
             "f_beta_difference_ci": {
@@ -603,6 +668,18 @@ def main(argv=None):
         print(
             f"{rule}: best F{args.beta:g} at {result['best_f_beta_variant']}, "
             f"recommended {result['recommended_variant']}"
+        )
+    print(
+        f"\nMean F{args.beta:g} difference vs best (95% paired bootstrap CI), {ALL_RULES}:"
+    )
+    for variant, stats in (
+        recommendation.get(ALL_RULES, {}).get("mean_f_beta_difference_ci", {}).items()
+    ):
+        verdict = "resolved" if stats["conclusive"] else "unresolved"
+        print(
+            f"  {variant}: {stats['mean_difference']:+.4f} "
+            f"[{stats['ci_lower']:+.4f}, {stats['ci_upper']:+.4f}] "
+            f"n={stats['n_documents']} {verdict}"
         )
     print(
         f"Wrote {out_dir / 'summary.csv'}, {out_dir / 'recommendation.json'} and plots"
