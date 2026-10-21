@@ -10,8 +10,6 @@ storage_containers = [
   "analytics"
 ]
 
-openai_quota = 300
-
 openai_quotas = {
   gpt_56_luna = 300
 }
