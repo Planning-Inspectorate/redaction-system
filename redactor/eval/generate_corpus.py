@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
@@ -449,6 +450,7 @@ def main(argv=None):
             futures = [executor.submit(build_document, *task) for task in tasks]
             for future in as_completed(futures):
                 future.result()
+                time.sleep(0.1)  # Small delay to prevent busy waiting
 
 
 if __name__ == "__main__":
