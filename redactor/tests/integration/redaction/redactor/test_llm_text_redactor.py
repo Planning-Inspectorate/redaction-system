@@ -18,7 +18,7 @@ class TestRedact:
         config = {
             "name": "config name",
             "redactor_type": "LLMTextRedaction",
-            "model": "gpt-4.1",
+            "model": "gpt-5.6-luna",
             "role": "You are an assistant that extracts requested terms from a given text.",
             "task": (
                 "You will be sent text to analyse. The text is a quote from Star Wars. "
@@ -80,7 +80,7 @@ class TestRedact:
         config = LLMTextRedactionConfig(
             name="config name",
             redactor_type="LLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             text="",
             role="some role",
             task="Identify redaction strings",
@@ -102,7 +102,7 @@ class TestRedact:
         config = LLMTextRedactionConfig(
             name="config name",
             redactor_type="LLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             text=None,
             role="some role",
             task="Identify redaction strings",

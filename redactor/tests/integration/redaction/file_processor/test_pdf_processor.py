@@ -43,7 +43,7 @@ def extract_annotated_text(document_bytes):
 def create_config(is_image: bool = False, label: str | None = None):
     llm_text_redaction_args = {
         "name": "config name",
-        "model": "gpt-4.1",
+        "model": "gpt-5.6-luna",
         "role": "You are an assistant that extracts requested terms from a given text.",
         "task": (
             "You will be sent text to analyse. The text is a quote from Star Trek. "

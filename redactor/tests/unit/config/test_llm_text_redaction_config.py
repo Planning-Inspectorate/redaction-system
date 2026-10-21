@@ -15,7 +15,7 @@ def test_llm_text_redactor__create_system_prompt():
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         text="some text",
         role="Some role",
         task="Some task",
@@ -139,7 +139,7 @@ def test_llm_text_redactor__create_system_prompt_only_required_fields():
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         text="some text",
         role="Some role",
         task="Some task",

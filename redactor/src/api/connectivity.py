@@ -49,13 +49,12 @@ def send_llm_message():
 
     try:
         response = llm.chat.completions.parse(
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             messages=[
                 {"role": "system", "content": "Respond with a json list"},
                 {"role": "user", "content": "Hello there"},
             ],
-            temperature=0.5,
-            max_tokens=1000,
+            max_completion_tokens=4000,
             response_format=SampleResultFormat,
         )
         resp: SampleResultFormat = response.choices[0].message.parsed

@@ -72,8 +72,6 @@ class LLMTextAnalyserConfig(BaseModel):
     """Maximum number of tokens per completion, including reasoning tokens"""
     reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     """Reasoning effort for reasoning models. None uses the model's default"""
-    temperature: float | None = 0.5
-    """LLM sampling temperature"""
     request_rate_limit: int | None = None
     """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
     token_rate_limit: int | None = None
@@ -109,12 +107,6 @@ class LLMTextAnalyser:
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
     OPENAI_MODELS: ClassVar[dict[str, dict[str, int]]] = {
-        "gpt-4.1": {
-            "token_rate_limit": 1000000,  # nosec: B105
-            "request_rate_limit": 1000,
-            "input_cost": 149,
-            "output_cost": 593,
-        },
         "gpt-5.6-luna": {  # need to check these values
             "token_rate_limit": 3000000,  # nosec: B105
             "request_rate_limit": 3000,
@@ -278,14 +270,10 @@ class LLMTextAnalyser:
             "model": self.config.model,
             "messages": api_messages,
             "response_format": response_format,
+            "max_completion_tokens": max_completion_tokens,
         }
-        if self.config.model == "gpt-4.1":
-            kwargs["max_tokens"] = max_completion_tokens
-            kwargs["temperature"] = self.config.temperature
-        else:
-            kwargs["max_completion_tokens"] = max_completion_tokens
-            if self.config.reasoning_effort:
-                kwargs["reasoning_effort"] = self.config.reasoning_effort
+        if self.config.reasoning_effort:
+            kwargs["reasoning_effort"] = self.config.reasoning_effort
 
         return self.llm.chat.completions.parse(**kwargs)
 

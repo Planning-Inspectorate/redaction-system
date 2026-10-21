@@ -11,7 +11,7 @@ class SampleResultFormat(BaseModel):
 
 def test__llm_text_analyser___num_tokens_consumed():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     system_prompt = "This is a system prompt."
@@ -34,7 +34,7 @@ def test__llm_text_analyser__invoke_chain__responds():
     - Then we should receive a ParsedChatCompletion response from the LLM
     """
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser_inst = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -57,7 +57,7 @@ def test__llm_text_analyser__invoke_chain__has_correct_response_format():
     - Then the completion response should contain a value that is an instance of our supplied result format
     """
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser_inst = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -101,7 +101,7 @@ def test__llm_text_analyser__invoke_chain__with_reasoning_effort():
 
 def test__llm_text_analyser__analyse_text():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser_inst = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -127,7 +127,7 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential():
     and still produce correct results.
     """
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser_inst = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -152,7 +152,7 @@ def test__llm_text_analyser__analyse_text__workers_capped_by_chunk_count():
     the actual worker count should be capped to the number of chunks.
     """
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         max_concurrent_requests=10,
     )
     llm_text_analyser_inst = LLMTextAnalyser(llm_text_analyser_config)

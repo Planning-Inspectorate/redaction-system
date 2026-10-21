@@ -35,7 +35,7 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         role="some role",
         task="some task",
         redaction_terms=[
@@ -51,7 +51,7 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
         metadata=LLMTextRedactionResult.LLMResultMetadata(
             request_count=0,
             input_token_count=0,
-            output_token_count=0,
+            completion_token_count=0,
             total_token_count=0,
             total_cost=0,
         ),
@@ -122,7 +122,7 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         role="some role",
         task="some task",
         redaction_terms=["rule A"],
@@ -159,7 +159,7 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         role="some role",
         task="some task",
         redaction_terms=["rule A"],
