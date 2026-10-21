@@ -21,6 +21,12 @@ from pathlib import Path
 
 import litellm
 import mlflow
+from azure.core.exceptions import ClientAuthenticationError
+from azure.identity import (
+    AzureCliCredential,
+    ChainedTokenCredential,
+    ManagedIdentityCredential,
+)
 from mlflow.entities.model_registry import PromptVersion
 from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 
@@ -50,6 +56,8 @@ EXPERIMENT_NAME = "redaction-prompt-engineering"
 RESULTS_DIR = Path("eval/results")
 DEFAULT_TRACKING_URI = f"sqlite:///{RESULTS_DIR.as_posix()}/mlflow.db"
 AZURE_API_VERSION = "2024-12-01-preview"
+AZURE_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"  # nosec: B105
+LLM_COMMANDS = ("evaluate", "optimise", "gate")
 META_GUIDELINES = (
     "This system prompt instructs an LLM to find text to redact from UK Planning "
     "Inspectorate (PINS) casework published online under UK GDPR. Keep the <Role>, "
@@ -445,9 +453,26 @@ def parse_args(argv=None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def check_azure_auth():
+    """Stop now if no Azure token can be obtained, as MLflow would otherwise catch the
+    error for every record and finish the run with all-zero scores"""
+    # Same credential chain as LLMTextAnalyser
+    credential = ChainedTokenCredential(
+        ManagedIdentityCredential(), AzureCliCredential()
+    )
+    try:
+        credential.get_token(AZURE_TOKEN_SCOPE)
+    except ClientAuthenticationError as e:
+        raise SystemExit(
+            f"Azure authentication failed, so no LLM calls can be made:\n{e}"
+        )
+
+
 def main(argv=None):
     args = parse_args(argv)
     setup_mlflow(args.tracking_uri)
+    if args.command in LLM_COMMANDS:
+        check_azure_auth()
     args.func(args)
 
 

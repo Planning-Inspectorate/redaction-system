@@ -2,12 +2,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from azure.core.exceptions import ClientAuthenticationError
 
 mlflow = pytest.importorskip("mlflow")
 
-from eval.corpus import Document, Entity, write_corpus
-
 from eval import optimise_prompt
+from eval.corpus import Document, Entity, write_corpus
 
 
 @pytest.fixture(autouse=True)
@@ -121,3 +121,31 @@ def test_gate__fails_when_not_better(tmp_path, capsys):
 
     assert "Gate failed" in capsys.readouterr().out
     mock_set_alias.assert_not_called()
+
+
+@pytest.mark.parametrize("command", ["evaluate", "optimise", "gate"])
+def test_main__stops_before_running_if_azure_auth_fails(command):
+    error = ClientAuthenticationError(message="no credentials")
+
+    with (
+        patch.object(optimise_prompt, "setup_mlflow"),
+        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(optimise_prompt, f"cmd_{command}") as mock_command,
+    ):
+        mock_credential.return_value.get_token.side_effect = error
+        with pytest.raises(SystemExit, match="Azure authentication failed"):
+            optimise_prompt.main([command, "--rule", "names"])
+
+    mock_command.assert_not_called()
+
+
+def test_main__skips_azure_check_for_commands_without_llm_calls():
+    with (
+        patch.object(optimise_prompt, "setup_mlflow"),
+        patch.object(optimise_prompt, "cmd_export") as mock_export,
+        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+    ):
+        optimise_prompt.main(["export", "--rule", "names", "--out", "x.yaml"])
+
+    mock_credential.assert_not_called()
+    mock_export.assert_called_once()
