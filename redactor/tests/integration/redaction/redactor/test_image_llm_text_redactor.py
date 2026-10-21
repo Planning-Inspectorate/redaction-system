@@ -16,7 +16,7 @@ class TestRedact:
         config = ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             images=[],
             system_prompt="Identify redaction strings",
             redaction_terms=["Names"],
@@ -39,7 +39,7 @@ class TestRedact:
         config = ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             images=[image],
             system_prompt="Identify any number plates or registration numbers in the text",
             redaction_terms=["Number plates", "Registration numbers"],
@@ -64,7 +64,7 @@ class TestRedact:
         config = ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             images=[image.copy(), image.copy()],
             system_prompt="Identify any number plates or registration numbers in the text",
             redaction_terms=["Number plates", "Registration numbers"],
@@ -89,7 +89,7 @@ class TestAnalyseImageText:
         config = ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             images=[
                 Image.new("RGB", (100, 100)),
                 Image.new("RGB", (100, 100)),
@@ -143,7 +143,7 @@ class TestAnalyseImageText:
         config = ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             images=[Image.new("RGB", (100, 100))],
             system_prompt="Identify any person names in the text",
             redaction_terms=["Names"],

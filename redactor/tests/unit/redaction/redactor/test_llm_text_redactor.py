@@ -35,7 +35,7 @@ def test__llm_text_redactor___analyse_text(mock_llm_text_redaction_config_init):
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         system_prompt="some system prompt",
         redaction_terms=[
             "rule A",
@@ -83,7 +83,7 @@ def test__llm_text_redactor___analyse_text__empty_text_skips_analysis(
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         system_prompt="some system prompt",
         redaction_terms=["rule A"],
     )
@@ -119,7 +119,7 @@ def test__llm_text_redactor___analyse_text__none_text_skips_analysis(
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         system_prompt="some system prompt",
         redaction_terms=["rule A"],
     )

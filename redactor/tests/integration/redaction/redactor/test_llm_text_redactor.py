@@ -18,7 +18,7 @@ class TestRedact:
         config = {
             "name": "config name",
             "redactor_type": "LLMTextRedaction",
-            "model": "gpt-4.1",
+            "model": "gpt-5.6-luna",
             "system_prompt": (
                 "You will be sent text to analyse. The text is a quote from Star Wars. "
                 "Please find all strings in the text that adhere to the following rules: "
@@ -79,7 +79,7 @@ class TestRedact:
         config = LLMTextRedactionConfig(
             name="config name",
             redactor_type="LLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             text="",
             system_prompt="Identify redaction strings",
             redaction_terms=["Names"],
@@ -100,7 +100,7 @@ class TestRedact:
         config = LLMTextRedactionConfig(
             name="config name",
             redactor_type="LLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             text=None,
             system_prompt="Identify redaction strings",
             redaction_terms=["Names"],
