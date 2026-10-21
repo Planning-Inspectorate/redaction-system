@@ -128,14 +128,13 @@ def estimate_cost_gbp(row: dict) -> float:
     cached_input_cost = model["cached_input_cost"] * 1e-8
     cache_write_cost = model["cache_write_cost"] * 1e-8
 
-    reasoning = row.get("reasoning_tokens", 0)
     cached = row.get("cached_input_tokens", 0)
     cache_write = row.get("cache_write_tokens", 0)
-    uncached = row["input_tokens"] - cached
+    uncached = row["input_tokens"] - cached - cache_write
     return (
         uncached * input_cost
         + cached * cached_input_cost
-        + (row["completion_tokens"] + reasoning) * completion_cost
+        + row["completion_tokens"] * completion_cost
         + cache_write * cache_write_cost
     )
 
@@ -562,12 +561,6 @@ def main(argv=None):
     parser.add_argument("--out-dir", required=True)
     parser.add_argument("--beta", type=float, default=2.0)
     parser.add_argument("--coverage-threshold", type=float, default=0.8)
-    parser.add_argument(
-        "--cached-input-cost-ratio",
-        type=float,
-        default=0.1,
-        help="Price of cached input tokens relative to uncached input tokens",
-    )
     parser.add_argument(
         "--recall-floor",
         nargs="*",
