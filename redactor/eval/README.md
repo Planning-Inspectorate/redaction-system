@@ -16,6 +16,7 @@ from inside the VNet (e.g. a pipeline agent or a VM on the network).
 | `corpus.py` | JSONL corpus schema (`Document`, `Entity`) and validation |
 | `scoring.py` | Entity-level matching and TP/FP/FN, precision, recall, F-beta |
 | `generate_corpus.py` | Generates a labelled synthetic corpus with an LLM |
+| `corpus_to_pdf.py` | Writes a corpus to PDFs, highlighting each labelled span with its label as metadata |
 | `convert_existing_samples.py` | Converts the labelled e2e PDFs into held-out documents |
 | `run_chunk_sweep.py` | Runs every rule over the corpus at each chunk size, and records predictions and token usage |
 | `summarise_chunk_sweep.py` | Scores sweep results, bootstraps confidence intervals and recommends a size |
@@ -108,6 +109,8 @@ Run all commands from the `redactor` directory.
 - `cross_rule_predictions`: correct redactions found by a different rule than the label's.
   They count as false positives only if no rule's label matches.
 - `unlocatable_predictions`: strings that don't occur in the text and so can't be applied.
+  An email address counts as one word, and a prediction that is only its name part
+  (`ada.merrin`) is located, since the redactor redacts that part of the address.
 - `boundary_recall`: recall on entities that were split across a chunk boundary. Low values
   suggest increasing the overlap.
 - `consistency`: fraction of entities with the same outcome in every repeat.

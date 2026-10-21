@@ -13,9 +13,9 @@ from mlflow.genai.scorers import scorer
 
 from .corpus import Document, Entity
 from .scoring import (
+    DocumentWords,
     ScoreCounts,
     find_subsequence,
-    normalise_words,
     overlaps,
     positive_outcomes,
     score_document,
@@ -72,20 +72,20 @@ def describe_errors(document: Document, outputs: Any, rule: str) -> str:
         if not outcomes[entity.text]
     ]
 
-    document_words = normalise_words(document.text)
-    labelled_words = [normalise_words(e.text) for e in document.positives()]
+    document_words = DocumentWords(document.text)
+    labelled_words = [document_words.of(e.text) for e in document.positives()]
     negatives = document.negatives(rule)
     hard_negative_hits = set()
     for prediction in dict.fromkeys(predictions):
-        words = normalise_words(prediction)
+        words = document_words.of(prediction)
         if not words:
             continue
-        if not find_subsequence(document_words, words):
+        if not find_subsequence(document_words.words, words):
             lines.append(
                 f"Not found verbatim in the text, so cannot be applied: '{prediction}'"
             )
         elif not any(overlaps(words, label) for label in labelled_words):
-            hits = [e for e in negatives if overlaps(words, normalise_words(e.text))]
+            hits = [e for e in negatives if overlaps(words, document_words.of(e.text))]
             if not hits:
                 lines.append(f"Redacted with no matching label: '{prediction}'")
             hard_negative_hits.update(hits)
