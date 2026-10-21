@@ -28,6 +28,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 
 from src.analysis.text import LLMTextAnalyser
@@ -69,6 +73,10 @@ class VariantSummary:
     latency_s: float
     runs: int
     consistency: float
+    within_doc_variance: float
+    """Mean variance of per-document F-beta across repeats (noise from repeated runs)"""
+    between_doc_variance: float
+    """Variance across documents of the per-document mean F-beta (noise from corpus)"""
 
     @property
     def cost_per_1k_doc_tokens(self) -> float:
@@ -103,6 +111,8 @@ class VariantSummary:
             if boundary_recall is None
             else round(boundary_recall, 4),
             "consistency": round(self.consistency, 4),
+            "within_doc_variance": round(self.within_doc_variance, 6),
+            "between_doc_variance": round(self.between_doc_variance, 6),
             "failed_chunk_rate": round(self.failed_chunk_rate, 4),
             "cost_gbp": round(self.cost_gbp, 4),
             "cost_per_1k_doc_tokens": round(self.cost_per_1k_doc_tokens, 6),
@@ -110,17 +120,23 @@ class VariantSummary:
         }
 
 
-def estimate_cost_gbp(row: dict, cached_input_cost_ratio: float) -> float:
+def estimate_cost_gbp(row: dict) -> float:
     """Cost of a row, applying the cached-input discount that `total_cost` omits"""
     model = LLMTextAnalyser.OPENAI_MODELS[row["model"]]
-    input_cost = model["input_cost"] / 1_000_000
-    output_cost = model["output_cost"] / 1_000_000
+    input_cost = model["input_cost"] * 1e-8
+    completion_cost = model["output_cost"] * 1e-8
+    cached_input_cost = model["cached_input_cost"] * 1e-8
+    cache_write_cost = model["cache_write_cost"] * 1e-8
+
+    reasoning = row.get("reasoning_tokens", 0)
     cached = row.get("cached_input_tokens", 0)
+    cache_write = row.get("cache_write_tokens", 0)
     uncached = row["input_tokens"] - cached
     return (
         uncached * input_cost
-        + cached * input_cost * cached_input_cost_ratio
-        + row["output_tokens"] * output_cost
+        + cached * cached_input_cost
+        + (row["completion_tokens"] + reasoning) * completion_cost
+        + cache_write * cache_write_cost
     )
 
 
@@ -128,7 +144,6 @@ def score_rows(
     rows: list[dict],
     documents: dict[str, Document],
     coverage_threshold: float = 0.8,
-    cached_input_cost_ratio: float = 0.1,
 ) -> list[ScoredRun]:
     """Score each row per rule, plus the combined output of all rules per document"""
     scored = []
@@ -151,7 +166,7 @@ def score_rows(
                     coverage_threshold=coverage_threshold,
                     boundary_split=set(row["boundary_split"]),
                 ),
-                cost_gbp=estimate_cost_gbp(row, cached_input_cost_ratio),
+                cost_gbp=estimate_cost_gbp(row),
                 doc_tokens=row["doc_tokens"],
                 chunk_count=row["chunk_count"],
                 failed_chunks=row["failed_chunks"],
@@ -182,9 +197,7 @@ def score_rows(
                     coverage_threshold=coverage_threshold,
                     boundary_split=boundary_split,
                 ),
-                cost_gbp=sum(
-                    estimate_cost_gbp(r, cached_input_cost_ratio) for r in group
-                ),
+                cost_gbp=sum(estimate_cost_gbp(r) for r in group),
                 doc_tokens=group[0]["doc_tokens"],
                 chunk_count=sum(row["chunk_count"] for row in group),
                 failed_chunks=sum(row["failed_chunks"] for row in group),
@@ -208,7 +221,28 @@ def consistency(runs: list[ScoredRun]) -> float:
     return sum(len(v) == 1 for v in outcomes.values()) / len(outcomes)
 
 
-def summarise(scored: list[ScoredRun]) -> dict[tuple[Variant, str], VariantSummary]:
+def variance_decomposition(runs: list[ScoredRun], beta: float) -> tuple[float, float]:
+    """
+    Split the variance of per-document F-beta into within-document (across repeats
+    of the same document) and between-document (across documents) components.
+    """
+    per_doc = defaultdict(list)
+    for run in runs:
+        per_doc[run.doc_id].append(run.counts.f_beta(beta))
+
+    within = [np.var(values, ddof=1) for values in per_doc.values() if len(values) > 1]
+    within_doc_variance = float(np.mean(within)) if within else 0.0
+
+    doc_means = [np.mean(values) for values in per_doc.values()]
+    between_doc_variance = (
+        float(np.var(doc_means, ddof=1)) if len(doc_means) > 1 else 0.0
+    )
+    return within_doc_variance, between_doc_variance
+
+
+def summarise(
+    scored: list[ScoredRun], beta: float = 2.0
+) -> dict[tuple[Variant, str], VariantSummary]:
     """Aggregate scored runs into one summary per (variant, rule)"""
     grouped = defaultdict(list)
     for run in scored:
@@ -218,6 +252,7 @@ def summarise(scored: list[ScoredRun]) -> dict[tuple[Variant, str], VariantSumma
         counts = ScoreCounts()
         for run in runs:
             counts += run.counts
+        within_doc_variance, between_doc_variance = variance_decomposition(runs, beta)
         summaries[(variant, rule)] = VariantSummary(
             variant=variant,
             rule=rule,
@@ -229,6 +264,8 @@ def summarise(scored: list[ScoredRun]) -> dict[tuple[Variant, str], VariantSumma
             latency_s=sum(r.latency_s for r in runs),
             runs=len(runs),
             consistency=consistency(runs),
+            within_doc_variance=within_doc_variance,
+            between_doc_variance=between_doc_variance,
         )
     return summaries
 
@@ -349,6 +386,105 @@ def best_variant(
     return max(candidates, key=lambda v: summaries[(v, rule)].counts.f_beta(beta))
 
 
+def plot_f_beta_vs_cost(
+    summaries: dict[tuple[Variant, str], VariantSummary],
+    rule: str,
+    beta: float,
+    out_path: Path,
+) -> None:
+    """Plot F-beta against cost per 1,000 document tokens, one line per overlap"""
+    variants = sorted(v for v, r in summaries if r == rule)
+    if not variants:
+        return
+    overlaps = sorted({overlap for _, overlap in variants})
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for overlap in overlaps:
+        series = [v for v in variants if v[1] == overlap]
+        costs = [summaries[(v, rule)].cost_per_1k_doc_tokens for v in series]
+        scores = [summaries[(v, rule)].counts.f_beta(beta) for v in series]
+        ax.plot(costs, scores, marker="o", label=f"overlap={overlap}")
+        for v, cost, score in zip(series, costs, scores):
+            ax.annotate(
+                str(v[0]),
+                (cost, score),
+                fontsize=8,
+                textcoords="offset points",
+                xytext=(4, 4),
+            )
+    ax.set_xlabel("Cost per 1,000 document tokens (GBP)")
+    ax.set_ylabel(f"F{beta:g}")
+    ax.set_title(f"F{beta:g} vs cost - {rule}")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+
+
+def plot_metrics_vs_chunk_size(
+    summaries: dict[tuple[Variant, str], VariantSummary],
+    rule: str,
+    beta: float,
+    out_path: Path,
+) -> None:
+    """Plot precision, recall, hard-negative FP rate, boundary recall, consistency
+    and failed-chunk rate against chunk size, one line per overlap.
+    """
+    variants = sorted(v for v, r in summaries if r == rule)
+    if not variants:
+        return
+    overlaps = sorted({overlap for _, overlap in variants})
+
+    metrics = [
+        ("precision", lambda s: s.counts.precision),
+        ("recall", lambda s: s.counts.recall),
+        (f"f{beta:g}", lambda s: s.counts.f_beta(beta)),
+        ("hard_negative_fp_rate", lambda s: s.counts.hard_negative_fp_rate),
+        ("boundary_recall", lambda s: s.counts.boundary_recall),
+        ("consistency", lambda s: s.consistency),
+        ("within_doc_variance", lambda s: s.within_doc_variance),
+        ("between_doc_variance", lambda s: s.between_doc_variance),
+        ("failed_chunk_rate", lambda s: s.failed_chunk_rate),
+        ("cost_per_1k_doc_tokens", lambda s: s.cost_per_1k_doc_tokens),
+    ]
+    fig, axes = plt.subplots(2, 5, figsize=(22, 8))
+    for ax, (name, metric) in zip(axes.flat, metrics):
+        for overlap in overlaps:
+            series = sorted(v for v in variants if v[1] == overlap)
+            sizes = [v[0] for v in series]
+            values = [metric(summaries[(v, rule)]) for v in series]
+            if all(value is None for value in values):
+                continue
+            ax.plot(sizes, values, marker="o", label=f"overlap={overlap}")
+        ax.set_xlabel("chunk_size")
+        ax.set_title(name)
+        ax.grid(True, alpha=0.3)
+    axes.flat[0].legend(fontsize=8)
+    fig.suptitle(f"Metrics vs chunk size - {rule}")
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+
+
+def plot_variant_summary(
+    summaries: dict[tuple[Variant, str], VariantSummary],
+    out_dir: Path,
+    beta: float,
+    rules: list[str],
+) -> None:
+    """Save the F-beta-vs-cost and per-metric plots for each rule into out_dir"""
+    for rule in rules:
+        if not any(r == rule for _, r in summaries):
+            continue
+        plot_f_beta_vs_cost(
+            summaries, rule, beta, out_dir / f"{rule}_f_beta_vs_cost.png"
+        )
+        plot_metrics_vs_chunk_size(
+            summaries, rule, beta, out_dir / f"{rule}_metrics.png"
+        )
+
+
 def parse_recall_floors(values: list[str]) -> dict[str, float]:
     """Parse "rule=minimum" strings into a dict of per-rule recall floors
 
@@ -400,10 +536,8 @@ def main(argv=None):
         with Path(results_path).open(encoding="utf-8") as f:
             rows.extend(json.loads(line) for line in f if line.strip())
 
-    scored = score_rows(
-        rows, documents, args.coverage_threshold, args.cached_input_cost_ratio
-    )
-    summaries = summarise(scored)
+    scored = score_rows(rows, documents, args.coverage_threshold)
+    summaries = summarise(scored, args.beta)
     guardrails = Guardrails(
         recall_floors=parse_recall_floors(args.recall_floor),
         hard_negative_fp_ceiling=args.hard_negative_fp_ceiling,
@@ -445,6 +579,7 @@ def main(argv=None):
     (out_dir / "recommendation.json").write_text(
         json.dumps(recommendation, indent=2), encoding="utf-8"
     )
+    plot_variant_summary(summaries, out_dir, args.beta, [ALL_RULES, *RULE_NAMES])
 
     headline = [row for row in table if row["rule"] == ALL_RULES]
     columns = [
@@ -456,6 +591,8 @@ def main(argv=None):
         "hard_negative_fp_rate",
         "boundary_recall",
         "consistency",
+        "within_doc_variance",
+        "between_doc_variance",
         "failed_chunk_rate",
         "cost_per_1k_doc_tokens",
     ]
@@ -467,7 +604,9 @@ def main(argv=None):
             f"{rule}: best F{args.beta:g} at {result['best_f_beta_variant']}, "
             f"recommended {result['recommended_variant']}"
         )
-    print(f"Wrote {out_dir / 'summary.csv'} and {out_dir / 'recommendation.json'}")
+    print(
+        f"Wrote {out_dir / 'summary.csv'}, {out_dir / 'recommendation.json'} and plots"
+    )
 
 
 if __name__ == "__main__":
