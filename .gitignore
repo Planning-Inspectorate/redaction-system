@@ -254,3 +254,4 @@ docs/
 
 # Chunk-size evaluation outputs
 eval_prompt/results/
+eval_prompt/data/corpus_pdfs
