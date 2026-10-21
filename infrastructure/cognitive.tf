@@ -15,22 +15,6 @@ resource "azurerm_cognitive_account" "open_ai" {
   }
 }
 
-resource "azurerm_cognitive_deployment" "open_ai" {
-  name                 = "gpt-4.1"
-  cognitive_account_id = azurerm_cognitive_account.open_ai.id
-
-  model {
-    format  = "OpenAI"
-    name    = "gpt-4.1"
-    version = "2025-04-14"
-  }
-
-  sku {
-    name     = "DataZoneStandard"
-    capacity = var.openai_quota
-  }
-}
-
 resource "azurerm_cognitive_deployment" "open_ai_gpt_56_luna" {
   name                 = "gpt-5.6-luna"
   cognitive_account_id = azurerm_cognitive_account.open_ai.id
