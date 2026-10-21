@@ -121,3 +121,23 @@ Run all commands from the `redactor` directory.
   consistency, variance and cost against chunk size).
 
 Keep the prompts frozen for the whole sweep. Changing a prompt invalidates the comparison.
+
+## Prompt engineering with MLflow
+
+`optimise_prompt.py` versions, scores and optimises each rule's system prompt with MLflow
+(install the `eval` extra). It stores everything in `eval/results/mlflow.db`; view it with
+`mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db`. Traces contain corpus text,
+so only use synthetic or approved data. The YAML config stays the source of truth.
+
+1. `register --chunk-size <chosen> --chunk-overlap <chosen>` registers every rule's prompt as
+   `redaction-<rule>@baseline`, with clause IDs (`[T1]`, `[D2]`, ...) and the chunk settings.
+2. `evaluate --rule names` scores a version on dev chunks with the scorers in
+   `mlflow_scorers.py` (F2, recall, precision, hard-negative hit rate, unlocatable rate,
+   clause citation validity). Edit the YAML and re-register to try manual changes.
+3. `optimise --rule names --optimizer meta`, then `--optimizer gepa` if needed, registers
+   `@candidate`. The reflection model is reached through LiteLLM with Entra ID.
+4. `gate --rule names --promote` runs both prompts over whole test documents and sets
+   `@champion` only if F2 is significantly better (paired bootstrap) without more
+   hard-negative hits.
+5. `export --rule names --out src/config/<name>.yaml` writes the champion into a copy of the
+   config for review against PINS guidance.
