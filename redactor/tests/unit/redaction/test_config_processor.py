@@ -167,7 +167,7 @@ def test__config_processor__validate_and_parse_redaction_config__named_text_reda
                 "redaction_rules": [
                     {
                         "name": "text_rule_1",
-                        "model": "gpt-4.1",
+                        "model": "gpt-5.6-luna",
                         "system_prompt": "value_1",
                         "constraints": "value_2",
                     }
@@ -190,14 +190,14 @@ def test__config_processor__validate_and_parse_redaction_config__named_text_reda
         MockLLMTextRedactionConfig(
             name="text_rule_1",
             redactor_type="LLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             system_prompt="value_1",
             constraints="value_2",
         ),
         MockImageLLMTextRedactionConfig(
             name="image_text_rule",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             system_prompt="value_1",
             constraints="overridden_value",
         ),
@@ -265,7 +265,7 @@ def test__config_processor__validate_and_pars_config__unknown_text_redaction_rul
                 "redaction_rules": [
                     {
                         "name": "text_rule_2",
-                        "model": "gpt-4.1",
+                        "model": "gpt-5.6-luna",
                         "system_prompt": "value_1",
                         "constraints": "value_2",
                     }

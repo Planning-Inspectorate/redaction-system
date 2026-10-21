@@ -41,6 +41,7 @@ class MockLLMChatCompletionUsage:
     def __init__(self, prompt_tokens, completion_tokens):
         self.prompt_tokens = prompt_tokens
         self.completion_tokens = completion_tokens
+        self.total_tokens = prompt_tokens + completion_tokens
 
 
 class MockOpenAIAPIResponse:
@@ -51,8 +52,8 @@ class MockOpenAIAPIResponse:
         self.headers = {}
 
 
-TOKEN_RATE_LIMIT = 1000000
-REQUEST_RATE_LIMIT = 1000
+TOKEN_RATE_LIMIT = 3000000
+REQUEST_RATE_LIMIT = 3000
 
 
 def test__handle_last_retry_error():
@@ -90,13 +91,13 @@ def test__update_max_tokens__limit():
 
 def test__llm_text_analyser____init__():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         token_rate_limit=2000,
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     assert llm_text_analyser.config.token_rate_limit == 2000
-    assert llm_text_analyser.config.token_encoding_name == "cl100k_base"
+    assert llm_text_analyser.config.token_encoding_name == "o200k_base"
 
     assert llm_text_analyser.input_token_cost == 149 * 0.000001
     assert llm_text_analyser.output_token_cost == 593 * 0.000001
@@ -106,7 +107,7 @@ def test__llm_text_analyser____init__():
 def test__llm_text_analyser___set_model_details(mock_llm_text_analyser_init):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         token_rate_limit=TOKEN_RATE_LIMIT / 10,
         request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
@@ -126,7 +127,7 @@ def test__llm_text_analyser___set_model_details__exceeds_token_rate_limit(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         token_rate_limit=TOKEN_RATE_LIMIT * 3,
         request_rate_limit=REQUEST_RATE_LIMIT / 10,
     )
@@ -135,7 +136,7 @@ def test__llm_text_analyser___set_model_details__exceeds_token_rate_limit(
 
     assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
-        "Token rate limit for model gpt-4.1 exceeds maximum. "
+        "Token rate limit for model gpt-5.6-luna exceeds maximum. "
         f"Setting to maximum of {TOKEN_RATE_LIMIT} tokens per minute."
     )
 
@@ -146,7 +147,7 @@ def test__llm_text_analyser___set_model_details__exceeds_request_rate_limit(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         token_rate_limit=TOKEN_RATE_LIMIT / 10,
         request_rate_limit=REQUEST_RATE_LIMIT * 2,
     )
@@ -155,7 +156,7 @@ def test__llm_text_analyser___set_model_details__exceeds_request_rate_limit(
 
     assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT
     LoggingUtil.log_info.assert_called_with(
-        "Request rate limit for model gpt-4.1 exceeds maximum. "
+        "Request rate limit for model gpt-5.6-luna exceeds maximum. "
         f"Setting to maximum of {REQUEST_RATE_LIMIT} requests per minute."
     )
 
@@ -166,7 +167,7 @@ def test__llm_text_analyser___set_model_details__zero_token_request_rate_limit(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         token_rate_limit=0,
         request_rate_limit=0,
     )
@@ -183,13 +184,13 @@ def test__llm_text_analyser___set_model_details__invalid_model(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1-nan0",
+        model="not-a-real-model",
     )
 
     with pytest.raises(ValueError) as exc:
         llm_text_analyser._set_model_details()
 
-    assert "Model gpt-4.1-nan0 is not supported." in str(exc.value)
+    assert "Model not-a-real-model is not supported." in str(exc.value)
 
 
 @patch.object(LLMTextAnalyser, "__init__", return_value=None)
@@ -199,7 +200,7 @@ def test__llm_text_analyser___set_workers__none_given(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser._set_workers()
 
@@ -213,7 +214,7 @@ def test__llm_text_analyser___set_workers__exceeds_cpu_count(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser._set_workers(40)
 
@@ -227,7 +228,7 @@ def test__llm_text_analyser___set_workers__zero_cpu_count(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser._set_workers(0)
 
@@ -241,7 +242,7 @@ def test__llm_text_analyser___set_workers__high_cpu_count(
 ):
     llm_text_analyser = LLMTextAnalyser()
     llm_text_analyser.config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser._set_workers()
 
@@ -255,7 +256,7 @@ def test__llm_text_analyser___num_tokens_consumed__exception(mock_get_encoding):
     mock_get_encoding.return_value = mock_encoding
 
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     system_prompt = "This is a system prompt."
@@ -269,7 +270,7 @@ def test__llm_text_analyser___num_tokens_consumed__exception(mock_get_encoding):
 
 def test__create_api_message():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -304,7 +305,7 @@ def create_mock_chat_completion(
 
 def test__llm_text_analyser___compute_costs():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.input_token_cost = 1
@@ -335,7 +336,7 @@ def test__llm_text_analyser___analyse_text_chunk(
     expected_result = (mock_chat_completion, redaction_strings)
 
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.request_semaphore = Mock()
@@ -373,7 +374,7 @@ def test__llm_text_analyser___analyse_text_chunk__timeout_on_request_semaphore(
     mock_num_tokens_consumed, mock_create_api_message
 ):
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         request_timeout=1,
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
@@ -424,7 +425,7 @@ def test__llm_text_analyser___analyse_text_chunk__exception(
     mock_num_tokens_consumed, mock_create_api_message, mock_invoke_chain
 ):
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -449,7 +450,7 @@ def test__llm_text_analyser___analyse_text_chunk__length_finish_reason(
     mock_num_tokens_consumed, mock_create_api_message
 ):
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -495,7 +496,7 @@ def test__llm_text_analyser___analyse_text_chunk__retry_on_exception(
     redaction_strings = mock_chat_completion.choices[0].message.parsed.redaction_strings
 
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     with patch.object(
         LLMTextAnalyser,
@@ -525,7 +526,7 @@ def test__llm_text_analyser___analyse_text_chunk__retry_on_exception(
 
 def test__llm_text_analyser__analyse_text():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.request_semaphore = Mock()
@@ -572,7 +573,7 @@ def test__llm_text_analyser__analyse_text():
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
 def test__llm_text_analyser__analyse_text__check_pool_size():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1", max_concurrent_requests=4
+        model="gpt-5.6-luna", max_concurrent_requests=4
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -602,7 +603,7 @@ def test__llm_text_analyser__analyse_text__check_pool_size():
 @patch(f"{MODULE}.os.cpu_count", return_value=8)
 def test__llm_text_analyser__analyse_text__override_pool_size(mock_cpu_count):
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1", max_concurrent_requests=4
+        model="gpt-5.6-luna", max_concurrent_requests=4
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -640,7 +641,7 @@ def test__llm_text_analyser__analyse_text__budget_exceeded(
     mock_time_sleep, mock_get_encoding
 ):
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         budget=12.0,
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
@@ -665,7 +666,7 @@ def test__llm_text_analyser__analyse_text__budget_exceeded(
 
 def test__llm_text_analyser___check_budget__raises_when_exceeded():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         budget=10.0,
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
@@ -677,7 +678,7 @@ def test__llm_text_analyser___check_budget__raises_when_exceeded():
 
 def test__llm_text_analyser___check_budget__no_raise_when_under_budget():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         budget=10.0,
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
@@ -689,7 +690,7 @@ def test__llm_text_analyser___check_budget__no_raise_when_under_budget():
 
 def test__llm_text_analyser___check_budget__no_raise_when_no_budget_set():
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.total_cost = 99999.0
@@ -703,7 +704,7 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_enco
     """When there is only 1 chunk, max_workers=1 and processing is sequential
     (no ThreadPoolExecutor)"""
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.request_semaphore = Mock()
@@ -734,7 +735,7 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_enco
 def test__llm_text_analyser__analyse_text__max_workers_limited_by_chunk_count():
     """max_workers should be min(max_concurrent_requests, chunk_count)"""
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1", max_concurrent_requests=10
+        model="gpt-5.6-luna", max_concurrent_requests=10
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
@@ -767,7 +768,7 @@ def test__llm_text_analyser__analyse_text__sequential_budget_exceeded(
 ):
     """Budget check in sequential path should stop processing after budget is exceeded"""
     llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-4.1",
+        model="gpt-5.6-luna",
         budget=12.0,
         max_concurrent_requests=1,
     )

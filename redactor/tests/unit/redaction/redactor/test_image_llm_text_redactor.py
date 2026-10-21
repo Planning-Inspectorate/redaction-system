@@ -27,7 +27,7 @@ class TestImageLLMTextRedactor(TestImageTextRedactorBase):
         return ImageLLMTextRedactionConfig(
             name="config name",
             redactor_type="ImageLLMTextRedaction",
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             system_prompt="some system prompt",
             redaction_terms=["rule A"],
             **kwargs,
