@@ -91,8 +91,8 @@ Run all commands from the `redactor` directory.
    - **Guardrails:** per-rule recall floors (`--recall-floor`), the hard-negative false
      positive ceiling (`--hard-negative-fp-ceiling`) and the failed-chunk rate.
    - **Choice:** the cheapest remaining variant by cost per 1,000 document tokens. Cost includes
-     the cached-input discount (`--cached-input-cost-ratio`, default 0.1 — check current Azure
-     pricing).
+     the cached-input discount (rates come from `LLMTextAnalyser.OPENAI_MODELS` — check current
+     Azure pricing).
 
    If rules recommend clearly different sizes, set `chunk_size` per rule in
    `src/config/default.yaml` rather than one shared value.
