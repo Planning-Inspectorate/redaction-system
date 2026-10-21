@@ -44,6 +44,7 @@ from .mlflow_scorers import SCORERS, make_objective
 from .prompt_registry import (
     PromptStructureError,
     export_rule_to_yaml,
+    normalise_template,
     parse_prompt_sections,
     prompt_uri,
     register_rule_prompt,
@@ -65,7 +66,8 @@ META_GUIDELINES = (
     "'- ' bullet per clause, and add no text outside them. Keep the [T1]-style clause "
     "labels, renumbering them in order within each section if clauses are added or "
     "removed. Do not add clauses that contradict a DoNotRedact clause or PINS guidance, "
-    "and keep the prompt concise."
+    "and keep the prompt concise. Do not describe the response format, such as one term "
+    "per line or what to omit: a response schema already enforces it."
 )
 
 
@@ -179,6 +181,41 @@ def cmd_evaluate(args: argparse.Namespace):
         print(f"Repeat {repeat}: {result.metrics}")
 
 
+def reregister_optimised(
+    optimised: PromptVersion,
+    source: PromptVersion,
+    config: LLMTextRedactionConfig,
+    config_name: str,
+    optimizer: str,
+    alias: str | None,
+) -> tuple[PromptVersion, str | None]:
+    """
+    Replace the version the optimiser registered with one that has the rule's tags,
+    structured output and model config, and the template in the standard layout.
+
+    Prompt versions are immutable, so this registers a new version and deletes the
+    optimiser's. If the template can't be parsed into sections it is kept as it is, and
+    a warning is returned, since such a version cannot be exported to YAML either.
+
+    :return: The new version and a warning, if any.
+    """
+    template, warning = optimised.template, None
+    try:
+        template = normalise_template(template, config)
+    except PromptStructureError as e:
+        warning = f"{optimised.uri} could not be put in the standard layout: {e}"
+    version = register_rule_prompt(
+        config,
+        config_name,
+        commit_message=f"{optimizer} optimisation of {source.uri}",
+        alias=alias,
+        template=template,
+        extra_tags={"optimizer": optimizer, "source_prompt": source.uri},
+    )
+    mlflow.MlflowClient().delete_prompt_version(optimised.name, optimised.version)
+    return version, warning
+
+
 def cmd_optimise(args: argparse.Namespace):
     configure_reflection_model(args.reflection_model)
     prompt = load_rule_prompt(args.rule, args.prompt)
@@ -230,21 +267,22 @@ def cmd_optimise(args: argparse.Namespace):
             ),
         )
         optimised = result.optimized_prompts[0]
+        # optimize_prompts registers only the template, so replace it with a version
+        # that has the rule's metadata and structured output, in the standard layout
+        optimised, layout_warning = reregister_optimised(
+            optimised, prompt, config, args.config, args.optimizer, args.alias
+        )
         mlflow.log_param("optimised_prompt_uri", optimised.uri)
         mlflow.log_metric("cost_gbp", runner.total_cost)
 
-    if args.alias:
-        mlflow.genai.set_prompt_alias(optimised.name, args.alias, optimised.version)
     print(
         f"Registered {optimised.uri}"
         + (f" as @{args.alias}" if args.alias else "")
         + f": score {result.initial_eval_score} -> {result.final_eval_score},"
         f" £{runner.total_cost:.2f} on the task model"
     )
-    try:
-        parse_prompt_sections(optimised.template)
-    except PromptStructureError as e:
-        print(f"Warning: this version cannot be exported to YAML as it is: {e}")
+    if layout_warning:
+        print(f"Warning: {layout_warning}")
 
 
 def cmd_gate(args: argparse.Namespace):
@@ -367,7 +405,7 @@ def parse_args(argv=None) -> argparse.Namespace:
 
     run = argparse.ArgumentParser(add_help=False, parents=[common, settings])
     run.add_argument("--rule", required=True, choices=RULE_NAMES)
-    run.add_argument("--corpus", default="eval/data/corpus.jsonl")
+    run.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
     run.add_argument("--split", choices=["dev", "test"], default="dev")
     run.add_argument("--limit", type=int, help="Only use the first N documents")
     run.add_argument("--budget", type=float, help="Stop after this cost in GBP")

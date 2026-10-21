@@ -9,6 +9,7 @@ from eval.corpus import RULE_NAMES
 from eval.prompt_registry import (
     PromptStructureError,
     export_rule_to_yaml,
+    normalise_template,
     parse_prompt_sections,
     prompt_uri,
     register_rule_prompt,
@@ -130,3 +131,43 @@ def test_register_rule_prompt(tracking_uri):
     assert loaded.model_config["extra_params"]["chunk_size"] == 2500
     assert loaded.model_config["extra_params"]["chunk_overlap"] == 100
     assert loaded.tags["rule"] == "names"
+
+
+def test_normalise_template__standard_layout():
+    """
+    - Given an optimiser's template with irregular spacing and clause labels
+    - When I normalise it
+    - Then sections are on their own lines, blank-line separated, clauses renumbered,
+      and sections the template lacks are left out
+    """
+    config = load_rule_configs("default", ["names"])["names"]
+
+    messy = (
+        "<Role>\nA role.\n</Role>\n\n\n<Task>\n\nDo the task.\n- first\n- second\n\n"
+        "</Task>\n<Terms>\n- [T7] one\n\n- [T9] two\n</Terms>\n\n"
+        "<DoNotRedact>\n- keep this\n</DoNotRedact>"
+    )
+
+    assert normalise_template(messy, config) == (
+        "<Role>\nA role.\n</Role>\n\n"
+        "<Task>\nDo the task.\n- first\n- second\n</Task>\n\n"
+        "<Terms>\n- [T1] one\n- [T2] two\n</Terms>\n\n"
+        "<DoNotRedact>\n- [D1] keep this\n</DoNotRedact>"
+    )
+
+
+def test_normalise_template__is_stable_for_default_prompts():
+    config = load_rule_configs("default", ["names"])["names"]
+    template = _detailed_template("names")
+
+    once = normalise_template(template, config)
+
+    assert normalise_template(once, config) == once
+    assert parse_prompt_sections(once)["redaction_terms"] == config.redaction_terms
+
+
+def test_normalise_template__unparseable():
+    config = load_rule_configs("default", ["names"])["names"]
+
+    with pytest.raises(PromptStructureError):
+        normalise_template("Just some text", config)

@@ -60,15 +60,18 @@ def register_rule_prompt(
     config_name: str,
     commit_message: str | None = None,
     alias: str | None = None,
+    template: str | None = None,
+    extra_tags: dict[str, str] | None = None,
 ) -> PromptVersion:
     """
     Register a rule's system prompt, with clause IDs, as a new prompt version.
 
-    The chunk settings are stored in the model config, so evaluations of this version
-    use the chunking it was registered with.
+    The prompt is built from the config unless a template is given, e.g. from an
+    optimiser. The chunk settings are stored in the model config, so evaluations of this
+    version use the chunking it was registered with.
     """
     detailed = config.model_copy(update={"include_rationale": True})
-    template = detailed.create_system_prompt()
+    template = template or detailed.create_system_prompt()
     encoding = get_encoding(detailed.token_encoding_name)
     model_config = {"model_name": config.model}
     if config.max_tokens:
@@ -86,6 +89,7 @@ def register_rule_prompt(
             "rule": config.name,
             "config_name": config_name,
             "prompt_tokens": str(len(encoding.encode(template))),
+            **(extra_tags or {}),
         },
         response_format=LLMDetailedRedactionResultFormat,
         model_config=model_config,
@@ -93,6 +97,26 @@ def register_rule_prompt(
     if alias:
         mlflow.genai.set_prompt_alias(version.name, alias, version.version)
     return version
+
+
+def normalise_template(template: str, config: LLMTextRedactionConfig) -> str:
+    """
+    Re-render a prompt in the standard layout: each section's tags on their own lines,
+    a blank line between sections, and one numbered '- [T1] ...' bullet per clause.
+
+    Optimisers rewrite the prompt freely, so this fixes layout and clause numbering.
+
+    :raises PromptStructureError: If the prompt cannot be parsed into sections.
+    """
+    fields = parse_prompt_sections(template)
+    update = {
+        field: value.strip() if isinstance(value, str) else [c.strip() for c in value]
+        for field, value in fields.items()
+    }
+    unset = dict.fromkeys(PROMPT_FIELDS)
+    return config.model_copy(
+        update=unset | update | {"include_rationale": True}
+    ).create_system_prompt()
 
 
 def _parse_clauses(body: str, tag: str) -> list[str]:

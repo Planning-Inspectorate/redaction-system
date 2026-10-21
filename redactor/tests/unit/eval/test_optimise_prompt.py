@@ -8,6 +8,7 @@ mlflow = pytest.importorskip("mlflow")
 
 from eval import optimise_prompt
 from eval.corpus import Document, Entity, write_corpus
+from eval.prompt_registry import register_rule_prompt
 
 
 @pytest.fixture(autouse=True)
@@ -149,3 +150,56 @@ def test_main__skips_azure_check_for_commands_without_llm_calls():
 
     mock_credential.assert_not_called()
     mock_export.assert_called_once()
+
+
+def _register_source():
+    config = optimise_prompt.load_rule_configs("default", ["names"])["names"]
+    return config, register_rule_prompt(config, "default", alias="baseline")
+
+
+def test_reregister_optimised__adds_metadata_and_layout():
+    """
+    - Given the bare version optimize_prompts registers: messy layout, no tags and no
+      structured output
+    - When I re-register it
+    - Then the new version has the rule's tags, structured output and model config,
+      the standard layout and the alias, and the bare version is deleted
+    """
+    config, source = _register_source()
+    bare = mlflow.genai.register_prompt(
+        name=source.name,
+        template="<Role>\nR.\n</Role> <Task>\nT.\n</Task>\n<Terms>\n- [T4] x\n</Terms>",
+        model_config=source.model_config,
+    )
+
+    version, warning = optimise_prompt.reregister_optimised(
+        bare, source, config, "default", "meta", "candidate"
+    )
+
+    assert warning is None
+    loaded = mlflow.genai.load_prompt(f"prompts:/{source.name}@candidate")
+    assert loaded.version == version.version
+    assert loaded.template == (
+        "<Role>\nR.\n</Role>\n\n<Task>\nT.\n</Task>\n\n<Terms>\n- [T1] x\n</Terms>"
+    )
+    assert loaded.tags["rule"] == "names"
+    assert loaded.tags["optimizer"] == "meta"
+    assert loaded.tags["source_prompt"] == source.uri
+    assert loaded.response_format is not None
+    assert loaded.model_config == source.model_config
+    with pytest.raises(mlflow.exceptions.MlflowException):
+        mlflow.genai.load_prompt(bare.uri)
+
+
+def test_reregister_optimised__keeps_unparseable_template():
+    config, source = _register_source()
+    bare = mlflow.genai.register_prompt(name=source.name, template="Just some text")
+
+    version, warning = optimise_prompt.reregister_optimised(
+        bare, source, config, "default", "meta", None
+    )
+
+    assert "standard layout" in warning
+    loaded = mlflow.genai.load_prompt(version.uri)
+    assert loaded.template == "Just some text"
+    assert loaded.tags["rule"] == "names"
