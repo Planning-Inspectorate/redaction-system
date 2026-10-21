@@ -3,7 +3,7 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Semaphore
+from threading import Lock, Semaphore
 from typing import ClassVar
 
 from azure.identity import (
@@ -115,8 +115,10 @@ class LLMTextAnalyser:
         "gpt-5.6-luna": {  # need to check these values
             "token_rate_limit": 3000000,  # nosec: B105
             "request_rate_limit": 3000,
-            "input_cost": 149,
-            "output_cost": 593,
+            "input_cost": 16,
+            "output_cost": 91,
+            "cached_input_cost": 2,
+            "cache_write_cost": 19,
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
@@ -125,6 +127,7 @@ class LLMTextAnalyser:
         self,
         config: LLMTextAnalyserConfig,
     ):
+        self.lock = Lock()
         self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
@@ -156,9 +159,11 @@ class LLMTextAnalyser:
         )
 
         self.input_token_count = 0
-        self.output_token_count = 0
         self.cached_input_token_count = 0
+        self.cache_write_token_count = 0
         self.reasoning_token_count = 0
+        self.completion_token_count = 0
+        self.total_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
@@ -169,8 +174,13 @@ class LLMTextAnalyser:
             model_details = self.OPENAI_MODELS[self.config.model]
 
             # Set cost per token in GBP
-            self.input_token_cost = model_details["input_cost"] * 0.000001
-            self.output_token_cost = model_details["output_cost"] * 0.000001
+            multiplier = 1e-8
+            self.input_token_cost = model_details["input_cost"] * multiplier
+            self.output_token_cost = model_details["output_cost"] * multiplier
+            self.cached_input_token_cost = (
+                model_details["cached_input_cost"] * multiplier
+            )
+            self.cache_write_token_cost = model_details["cache_write_cost"] * multiplier
 
             # Validate and set token rate limit per minute
             default_token_rate_limit = int(
@@ -382,7 +392,8 @@ class LLMTextAnalyser:
                 raise
             finally:
                 # Update token counts and costs
-                self._compute_costs(usage)
+                with self.lock:
+                    self._compute_costs(usage)
                 # Release token semaphore
                 self.token_semaphore.release(estimated_tokens)
 
@@ -395,24 +406,24 @@ class LLMTextAnalyser:
         if usage is None:
             return
 
-        prompt_tokens = usage.prompt_tokens
-        completion_tokens = usage.completion_tokens
-
-        self.input_token_count += prompt_tokens
-        self.output_token_count += completion_tokens
-
         prompt_details = getattr(usage, "prompt_tokens_details", None)
         completion_details = getattr(usage, "completion_tokens_details", None)
-        self.cached_input_token_count += (
-            getattr(prompt_details, "cached_tokens", None) or 0
-        )
-        self.reasoning_token_count += (
-            getattr(completion_details, "reasoning_tokens", None) or 0
-        )
+        cached = getattr(prompt_details, "cached_tokens", None) or 0
+        cache_write = getattr(prompt_details, "cache_write_tokens", None) or 0
+        reasoning = getattr(completion_details, "reasoning_tokens", None) or 0
+
+        self.input_token_count += usage.prompt_tokens
+        self.completion_token_count += usage.completion_tokens
+        self.total_token_count += usage.total_tokens
+        self.cached_input_token_count += cached
+        self.cache_write_token_count += cache_write
+        self.reasoning_token_count += reasoning
 
         self.total_cost += (
-            prompt_tokens * self.input_token_cost
-            + completion_tokens * self.output_token_cost
+            self.input_token_cost * (usage.prompt_tokens - cached - cache_write)
+            + self.output_token_cost * usage.completion_tokens
+            + self.cached_input_token_cost * cached
+            + self.cache_write_token_cost * cache_write
         )
 
     def _check_budget(self):
@@ -535,10 +546,11 @@ class LLMTextAnalyser:
         metadata = LLMTextRedactionResult.LLMResultMetadata(
             request_count=request_counter,
             input_token_count=self.input_token_count,
-            output_token_count=self.output_token_count,
-            total_token_count=self.input_token_count + self.output_token_count,
+            completion_token_count=self.completion_token_count,
+            total_token_count=self.total_token_count,
             total_cost=self.total_cost,
             cached_input_token_count=self.cached_input_token_count,
+            cache_write_token_count=self.cache_write_token_count,
             reasoning_token_count=self.reasoning_token_count,
             failed_chunk_count=failed_chunk_count,
         )
