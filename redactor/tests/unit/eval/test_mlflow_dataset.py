@@ -5,6 +5,7 @@ import pytest
 
 pytest.importorskip("mlflow")
 
+from eval import mlflow_dataset
 from eval.corpus import Document, Entity
 from eval.mlflow_dataset import (
     PromptRunner,
@@ -13,7 +14,6 @@ from eval.mlflow_dataset import (
     split_documents,
 )
 
-from eval import mlflow_dataset
 from src.redaction.config import LLMTextRedactionConfig
 from src.types import (
     LLMDetailedRedactionResultFormat,
