@@ -30,9 +30,6 @@ from src.redaction.config_processor import ConfigProcessor
 from .corpus import RULE_NAMES, load_corpus
 from .scoring import boundary_split_entities
 
-# Azure AD tokens last about an hour, so recreate LLM clients well before that
-ANALYSER_REFRESH_SECONDS = 45 * 60
-
 
 def load_rule_configs(
     config_name: str, rules: list[str]
@@ -80,18 +77,18 @@ def load_completed_keys(out_path: Path) -> set[tuple]:
 
 
 class AnalyserPool:
-    """Caches one LLMTextAnalyser per rule, recreating it before its token expires"""
+    """Caches one LLMTextAnalyser per rule"""
 
     def __init__(self):
         """Start with no cached analysers"""
-        self._analysers: dict[str, tuple[float, LLMTextAnalyser]] = {}
+        self._analysers: dict[str, LLMTextAnalyser] = {}
 
     def get(self, rule: str, config: LLMTextRedactionConfig) -> LLMTextAnalyser:
         """Return the rule's analyser, with its token and cost counters reset to zero"""
-        created, analyser = self._analysers.get(rule, (0.0, None))
-        if analyser is None or time.monotonic() - created > ANALYSER_REFRESH_SECONDS:
+        analyser = self._analysers.get(rule)
+        if analyser is None:
             analyser = LLMTextAnalyser(config)
-            self._analysers[rule] = (time.monotonic(), analyser)
+            self._analysers[rule] = analyser
         analyser.input_token_count = 0
         analyser.completion_token_count = 0
         analyser.total_token_count = 0
@@ -152,6 +149,7 @@ def run_task(
         "prompt_tokens": _worker["prompt_tokens"][rule],
         "chunk_count": len(chunks),
         "max_completion_tokens": config.max_tokens,
+        "reasoning_effort": config.reasoning_effort,
         "predictions": list(result.redaction_strings),
         "boundary_split": sorted(boundary_split_entities(document.entities, chunks)),
         "input_tokens": metadata.input_token_count,
@@ -189,6 +187,11 @@ def run_sweep(args: argparse.Namespace):
             rule: config.model_copy(
                 update={"max_concurrent_requests": args.max_concurrent_requests}
             )
+            for rule, config in rule_configs.items()
+        }
+    if args.reasoning_effort:
+        rule_configs = {
+            rule: config.model_copy(update={"reasoning_effort": args.reasoning_effort})
             for rule, config in rule_configs.items()
         }
 
@@ -255,14 +258,20 @@ def run_sweep(args: argparse.Namespace):
                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
                 for future in done:
                     row, logs = future.result()
-                    spent += row["reported_cost_gbp"]
-                    out.write(json.dumps(row, ensure_ascii=False) + "\n")
-                    out.flush()
                     log_sections.append(
                         f"=== repeat={row['repeat']} doc={row['doc_id']} "
                         f"size={row['chunk_size']} overlap={row['chunk_overlap']} "
                         f"rule={row['rule']} failed={row['failed_chunks']} ===\n{logs}"
                     )
+                    # Auth failures aren't model results, so leave the run to be redone
+                    if "AuthenticationError" in logs:
+                        raise RuntimeError(
+                            "Authentication failed (401), stopping. Not recording the "
+                            "failed run, so rerunning will resume from it."
+                        )
+                    spent += row["reported_cost_gbp"]
+                    out.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    out.flush()
                     print(
                         f"repeat={row['repeat']} doc={row['doc_id']} "
                         f"size={row['chunk_size']} overlap={row['chunk_overlap']} "
@@ -311,6 +320,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Override the configured max completion tokens. Keep fixed across a sweep",
     )
     parser.add_argument("--max-concurrent-requests", type=int)
+    parser.add_argument(
+        "--reasoning-effort",
+        choices=["minimal", "low", "medium", "high"],
+        help="Override the configured reasoning effort. Unset uses the config's value. "
+        "Use a separate --out file per setting",
+    )
     parser.add_argument(
         "--max-workers",
         type=int,
