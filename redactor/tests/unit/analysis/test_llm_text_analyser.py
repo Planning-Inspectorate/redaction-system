@@ -1,9 +1,10 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
+from pydantic import ValidationError
 from tenacity import stop_after_attempt, wait_none
 
 from src.analysis.text import (
@@ -88,21 +89,136 @@ def test__update_max_tokens__limit():
     assert retry_state.kwargs["max_completion_tokens"] == 8000
 
 
+def test__update_max_tokens__defaults_to_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=1500)),
+    )
+    update_max_tokens(retry_state)
+    LoggingUtil.log_info.assert_called_with(
+        "Updating max_completion_tokens to 3000 for next attempt."
+    )
+    assert retry_state.kwargs["max_completion_tokens"] == 3000
+
+
+def test__update_max_tokens__no_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=None)),
+    )
+    update_max_tokens(retry_state)
+    assert retry_state.kwargs["max_completion_tokens"] == 2000
+
+
+def test__llm_text_analyser_config__reasoning_effort_default():
+    assert LLMTextAnalyserConfig(model="gpt-5.6-luna").reasoning_effort is None
+
+
+@pytest.mark.parametrize("reasoning_effort", ["minimal", "low", "medium", "high"])
+def test__llm_text_analyser_config__reasoning_effort(reasoning_effort):
+    config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", reasoning_effort=reasoning_effort
+    )
+    assert config.reasoning_effort == reasoning_effort
+
+
+def test__llm_text_analyser_config__invalid_reasoning_effort():
+    with pytest.raises(ValidationError):
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", reasoning_effort="extreme")
+
+
+@pytest.mark.parametrize(
+    ("model", "reasoning_effort", "expected_kwargs"),
+    [
+        (
+            "gpt-5.6-luna",
+            "low",
+            {"max_completion_tokens": 1000, "reasoning_effort": "low"},
+        ),
+        ("gpt-5.6-luna", None, {"max_completion_tokens": 1000}),
+        ("gpt-4.1", "low", {"max_tokens": 1000, "temperature": 0.5}),
+    ],
+)
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser__invoke_chain__reasoning_effort(
+    mock_llm_text_analyser_init, model, reasoning_effort, expected_kwargs
+):
+    """reasoning_effort is only sent for reasoning models, and only when it is set"""
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
+        model=model, reasoning_effort=reasoning_effort
+    )
+    llm_text_analyser.llm = Mock()
+    api_messages = [{"role": "user", "content": "hello"}]
+
+    llm_text_analyser.invoke_chain(api_messages, LLMRedactionResultFormat, 1000)
+
+    llm_text_analyser.llm.chat.completions.parse.assert_called_once_with(
+        model=model,
+        messages=api_messages,
+        response_format=LLMRedactionResultFormat,
+        **expected_kwargs,
+    )
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_starts_from_config_limit(
+    mock_num_tokens, mock_api_message
+):
+    """A truncated first attempt retries at double the configured limit, not 2000"""
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", max_tokens=1500
+    )
+    truncated = Mock(usage=None)
+    successful = MagicMock(usage=None)
+    successful.choices[0].message.parsed.redaction_strings = ["string A"]
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=[LengthFinishReasonError(completion=truncated), successful],
+    ):
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        calls = LLMTextAnalyser.invoke_chain.call_args_list
+        assert [call.args[-1] for call in calls] == [1500, 3000]
+
+
 def test__llm_text_analyser____init__():
-    mock_token = Mock()
-    mock_token.token = "mock_token"
-    with patch(f"{MODULE}.ChainedTokenCredential.get_token", return_value=mock_token):
+    with (
+        patch(f"{MODULE}.get_bearer_token_provider") as mock_get_token_provider,
+        patch(f"{MODULE}.AzureOpenAI") as mock_azure_openai,
+    ):
         llm_text_analyser_config = LLMTextAnalyserConfig(
-            model="gpt-4.1",
+            model="gpt-5.6-luna",
             token_rate_limit=2000,
         )
         llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     assert llm_text_analyser.config.token_rate_limit == 2000
-    assert llm_text_analyser.config.token_encoding_name == "cl100k_base"
+    assert llm_text_analyser.config.token_encoding_name == "o200k_base"
 
-    assert llm_text_analyser.input_token_cost == 149 * 0.000001
-    assert llm_text_analyser.output_token_cost == 593 * 0.000001
+    assert llm_text_analyser.input_token_cost == pytest.approx(16 * 1e-8)
+    assert llm_text_analyser.output_token_cost == pytest.approx(91 * 1e-8)
+
+    # A provider lets the client renew its own token instead of using one that expires
+    client_kwargs = mock_azure_openai.call_args.kwargs
+    assert (
+        client_kwargs["azure_ad_token_provider"] is mock_get_token_provider.return_value
+    )
+    assert "azure_ad_token" not in client_kwargs
 
 
 @patch.object(LLMTextAnalyser, "__init__", return_value=None)

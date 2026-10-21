@@ -4,7 +4,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock, Semaphore
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from azure.identity import (
     AzureCliCredential,
@@ -52,13 +52,13 @@ def handle_last_retry_error(retry_state):
 def update_max_tokens(retry_state):
     # Double max completions for next retry attempt, up to max of 8000
     # Only used when LengthFinishReasonError is raised
-    retry_state.kwargs.update(
-        {
-            "max_completion_tokens": min(
-                retry_state.kwargs.get("max_completion_tokens", 1000) * 2, 8000
-            )
-        }
+    # On the first retry the kwarg is unset, so start from the analyser's own limit
+    current = (
+        retry_state.kwargs.get("max_completion_tokens")
+        or retry_state.args[0].config.max_tokens
+        or 1000
     )
+    retry_state.kwargs.update({"max_completion_tokens": min(current * 2, 8000)})
     LoggingUtil().log_info(
         f"Updating max_completion_tokens to {retry_state.kwargs['max_completion_tokens']}"
         " for next attempt."
@@ -69,7 +69,9 @@ class LLMTextAnalyserConfig(BaseModel):
     model: str
     """The LLM model to use"""
     max_tokens: int | None = 1000
-    """Maximum number of tokens per completion"""
+    """Maximum number of tokens per completion, including reasoning tokens"""
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
+    """Reasoning effort for reasoning models. None uses the model's default"""
     temperature: float | None = 0.5
     """LLM sampling temperature"""
     request_rate_limit: int | None = None
@@ -282,6 +284,8 @@ class LLMTextAnalyser:
             kwargs["temperature"] = self.config.temperature
         else:
             kwargs["max_completion_tokens"] = max_completion_tokens
+            if self.config.reasoning_effort:
+                kwargs["reasoning_effort"] = self.config.reasoning_effort
 
         return self.llm.chat.completions.parse(**kwargs)
 
