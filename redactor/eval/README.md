@@ -81,7 +81,7 @@ Run all commands from the `redactor` directory.
 
 4. **Fine sweep.** Take about 3 sizes around the knee of the F2-vs-cost curve, use 5 repeats,
    and run the full dev split. Then, at the chosen size, compare overlap with
-   `--overlap-ratio 0`, `0.05` and `0.1`.
+   `--overlap-ratios 0 0.05 0.1`.
 
 5. **Select.** `recommendation.json` gives the recommended variant overall (`__all__`) and per
    rule:
@@ -111,5 +111,13 @@ Run all commands from the `redactor` directory.
 - `boundary_recall`: recall on entities that were split across a chunk boundary. Low values
   suggest increasing the overlap.
 - `consistency`: fraction of entities with the same outcome in every repeat.
+- `within_doc_variance` / `between_doc_variance`: variance of per-document F-beta split into
+  noise from repeated runs of the same document (within) vs. spread across documents
+  (between). High within-doc variance means more repeats are needed to trust a comparison;
+  high between-doc variance means the corpus itself is heterogeneous for that variant.
+- `summary.csv` and `recommendation.json` are joined by plots in the same `--out-dir`:
+  `{rule}_f_beta_vs_cost.png` (the F-beta/cost trade-off per overlap) and
+  `{rule}_metrics.png` (precision, recall, F-beta, hard-negative FP rate, boundary recall,
+  consistency, variance and cost against chunk size).
 
 Keep the prompts frozen for the whole sweep. Changing a prompt invalidates the comparison.
