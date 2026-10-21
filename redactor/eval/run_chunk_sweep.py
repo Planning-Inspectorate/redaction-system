@@ -16,12 +16,14 @@ Example (run from the `redactor` directory, with Azure credentials available):
 import argparse
 import json
 import time
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from datetime import UTC, datetime
 from pathlib import Path
 
 from tiktoken import get_encoding
 
 from src.analysis.text import LLMTextAnalyser
+from src.monitoring import LoggingUtil
 from src.redaction.config import LLMTextRedactionConfig
 from src.redaction.config_processor import ConfigProcessor
 
@@ -91,11 +93,78 @@ class AnalyserPool:
             analyser = LLMTextAnalyser(config)
             self._analysers[rule] = (time.monotonic(), analyser)
         analyser.input_token_count = 0
-        analyser.output_token_count = 0
+        analyser.completion_token_count = 0
+        analyser.total_token_count = 0
         analyser.cached_input_token_count = 0
+        analyser.cache_write_token_count = 0
         analyser.reasoning_token_count = 0
         analyser.total_cost = 0.0
         return analyser
+
+
+# Per-process state, set by `init_worker` in each worker process
+_worker: dict = {}
+
+
+def init_worker(
+    rule_configs: dict[str, LLMTextRedactionConfig],
+    prompt_tokens: dict[str, int],
+    config_name: str,
+):
+    """Give a worker process its own analyser pool and tokenizer"""
+    _worker.update(
+        rule_configs=rule_configs,
+        prompt_tokens=prompt_tokens,
+        config_name=config_name,
+        pool=AnalyserPool(),
+        encoding=get_encoding(next(iter(rule_configs.values())).token_encoding_name),
+    )
+
+
+def run_task(
+    repeat: int, document, chunk_size: int, chunk_overlap: int, rule: str
+) -> tuple[dict, str]:
+    """Run one (repeat, document, chunk size, overlap, rule) run, returning its row and logs"""
+    config = _worker["rule_configs"][rule].model_copy(
+        update={"chunk_size": chunk_size, "chunk_overlap": chunk_overlap}
+    )
+    chunks = config.create_text_splitter().split_text(document.text)
+    analyser = _worker["pool"].get(rule, config)
+    started = time.perf_counter()
+    result = analyser.analyse_text(config.create_system_prompt(), chunks)
+    latency = time.perf_counter() - started
+    metadata = result.metadata
+    # Workers are separate processes, so hand their logs back to the parent
+    logger = LoggingUtil()
+    logs = logger.get_log_bytes().decode("utf-8")
+    logger.clear_logs()
+    row = {
+        "timestamp": datetime.now(UTC).isoformat(),
+        "config_name": _worker["config_name"],
+        "model": config.model,
+        "rule": rule,
+        "chunk_size": chunk_size,
+        "chunk_overlap": chunk_overlap,
+        "repeat": repeat,
+        "doc_id": document.id,
+        "split": document.split,
+        "doc_tokens": len(_worker["encoding"].encode(document.text)),
+        "prompt_tokens": _worker["prompt_tokens"][rule],
+        "chunk_count": len(chunks),
+        "max_completion_tokens": config.max_tokens,
+        "predictions": list(result.redaction_strings),
+        "boundary_split": sorted(boundary_split_entities(document.entities, chunks)),
+        "input_tokens": metadata.input_token_count,
+        "cached_input_tokens": metadata.cached_input_token_count,
+        "cache_write_tokens": metadata.cache_write_token_count,
+        "completion_tokens": metadata.completion_token_count,
+        "reasoning_tokens": metadata.reasoning_token_count,
+        "total_tokens": metadata.total_token_count,
+        "reported_cost_gbp": metadata.total_cost,
+        "failed_chunks": metadata.failed_chunk_count,
+        "latency_s": round(latency, 3),
+    }
+    return row, logs
 
 
 def run_sweep(args: argparse.Namespace):
@@ -131,78 +200,82 @@ def run_sweep(args: argparse.Namespace):
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     completed = load_completed_keys(out_path)
-    pool = AnalyserPool()
-    spent = 0.0
 
-    print(f"{len(documents)} documents, rules={args.rules}, sizes={args.chunk_sizes}")
+    print(
+        f"{len(documents)} documents, rules={args.rules}, sizes={args.chunk_sizes}, "
+        f"overlap ratios={args.overlap_ratios}"
+    )
     print(f"System prompt tokens per rule: {prompt_tokens}")
 
-    with out_path.open("a", encoding="utf-8") as out:
-        # Interleave sizes within each document so time-varying latency/throttling
-        # affects every size equally
-        for repeat in range(args.repeats):
-            for document in documents:
-                doc_tokens = len(encoding.encode(document.text))
-                for chunk_size in args.chunk_sizes:
-                    chunk_overlap = overlap_for(chunk_size, args.overlap_ratio)
-                    for rule, base_config in rule_configs.items():
-                        key = (rule, chunk_size, chunk_overlap, repeat, document.id)
-                        if key in completed:
-                            continue
-                        if args.budget and spent >= args.budget:
-                            print(f"Budget of £{args.budget:.2f} reached, stopping.")
-                            return
+    # Small sizes can round different ratios to the same overlap, so dedupe
+    variants = sorted(
+        {
+            (size, overlap_for(size, ratio))
+            for size in args.chunk_sizes
+            for ratio in args.overlap_ratios
+        }
+    )
 
-                        config = base_config.model_copy(
-                            update={
-                                "chunk_size": chunk_size,
-                                "chunk_overlap": chunk_overlap,
-                            }
-                        )
-                        chunks = config.create_text_splitter().split_text(document.text)
-                        analyser = pool.get(rule, config)
-                        started = time.perf_counter()
-                        result = analyser.analyse_text(
-                            config.create_system_prompt(), chunks
-                        )
-                        latency = time.perf_counter() - started
-                        metadata = result.metadata
-                        spent += metadata.total_cost
+    # Interleave variants within each document so time-varying latency/throttling
+    # affects every variant equally
+    tasks = [
+        (repeat, document, chunk_size, chunk_overlap, rule)
+        for repeat in range(args.repeats)
+        for document in documents
+        for chunk_size, chunk_overlap in variants
+        for rule in rule_configs
+        if (rule, chunk_size, chunk_overlap, repeat, document.id) not in completed
+    ]
 
-                        row = {
-                            "timestamp": datetime.now(UTC).isoformat(),
-                            "config_name": args.config,
-                            "model": config.model,
-                            "rule": rule,
-                            "chunk_size": chunk_size,
-                            "chunk_overlap": chunk_overlap,
-                            "repeat": repeat,
-                            "doc_id": document.id,
-                            "split": document.split,
-                            "doc_tokens": doc_tokens,
-                            "prompt_tokens": prompt_tokens[rule],
-                            "chunk_count": len(chunks),
-                            "max_completion_tokens": config.max_tokens,
-                            "predictions": list(result.redaction_strings),
-                            "boundary_split": sorted(
-                                boundary_split_entities(document.entities, chunks)
-                            ),
-                            "input_tokens": metadata.input_token_count,
-                            "cached_input_tokens": metadata.cached_input_token_count,
-                            "output_tokens": metadata.output_token_count,
-                            "reasoning_tokens": metadata.reasoning_token_count,
-                            "reported_cost_gbp": metadata.total_cost,
-                            "failed_chunks": metadata.failed_chunk_count,
-                            "latency_s": round(latency, 3),
-                        }
-                        out.write(json.dumps(row, ensure_ascii=False) + "\n")
-                        out.flush()
-                        print(
-                            f"repeat={repeat} doc={document.id} size={chunk_size} "
-                            f"rule={rule} chunks={len(chunks)} "
-                            f"preds={len(row['predictions'])} "
-                            f"failed={row['failed_chunks']} £{spent:.2f}"
-                        )
+    log_path = Path(args.log_file) if args.log_file else out_path.with_suffix(".log")
+    log_sections: list[str] = []
+    spent = 0.0
+    pending = set()
+    task_iter = iter(tasks)
+    try:
+        with (
+            out_path.open("a", encoding="utf-8") as out,
+            ProcessPoolExecutor(
+                max_workers=args.max_workers,
+                initializer=init_worker,
+                initargs=(rule_configs, prompt_tokens, args.config),
+            ) as executor,
+        ):
+            # Submit lazily so the budget can stop the sweep before all work is queued
+            while True:
+                while len(pending) < args.max_workers and not (
+                    args.budget and spent >= args.budget
+                ):
+                    task = next(task_iter, None)
+                    if task is None:
+                        break
+                    pending.add(executor.submit(run_task, *task))
+                if not pending:
+                    break
+                done, pending = wait(pending, return_when=FIRST_COMPLETED)
+                for future in done:
+                    row, logs = future.result()
+                    spent += row["reported_cost_gbp"]
+                    out.write(json.dumps(row, ensure_ascii=False) + "\n")
+                    out.flush()
+                    log_sections.append(
+                        f"=== repeat={row['repeat']} doc={row['doc_id']} "
+                        f"size={row['chunk_size']} overlap={row['chunk_overlap']} "
+                        f"rule={row['rule']} failed={row['failed_chunks']} ===\n{logs}"
+                    )
+                    print(
+                        f"repeat={row['repeat']} doc={row['doc_id']} "
+                        f"size={row['chunk_size']} overlap={row['chunk_overlap']} "
+                        f"rule={row['rule']} chunks={row['chunk_count']} "
+                        f"preds={len(row['predictions'])} "
+                        f"failed={row['failed_chunks']} £{spent:.2f}"
+                    )
+    finally:
+        # Written even if the sweep is interrupted, so failures can still be diagnosed
+        log_path.write_text("\n".join(log_sections), encoding="utf-8")
+        print(f"Wrote redactor logs to {log_path}")
+    if args.budget and spent >= args.budget:
+        print(f"Budget of £{args.budget:.2f} reached, stopping.")
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -211,6 +284,9 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument("--corpus", required=True, help="Path to a JSONL corpus")
     parser.add_argument("--split", choices=["dev", "test"], default="dev")
     parser.add_argument("--out", required=True, help="JSONL file to append rows to")
+    parser.add_argument(
+        "--log-file", help="Where to write redactor logs. Defaults to --out with .log"
+    )
     parser.add_argument("--config", default="default", help="Redaction config name")
     parser.add_argument("--rules", nargs="+", default=list(RULE_NAMES))
     parser.add_argument(
@@ -221,10 +297,11 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Chunk sizes in tokens",
     )
     parser.add_argument(
-        "--overlap-ratio",
+        "--overlap-ratios",
+        nargs="+",
         type=float,
-        default=0.04,
-        help="Chunk overlap as a fraction of the chunk size",
+        default=[0.0, 0.04, 0.1],
+        help="Chunk overlaps to try, as fractions of the chunk size",
     )
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--limit", type=int, help="Only use the first N documents")
@@ -234,6 +311,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Override the configured max completion tokens. Keep fixed across a sweep",
     )
     parser.add_argument("--max-concurrent-requests", type=int)
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Number of (repeat, document, chunk size, rule) runs in flight at once",
+    )
     parser.add_argument("--budget", type=float, help="Stop after this cost in GBP")
     return parser.parse_args(argv)
 
