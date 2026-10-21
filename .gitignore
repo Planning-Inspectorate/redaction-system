@@ -253,4 +253,4 @@ signature_detector/model
 docs/
 
 # Chunk-size evaluation outputs
-redactor/tests/eval/results/
+redactor/eval/results/
