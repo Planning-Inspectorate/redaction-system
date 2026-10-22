@@ -158,3 +158,18 @@ def test_llm_text_redaction_config__create_text_splitter__chunks_by_tokens():
     assert len(chunks) > 1
     assert all(len(encoding.encode(chunk)) <= 50 for chunk in chunks)
     assert " ".join(chunks).split() == text.split()
+
+
+def test_llm_text_redaction_config__optional_sections_survive_a_round_trip():
+    """A config without the optional sections can be rebuilt from its own dump, as
+    the prompt tooling does to apply overrides"""
+    config = _create_config()
+
+    rebuilt = LLMTextRedactionConfig(**(config.model_dump() | {"chunk_size": 4500}))
+
+    assert (rebuilt.must_redact, rebuilt.do_not_redact, rebuilt.examples) == (
+        None,
+        None,
+        None,
+    )
+    assert rebuilt.chunk_size == 4500
