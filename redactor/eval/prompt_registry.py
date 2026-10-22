@@ -13,7 +13,7 @@ import yaml
 from mlflow.entities.model_registry import PromptVersion
 from tiktoken import get_encoding
 
-from src.redaction.config import LLMTextRedactionConfig
+from src.redaction.config import EXTRA_SECTION_TAG, LLMTextRedactionConfig
 from src.types import LLMDetailedRedactionResultFormat
 
 PROMPT_NAME_PREFIX = "redaction-"
@@ -28,7 +28,8 @@ PROMPT_SECTIONS = (
     ("Examples", "examples", True),
 )
 REQUIRED_SECTIONS = ("Role", "Task", "Terms")
-PROMPT_FIELDS = tuple(field for _, field, _ in PROMPT_SECTIONS)
+EXTRA_SECTIONS_FIELD = "extra_sections"
+PROMPT_FIELDS = (*(field for _, field, _ in PROMPT_SECTIONS), EXTRA_SECTIONS_FIELD)
 
 CLAUSE_ID = re.compile(r"\[([TMDE]\d+)\]")
 _SECTION = re.compile(r"<(\w+)>\n(.*?)\n</\1>", re.DOTALL)
@@ -109,14 +110,20 @@ def normalise_template(template: str, config: LLMTextRedactionConfig) -> str:
     :raises PromptStructureError: If the prompt cannot be parsed into sections.
     """
     fields = parse_prompt_sections(template)
-    update = {
-        field: value.strip() if isinstance(value, str) else [c.strip() for c in value]
-        for field, value in fields.items()
-    }
+    update = {field: _stripped(value) for field, value in fields.items()}
     unset = dict.fromkeys(PROMPT_FIELDS)
     return config.model_copy(
         update=unset | update | {"include_rationale": True}
     ).create_system_prompt()
+
+
+def _stripped(value):
+    """Strip whitespace from a field's text, clauses, or an extra section's clauses"""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return {key: _stripped(clauses) for key, clauses in value.items()}
+    return [clause.strip() for clause in value]
 
 
 def _parse_clauses(body: str, tag: str) -> list[str]:
@@ -138,20 +145,28 @@ def _parse_clauses(body: str, tag: str) -> list[str]:
 
 def parse_prompt_sections(template: str) -> dict[str, str | list[str]]:
     """
-    Parse a system prompt back into the YAML fields it was built from.
+    Parse a system prompt back into the YAML fields it was built from. Sections other
+    than the standard ones become the ``extra_sections`` field, keyed by tag.
 
-    :raises PromptStructureError: If a section is unknown, repeated or missing, or there
-    is text outside the sections, since that text would be lost on export.
+    :raises PromptStructureError: If a section has an invalid tag, is repeated or
+    missing, or there is text outside the sections, since that text would be lost on
+    export.
     """
     known = {tag for tag, _, _ in PROMPT_SECTIONS}
     bodies: dict[str, str] = {}
+    extras: dict[str, str] = {}
     for match in _SECTION.finditer(template):
         tag, body = match.group(1), match.group(2)
-        if tag not in known:
-            raise PromptStructureError(f"Unknown section <{tag}>")
-        if tag in bodies:
+        if tag in bodies or tag in extras:
             raise PromptStructureError(f"Section <{tag}> appears more than once")
-        bodies[tag] = body
+        if tag in known:
+            bodies[tag] = body
+        elif EXTRA_SECTION_TAG.fullmatch(tag):
+            extras[tag] = body
+        else:
+            raise PromptStructureError(
+                f"Unknown section <{tag}>: extra sections need a CamelCase tag"
+            )
 
     leftover = _SECTION.sub("", template).strip()
     if leftover:
@@ -162,11 +177,16 @@ def parse_prompt_sections(template: str) -> dict[str, str | list[str]]:
     if missing:
         raise PromptStructureError(f"Missing required sections: {missing}")
 
-    return {
+    fields = {
         field: _parse_clauses(bodies[tag], tag) if is_list else bodies[tag]
         for tag, field, is_list in PROMPT_SECTIONS
         if tag in bodies
     }
+    if extras:
+        fields[EXTRA_SECTIONS_FIELD] = {
+            tag: _parse_clauses(body, tag) for tag, body in extras.items()
+        }
+    return fields
 
 
 class _BlockStyleDumper(yaml.SafeDumper):
