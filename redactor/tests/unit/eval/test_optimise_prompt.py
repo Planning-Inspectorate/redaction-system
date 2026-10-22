@@ -36,6 +36,22 @@ def test_parse_args__gate_defaults_to_test_split():
     assert (args.candidate, args.reference) == ("candidate", "baseline")
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [("evaluate", "dev"), ("optimise", "dev"), ("gate", "test")],
+)
+def test_parse_args__split_default_is_per_command(command, expected):
+    """Only gate uses the held-out test split by default. Setting that default on
+    gate must not change it for the other commands that share its arguments"""
+    assert optimise_prompt.parse_args([command, "--rule", "names"]).split == expected
+    assert (
+        optimise_prompt.parse_args(
+            [command, "--rule", "names", "--split", "test"]
+        ).split
+        == "test"
+    )
+
+
 def test_rule_config__precedence():
     """Command line overrides the prompt's model config, which overrides the YAML"""
     prompt = _prompt(

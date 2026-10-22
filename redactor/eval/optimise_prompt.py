@@ -406,7 +406,6 @@ def parse_args(argv=None) -> argparse.Namespace:
     run = argparse.ArgumentParser(add_help=False, parents=[common, settings])
     run.add_argument("--rule", required=True, choices=RULE_NAMES)
     run.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
-    run.add_argument("--split", choices=["dev", "test"], default="dev")
     run.add_argument("--limit", type=int, help="Only use the first N documents")
     run.add_argument("--budget", type=float, help="Stop after this cost in GBP")
 
@@ -427,6 +426,7 @@ def parse_args(argv=None) -> argparse.Namespace:
         "evaluate", parents=[run], help="Score a prompt version with mlflow.genai"
     )
     evaluate.add_argument("--prompt", default="baseline", help="Alias or version")
+    evaluate.add_argument("--split", choices=["dev", "test"], default="dev")
     evaluate.add_argument("--level", choices=["chunk", "document"], default="chunk")
     evaluate.add_argument("--empty-chunk-ratio", type=float, default=0.25)
     evaluate.add_argument("--repeats", type=int, default=1)
@@ -436,6 +436,7 @@ def parse_args(argv=None) -> argparse.Namespace:
         "optimise", parents=[run], help="Optimise a prompt version on dev chunks"
     )
     optimise.add_argument("--prompt", default="baseline", help="Alias or version")
+    optimise.add_argument("--split", choices=["dev", "test"], default="dev")
     optimise.add_argument("--optimizer", choices=["meta", "gepa"], default="meta")
     optimise.add_argument(
         "--reflection-model",
@@ -465,7 +466,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     gate = subparsers.add_parser(
         "gate", parents=[run], help="Compare a candidate with a reference prompt"
     )
-    gate.set_defaults(split="test")
+    gate.add_argument("--split", choices=["dev", "test"], default="test")
     gate.add_argument("--candidate", default="candidate", help="Alias or version")
     gate.add_argument("--reference", default="baseline", help="Alias or version")
     gate.add_argument("--repeats", type=int, default=2)
