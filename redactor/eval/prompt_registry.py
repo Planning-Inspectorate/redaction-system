@@ -201,37 +201,41 @@ def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
 _BlockStyleDumper.add_representer(str, _represent_str)
 
 
-def export_rule_to_yaml(
-    fields: dict[str, str | list[str]], rule: str, base_path: Path, out_path: Path
+def export_rules_to_yaml(
+    fields_by_rule: dict[str, dict[str, str | list[str]]],
+    base_path: Path,
+    out_path: Path,
 ):
     """
-    Write a copy of the base config with one LLM rule's prompt fields replaced.
+    Write a copy of the base config with each given LLM rule's prompt fields replaced.
+    Nothing is written if any rule fails.
 
-    :raises KeyError: If the rule is not an LLMTextRedaction rule in the base config.
+    :raises KeyError: If a rule is not an LLMTextRedaction rule in the base config.
     """
     config = yaml.safe_load(base_path.read_text(encoding="utf-8"))
-    rule_config = next(
-        (
-            rule_config
-            for redactor in config["redactors"]
-            if redactor["redactor_type"] == "LLMTextRedaction"
-            for rule_config in redactor["redaction_rules"]
-            if rule_config["name"] == rule
-        ),
-        None,
-    )
-    if rule_config is None:
-        raise KeyError(f"LLMTextRedaction rule '{rule}' not found in {base_path}")
-    for field in PROMPT_FIELDS:
-        if field in fields:
-            rule_config[field] = fields[field]
-        else:
-            rule_config.pop(field, None)
+    for rule, fields in fields_by_rule.items():
+        rule_config = next(
+            (
+                rule_config
+                for redactor in config["redactors"]
+                if redactor["redactor_type"] == "LLMTextRedaction"
+                for rule_config in redactor["redaction_rules"]
+                if rule_config["name"] == rule
+            ),
+            None,
+        )
+        if rule_config is None:
+            raise KeyError(f"LLMTextRedaction rule '{rule}' not found in {base_path}")
+        for field in PROMPT_FIELDS:
+            if field in fields:
+                rule_config[field] = fields[field]
+            else:
+                rule_config.pop(field, None)
 
-    # Fail before writing if production could not build a prompt from the new fields
-    LLMTextRedactionConfig(
-        redactor_type="LLMTextRedaction", **rule_config
-    ).create_system_prompt()
+        # Fail before writing if production could not build a prompt from the new fields
+        LLMTextRedactionConfig(
+            redactor_type="LLMTextRedaction", **rule_config
+        ).create_system_prompt()
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(
@@ -244,3 +248,10 @@ def export_rule_to_yaml(
         ),
         encoding="utf-8",
     )
+
+
+def export_rule_to_yaml(
+    fields: dict[str, str | list[str]], rule: str, base_path: Path, out_path: Path
+):
+    """Write a copy of the base config with one LLM rule's prompt fields replaced"""
+    export_rules_to_yaml({rule: fields}, base_path, out_path)

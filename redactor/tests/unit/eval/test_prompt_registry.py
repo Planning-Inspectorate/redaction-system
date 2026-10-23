@@ -9,6 +9,7 @@ from eval.corpus import RULE_NAMES
 from eval.prompt_registry import (
     PromptStructureError,
     export_rule_to_yaml,
+    export_rules_to_yaml,
     normalise_template,
     parse_prompt_sections,
     prompt_uri,
@@ -118,6 +119,38 @@ def test_export_rule_to_yaml__unknown_rule(tmp_path):
 
     with pytest.raises(KeyError):
         export_rule_to_yaml(fields, "not_a_rule", DEFAULT_CONFIG, tmp_path / "x.yaml")
+
+
+def test_export_rules_to_yaml__replaces_each_rule(tmp_path):
+    names = parse_prompt_sections(_detailed_template("names"))
+    names["redaction_terms"] = ["A new names term"]
+    sensitive = parse_prompt_sections(_detailed_template("sensitive_info"))
+    sensitive["redaction_terms"] = ["A new sensitive term"]
+    out = tmp_path / "optimised.yaml"
+
+    export_rules_to_yaml(
+        {"names": names, "sensitive_info": sensitive}, DEFAULT_CONFIG, out
+    )
+
+    exported = yaml.safe_load(out.read_text(encoding="utf-8"))
+    original = yaml.safe_load(DEFAULT_CONFIG.read_text(encoding="utf-8"))
+    rules = {r["name"]: r for r in exported["redactors"][0]["redaction_rules"]}
+    original_rules = {r["name"]: r for r in original["redactors"][0]["redaction_rules"]}
+    assert rules["names"]["redaction_terms"] == ["A new names term"]
+    assert rules["sensitive_info"]["redaction_terms"] == ["A new sensitive term"]
+    assert rules["contact_identity_info"] == original_rules["contact_identity_info"]
+
+
+def test_export_rules_to_yaml__writes_nothing_if_any_rule_fails(tmp_path):
+    fields = parse_prompt_sections(_detailed_template("names"))
+    out = tmp_path / "x.yaml"
+
+    with pytest.raises(KeyError):
+        export_rules_to_yaml(
+            {"names": fields, "not_a_rule": fields}, DEFAULT_CONFIG, out
+        )
+
+    assert not out.exists()
 
 
 def test_register_rule_prompt(tracking_uri):
