@@ -3,10 +3,8 @@ import json
 from unittest.mock import patch
 
 import pytest
-
-pytest.importorskip("mlflow")
-
-from eval import compare_prompts, optimise_prompt
+from azure.core.exceptions import ClientAuthenticationError
+from eval import azure_auth, compare_prompts
 from eval.corpus import Document, Entity, write_corpus
 from eval.scoring import ScoreCounts
 from eval.summarise_chunk_sweep import ScoredRun
@@ -108,9 +106,8 @@ def _compare_args(tmp_path, *extra_args):
             )
         ],
     )
-    return optimise_prompt.parse_args(
+    return compare_prompts.parse_args(
         [
-            "compare",
             "--corpus",
             str(corpus),
             "--out-dir",
@@ -199,3 +196,28 @@ def test_compare__warns_if_configs_have_different_numbers_of_runs(tmp_path, caps
 def test_compare__plot_only_needs_existing_results(tmp_path):
     with pytest.raises(SystemExit, match="No results for 'basic'"):
         compare_prompts.cmd_compare(_compare_args(tmp_path, "--plot-only"))
+
+
+def test_main__plot_only_makes_no_azure_calls():
+    with (
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
+        patch.object(compare_prompts, "cmd_compare") as mock_compare,
+    ):
+        compare_prompts.main(["--plot-only"])
+
+    mock_credential.assert_not_called()
+    mock_compare.assert_called_once()
+
+
+def test_main__checks_azure_auth_when_running():
+    error = ClientAuthenticationError(message="no credentials")
+
+    with (
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
+        patch.object(compare_prompts, "cmd_compare") as mock_compare,
+    ):
+        mock_credential.return_value.get_token.side_effect = error
+        with pytest.raises(SystemExit, match="Azure authentication failed"):
+            compare_prompts.main([])
+
+    mock_compare.assert_not_called()

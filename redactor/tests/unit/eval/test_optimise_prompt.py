@@ -7,7 +7,7 @@ from azure.core.exceptions import ClientAuthenticationError
 
 mlflow = pytest.importorskip("mlflow")
 
-from eval import optimise_prompt
+from eval import azure_auth, optimise_prompt
 from eval.corpus import Document, Entity, write_corpus
 from eval.prompt_registry import register_rule_prompt
 
@@ -159,7 +159,7 @@ def test_main__stops_before_running_if_azure_auth_fails(command):
 
     with (
         patch.object(optimise_prompt, "setup_mlflow"),
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
         patch.object(optimise_prompt, f"cmd_{command}") as mock_command,
     ):
         mock_credential.return_value.get_token.side_effect = error
@@ -173,7 +173,7 @@ def test_main__skips_azure_check_for_commands_without_llm_calls():
     with (
         patch.object(optimise_prompt, "setup_mlflow"),
         patch.object(optimise_prompt, "cmd_export") as mock_export,
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
     ):
         optimise_prompt.main(["export", "--rule", "names", "--out", "x.yaml"])
 
@@ -342,33 +342,6 @@ def test_export__no_champions_fails(tmp_path):
         optimise_prompt.cmd_export(_export_args(tmp_path))
 
 
-def test_main__compare_skips_mlflow_and_azure_check_when_plotting_only():
-    with (
-        patch.object(optimise_prompt, "setup_mlflow") as mock_setup,
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
-        patch.object(optimise_prompt, "cmd_compare") as mock_compare,
-    ):
-        optimise_prompt.main(["compare", "--plot-only"])
-
-    mock_setup.assert_not_called()
-    mock_credential.assert_not_called()
-    mock_compare.assert_called_once()
-
-
-def test_main__compare_checks_azure_auth_when_running():
-    error = ClientAuthenticationError(message="no credentials")
-
-    with (
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
-        patch.object(optimise_prompt, "cmd_compare") as mock_compare,
-    ):
-        mock_credential.return_value.get_token.side_effect = error
-        with pytest.raises(SystemExit, match="Azure authentication failed"):
-            optimise_prompt.main(["compare"])
-
-    mock_compare.assert_not_called()
-
-
 def _log_gate_run(rule, version, passed=1.0, repeats=2, candidate_f2=0.95):
     """Log a gate run as cmd_gate does, for the given candidate version"""
     mlflow.set_experiment(optimise_prompt.EXPERIMENT_NAME)
@@ -467,7 +440,7 @@ def test_gates_summary__no_champions_fails(gates_experiment, tmp_path):
 
 def test_main__gates_summary_makes_no_llm_calls(tmp_path):
     with (
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
         patch.object(optimise_prompt, "cmd_gates_summary") as mock_summary,
     ):
         optimise_prompt.main(["gates-summary"])

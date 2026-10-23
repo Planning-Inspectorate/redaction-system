@@ -2,9 +2,11 @@
 
 Each config in `src/config` is run over a corpus split with `run_chunk_sweep` at the same
 chunk settings, so only the prompt differs. The per-document results are scored with the
-repo's scoring and saved as a plot and table. Unlike the rest of `optimise_prompt`, this
-uses no MLflow prompt registry and logs nothing to MLflow, and `--plot-only` makes no LLM
-calls. It is the `compare` subcommand of `optimise_prompt`.
+repo's scoring and saved as a plot and table. It uses no MLflow, and `--plot-only` makes
+no LLM calls. Run from the `redactor` directory, inside the VNet when running configs:
+
+    python -m eval.compare_prompts --configs basic default optimised
+    python -m eval.compare_prompts --plot-only
 """
 
 import argparse
@@ -17,13 +19,19 @@ import numpy as np
 
 from src.redaction.config import LLMTextRedactionConfigBase
 
+from .azure_auth import check_azure_auth
 from .corpus import RULE_NAMES, load_corpus
-from .mlflow_scorers import BETA
 from .run_chunk_sweep import overlap_for, run_sweep
 from .run_chunk_sweep import parse_args as parse_sweep_args
-from .scoring import HARD_NEGATIVE_WEIGHT, UNLOCATABLE_WEIGHT, objective_score
+from .scoring import (
+    BETA,
+    HARD_NEGATIVE_WEIGHT,
+    UNLOCATABLE_WEIGHT,
+    objective_score,
+)
 from .summarise_chunk_sweep import ALL_RULES, ScoredRun, score_rows, summarise
 
+RESULTS_DIR = Path("eval/results")
 COMPARE_CONFIGS = ("basic", "default", "optimised")
 COMPARE_METRICS = {
     "f2": "F2",
@@ -238,3 +246,54 @@ def cmd_compare(args: argparse.Namespace):
             )
         )
     print(f"Wrote {table_path} and {plot_path}")
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    """Define and parse the command line arguments"""
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument(
+        "--configs",
+        nargs="+",
+        default=list(COMPARE_CONFIGS),
+        help="Redaction config names under src/config, in plot order",
+    )
+    parser.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
+    parser.add_argument("--split", choices=["dev", "test"], default="test")
+    parser.add_argument(
+        "--out-dir",
+        default=str(RESULTS_DIR / "compare"),
+        help="Where per-config results (<config>.jsonl), the table and plot go",
+    )
+    parser.add_argument(
+        "--plot-only",
+        action="store_true",
+        help="Score and plot the results already in --out-dir, with no LLM calls",
+    )
+    parser.add_argument("--chunk-size", type=int, help="Override the chunk size")
+    parser.add_argument("--chunk-overlap", type=int, help="Override the overlap")
+    parser.add_argument("--max-completion-tokens", type=int)
+    parser.add_argument(
+        "--reasoning-effort", choices=["minimal", "low", "medium", "high"]
+    )
+    parser.add_argument("--repeats", type=int, default=2)
+    parser.add_argument("--limit", type=int, help="Only use the first N documents")
+    parser.add_argument("--budget", type=float, help="Stop each config at this cost")
+    parser.add_argument("--max-workers", type=int, default=4)
+    parser.add_argument("--coverage-threshold", type=float, default=0.8)
+    parser.add_argument(
+        "--hard-negative-weight", type=float, default=HARD_NEGATIVE_WEIGHT
+    )
+    parser.add_argument("--unlocatable-weight", type=float, default=UNLOCATABLE_WEIGHT)
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    """Command line entry point: run the configs, unless --plot-only, then plot them"""
+    args = parse_args(argv)
+    if not args.plot_only:
+        check_azure_auth()
+    cmd_compare(args)
+
+
+if __name__ == "__main__":
+    main()

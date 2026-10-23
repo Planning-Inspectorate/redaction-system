@@ -10,7 +10,6 @@ file for human review. Run from the `redactor` directory, inside the VNet:
     python -m eval.optimise_prompt optimise --rule names --optimizer meta
     python -m eval.optimise_prompt gate --rule names --candidate candidate --promote
     python -m eval.optimise_prompt export --out src/config/optimised.yaml
-    python -m eval.optimise_prompt compare --configs basic default optimised
     python -m eval.optimise_prompt gates-summary
 
 View results with ``mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db``.
@@ -31,18 +30,12 @@ import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
 import pandas as pd
-from azure.core.exceptions import ClientAuthenticationError
-from azure.identity import (
-    AzureCliCredential,
-    ChainedTokenCredential,
-    ManagedIdentityCredential,
-)
 from mlflow.entities.model_registry import PromptVersion
 from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 
 from src.redaction.config import LLMTextRedactionConfig
 
-from .compare_prompts import COMPARE_CONFIGS, UNIT_RANGE_METRICS, cmd_compare
+from .azure_auth import check_azure_auth
 from .corpus import RULE_NAMES, Document, load_corpus
 from .mlflow_dataset import (
     PromptRunner,
@@ -76,8 +69,8 @@ EXPERIMENT_NAME = "redaction-prompt-engineering"
 RESULTS_DIR = Path("eval/results")
 DEFAULT_TRACKING_URI = f"sqlite:///{RESULTS_DIR.as_posix()}/mlflow.db"
 AZURE_API_VERSION = "2024-12-01-preview"
-AZURE_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"  # nosec: B105
 LLM_COMMANDS = ("evaluate", "optimise", "gate")
+UNIT_RANGE_METRICS = ("f2", "recall", "precision")
 GATE_METRICS = {
     "f2": "F2",
     "recall": "Recall",
@@ -801,40 +794,6 @@ def parse_args(argv=None) -> argparse.Namespace:
     export.add_argument("--out", required=True, help="Path of the YAML file to write")
     export.set_defaults(func=cmd_export)
 
-    compare = subparsers.add_parser(
-        "compare",
-        parents=[settings],
-        help="Plot metrics of several prompt configs, e.g. basic, default and optimised",
-    )
-    compare.add_argument(
-        "--configs",
-        nargs="+",
-        default=list(COMPARE_CONFIGS),
-        help="Redaction config names under src/config, in plot order",
-    )
-    compare.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
-    compare.add_argument("--split", choices=["dev", "test"], default="test")
-    compare.add_argument(
-        "--out-dir",
-        default=str(RESULTS_DIR / "compare"),
-        help="Where per-config results (<config>.jsonl), the table and plot go",
-    )
-    compare.add_argument(
-        "--plot-only",
-        action="store_true",
-        help="Score and plot the results already in --out-dir, with no LLM calls",
-    )
-    compare.add_argument("--repeats", type=int, default=2)
-    compare.add_argument("--limit", type=int, help="Only use the first N documents")
-    compare.add_argument("--budget", type=float, help="Stop each config at this cost")
-    compare.add_argument("--max-workers", type=int, default=4)
-    compare.add_argument("--coverage-threshold", type=float, default=0.8)
-    compare.add_argument(
-        "--hard-negative-weight", type=float, default=HARD_NEGATIVE_WEIGHT
-    )
-    compare.add_argument("--unlocatable-weight", type=float, default=UNLOCATABLE_WEIGHT)
-    compare.set_defaults(func=cmd_compare)
-
     gates_summary = subparsers.add_parser(
         "gates-summary",
         help="Plot each rule's promoted champion against its baseline from the gates",
@@ -856,29 +815,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def check_azure_auth():
-    """Stop now if no Azure token can be obtained, as MLflow would otherwise catch the
-    error for every record and finish the run with all-zero scores"""
-    # Same credential chain as LLMTextAnalyser
-    credential = ChainedTokenCredential(
-        ManagedIdentityCredential(), AzureCliCredential()
-    )
-    try:
-        credential.get_token(AZURE_TOKEN_SCOPE)
-    except ClientAuthenticationError as e:
-        raise SystemExit(
-            f"Azure authentication failed, so no LLM calls can be made:\n{e}"
-        )
-
-
 def main(argv=None):
     args = parse_args(argv)
-    # Comparing prompt configs uses no registry, and only calls the LLM when running
-    if args.command != "compare":
-        setup_mlflow(args.tracking_uri)
-    if args.command in LLM_COMMANDS or (
-        args.command == "compare" and not args.plot_only
-    ):
+    setup_mlflow(args.tracking_uri)
+    if args.command in LLM_COMMANDS:
         check_azure_auth()
     args.func(args)
 
