@@ -163,7 +163,7 @@ def test_main__stops_before_running_if_azure_auth_fails(command):
 
     with (
         patch.object(optimise_prompt, "setup_mlflow"),
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
         patch.object(optimise_prompt, f"cmd_{command}") as mock_command,
     ):
         mock_credential.return_value.get_token.side_effect = error
@@ -177,7 +177,7 @@ def test_main__skips_azure_check_for_commands_without_llm_calls():
     with (
         patch.object(optimise_prompt, "setup_mlflow"),
         patch.object(optimise_prompt, "cmd_export") as mock_export,
-        patch.object(optimise_prompt, "ChainedTokenCredential") as mock_credential,
+        patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
     ):
         optimise_prompt.main(["export", "--rule", "names", "--out", "x.yaml"])
 
