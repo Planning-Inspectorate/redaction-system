@@ -10,12 +10,15 @@ file for human review. Run from the `redactor` directory, inside the VNet:
     python -m eval.optimise_prompt optimise --rule names --optimizer meta
     python -m eval.optimise_prompt gate --rule names --candidate candidate --promote
     python -m eval.optimise_prompt export --out src/config/optimised.yaml
+    python -m eval.optimise_prompt compare --configs basic default optimised
+    python -m eval.optimise_prompt gates-summary
 
 View results with ``mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db``.
 Traces include the corpus text, so only point this at synthetic or approved data.
 """
 
 import argparse
+import csv
 import json
 import os
 import warnings
@@ -24,7 +27,9 @@ from importlib import resources
 from pathlib import Path
 
 import litellm
+import matplotlib.pyplot as plt
 import mlflow
+import numpy as np
 import pandas as pd
 from azure.core.exceptions import ClientAuthenticationError
 from azure.identity import (
@@ -37,6 +42,7 @@ from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 
 from src.redaction.config import LLMTextRedactionConfig
 
+from .compare_prompts import COMPARE_CONFIGS, UNIT_RANGE_METRICS, cmd_compare
 from .corpus import RULE_NAMES, Document, load_corpus
 from .mlflow_dataset import (
     PromptRunner,
@@ -60,7 +66,11 @@ from .scoring import (
     UNLOCATABLE_WEIGHT,
     score_document,
 )
-from .summarise_chunk_sweep import ScoredRun, bootstrap_f_beta_differences, summarise
+from .summarise_chunk_sweep import (
+    ScoredRun,
+    bootstrap_f_beta_differences,
+    summarise,
+)
 
 EXPERIMENT_NAME = "redaction-prompt-engineering"
 RESULTS_DIR = Path("eval/results")
@@ -68,6 +78,14 @@ DEFAULT_TRACKING_URI = f"sqlite:///{RESULTS_DIR.as_posix()}/mlflow.db"
 AZURE_API_VERSION = "2024-12-01-preview"
 AZURE_TOKEN_SCOPE = "https://cognitiveservices.azure.com/.default"  # nosec: B105
 LLM_COMMANDS = ("evaluate", "optimise", "gate")
+GATE_METRICS = {
+    "f2": "F2",
+    "recall": "Recall",
+    "precision": "Precision",
+    "hard_negative_fp_rate": "Hard-negative hit rate (lower is better)",
+    "cost_gbp": "Cost of the gate run (GBP)",
+}
+"""Metrics logged by the gate for both prompts, as <reference|candidate>_<metric>"""
 _CLAUSE_RULES = (
     "Keep the [T1]-style clause "
     "labels, renumbering them in order within each section if clauses are added or "
@@ -506,6 +524,144 @@ def cmd_export(args: argparse.Namespace):
     print(f"Wrote {len(fields_by_rule)} rule(s) to {args.out}")
 
 
+def champion_gate_rows(rules: list[str]) -> list[dict]:
+    """
+    The latest passing gate run of each rule's current champion, as a flat row of its
+    logged parameters and metrics. Rules without a champion, or without a passing gate
+    run for it, are skipped with a message.
+    """
+    runs = mlflow.search_runs(
+        experiment_names=[EXPERIMENT_NAME],
+        filter_string="tags.mlflow.runName LIKE 'gate-%' AND metrics.passed = 1",
+        order_by=["start_time DESC"],
+        output_format="list",
+    )
+    rows = []
+    for rule in rules:
+        champion = mlflow.genai.load_prompt(
+            prompt_uri(rule, "champion"), allow_missing=True
+        )
+        if champion is None:
+            print(f"Skipping '{rule}': no champion")
+            continue
+        uri = prompt_uri(rule, str(champion.version))
+        run = next((r for r in runs if r.data.params.get("prompt_uri") == uri), None)
+        if run is None:
+            print(f"Skipping '{rule}': no passing gate run for {uri}")
+            continue
+        metrics, params = run.data.metrics, run.data.params
+        row = {
+            "rule": rule,
+            "champion": uri,
+            "reference": params["reference_prompt_uri"],
+            "run_id": run.info.run_id,
+            "documents": int(params["documents"]),
+            "repeats": int(params["repeats"]),
+            "f2_diff_ci_low": metrics["f2_diff_ci_low"],
+            "f2_diff_ci_high": metrics["f2_diff_ci_high"],
+        }
+        for metric in GATE_METRICS:
+            for side in ("reference", "candidate"):
+                row[f"{side}_{metric}"] = metrics[f"{side}_{metric}"]
+        row["f2_diff"] = row["candidate_f2"] - row["reference_f2"]
+        rows.append(row)
+    return rows
+
+
+def plot_gates_summary(rows: list[dict], out_path: Path, title: str = ""):
+    """Save a forest plot of the F2 difference with its 95% interval, and a baseline to
+    champion chart for each metric, with a row per rule"""
+    labels = [
+        f"{row['rule'].replace('_', ' ')}\n(v{row['champion'].rsplit('/', 1)[-1]})"
+        for row in rows
+    ]
+    y = np.arange(len(rows))[::-1]
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 8), sharey=True)
+    forest = axes[0, 0]
+    diffs = np.array([row["f2_diff"] for row in rows])
+    low = np.array([row["f2_diff_ci_low"] for row in rows])
+    high = np.array([row["f2_diff_ci_high"] for row in rows])
+    forest.errorbar(
+        diffs, y, xerr=[diffs - low, high - diffs], fmt="o", capsize=4, color="C0"
+    )
+    forest.axvline(0, color="black", linewidth=1, linestyle="--")
+    for yi, lo, hi in zip(y, low, high):
+        forest.annotate(
+            f"[{lo:+.3f}, {hi:+.3f}]",
+            (hi, yi),
+            textcoords="offset points",
+            xytext=(6, 0),
+            va="center",
+            fontsize=7,
+        )
+    forest.set_title("F2 difference, champion - baseline (95% CI)", fontsize=10)
+    forest.margins(x=0.3)
+
+    # Metrics in [0, 1] share a range ending at 1, and the rest start at 0, so
+    # differences are not exaggerated by each panel's own scale
+    unit_metrics = [m for m in GATE_METRICS if m in UNIT_RANGE_METRICS]
+    unit_left = min(
+        row[f"{side}_{m}"]
+        for row in rows
+        for side in ("reference", "candidate")
+        for m in unit_metrics
+    )
+    for ax, (metric, label) in zip(axes.flat[1:], GATE_METRICS.items()):
+        for yi, row in zip(y, rows):
+            before, after = row[f"reference_{metric}"], row[f"candidate_{metric}"]
+            ax.plot([before, after], [yi, yi], color="grey", zorder=1)
+            ax.scatter(
+                before, yi, color="C1", zorder=2, label="baseline", clip_on=False
+            )
+            ax.scatter(after, yi, color="C2", zorder=2, label="champion", clip_on=False)
+        ax.set_title(label, fontsize=10)
+        if metric in unit_metrics:
+            ax.set_xlim(max(0, unit_left - 0.02), 1.0)
+        else:
+            ax.set_xlim(left=0)
+
+    for ax in axes.flat:
+        ax.set_yticks(y, labels, fontsize=8)
+        ax.spines[["top", "right"]].set_visible(False)
+    handles, names = axes[0, 1].get_legend_handles_labels()
+    by_name = dict(zip(names, handles))
+    fig.legend(by_name.values(), by_name.keys(), loc="lower center", ncol=2)
+    if title:
+        fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
+def cmd_gates_summary(args: argparse.Namespace):
+    """Save a plot and table of each rule's champion against the baseline it was gated
+    on, from the logged gate runs, so no LLM calls are made"""
+    rows = champion_gate_rows(args.rules or list(RULE_NAMES))
+    if not rows:
+        raise SystemExit("No rules have a champion with a passing gate run")
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table_path, plot_path = out_dir / "gates_summary.csv", out_dir / "gates_summary.png"
+    with table_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(
+            {k: round(v, 5) if isinstance(v, float) else v for k, v in row.items()}
+            for row in rows
+        )
+    plot_gates_summary(rows, plot_path, "Promoted champion of each rule vs baseline")
+
+    for row in rows:
+        print(
+            f"{row['rule']} {row['champion']}: F2 {row['reference_f2']:.3f} -> "
+            f"{row['candidate_f2']:.3f} (95% CI {row['f2_diff_ci_low']:+.3f} to "
+            f"{row['f2_diff_ci_high']:+.3f}, {row['documents']} documents, "
+            f"{row['repeats']} repeats)"
+        )
+    print(f"Wrote {table_path} and {plot_path}")
+
+
 def parse_args(argv=None) -> argparse.Namespace:
     """Define and parse the command line arguments for each subcommand"""
     common = argparse.ArgumentParser(add_help=False)
@@ -645,6 +801,58 @@ def parse_args(argv=None) -> argparse.Namespace:
     export.add_argument("--out", required=True, help="Path of the YAML file to write")
     export.set_defaults(func=cmd_export)
 
+    compare = subparsers.add_parser(
+        "compare",
+        parents=[settings],
+        help="Plot metrics of several prompt configs, e.g. basic, default and optimised",
+    )
+    compare.add_argument(
+        "--configs",
+        nargs="+",
+        default=list(COMPARE_CONFIGS),
+        help="Redaction config names under src/config, in plot order",
+    )
+    compare.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
+    compare.add_argument("--split", choices=["dev", "test"], default="test")
+    compare.add_argument(
+        "--out-dir",
+        default=str(RESULTS_DIR / "compare"),
+        help="Where per-config results (<config>.jsonl), the table and plot go",
+    )
+    compare.add_argument(
+        "--plot-only",
+        action="store_true",
+        help="Score and plot the results already in --out-dir, with no LLM calls",
+    )
+    compare.add_argument("--repeats", type=int, default=2)
+    compare.add_argument("--limit", type=int, help="Only use the first N documents")
+    compare.add_argument("--budget", type=float, help="Stop each config at this cost")
+    compare.add_argument("--max-workers", type=int, default=4)
+    compare.add_argument("--coverage-threshold", type=float, default=0.8)
+    compare.add_argument(
+        "--hard-negative-weight", type=float, default=HARD_NEGATIVE_WEIGHT
+    )
+    compare.add_argument("--unlocatable-weight", type=float, default=UNLOCATABLE_WEIGHT)
+    compare.set_defaults(func=cmd_compare)
+
+    gates_summary = subparsers.add_parser(
+        "gates-summary",
+        help="Plot each rule's promoted champion against its baseline from the gates",
+    )
+    gates_summary.add_argument("--tracking-uri", default=DEFAULT_TRACKING_URI)
+    gates_summary.add_argument(
+        "--rules",
+        nargs="+",
+        choices=RULE_NAMES,
+        help="Rules to include. Defaults to every rule",
+    )
+    gates_summary.add_argument(
+        "--out-dir",
+        default=str(RESULTS_DIR / "gates"),
+        help="Where gates_summary.png and gates_summary.csv go",
+    )
+    gates_summary.set_defaults(func=cmd_gates_summary)
+
     return parser.parse_args(argv)
 
 
@@ -665,8 +873,12 @@ def check_azure_auth():
 
 def main(argv=None):
     args = parse_args(argv)
-    setup_mlflow(args.tracking_uri)
-    if args.command in LLM_COMMANDS:
+    # Comparing prompt configs uses no registry, and only calls the LLM when running
+    if args.command != "compare":
+        setup_mlflow(args.tracking_uri)
+    if args.command in LLM_COMMANDS or (
+        args.command == "compare" and not args.plot_only
+    ):
         check_azure_auth()
     args.func(args)
 
