@@ -446,7 +446,7 @@ class SignatureDetector(ImageAnalyser):
             "Analysing image for signatures using signature detector app..."
         )
         response = post(
-            f"{cls._get_endpoint()}/score",
+            f"https://{cls._get_endpoint()}/score",
             json={"image": image_bytes.hex(), "threshold": 0.0},
             headers={"Content-Type": "application/json"},
             timeout=120,
