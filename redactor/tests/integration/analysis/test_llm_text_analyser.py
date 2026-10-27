@@ -21,8 +21,8 @@ def test__llm_text_analyser___num_tokens_consumed():
         llm_text_analyser.create_api_message(system_prompt, user_prompt)
     )
     assert (
-        num_tokens == 1024
-    )  # 1000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
+        num_tokens == 4024
+    )  # 4000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
 
 
 def test__llm_text_analyser__invoke_chain__responds():
