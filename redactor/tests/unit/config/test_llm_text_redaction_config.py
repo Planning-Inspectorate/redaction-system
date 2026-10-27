@@ -97,7 +97,7 @@ def test_llm_text_redaction_config__default_completion_settings():
     """
     config = _create_config()
 
-    assert config.max_tokens == 1000
+    assert config.max_tokens == 4000
     assert config.reasoning_effort is None
 
 
@@ -106,9 +106,9 @@ def test_llm_text_redaction_config__completion_settings():
     - Given I create an llm redaction config with a token limit and reasoning effort
     - Then both should be set, including when copied with an override as the sweep does
     """
-    config = _create_config(max_tokens=4000, reasoning_effort="low")
+    config = _create_config(max_tokens=6000, reasoning_effort="low")
 
-    assert config.max_tokens == 4000
+    assert config.max_tokens == 6000
     assert config.reasoning_effort == "low"
     assert config.model_copy(
         update={"reasoning_effort": "minimal"}
