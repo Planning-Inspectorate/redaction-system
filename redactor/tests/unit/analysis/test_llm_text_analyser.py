@@ -163,6 +163,39 @@ def test__llm_text_analyser__invoke_chain__reasoning_effort(
     )
 
 
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_starts_from_config_limit(
+    mock_num_tokens, mock_api_message
+):
+    """A truncated first attempt retries at double the configured limit, not 2000"""
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", max_tokens=1500
+    )
+    truncated = Mock(usage=None)
+    successful = MagicMock(usage=None)
+    successful.choices[0].message.parsed.redaction_strings = ["string A"]
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=[LengthFinishReasonError(completion=truncated), successful],
+    ):
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        calls = LLMTextAnalyser.invoke_chain.call_args_list
+        assert [call.args[-1] for call in calls] == [1500, 3000]
+
+
 def test__llm_text_analyser____init__():
     with (
         patch(f"{MODULE}.get_bearer_token_provider") as mock_get_token_provider,
