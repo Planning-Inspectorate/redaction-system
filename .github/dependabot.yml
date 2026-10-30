@@ -19,3 +19,5 @@ updates:
       day: 'wednesday'
     cooldown:
       default-days: 7
+    exclude-paths:
+      - 'uv.lock' # not used by deployed app - uses requirements.txt
