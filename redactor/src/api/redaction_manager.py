@@ -465,13 +465,10 @@ class RedactionManager:
             f" (base job ID '{base_job_id}' and version '{version}')'"
         )
 
-        # Current version will be the most recent file uploaded
-        # Job ID for proposed redactions will be at most version-2
-        proposed_version = version - 2 if version and version > 2 else None
         container_client = redaction_storage_io_inst._get_container_client(
             "redactiondata"
         )
-        if not proposed_version:
+        if not version or version <= 1:
             LoggingUtil().log_info(
                 f"Job ID '{self.job_id}' does not correspond to a versioned file name,"
                 f" so the proposed redactions file cannot be identified for comparison."
@@ -479,16 +476,23 @@ class RedactionManager:
             )
             return
 
-        # Check all possible versions from version-2 to 1
-        while proposed_version > 0:
-            base_blob_path = f"{base_job_id}-{proposed_version}"
-            candidate_blobs = {
-                x.name: x.creation_time
-                for x in container_client.list_blobs(name_starts_with=base_blob_path)
-            }
-            blob_path = self._get_most_recent_blob(
-                candidate_blobs, "proposed_redactions.json"
+        # Find all candidate proposed redactions blobs for the base job ID
+        candidate_blobs = {
+            blob.name: blob.creation_time
+            for blob in container_client.list_blobs(name_starts_with=base_job_id)
+            if "proposed_redactions.json" in blob.name
+        }
+        if not candidate_blobs:
+            LoggingUtil().log_info(
+                f"No proposed redactions files found for base job ID '{base_job_id}'."
+                " Skipping analytics for this file."
             )
+            return
+
+        proposed_redactions_dict = None
+        while candidate_blobs:
+            blob_path = max(candidate_blobs, key=candidate_blobs.get, default=None)
+            candidate_blobs.pop(blob_path, None)
             if blob_path:
                 blob_client = container_client.get_blob_client(blob_path)
 
@@ -501,40 +505,44 @@ class RedactionManager:
                         LoggingUtil().log_info(
                             f"Proposed redactions file at '{blob_path}' is empty."
                         )
-                    # Compare proposed redactions with final redactions and log differences
-                    redaction_analytics = self._compare_redactions(
-                        proposed_redactions_dict, final_redactions_dict
+                    LoggingUtil().log_info(
+                        f"Loaded proposed redactions from '{blob_path}' for job ID '{self.job_id}'"
                     )
-
-                    # Save to analytics container
-                    try:
-                        LoggingUtil().log_info(
-                            f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
-                        )
-                        self.save_dict_to_blob_json(
-                            redaction_analytics,
-                            redaction_storage_io_inst,
-                            f"{base_job_id}.json",
-                            container_name="analytics",
-                        )
-                    except ResourceExistsError as e:
-                        # TODO Refine logic: should be saved, but what should the name be?
-                        LoggingUtil().log_exception_with_message(
-                            f"An analytics file for job ID '{base_job_id}' already exists",
-                            e,
-                        )
-                    return
+                    break
                 else:
                     LoggingUtil().log_info(
                         f"No proposed redactions file found at '{blob_path}' for job ID '{self.job_id}'"
                     )
 
-            proposed_version -= 1
+        if not proposed_redactions_dict:
+            LoggingUtil().log_info(
+                f"No valid proposed redactions found for job ID '{self.job_id}'"
+            )
+            return
 
-        LoggingUtil().log_info(
-            f"No proposed redactions file found for job ID '{self.job_id}' with base job ID '{base_job_id}'"
-            f" and versions up to '{proposed_version}'. Skipping analytics for this file."
+        # Compare proposed redactions with final redactions and log differences
+        redaction_analytics = self._compare_redactions(
+            proposed_redactions_dict, final_redactions_dict
         )
+
+        # Save to analytics container
+        try:
+            LoggingUtil().log_info(
+                f"Saving redaction analytics to blob storage for job ID '{self.job_id}'"
+            )
+            self.save_dict_to_blob_json(
+                redaction_analytics,
+                redaction_storage_io_inst,
+                f"{base_job_id}.json",
+                container_name="analytics",
+            )
+        except ResourceExistsError as e:
+            # TODO Refine logic: should be saved, but what should the name be?
+            LoggingUtil().log_exception_with_message(
+                f"An analytics file for job ID '{base_job_id}' already exists",
+                e,
+            )
+        return
 
     def apply(self, params: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         """

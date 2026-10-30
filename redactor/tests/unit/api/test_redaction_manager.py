@@ -477,6 +477,9 @@ class TestCompareAndSaveRedactions:
         mock_container_client = MagicMock(spec=ContainerClient)
         mock_blob_client = MagicMock(spec=BlobClient)
 
+        mock_blob = MagicMock(creation_time=datetime(2024, 1, 1, tzinfo=UTC))
+        mock_blob.name = "job_id-1-12345/proposed_redactions.json"
+        mock_container_client.list_blobs.return_value = [mock_blob]
         mock_container_client.get_blob_client.return_value = mock_blob_client
         mock_blob_client.exists.side_effect = [True, False]
         mock_blob_client.download_blob.return_value = BytesIO(
@@ -510,11 +513,6 @@ class TestCompareAndSaveRedactions:
             patch.object(
                 RedactionManager, "_compare_redactions", return_value=comparison_output
             ) as mock_compare_redactions,
-            patch.object(
-                RedactionManager,
-                "_get_most_recent_blob",
-                return_value="job_id-1-12345/proposed_redactions.json",
-            ),
         ):
             inst = RedactionManager()
             inst.job_id = "job_id"
@@ -522,11 +520,12 @@ class TestCompareAndSaveRedactions:
                 final_redactions_dict,
                 storage_io_inst,
             )
-            mock_compare_redactions.assert_called_once_with(
-                proposed_redactions_dict, final_redactions_dict
-            )
             mock_container_client.get_blob_client.assert_called_once_with(
                 "job_id-1-12345/proposed_redactions.json"
+            )
+            mock_blob_client.download_blob.assert_called_once()
+            mock_compare_redactions.assert_called_once_with(
+                proposed_redactions_dict, final_redactions_dict
             )
             mock_save_dict_to_blob_json.assert_called_once_with(
                 comparison_output,
