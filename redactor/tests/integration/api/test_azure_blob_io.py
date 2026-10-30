@@ -35,6 +35,13 @@ class TestIntegrationAzureBlobIO(TestCase):
     SUBFOLDER = "azure_blob_io_test"
     FILES_TO_CLEANUP: ClassVar[list[str]] = ["sample.pdf", "a/q.bin"]
 
+    def setup_method(self, method=None):
+        # Reruns of a flaky test must not collide with blobs from a previous attempt
+        for file in self.FILES_TO_CLEANUP:
+            self.try_delete_blob(
+                self.CALLBACK_CONTAINER_CLIENT, f"{self.SUBFOLDER}/{file}"
+            )
+
     def session_setup(self):
         for file in self.FILES_TO_CLEANUP:
             self.try_delete_blob(
