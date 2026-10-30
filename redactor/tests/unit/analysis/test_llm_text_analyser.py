@@ -1,6 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
@@ -89,12 +89,38 @@ def test__update_max_tokens__limit():
     assert retry_state.kwargs["max_completion_tokens"] == 8000
 
 
-def test__llm_text_analyser____init__():
-    llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-5.6-luna",
-        token_rate_limit=2000,
+def test__update_max_tokens__defaults_to_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=1500)),
     )
-    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    update_max_tokens(retry_state)
+    LoggingUtil.log_info.assert_called_with(
+        "Updating max_completion_tokens to 3000 for next attempt."
+    )
+    assert retry_state.kwargs["max_completion_tokens"] == 3000
+
+
+def test__update_max_tokens__no_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=None)),
+    )
+    update_max_tokens(retry_state)
+    assert retry_state.kwargs["max_completion_tokens"] == 2000
+
+
+def test__llm_text_analyser____init__():
+    mock_token = Mock()
+    mock_token.token = "mock_token"
+    with patch(f"{MODULE}.ChainedTokenCredential.get_token", return_value=mock_token):
+        llm_text_analyser_config = LLMTextAnalyserConfig(
+            model="gpt-5.6-luna",
+            token_rate_limit=2000,
+        )
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     assert llm_text_analyser.config.token_rate_limit == 2000
     assert llm_text_analyser.config.token_encoding_name == "o200k_base"
@@ -362,6 +388,39 @@ def test__llm_text_analyser___analyse_text_chunk(
 
     llm_text_analyser.token_semaphore.acquire.assert_called_once_with(10)
     llm_text_analyser.token_semaphore.release.assert_called_once_with(10)
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_starts_from_config_limit(
+    mock_num_tokens, mock_api_message
+):
+    """A truncated first attempt retries at double the configured limit, not 2000"""
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", max_tokens=1500
+    )
+    truncated = Mock(usage=None)
+    successful = MagicMock(usage=None)
+    successful.choices[0].message.parsed.redaction_strings = ["string A"]
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=[LengthFinishReasonError(completion=truncated), successful],
+    ):
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        calls = LLMTextAnalyser.invoke_chain.call_args_list
+        assert [call.args[-1] for call in calls] == [1500, 3000]
 
 
 @patch.object(
