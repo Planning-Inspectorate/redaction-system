@@ -59,3 +59,22 @@ def test__config_processor__process_config():
             f"Actual rules: {[r.name for r in actual_rules]}"
         )
     assert actual_parsed_config["provisional_redactions"] is None
+
+
+def test__config_processor__default_config_completion_limits():
+    """
+    - Given the config defined at redactor/src/config/default.yaml
+    - When I load and parse it
+    - Then the reasoning-heavy rules should have larger completion limits, and
+      reasoning effort should be left to the model's default
+    """
+    parsed = ConfigProcessor.validate_and_parse_redaction_config(
+        ConfigProcessor.load_config("default")
+    )
+    rules = {r.name: r for r in parsed if type(r) is LLMTextRedactionConfig}
+
+    assert rules["names"].max_tokens == 4000
+    assert rules["contact_identity_info"].max_tokens == 2500
+    assert rules["sensitive_info"].max_tokens == 1000
+    assert rules["personal_info_protected_sites"].max_tokens == 1000
+    assert all(rule.reasoning_effort is None for rule in rules.values())
