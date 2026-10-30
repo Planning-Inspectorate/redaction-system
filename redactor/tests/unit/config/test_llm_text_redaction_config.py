@@ -86,7 +86,8 @@ def _create_config(**kwargs) -> LLMTextRedactionConfig:
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="System prompt",
+        role="Some role",
+        task="Some task",
         redaction_terms=["rule A"],
         **kwargs,
     )
