@@ -37,6 +37,8 @@ TEXT_IMAGE_REDACTED_PDF = "text_and_image_redacted.pdf"
 
 REDACTED_JPG = "text_redacted.jpg"
 
+RR_PDF = "relevant_rep.pdf"
+
 
 def open_pdf(file_name: str) -> BytesIO:
     file_path = PDF_DIR / file_name

@@ -1,19 +1,24 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
+from pydantic import ValidationError
 from tenacity import stop_after_attempt, wait_none
 
 from src.analysis.text import (
     LLMTextAnalyser,
     LLMTextAnalyserConfig,
     handle_last_retry_error,
+    merge_redaction_decisions,
     update_max_tokens,
 )
 from src.monitoring import LoggingUtil
 from src.types import (
+    LLMDetailedRedactionResultFormat,
+    LLMExclusionDecision,
+    LLMRedactionDecision,
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
@@ -89,18 +94,135 @@ def test__update_max_tokens__limit():
     assert retry_state.kwargs["max_completion_tokens"] == 8000
 
 
-def test__llm_text_analyser____init__():
-    llm_text_analyser_config = LLMTextAnalyserConfig(
-        model="gpt-5.6-luna",
-        token_rate_limit=2000,
+def test__update_max_tokens__defaults_to_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=1500)),
     )
-    llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+    update_max_tokens(retry_state)
+    LoggingUtil.log_info.assert_called_with(
+        "Updating max_completion_tokens to 3000 for next attempt."
+    )
+    assert retry_state.kwargs["max_completion_tokens"] == 3000
+
+
+def test__update_max_tokens__no_analyser_limit():
+    retry_state = Mock()
+    retry_state.kwargs = {}
+    retry_state.args = (
+        Mock(config=LLMTextAnalyserConfig(model="gpt-5.6-luna", max_tokens=None)),
+    )
+    update_max_tokens(retry_state)
+    assert retry_state.kwargs["max_completion_tokens"] == 2000
+
+
+def test__llm_text_analyser_config__reasoning_effort_default():
+    assert LLMTextAnalyserConfig(model="gpt-5.6-luna").reasoning_effort is None
+
+
+@pytest.mark.parametrize("reasoning_effort", ["minimal", "low", "medium", "high"])
+def test__llm_text_analyser_config__reasoning_effort(reasoning_effort):
+    config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", reasoning_effort=reasoning_effort
+    )
+    assert config.reasoning_effort == reasoning_effort
+
+
+def test__llm_text_analyser_config__invalid_reasoning_effort():
+    with pytest.raises(ValidationError):
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", reasoning_effort="extreme")
+
+
+@pytest.mark.parametrize(
+    ("model", "reasoning_effort", "expected_kwargs"),
+    [
+        (
+            "gpt-5.6-luna",
+            "low",
+            {"max_completion_tokens": 1000, "reasoning_effort": "low"},
+        ),
+        ("gpt-5.6-luna", None, {"max_completion_tokens": 1000}),
+    ],
+)
+@patch.object(LLMTextAnalyser, "__init__", return_value=None)
+def test__llm_text_analyser__invoke_chain__reasoning_effort(
+    mock_llm_text_analyser_init, model, reasoning_effort, expected_kwargs
+):
+    """reasoning_effort is only sent for reasoning models, and only when it is set"""
+    llm_text_analyser = LLMTextAnalyser()
+    llm_text_analyser.config = LLMTextAnalyserConfig(
+        model=model, reasoning_effort=reasoning_effort
+    )
+    llm_text_analyser.llm = Mock()
+    api_messages = [{"role": "user", "content": "hello"}]
+
+    llm_text_analyser.invoke_chain(api_messages, LLMRedactionResultFormat, 1000)
+
+    llm_text_analyser.llm.chat.completions.parse.assert_called_once_with(
+        model=model,
+        messages=api_messages,
+        response_format=LLMRedactionResultFormat,
+        **expected_kwargs,
+    )
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_starts_from_config_limit(
+    mock_num_tokens, mock_api_message
+):
+    """A truncated first attempt retries at double the configured limit, not 2000"""
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", max_tokens=1500
+    )
+    truncated = Mock(usage=None)
+    successful = MagicMock(usage=None)
+    successful.choices[0].message.parsed.redaction_strings = ["string A"]
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=[LengthFinishReasonError(completion=truncated), successful],
+    ):
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        calls = LLMTextAnalyser.invoke_chain.call_args_list
+        assert [call.args[-1] for call in calls] == [1500, 3000]
+
+
+def test__llm_text_analyser____init__():
+    with (
+        patch(f"{MODULE}.get_bearer_token_provider") as mock_get_token_provider,
+        patch(f"{MODULE}.AzureOpenAI") as mock_azure_openai,
+    ):
+        llm_text_analyser_config = LLMTextAnalyserConfig(
+            model="gpt-5.6-luna",
+            token_rate_limit=2000,
+        )
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
 
     assert llm_text_analyser.config.token_rate_limit == 2000
     assert llm_text_analyser.config.token_encoding_name == "o200k_base"
 
-    assert llm_text_analyser.input_token_cost == 149 * 0.000001
-    assert llm_text_analyser.output_token_cost == 593 * 0.000001
+    assert llm_text_analyser.input_token_cost == pytest.approx(16 * 1e-8)
+    assert llm_text_analyser.completion_token_cost == pytest.approx(91 * 1e-8)
+
+    # A provider lets the client renew its own token instead of using one that expires
+    client_kwargs = mock_azure_openai.call_args.kwargs
+    assert (
+        client_kwargs["azure_ad_token_provider"] is mock_get_token_provider.return_value
+    )
+    assert "azure_ad_token" not in client_kwargs
 
 
 @patch.object(LLMTextAnalyser, "__init__", return_value=None)
@@ -117,8 +239,8 @@ def test__llm_text_analyser___set_model_details(mock_llm_text_analyser_init):
     assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT / 10
     assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT / 10
 
-    assert llm_text_analyser.input_token_cost == 149 * 0.000001
-    assert llm_text_analyser.output_token_cost == 593 * 0.000001
+    assert llm_text_analyser.input_token_cost == pytest.approx(16 * 1e-8)
+    assert llm_text_analyser.completion_token_cost == pytest.approx(91 * 1e-8)
 
 
 @patch.object(LLMTextAnalyser, "__init__", return_value=None)
@@ -309,7 +431,7 @@ def test__llm_text_analyser___compute_costs():
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     mock_chat_completion = create_mock_chat_completion(
         prompt_tokens=10, completion_tokens=15
@@ -318,8 +440,28 @@ def test__llm_text_analyser___compute_costs():
     llm_text_analyser._compute_costs(mock_chat_completion.usage)
 
     assert llm_text_analyser.input_token_count == 10
-    assert llm_text_analyser.output_token_count == 15
+    assert llm_text_analyser.completion_token_count == 15
     assert llm_text_analyser.total_cost == 40
+
+
+def test__llm_text_analyser___compute_costs__cached_and_reasoning_tokens():
+    """
+    - Given an LLM usage object that includes cached input and reasoning token details
+    - When I call _compute_costs
+    - Then the cached and reasoning token counts should be accumulated
+    """
+    llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+    llm_text_analyser.input_token_cost = 1
+    llm_text_analyser.completion_token_cost = 2
+    usage = MockLLMChatCompletionUsage(prompt_tokens=10, completion_tokens=15)
+    usage.prompt_tokens_details = Mock(cached_tokens=6, cache_write_tokens=0)
+    usage.completion_tokens_details = Mock(reasoning_tokens=9)
+
+    llm_text_analyser._compute_costs(usage)
+    llm_text_analyser._compute_costs(usage)
+
+    assert llm_text_analyser.cached_input_token_count == 12
+    assert llm_text_analyser.reasoning_token_count == 18
 
 
 @patch.object(
@@ -342,7 +484,7 @@ def test__llm_text_analyser___analyse_text_chunk(
     llm_text_analyser.request_semaphore = Mock()
     llm_text_analyser.token_semaphore = Mock()
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     with patch.object(
         LLMTextAnalyser, "invoke_chain", return_value=mock_chat_completion
@@ -354,7 +496,7 @@ def test__llm_text_analyser___analyse_text_chunk(
     assert expected_result == actual_result
 
     assert llm_text_analyser.input_token_count == 5
-    assert llm_text_analyser.output_token_count == 4
+    assert llm_text_analyser.completion_token_count == 4
     assert llm_text_analyser.total_cost == 13
 
     llm_text_analyser.request_semaphore.acquire.assert_called_once()
@@ -362,6 +504,39 @@ def test__llm_text_analyser___analyse_text_chunk(
 
     llm_text_analyser.token_semaphore.acquire.assert_called_once_with(10)
     llm_text_analyser.token_semaphore.release.assert_called_once_with(10)
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__retry_starts_from_config_limit(
+    mock_num_tokens, mock_api_message
+):
+    """A truncated first attempt retries at double the configured limit, not 2000"""
+    llm_text_analyser_config = LLMTextAnalyserConfig(
+        model="gpt-5.6-luna", max_tokens=1500
+    )
+    truncated = Mock(usage=None)
+    successful = MagicMock(usage=None)
+    successful.choices[0].message.parsed.redaction_strings = ["string A"]
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=[LengthFinishReasonError(completion=truncated), successful],
+    ):
+        llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(2)
+
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        calls = LLMTextAnalyser.invoke_chain.call_args_list
+        assert [call.args[-1] for call in calls] == [1500, 3000]
 
 
 @patch.object(
@@ -532,7 +707,7 @@ def test__llm_text_analyser__analyse_text():
     llm_text_analyser.request_semaphore = Mock()
     llm_text_analyser.token_semaphore = Mock()
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     results = [
         (create_mock_chat_completion(["string A"]), ["string A"]),
@@ -557,7 +732,7 @@ def test__llm_text_analyser__analyse_text():
     assert actual_result.metadata == LLMTextRedactionResult.LLMResultMetadata(
         request_count=2,
         input_token_count=10,
-        output_token_count=8,
+        completion_token_count=8,
         total_token_count=18,
         total_cost=26.0,
     )
@@ -566,8 +741,178 @@ def test__llm_text_analyser__analyse_text():
     assert set(actual_result.redaction_strings) == {"string A", "string B"}
 
     assert llm_text_analyser.input_token_count == 10
-    assert llm_text_analyser.output_token_count == 8
+    assert llm_text_analyser.completion_token_count == 8
     assert llm_text_analyser.total_cost == 26.0
+
+
+def _decision(text, clause_ids=("T1",), confidence="high", reason="a reason"):
+    return LLMRedactionDecision(
+        text=text,
+        data_subject="third_party",
+        clause_ids=list(clause_ids),
+        reason=reason,
+        confidence=confidence,
+    )
+
+
+def _exclusion(text):
+    return LLMExclusionDecision(text=text, clause_ids=["D1"], reason="councillor")
+
+
+def create_mock_detailed_chat_completion(redactions, excluded=()):
+    return MockLLMChatCompletion(
+        choices=[
+            MockLLMChatCompletionChoice(
+                message=MockLLMChatCompletionChoiceMessage(
+                    parsed=LLMDetailedRedactionResultFormat(
+                        redactions=list(redactions), excluded=list(excluded)
+                    )
+                )
+            )
+        ],
+        usage=MockLLMChatCompletionUsage(prompt_tokens=5, completion_tokens=4),
+    )
+
+
+def test__merge_redaction_decisions():
+    """
+    - Given two chunks that both redact a span with different clauses and confidence
+    - When I merge their decisions
+    - Then there is one decision for the span with the highest confidence, every
+      clause, and the chunk count, and exclusions of redacted spans are dropped
+    """
+    first = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Joan Brown", ["T1"], "low", "first reason")],
+        excluded=[_exclusion("Cllr Raj Patel")],
+    )
+    second = LLMDetailedRedactionResultFormat(
+        redactions=[
+            _decision("Joan Brown", ["T1", "M2"], "high", "second reason"),
+            _decision("Mary Jones"),
+        ],
+        excluded=[_exclusion("Mary Jones")],
+    )
+
+    redactions, excluded = merge_redaction_decisions([first, second])
+
+    assert redactions == (
+        {
+            "text": "Joan Brown",
+            "data_subject": "third_party",
+            "clause_ids": ["T1", "M2"],
+            "reason": "first reason",
+            "confidence": "high",
+            "chunk_count": 2,
+        },
+        {
+            "text": "Mary Jones",
+            "data_subject": "third_party",
+            "clause_ids": ["T1"],
+            "reason": "a reason",
+            "confidence": "high",
+            "chunk_count": 1,
+        },
+    )
+    assert excluded == (
+        {"text": "Cllr Raj Patel", "clause_ids": ["D1"], "reason": "councillor"},
+    )
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__include_rationale(
+    mock_num_tokens_consumed, mock_create_api_message
+):
+    """
+    - Given an analyser with include_rationale enabled
+    - When I analyse a chunk
+    - Then the detailed format is requested, the strings are returned, and the
+      decisions' reasons are not logged
+    """
+    completion = create_mock_detailed_chat_completion(
+        [_decision("Joan Brown", reason="uninvolved neighbour")],
+        [_exclusion("Cllr Raj Patel")],
+    )
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", include_rationale=True)
+    )
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+
+    with patch.object(
+        LLMTextAnalyser, "invoke_chain", return_value=completion
+    ) as mock_invoke_chain:
+        response, redaction_strings = llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+    assert mock_invoke_chain.call_args.args[1] is LLMDetailedRedactionResultFormat
+    assert response is completion
+    assert redaction_strings == ["Joan Brown"]
+    logged = " ".join(str(c) for c in LoggingUtil.log_info.call_args_list)
+    assert "uninvolved neighbour" not in logged
+    assert "Cllr Raj Patel" not in logged
+
+
+def test__llm_text_analyser__analyse_text__include_rationale():
+    """
+    - Given an analyser with include_rationale enabled
+    - When I analyse two chunks that both redact the same span
+    - Then the result has one merged decision for it alongside the strings
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", include_rationale=True)
+    )
+    results = iter(
+        [
+            (
+                create_mock_detailed_chat_completion([_decision("Joan Brown")]),
+                ["Joan Brown"],
+            ),
+            (
+                create_mock_detailed_chat_completion(
+                    [_decision("Joan Brown", confidence="low")],
+                    [_exclusion("Cllr Raj Patel")],
+                ),
+                ["Joan Brown"],
+            ),
+        ]
+    )
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=lambda *args, **kwargs: next(results),
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt", text_chunks=["chunk A", "chunk B"]
+        )
+
+    assert actual_result.redaction_strings == ("Joan Brown",)
+    assert [d["text"] for d in actual_result.redaction_decisions] == ["Joan Brown"]
+    assert actual_result.redaction_decisions[0]["confidence"] == "high"
+    assert actual_result.redaction_decisions[0]["chunk_count"] == 2
+    assert [d["text"] for d in actual_result.excluded_decisions] == ["Cllr Raj Patel"]
+
+
+def test__llm_text_analyser__analyse_text__no_rationale_has_no_decisions():
+    llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        return_value=(create_mock_chat_completion(["string A"]), ["string A"]),
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt", text_chunks=["chunk A"]
+        )
+
+    assert actual_result.redaction_decisions == ()
+    assert actual_result.excluded_decisions == ()
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
@@ -646,7 +991,7 @@ def test__llm_text_analyser__analyse_text__budget_exceeded(
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     with patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [
@@ -710,7 +1055,7 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_enco
     llm_text_analyser.request_semaphore = Mock()
     llm_text_analyser.token_semaphore = Mock()
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     with (
         patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain,
@@ -729,6 +1074,63 @@ def test__llm_text_analyser__analyse_text__single_chunk_sequential(mock_get_enco
 
     assert actual_result.redaction_strings == ("string A",)
     assert actual_result.metadata.request_count == 1
+
+
+@patch(f"{MODULE}.get_encoding")
+def test__llm_text_analyser__analyse_text__sequential_failed_chunk_counted(
+    mock_get_encoding,
+):
+    """
+    - Given a chunk whose analysis returns no result after all retries
+    - When analyse_text processes chunks sequentially
+    - Then processing should continue and the failure should be counted in metadata
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", max_concurrent_requests=1)
+    )
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=[None, (create_mock_chat_completion(["string B"]), ["string B"])],
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B"],
+        )
+
+    assert actual_result.redaction_strings == ("string B",)
+    assert actual_result.metadata.request_count == 2
+    assert actual_result.metadata.failed_chunk_count == 1
+
+
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+def test__llm_text_analyser__analyse_text__parallel_failed_chunk_counted():
+    """
+    - Given a chunk whose analysis returns no result after all retries
+    - When analyse_text processes chunks in parallel
+    - Then the failure should be counted in metadata
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", max_concurrent_requests=4)
+    )
+    results = {
+        "chunk A": None,
+        "chunk B": (create_mock_chat_completion(["string B"]), ["string B"]),
+    }
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=lambda system_prompt, user_prompt: results[user_prompt],
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B"],
+        )
+
+    assert actual_result.redaction_strings == ("string B",)
+    assert actual_result.metadata.failed_chunk_count == 1
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
@@ -774,7 +1176,7 @@ def test__llm_text_analyser__analyse_text__sequential_budget_exceeded(
     )
     llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
     llm_text_analyser.input_token_cost = 1
-    llm_text_analyser.output_token_cost = 2
+    llm_text_analyser.completion_token_cost = 2
 
     with patch.object(LLMTextAnalyser, "invoke_chain") as mock_invoke_chain:
         mock_invoke_chain.side_effect = [

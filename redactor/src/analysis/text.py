@@ -3,13 +3,14 @@ import json
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Semaphore
-from typing import ClassVar
+from threading import Lock, Semaphore
+from typing import ClassVar, Literal
 
 from azure.identity import (
     AzureCliCredential,
     ChainedTokenCredential,
     ManagedIdentityCredential,
+    get_bearer_token_provider,
 )
 from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
@@ -33,10 +34,45 @@ from tenacity import (
 from tiktoken import get_encoding
 
 from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
-from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
+from ..types import (
+    CONFIDENCE_RANK,
+    LLMDetailedRedactionResultFormat,
+    LLMRedactionResultFormat,
+    LLMTextRedactionResult,
+)
 from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
+
+
+def merge_redaction_decisions(
+    parsed_responses: list[LLMDetailedRedactionResultFormat],
+) -> tuple[tuple[dict, ...], tuple[dict, ...]]:
+    """Combine per-chunk decisions into one per span, keeping the highest confidence
+    and every cited clause. Exclusions of spans redacted elsewhere are dropped,
+    since every occurrence of a redaction string is redacted"""
+    redactions: dict[str, dict] = {}
+    exclusions: dict[str, dict] = {}
+    for parsed in parsed_responses:
+        for decision in parsed.redactions:
+            merged = redactions.get(decision.text)
+            if merged is None:
+                redactions[decision.text] = decision.model_dump() | {"chunk_count": 1}
+                continue
+            merged["chunk_count"] += 1
+            merged["clause_ids"] = list(
+                dict.fromkeys(merged["clause_ids"] + decision.clause_ids)
+            )
+            if (
+                CONFIDENCE_RANK[decision.confidence]
+                > CONFIDENCE_RANK[merged["confidence"]]
+            ):
+                merged["confidence"] = decision.confidence
+        for exclusion in parsed.excluded:
+            exclusions.setdefault(exclusion.text, exclusion.model_dump())
+    return tuple(redactions.values()), tuple(
+        e for text, e in exclusions.items() if text not in redactions
+    )
 
 
 @log_to_appins
@@ -51,13 +87,13 @@ def handle_last_retry_error(retry_state):
 def update_max_tokens(retry_state):
     # Double max completions for next retry attempt, up to max of 8000
     # Only used when LengthFinishReasonError is raised
-    retry_state.kwargs.update(
-        {
-            "max_completion_tokens": min(
-                retry_state.kwargs.get("max_completion_tokens", 1000) * 2, 8000
-            )
-        }
+    # On the first retry the kwarg is unset, so start from the analyser's own limit
+    current = (
+        retry_state.kwargs.get("max_completion_tokens")
+        or retry_state.args[0].config.max_tokens
+        or 1000
     )
+    retry_state.kwargs.update({"max_completion_tokens": min(current * 2, 8000)})
     LoggingUtil().log_info(
         f"Updating max_completion_tokens to {retry_state.kwargs['max_completion_tokens']}"
         " for next attempt."
@@ -68,6 +104,12 @@ class LLMTextAnalyserConfig(BaseModel):
     model: str
     """The LLM model to use"""
     max_tokens: int | None = 1000
+    """Maximum number of tokens per completion, including reasoning tokens"""
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
+    """Reasoning effort for reasoning models. None uses the model's default"""
+    include_rationale: bool = False
+    """Ask the LLM for a reason, clause IDs and confidence for each redaction. This
+    uses more completion tokens, so consider raising max_tokens"""
     request_rate_limit: int | None = None
     """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
     token_rate_limit: int | None = None
@@ -103,11 +145,13 @@ class LLMTextAnalyser:
 
     # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
     OPENAI_MODELS: ClassVar[dict[str, dict[str, int]]] = {
-        "gpt-5.6-luna": {  # need to check these values
+        "gpt-5.6-luna": {
             "token_rate_limit": 3000000,  # nosec: B105
             "request_rate_limit": 3000,
-            "input_cost": 149,
-            "output_cost": 593,
+            "input_cost": 16,
+            "output_cost": 91,
+            "cached_input_cost": 2,
+            "cache_write_cost": 19,
         },
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
@@ -116,6 +160,7 @@ class LLMTextAnalyser:
         self,
         config: LLMTextAnalyserConfig,
     ):
+        self.lock = Lock()
         self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
@@ -123,19 +168,19 @@ class LLMTextAnalyser:
         credential = ChainedTokenCredential(
             ManagedIdentityCredential(), AzureCliCredential()
         )
-        self.token = credential.get_token(
-            "https://cognitiveservices.azure.com/.default"
-        ).token
+        token_provider = get_bearer_token_provider(
+            credential, "https://cognitiveservices.azure.com/.default"
+        )
         LoggingUtil().log_info(
             f"Establishing connection to the LLM at {self.azure_endpoint}"
         )
         self.llm = AzureOpenAI(
             azure_endpoint=self.azure_endpoint,
             api_version="2024-12-01-preview",
-            azure_ad_token=self.token,
+            azure_ad_token_provider=token_provider,
         )
 
-        # Validates and sets input_token_cost, output_token_cost, token_rate_limit and request_rate_limit
+        # Validates and sets input_token_cost, completion_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
 
         # Validate and set max concurrent requests
@@ -147,7 +192,11 @@ class LLMTextAnalyser:
         )
 
         self.input_token_count = 0
-        self.output_token_count = 0
+        self.cached_input_token_count = 0
+        self.cache_write_token_count = 0
+        self.reasoning_token_count = 0
+        self.completion_token_count = 0
+        self.total_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
     @log_to_appins
@@ -158,8 +207,13 @@ class LLMTextAnalyser:
             model_details = self.OPENAI_MODELS[self.config.model]
 
             # Set cost per token in GBP
-            self.input_token_cost = model_details["input_cost"] * 0.000001
-            self.output_token_cost = model_details["output_cost"] * 0.000001
+            multiplier = 1e-8
+            self.input_token_cost = model_details["input_cost"] * multiplier
+            self.completion_token_cost = model_details["output_cost"] * multiplier
+            self.cached_input_token_cost = (
+                model_details["cached_input_cost"] * multiplier
+            )
+            self.cache_write_token_cost = model_details["cache_write_cost"] * multiplier
 
             # Validate and set token rate limit per minute
             default_token_rate_limit = int(
@@ -256,6 +310,8 @@ class LLMTextAnalyser:
             "response_format": response_format,
             "max_completion_tokens": max_completion_tokens,
         }
+        if self.config.reasoning_effort:
+            kwargs["reasoning_effort"] = self.config.reasoning_effort
 
         return self.llm.chat.completions.parse(**kwargs)
 
@@ -334,18 +390,30 @@ class LLMTextAnalyser:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
-                response = self.invoke_chain(
-                    api_messages, LLMRedactionResultFormat, max_completion_tokens
+                response_format = (
+                    LLMDetailedRedactionResultFormat
+                    if self.config.include_rationale
+                    else LLMRedactionResultFormat
                 )
-                LoggingUtil().log_info(
-                    f"{chunk_hash_string} LLM response received: {response}"
+                response = self.invoke_chain(
+                    api_messages, response_format, max_completion_tokens
                 )
                 usage = response.usage
 
-                response_cleaned: LLMRedactionResultFormat = response.choices[
-                    0
-                ].message.parsed
+                response_cleaned: (
+                    LLMRedactionResultFormat | LLMDetailedRedactionResultFormat
+                ) = response.choices[0].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
+                if self.config.include_rationale:
+                    # Decisions quote personal data, so keep them out of App Insights
+                    LoggingUtil().log_info(
+                        f"{chunk_hash_string} LLM response received: redaction "
+                        f"strings {redaction_strings}, usage {usage}"
+                    )
+                else:
+                    LoggingUtil().log_info(
+                        f"{chunk_hash_string} LLM response received: {response}"
+                    )
                 return response, redaction_strings
             except LengthFinishReasonError as lfe:
                 LoggingUtil().log_exception_with_message(
@@ -367,7 +435,8 @@ class LLMTextAnalyser:
                 raise
             finally:
                 # Update token counts and costs
-                self._compute_costs(usage)
+                with self.lock:
+                    self._compute_costs(usage)
                 # Release token semaphore
                 self.token_semaphore.release(estimated_tokens)
 
@@ -380,15 +449,24 @@ class LLMTextAnalyser:
         if usage is None:
             return
 
-        prompt_tokens = usage.prompt_tokens
-        completion_tokens = usage.completion_tokens
+        prompt_details = getattr(usage, "prompt_tokens_details", None)
+        completion_details = getattr(usage, "completion_tokens_details", None)
+        cached = getattr(prompt_details, "cached_tokens", None) or 0
+        cache_write = getattr(prompt_details, "cache_write_tokens", None) or 0
+        reasoning = getattr(completion_details, "reasoning_tokens", None) or 0
 
-        self.input_token_count += prompt_tokens
-        self.output_token_count += completion_tokens
+        self.input_token_count += usage.prompt_tokens
+        self.completion_token_count += usage.completion_tokens
+        self.total_token_count += usage.total_tokens
+        self.cached_input_token_count += cached
+        self.cache_write_token_count += cache_write
+        self.reasoning_token_count += reasoning
 
         self.total_cost += (
-            prompt_tokens * self.input_token_cost
-            + completion_tokens * self.output_token_cost
+            self.input_token_cost * (usage.prompt_tokens - cached - cache_write)
+            + self.completion_token_cost * usage.completion_tokens
+            + self.cached_input_token_cost * cached
+            + self.cache_write_token_cost * cache_write
         )
 
     def _check_budget(self):
@@ -426,6 +504,7 @@ class LLMTextAnalyser:
             request_counter = 0
             text_to_redact = []
             responses: list[ParsedChatCompletion] = []
+            failed_chunk_count = 0
 
             # Check max concurrent requests
             if self.config.max_concurrent_requests > 32:
@@ -448,12 +527,20 @@ class LLMTextAnalyser:
             elif max_workers == 1:
                 # Process chunks sequentially if only one worker is allowed
                 for chunk in text_chunks:
-                    response, redaction_strings = self._analyse_text_chunk(
-                        system_prompt, self.USER_PROMPT_TEMPLATE.format(chunk=chunk)
-                    )
-                    responses.append(response)
-                    text_to_redact.extend(redaction_strings)
                     request_counter += 1
+                    try:
+                        response, redaction_strings = self._analyse_text_chunk(
+                            system_prompt,
+                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                        )
+                        responses.append(response)
+                        text_to_redact.extend(redaction_strings)
+                    except Exception as e:  # noqa: BLE001
+                        failed_chunk_count += 1
+                        LoggingUtil().log_exception_with_message(
+                            f"Error processing chunk {hash(chunk)}",
+                            e,
+                        )
 
                     # Check budget after each request
                     try:
@@ -482,6 +569,7 @@ class LLMTextAnalyser:
                             responses.append(response)
                             text_to_redact.extend(redaction_strings)
                         except Exception as e:  # noqa: BLE001
+                            failed_chunk_count += 1
                             LoggingUtil().log_exception_with_message(
                                 f"Error processing chunk {hash(chunk)}",
                                 e,
@@ -496,14 +584,25 @@ class LLMTextAnalyser:
 
             # Remove duplicates
             text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
+            redaction_decisions, excluded_decisions = (
+                merge_redaction_decisions(
+                    [response.choices[0].message.parsed for response in responses]
+                )
+                if self.config.include_rationale
+                else ((), ())
+            )
 
         # Collect metrics
         metadata = LLMTextRedactionResult.LLMResultMetadata(
             request_count=request_counter,
             input_token_count=self.input_token_count,
-            output_token_count=self.output_token_count,
-            total_token_count=self.input_token_count + self.output_token_count,
+            completion_token_count=self.completion_token_count,
+            total_token_count=self.total_token_count,
             total_cost=self.total_cost,
+            cached_input_token_count=self.cached_input_token_count,
+            cache_write_token_count=self.cache_write_token_count,
+            reasoning_token_count=self.reasoning_token_count,
+            failed_chunk_count=failed_chunk_count,
         )
         run_metrics = {
             "llm_analysis_time": timer.elapsed_time,
@@ -517,6 +616,8 @@ class LLMTextAnalyser:
             run_metrics=run_metrics,
             redaction_strings=text_to_redact_cleaned,
             metadata=metadata,
+            redaction_decisions=redaction_decisions,
+            excluded_decisions=excluded_decisions,
         )
 
         return result
