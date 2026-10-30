@@ -17,13 +17,14 @@ def test__config_processor__process_config():
     llm_text_redaction_attributes = {
         "label": "Names of Individuals",
         "model": "gpt-5.6-luna",
-        "system_prompt": "You are a thorough assistant that extracts all of the requested terms from a given text.",
+        "role": "You are a thorough assistant that extracts all of the requested terms from a given text.",
+        "task": "Return every exact match for the terms below, as they appear in the text.",
         "redaction_terms": ["People's names"],
-        "constraints": [
-            "Do not include locations or organisations",
-            "Do not include names of anything which is not a person",
-            "Do not include the name of the author of the text",
-            "Do not include the names of those on whose behalf the text was written",
+        "do_not_redact": [
+            "Do not redact locations or organisations.",
+            "Do not redact names of anything which is not a person.",
+            "Do not redact the name of the author of the text.",
+            "Do not redact the names of those on whose behalf the text was written.",
         ],
     }
 
@@ -45,7 +46,7 @@ def test__config_processor__process_config():
         ],
         "provisional_redactions": None,
     }
-    loaded_config = ConfigProcessor.load_config("default")
+    loaded_config = ConfigProcessor.load_config("basic")
     actual_parsed_config = ConfigProcessor.validate_and_filter_config(
         loaded_config, file_processor_class
     )
@@ -58,3 +59,22 @@ def test__config_processor__process_config():
             f"Actual rules: {[r.name for r in actual_rules]}"
         )
     assert actual_parsed_config["provisional_redactions"] is None
+
+
+def test__config_processor__default_config_completion_limits():
+    """
+    - Given the config defined at redactor/src/config/default.yaml
+    - When I load and parse it
+    - Then the reasoning-heavy rules should have larger completion limits, and
+      reasoning effort should be left to the model's default
+    """
+    parsed = ConfigProcessor.validate_and_parse_redaction_config(
+        ConfigProcessor.load_config("default")
+    )
+    rules = {r.name: r for r in parsed if type(r) is LLMTextRedactionConfig}
+
+    assert rules["names"].max_tokens == 4000
+    assert rules["contact_identity_info"].max_tokens == 2500
+    assert rules["sensitive_info"].max_tokens == 1000
+    assert rules["personal_info_protected_sites"].max_tokens == 1000
+    assert all(rule.reasoning_effort is None for rule in rules.values())
