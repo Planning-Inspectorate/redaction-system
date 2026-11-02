@@ -20,7 +20,9 @@ from eval_prompt.prompt_registry import (
 )
 from eval_prompt.run_chunk_sweep import load_rule_configs
 
-DEFAULT_CONFIG = Path("src/config/default.yaml")
+DEFAULT_CONFIG = (
+    Path(__file__).resolve().parents[2] / "redactor" / "src" / "config" / "default.yaml"
+)
 
 
 @pytest.fixture
