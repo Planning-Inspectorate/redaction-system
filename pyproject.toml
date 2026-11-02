@@ -91,6 +91,11 @@ ai-dev = [
     "torchvision>=0.28.0",
     "transformers>=5.14.1",
 ]
+eval = [
+    "gepa>=0.1.4",
+    "litellm>=1.106.2",
+    "mlflow>=3.5",
+]
     
 [tool.ruff.lint.isort]
 known-first-party = ["src", "tests"]
