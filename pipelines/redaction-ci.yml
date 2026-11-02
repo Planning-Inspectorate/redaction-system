@@ -49,7 +49,6 @@ extends:
               set -e
               cd redaction-system
               python3 -m pip install ruff
-              export PYTHONPATH=$(pwd)
               python3 -m ruff check
               python3 -m ruff format --check
             displayName: 'Python code style check'
@@ -69,16 +68,13 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system
               python3 -m pip install --group dev .
             displayName: 'Install redactor package'
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
               python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="src" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
               mv .coverage .coverage.unit
@@ -121,7 +117,6 @@ extends:
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
               python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
               mv .coverage .coverage.integration
@@ -156,7 +151,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system
               python3 -m pip install --group dev .
             displayName: 'Install redactor package'
@@ -180,7 +174,6 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
 
                 echo "Starting Azurite..."
                 mkdir -p .azurite
@@ -336,7 +329,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
 
               echo "Warming up Durable Functions orchestrator..."
               ORCH_URL="http://localhost:7071/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
@@ -367,10 +359,9 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
+          
               export PYTHONPATH=$(pwd)
-
               export E2E_FUNCTION_RECEIVER_BASE_URL="http://localhost:7072"
               export E2E_FUNCTION_PROCESSOR_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
@@ -430,7 +421,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               python3 -m pip install coverage[toml]
             displayName: 'Install coverage'
 
@@ -441,7 +431,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
               python3 -m coverage combine unit-coverage-data/.coverage.unit integration-coverage-data/.coverage.integration
               python3 -m coverage report
@@ -461,7 +450,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
               python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
             displayName: 'Fail if test coverage is below the threshold'
