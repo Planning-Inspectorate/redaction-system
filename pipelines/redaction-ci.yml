@@ -55,9 +55,6 @@ extends:
 
       - name: UnitTests
         steps:
-          - checkout: self
-            clean: true
-
           - checkout: templates
 
           - template: pipelines/templates/install-python.yml@self
@@ -96,9 +93,6 @@ extends:
 
       - name: IntegrationTests
         steps:
-          - checkout: self
-            clean: true
-
           - checkout: templates
 
           - template: pipelines/templates/install-python.yml@self
@@ -138,9 +132,6 @@ extends:
 
       - name: E2ETests
         steps:
-          - checkout: self
-            clean: true
-
           - checkout: templates
 
           - template: pipelines/templates/install-python.yml@self
@@ -412,9 +403,6 @@ extends:
           - UnitTests
           - IntegrationTests
         steps:
-          - checkout: self
-            clean: true
-
           - checkout: templates
 
           - template: pipelines/templates/install-python.yml@self
