@@ -96,5 +96,5 @@ known-first-party = ["src", "tests"]
 
 # `bandit' configurations
 [tool.bandit]
-exclude_dirs = ["redactor/tests"]
+exclude_dirs = ["redactor/tests", "eval_prompt/tests"]
 skips = []
