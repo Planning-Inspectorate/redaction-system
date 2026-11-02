@@ -2,8 +2,10 @@ from unittest.mock import patch
 
 import pytest
 
+from eval_prompt import generate_corpus
 from eval_prompt.generate_corpus import (
     MIN_SECTION_TOKENS,
+    PROFILES,
     SCENARIOS,
     SECTION_TOKENS,
     CorpusGenerator,
@@ -21,6 +23,13 @@ def test_parse_length_buckets():
 def test_parse_length_buckets__invalid(value):
     with pytest.raises(ValueError):
         parse_length_buckets([value])
+
+
+def test_profiles_have_distinct_id_prefixes():
+    """Ids decide the dev/test split, so corpora must not share a prefix"""
+    prefixes = [profile["id_prefix"] for profile in PROFILES.values()]
+
+    assert len(set(prefixes)) == len(prefixes)
 
 
 def test_generate_document__sizes_sections_to_remaining_tokens():
@@ -108,3 +117,39 @@ def test_solar_farm_scenario_limits_where_the_applicant_is_named():
     )
 
     assert "only inside the forced-labour allegation" in brief
+
+
+def test_main__uses_profile_id_prefix(tmp_path):
+    out = tmp_path / "prompt_corpus.jsonl"
+
+    class _Generator:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def generate_document(self, doc_id, scenario, target_tokens, split):
+            ids.append((doc_id, target_tokens))
+            return None, []
+
+    ids = []
+    with (
+        patch.object(generate_corpus, "CorpusGenerator", _Generator),
+        patch.object(generate_corpus, "guideline_summary", return_value=""),
+    ):
+        generate_corpus.main(
+            [
+                "--model",
+                "m",
+                "--profile",
+                "prompt",
+                "--documents",
+                "3",
+                "--max-attempts",
+                "1",
+                "--out",
+                str(out),
+            ]
+        )
+
+    assert [doc_id.split("-")[0] for doc_id, _ in ids] == ["pe"] * 3
+    allowed = {size for size, _ in generate_corpus.PROMPT_LENGTH_BUCKETS}
+    assert {size for _, size in ids} <= allowed

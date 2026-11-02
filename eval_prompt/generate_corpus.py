@@ -14,6 +14,12 @@ Example (run from the `redactor` directory, with Azure credentials available):
 
     python -m eval_prompt.generate_corpus --model gpt-5.6-sol \
         --documents 120 --out eval_prompt/data/corpus.jsonl
+
+A separate corpus for prompt engineering, with mostly medium-length documents and its
+own ids so it can never collide with the chunk-sweep corpus:
+
+    python -m eval_prompt.generate_corpus --model gpt-5.6-sol --profile prompt \
+        --documents 100 --seed 1 --out eval/data/prompt_corpus.jsonl
 """
 
 import argparse
@@ -153,6 +159,17 @@ LENGTH_BUCKETS = [  # (target tokens, weight)
     (10000, 2),
     (25000, 1),
 ]
+PROMPT_LENGTH_BUCKETS = [  # Mostly 2-4 chunks at the default chunk size
+    (1200, 2),
+    (2500, 3),
+    (4000, 4),
+    (6000, 3),
+    (10000, 1),
+]
+PROFILES = {
+    "sweep": {"length_buckets": LENGTH_BUCKETS, "id_prefix": "syn"},
+    "prompt": {"length_buckets": PROMPT_LENGTH_BUCKETS, "id_prefix": "pe"},
+}
 SECTION_TOKENS = 1200
 MIN_SECTION_TOKENS = 200
 FILLER_FRACTION = 0.4
@@ -426,10 +443,22 @@ def main(argv=None):
     parser.add_argument("--test-fraction", type=float, default=0.3)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--profile",
+        choices=list(PROFILES),
+        default="sweep",
+        help="Preset length mix and id prefix: 'sweep' for the chunk-size corpus, "
+        "'prompt' for mostly medium-length documents for prompt engineering",
+    )
+    parser.add_argument(
         "--length-buckets",
         nargs="+",
         metavar="TOKENS:WEIGHT",
         help="Override the profile's length mix, e.g. 2500:3 4000:4 6000:3",
+    )
+    parser.add_argument(
+        "--id-prefix",
+        help="Prefix of document ids. Defaults to the profile's. Use a different "
+        "prefix for each corpus, since ids also decide the dev/test split",
     )
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--no-audit", action="store_true")
@@ -452,11 +481,13 @@ def main(argv=None):
         args.model, guideline_summary(args.config), audit=not args.no_audit
     )
     rng = np.random.default_rng(args.seed)
+    profile = PROFILES[args.profile]
     buckets = (
         parse_length_buckets(args.length_buckets)
         if args.length_buckets
-        else LENGTH_BUCKETS
+        else profile["length_buckets"]
     )
+    id_prefix = args.id_prefix or profile["id_prefix"]
     sizes, weights = zip(*buckets, strict=True)
     probabilities = np.array(weights) / sum(weights)
 
@@ -464,7 +495,7 @@ def main(argv=None):
     for index in range(args.documents):
         scenario = SCENARIOS[index % len(SCENARIOS)]
         target_tokens = int(rng.choice(sizes, p=probabilities))
-        doc_id = f"syn-{index:04d}-{scenario['doc_type']}"
+        doc_id = f"{id_prefix}-{index:04d}-{scenario['doc_type']}"
         if doc_id in existing_ids:
             continue
         split = assign_split(doc_id, args.test_fraction)
