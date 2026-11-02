@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eval_prompt"
+version = "0.0.1"
+description = "Evaluate and optimise prompts"
+requires-python = ">=3.13"
+dependencies = [
+    "redactor",
+    "azure-identity>=1.25.3",
+    "numpy>=2.5.1",
+    "openai>=2.50.0",
+    "pydantic>=2.12.5",
+    "pymupdf>=1.28.0",
+    "python-dotenv>=1.2.2",
+    "tiktoken>=0.13.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3.13",
+]
+license = "MIT"
+
+[tool.uv.sources]
+redactor = { path = "..", editable = true }
+
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["eval_prompt*"]
+
+[project.scripts]
+generate-corpus = "eval_prompt.generate_corpus:main"
+convert-samples = "eval_prompt.convert_existing_samples:main"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.15.2",
+    "mock>=5.2.0",
+    "myst-parser>=5.1.0",
+    "pre-commit>=4.6.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-rerunfailures>=16.4",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.0",
+    "toml>=0.10.2",
+]
+    
+[tool.ruff.lint.isort]
+known-first-party = ["eval_prompt"]
+
+# `bandit' configurations
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = []

@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from PIL.Image import Image
 from pydantic import (
     BaseModel,
+    Field,
     GetCoreSchemaHandler,
     GetJsonSchemaHandler,
 )
@@ -137,12 +138,26 @@ class LLMTextRedactionResult(TextRedactionResult):
     class LLMResultMetadata:
         request_count: int = field(default=0)
         input_token_count: int = field(default=0)
-        output_token_count: int = field(default=0)
+        completion_token_count: int = field(default=0)
         total_token_count: int = field(default=0)
         total_cost: float = field(default=0.0)
+        cached_input_token_count: int = field(default=0)
+        """Input tokens served from the prompt cache (a subset of input_token_count)"""
+        cache_write_token_count: int = field(default=0)
+        """Tokens used for writing to the prompt cache (a subset of input_token_count)"""
+        reasoning_token_count: int = field(default=0)
+        """Reasoning tokens used by the model (a subset of completion_token_count)"""
+        failed_chunk_count: int = field(default=0)
+        """Chunks that returned no result after all retries, e.g. due to truncation"""
 
     metadata: LLMResultMetadata = field(default=None)
     """Any metadata provided by the LLM"""
+    redaction_decisions: tuple[dict, ...] = field(default_factory=tuple)
+    """Per-span reasons for each redaction string, merged across chunks. Only set
+    when the analyser's include_rationale is enabled"""
+    excluded_decisions: tuple[dict, ...] = field(default_factory=tuple)
+    """Spans the LLM considered but kept under a DoNotRedact clause. Only set when
+    the analyser's include_rationale is enabled"""
 
 
 @dataclass(frozen=True)
@@ -151,4 +166,91 @@ class ImageLLMTextRedactionResult(LLMTextRedactionResult, ImageRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
+    redaction_strings: list[str] = Field(
+        description=(
+            "The exact text spans to redact, copied verbatim from the input text. "
+            "Do not paraphrase, expand, shorten, or normalise the wording. Do not "
+            "include duplicate entries. Return an empty list if nothing qualifies."
+        )
+    )
+
+
+RedactionConfidence = Literal["high", "medium", "low"]
+CONFIDENCE_RANK: dict[str, int] = {"low": 0, "medium": 1, "high": 2}
+
+DataSubject = Literal[
+    "author",
+    "represented_party",
+    "third_party",
+    "child",
+    "employee_or_agent",
+    "company_or_applicant",
+    "not_applicable",
+]
+
+
+# Field order is generation order, so the reason is written before the confidence
+class LLMRedactionDecision(BaseModel):
+    text: str = Field(
+        description=(
+            "The exact text span to redact, copied verbatim from the input text. Do "
+            "not paraphrase, expand, shorten, or normalise the wording."
+        )
+    )
+    data_subject: DataSubject = Field(
+        description=(
+            "Whose information the span is: the author, the party the author "
+            "represents, an uninvolved third party, a child, an employee or agent "
+            "of an organisation, a company or applicant, or not_applicable (e.g. "
+            "a protected species location)."
+        )
+    )
+    clause_ids: list[str] = Field(
+        description=(
+            "IDs of the Terms (T#) and MustRedact (M#) clauses that require this "
+            "redaction, e.g. ['T2', 'M1']."
+        )
+    )
+    reason: str = Field(
+        description=(
+            "Why the span is redacted, in 25 words or fewer, naming the cue in the "
+            "surrounding text."
+        )
+    )
+    confidence: RedactionConfidence = Field(
+        description=(
+            "high: clearly within the cited clauses. medium: within the clauses but "
+            "the context is incomplete. low: redacted only because it might be "
+            "personal data ('if in doubt, take it out')."
+        )
+    )
+
+
+class LLMExclusionDecision(BaseModel):
+    text: str = Field(
+        description="The exact text span that was kept, copied verbatim from the input."
+    )
+    clause_ids: list[str] = Field(
+        description="IDs of the DoNotRedact (D#) clauses that exclude this span."
+    )
+    reason: str = Field(description="Why the span is kept, in 25 words or fewer.")
+
+
+class LLMDetailedRedactionResultFormat(BaseModel):
+    redactions: list[LLMRedactionDecision] = Field(
+        description=(
+            "One entry per distinct text span to redact. Do not include duplicate "
+            "spans. Return an empty list if nothing qualifies."
+        )
+    )
+    excluded: list[LLMExclusionDecision] = Field(
+        description=(
+            "Up to 10 of the most relevant spans that resemble a redaction term but "
+            "are kept because a DoNotRedact clause applies. Return an empty list if "
+            "there are none."
+        )
+    )
+
+    @property
+    def redaction_strings(self) -> list[str]:
+        return [decision.text for decision in self.redactions]

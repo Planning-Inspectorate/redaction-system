@@ -50,6 +50,9 @@ page. `PDFProcessor._apply_provisional_text_redactions` and
    (`_find_potential_matches_in_line` / `_match_word_to_redact_in_line`). Matching is
    deliberately fuzzy: it tolerates plurals/possessives (`"Bob's"` matching `"Bob"`), words
    fused together by a missing space (e.g. `"somethingMonica"`), and hyphenated terms.
+   A single-word term also matches the email address it is the name part of (`"ada.merrin"`
+   or `"merrin"` in `ada.merrin@post.invalid`, never the domain), and the whole address is
+   highlighted since only whole-word coordinates are stored.
    Multi-word terms are matched by walking consecutive words (`_check_subsequent_words`).
 4. Once a match's start/end word indices on a line are known, `_construct_pdf_rect` builds
    the highlight's bounding box directly from those words' stored coordinates.
@@ -96,13 +99,32 @@ For `LLMTextRedaction` rules, each rule has:
 - `name` / `label` — an identifier and display label for the rule, which titles the redaction
   highlights in the PDF to allow easy filtering
 - `model` — the LLM to use
-- `system_prompt` — the instruction given to the LLM (e.g. "extract all requested terms")
+- `role` — a short statement of who the assistant is and the domain context (e.g. "You are a
+  redaction assistant for PINS casework documents...")
+- `task` — the instruction describing what counts as personal data here and how to apply it
+  consistently (e.g. "identify all requested terms, applying the rules consistently...")
 - `redaction_terms` — the categories of information to find (e.g. "People's names")
-- `constraints` — things to explicitly exclude (e.g. "Do not include locations")
+- `must_redact` *(optional)* — additional rules clarifying what must be redacted beyond the
+  basic terms (e.g. "redact a title or qualification attached to a redacted name")
+- `do_not_redact` *(optional)* — exceptions/exclusions describing what must never be redacted
+  (e.g. "do not redact the author's own name")
+- `examples` *(optional)* — short worked examples illustrating correct redaction decisions for
+  ambiguous cases, phrased as "text — decision, because reason"
+- `extra_sections` *(optional)* — further prompt sections, as a map of CamelCase XML tag to a
+  list of bullets (e.g. `EdgeCases: [...]`). They are added after `<Examples>`, in the order
+  given, without clause IDs. Tags can't reuse a standard section name. Prompt optimisation
+  can add these when the standard sections can't carry what it learns
+- `chunk_size` / `chunk_overlap` *(optional)* — how the text is split before being sent to the
+  LLM, in **tokens** (default 1500 / 60). Image rules inherit these from the text rule they
+  reference. See [tests/eval](../../tests/eval/README.md) for how to choose them.
 
 `LLMTextRedactionConfig.create_system_prompt()` (in `config.py`) compiles these fields into
-the actual system prompt sent to the LLM, wrapping `system_prompt`, `redaction_terms`,
-`constraints`, and a fixed output format instruction in XML tags.
+the actual system prompt sent to the LLM, wrapping `role`, `task`, `redaction_terms`,
+`must_redact`, `do_not_redact`, and `examples` in XML tags (`<Role>`, `<Task>`, `<Terms>`,
+`<MustRedact>`, `<DoNotRedact>`, `<Examples>`, then any `extra_sections` under their own
+tags). The optional sections are omitted from the prompt entirely when not set. The LLM's output shape itself is enforced separately by
+`LLMRedactionResultFormat` (in `types.py`) via the model's structured output / JSON schema
+support, so the prompt doesn't need to describe the output format.
 
 Image-based rule types (e.g. `ImageLLMTextRedaction`) reference an LLM text rule by name via
 `text_redaction_rule`, reusing its `redaction_terms` against OCR'd text found in images.
