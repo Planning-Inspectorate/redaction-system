@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from src.analysis.images import AzureImageAnalyser
+from src.monitoring import LoggingUtil
 from src.redaction.file_processor import NonEnglishContentException, PDFProcessor
 from src.redaction.utils.pdf import (
     PDFImageMetadata,
@@ -19,6 +20,7 @@ from src.redaction.utils.text import get_normalised_words, is_english_text
 from src.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
+    LLMTextRedactionResult,
     TextRedactionResult,
 )
 from tests.utils import (
@@ -481,6 +483,46 @@ class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
 
         mock_examine_provisional_redactions_on_page.assert_not_called()
         mock_add_provisional_redaction.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("page_text", "term", "highlighted_text"),
+        [
+            (
+                "Contact Ada.Merrin@post.invalid today",
+                "Ada.Merrin",
+                "Ada.Merrin",
+            ),
+            (
+                "Thanks somethingMonica Cowan for that",
+                "Monica Cowan",
+                "Monica Cowan",
+            ),
+        ],
+    )
+    def test_highlights_only_the_part_of_a_word_that_matches(
+        self, page_text, term, highlighted_text
+    ):
+        """
+        - Given a term that is the name part of an email address, or is fused to the
+          word before it by a missing space
+        - When I apply the provisional redactions
+        - Then only that part of the word is highlighted
+        """
+        file_bytes = _make_pdf_with_text(page_text)
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {term: 0}
+
+        result = pdf_processor._apply_provisional_text_redactions(file_bytes, [term])
+
+        page = pymupdf.open(stream=result)[0]
+        [annotation] = list(page.annots())
+        vertices = annotation.vertices
+        highlighted = pymupdf.Rect(*vertices[0], *vertices[-1])
+        expected = page.search_for(highlighted_text)[0]
+        assert (highlighted.x0, highlighted.x1) == pytest.approx(
+            (expected.x0, expected.x1), abs=0.5
+        )
+        assert annotation.info["content"] == term
 
 
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
@@ -1054,3 +1096,62 @@ class TestApply:
         assert run_metrics["redaction_time"] >= 0
         assert run_metrics["scrub_time"] >= 0
         assert run_metrics["n_highlights"] >= 0
+
+
+class TestApplyRuleDecisions:
+    def test_decisions_in_summary_but_not_logs(self):
+        """
+        - Given an LLM rule that returns redaction decisions
+        - When I apply the rule
+        - Then the decisions are in the text redaction summary but not in the logs
+        """
+        decision = {
+            "text": "Joan Brown",
+            "data_subject": "third_party",
+            "clause_ids": ["T1"],
+            "reason": "uninvolved neighbour",
+            "confidence": "high",
+            "chunk_count": 1,
+        }
+        exclusion = {
+            "text": "Cllr Raj Patel",
+            "clause_ids": ["D3"],
+            "reason": "councillor",
+        }
+        result = LLMTextRedactionResult(
+            rule_name="names",
+            run_metrics={},
+            redaction_strings=("Joan Brown",),
+            redaction_decisions=(decision,),
+            excluded_decisions=(exclusion,),
+        )
+        processor = PDFProcessor()
+        processor.run_metrics = {"text_analysis_total_time": 0.0}
+        processor._text_redaction_summary = {}
+        processor.redaction_results = []
+
+        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+
+        summary = processor._text_redaction_summary["names"]
+        assert summary["redaction_decisions"] == (decision,)
+        assert summary["excluded_decisions"] == (exclusion,)
+        logged = " ".join(str(c) for c in LoggingUtil.log_info.call_args_list)
+        assert "uninvolved neighbour" not in logged
+        assert "Cllr Raj Patel" not in logged
+
+    def test_no_decisions_leaves_summary_unchanged(self):
+        result = LLMTextRedactionResult(
+            rule_name="names", run_metrics={}, redaction_strings=("Joan Brown",)
+        )
+        processor = PDFProcessor()
+        processor.run_metrics = {"text_analysis_total_time": 0.0}
+        processor._text_redaction_summary = {}
+        processor.redaction_results = []
+
+        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+
+        assert processor._text_redaction_summary["names"] == {
+            "redaction_strings": ("Joan Brown",),
+            "n_proposed": 1,
+            "n_applied": 1,
+        }

@@ -1,0 +1,920 @@
+"""Register, evaluate, optimise, gate and export LLM redaction prompts with MLflow.
+
+Each LLMTextRedaction rule's system prompt is registered as ``redaction-<rule>``. The YAML
+config stays the source of truth: a prompt that passes the gate is exported to a new config
+file for human review. Run from the `redactor` directory, inside the VNet:
+
+    python -m eval.optimise_prompt register --chunk-size 1500 --chunk-overlap 60
+    python -m eval.optimise_prompt reregister --rule names --prompt my-edit --alias candidate
+    python -m eval.optimise_prompt evaluate --rule names --prompt baseline
+    python -m eval.optimise_prompt optimise --rule names --optimizer meta
+    python -m eval.optimise_prompt gate --rule names --candidate candidate --promote
+    python -m eval.optimise_prompt export --out src/config/optimised.yaml
+    python -m eval.optimise_prompt gates-summary
+
+View results with ``mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db``.
+Traces include the corpus text, so only point this at synthetic or approved data.
+"""
+
+import argparse
+import csv
+import json
+import os
+import warnings
+from dataclasses import asdict
+from importlib import resources
+from pathlib import Path
+
+import litellm
+import matplotlib.pyplot as plt
+import mlflow
+import numpy as np
+import pandas as pd
+from mlflow.entities.model_registry import PromptVersion
+from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
+
+from src.redaction.config import LLMTextRedactionConfig
+
+from .azure_auth import check_azure_auth
+from .corpus import RULE_NAMES, Document, load_corpus
+from .mlflow_dataset import (
+    PromptRunner,
+    chunk_records,
+    document_records,
+    seeded_sample,
+    split_documents,
+)
+from .mlflow_scorers import SCORERS, make_objective
+from .prompt_registry import (
+    PromptStructureError,
+    export_rules_to_yaml,
+    normalise_template,
+    parse_prompt_sections,
+    prompt_uri,
+    register_rule_prompt,
+)
+from .run_chunk_sweep import load_rule_configs
+from .scoring import (
+    HARD_NEGATIVE_WEIGHT,
+    UNLOCATABLE_WEIGHT,
+    score_document,
+)
+from .summarise_chunk_sweep import (
+    ScoredRun,
+    bootstrap_f_beta_differences,
+    summarise,
+)
+
+EXPERIMENT_NAME = "redaction-prompt-engineering"
+RESULTS_DIR = Path("eval/results")
+DEFAULT_TRACKING_URI = f"sqlite:///{RESULTS_DIR.as_posix()}/mlflow.db"
+AZURE_API_VERSION = "2024-12-01-preview"
+LLM_COMMANDS = ("evaluate", "optimise", "gate")
+UNIT_RANGE_METRICS = ("f2", "recall", "precision")
+DEFAULT_SUMMARY_CANDIDATE = "champion"
+DEFAULT_SUMMARY_REFERENCE = "baseline"
+GATE_METRICS = {
+    "f2": "F2",
+    "recall": "Recall",
+    "precision": "Precision",
+    "hard_negative_fp_rate": "Hard-negative hit rate (lower is better)",
+    "cost_gbp": "Cost of the gate run (GBP)",
+}
+"""Metrics logged by the gate for both prompts, as <reference|candidate>_<metric>"""
+_CLAUSE_RULES = (
+    "Keep the [T1]-style clause "
+    "labels, renumbering them in order within each section if clauses are added or "
+    "removed. Do not add clauses that contradict a DoNotRedact clause or "
+    "PINS guidance, and keep the prompt concise. Do not describe the response format, "
+    "such as one term per line or what to omit: a response schema already enforces it."
+)
+PROMPT_FORMAT_RULES = (
+    "Keep the <Role>, <Task>, <Terms>, <MustRedact>, <DoNotRedact> and <Examples> XML "
+    "sections, with one '- ' bullet per clause, and add no text outside them. "
+    + _CLAUSE_RULES
+)
+GEPA_FORMAT_RULES = (
+    "Keep the <Role>, <Task>, <Terms>, <MustRedact>, <DoNotRedact> and <Examples> XML "
+    "sections, with one '- ' bullet per clause. You may add a further section after "
+    "them, but only if the feedback shows the existing sections cannot carry the "
+    "information. Give it its own CamelCase XML tag, with one '- ' bullet per item and "
+    "no [X1]-style labels. Add no text outside the XML sections. " + _CLAUSE_RULES
+)
+META_GUIDELINES = (
+    "This system prompt instructs an LLM to find text to redact from UK Planning "
+    "Inspectorate (PINS) casework published online under UK GDPR. "
+    + PROMPT_FORMAT_RULES
+)
+# GEPA's default reflection prompt plus the format rules. It must keep the <curr_param>
+# and <side_info> placeholders and ask for the result in ``` blocks, which GEPA extracts.
+GEPA_REFLECTION_TEMPLATE = f"""I provided an assistant with the following instructions to perform a task for me:
+```
+<curr_param>
+```
+
+The following are examples of different task inputs provided to the assistant along with the assistant's response for each of them, and some feedback on how the assistant's response could be better:
+```
+<side_info>
+```
+
+Your task is to write a new instruction for the assistant.
+
+Read the inputs carefully and identify the input format and infer detailed task description about the task I wish to solve with the assistant.
+
+Read all the assistant responses and the corresponding feedback. Identify all niche and domain specific factual information about the task and include it in the instruction, as a lot of it may not be available to the assistant in the future. The assistant may have utilized a generalizable strategy to solve the task, if so, include that in the instruction as well.
+
+The instruction is a system prompt for finding text to redact from UK Planning Inspectorate casework. Edit it in place rather than rewriting it from scratch. {GEPA_FORMAT_RULES}
+
+Provide the new instructions within ``` blocks, without any other ``` marks inside them."""
+
+
+def setup_mlflow(tracking_uri: str):
+    """Point MLflow at the tracking store and the prompt-engineering experiment"""
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    mlflow.set_tracking_uri(tracking_uri)
+    if mlflow.get_experiment_by_name(EXPERIMENT_NAME) is None:
+        mlflow.create_experiment(
+            EXPERIMENT_NAME,
+            artifact_location=(RESULTS_DIR / "mlartifacts").resolve().as_uri(),
+        )
+    mlflow.set_experiment(EXPERIMENT_NAME)
+    # Predict functions are traced explicitly, so skip the check that spends an LLM call
+    os.environ["MLFLOW_GENAI_EVAL_SKIP_TRACE_VALIDATION"] = "true"
+    # Autologging serialises parse() responses, whose generic `parsed` type is unresolved
+    warnings.filterwarnings("ignore", message="Pydantic serializer warnings")
+    mlflow.openai.autolog()
+
+
+def configure_reflection_model(model_uri: str):
+    """Let LiteLLM reach an Azure OpenAI reflection model with Entra ID"""
+    if not model_uri.startswith("azure:/"):
+        return
+    if endpoint := os.environ.get("OPENAI_ENDPOINT"):
+        os.environ.setdefault("AZURE_API_BASE", endpoint)
+    os.environ.setdefault("AZURE_API_VERSION", AZURE_API_VERSION)
+    # Uses DefaultAzureCredential, refreshing the token during long optimisation runs
+    litellm.enable_azure_ad_token_refresh = True
+
+
+def rule_config(
+    args: argparse.Namespace, rule: str, prompt: PromptVersion | None = None
+) -> LLMTextRedactionConfig:
+    """The rule's config, with chunk and completion settings taken from the command
+    line, then the registered prompt's model config, then the YAML config"""
+    config = load_rule_configs(args.config, [rule])[rule]
+    model_config = (prompt.model_config or {}) if prompt else {}
+    extra = model_config.get("extra_params") or {}
+    update = {
+        "chunk_size": args.chunk_size or extra.get("chunk_size"),
+        "chunk_overlap": args.chunk_overlap
+        if args.chunk_overlap is not None
+        else extra.get("chunk_overlap"),
+        "max_tokens": args.max_completion_tokens or model_config.get("max_tokens"),
+        "reasoning_effort": args.reasoning_effort or extra.get("reasoning_effort"),
+    }
+    return LLMTextRedactionConfig(
+        **(config.model_dump() | {k: v for k, v in update.items() if v is not None})
+    )
+
+
+def load_documents(args: argparse.Namespace):
+    documents = load_corpus(args.corpus, split=args.split)
+    return documents[: args.limit] if args.limit else documents
+
+
+def load_rule_prompt(rule: str, ref: str) -> PromptVersion:
+    return mlflow.genai.load_prompt(prompt_uri(rule, ref))
+
+
+def log_run_params(
+    prompt: PromptVersion, config: LLMTextRedactionConfig, args, **params
+):
+    mlflow.log_params(
+        {
+            "rule": config.name,
+            "prompt_uri": prompt.uri,
+            "model": config.model,
+            "chunk_size": config.chunk_size,
+            "chunk_overlap": config.chunk_overlap,
+            "max_tokens": config.max_tokens,
+            "reasoning_effort": config.reasoning_effort,
+            "corpus": args.corpus,
+            "split": args.split,
+            **params,
+        }
+    )
+
+
+def cmd_register(args: argparse.Namespace):
+    for rule in args.rules:
+        version = register_rule_prompt(
+            rule_config(args, rule), args.config, args.message, args.alias
+        )
+        alias = f" as @{args.alias}" if args.alias else ""
+        print(f"Registered {version.uri}{alias}")
+
+
+def cmd_evaluate(args: argparse.Namespace):
+    prompt = load_rule_prompt(args.rule, args.prompt)
+    config = rule_config(args, args.rule, prompt)
+    documents = load_documents(args)
+    if args.level == "chunk":
+        records = chunk_records(documents, args.rule, config, args.empty_chunk_ratio)
+    else:
+        records = document_records(documents, args.rule)
+    runner = PromptRunner(prompt, config, args.budget)
+    predict = runner.predict_chunk if args.level == "chunk" else runner.predict_document
+
+    for repeat in range(args.repeats):
+        with mlflow.start_run(
+            run_name=f"evaluate-{args.rule}-{args.prompt}-{args.level}-r{repeat}"
+        ):
+            log_run_params(prompt, config, args, level=args.level, records=len(records))
+            spent = runner.total_cost
+            result = mlflow.genai.evaluate(
+                data=records,
+                predict_fn=mlflow.trace(predict, name=f"redact_{args.level}"),
+                scorers=SCORERS,
+            )
+            mlflow.log_metric("cost_gbp", runner.total_cost - spent)
+        print(f"Repeat {repeat}: {result.metrics}")
+
+
+def reregister_optimised(
+    optimised: PromptVersion,
+    source: PromptVersion,
+    config: LLMTextRedactionConfig,
+    config_name: str,
+    optimizer: str,
+    alias: str | None,
+    commit_message: str | None = None,
+    delete_original: bool = True,
+) -> tuple[PromptVersion, str | None]:
+    """
+    Replace the version the optimiser registered with one that has the rule's tags,
+    structured output and model config, and the template in the standard layout.
+
+    Prompt versions are immutable, so this registers a new version and, unless
+    `delete_original` is False, deletes the optimiser's. If the template can't be
+    parsed into sections it is kept as it is, and a warning is returned, since such a
+    version cannot be exported to YAML either.
+
+    :return: The new version and a warning, if any.
+    """
+    template, warning = optimised.template, None
+    try:
+        template = normalise_template(template, config)
+    except PromptStructureError as e:
+        warning = f"{optimised.uri} could not be put in the standard layout: {e}"
+    version = register_rule_prompt(
+        config,
+        config_name,
+        commit_message=commit_message or f"{optimizer} optimisation of {source.uri}",
+        alias=alias,
+        template=template,
+        extra_tags={"optimizer": optimizer, "source_prompt": source.uri},
+    )
+    if delete_original:
+        mlflow.MlflowClient().delete_prompt_version(optimised.name, optimised.version)
+    return version, warning
+
+
+def cmd_reregister(args: argparse.Namespace):
+    """Re-register a prompt, e.g. one edited in the MLflow UI, with the rule's tags,
+    structured output and chunk settings copied from another version"""
+    prompt = load_rule_prompt(args.rule, args.prompt)
+    like = load_rule_prompt(args.rule, args.like)
+    config = rule_config(args, args.rule, like)
+    version, warning = reregister_optimised(
+        prompt,
+        prompt,
+        config,
+        args.config,
+        "manual",
+        args.alias,
+        commit_message=args.message or f"Re-registered {prompt.uri}",
+        delete_original=args.delete_original,
+    )
+    print(
+        f"Registered {version.uri}"
+        + (f" as @{args.alias}" if args.alias else "")
+        + f" from {prompt.uri} with the chunk settings of {like.uri}"
+        f" ({config.chunk_size}/{config.chunk_overlap})"
+    )
+    if warning:
+        print(f"Warning: {warning}")
+
+
+def cmd_optimise(args: argparse.Namespace):
+    configure_reflection_model(args.reflection_model)
+    prompt = load_rule_prompt(args.rule, args.prompt)
+    config = rule_config(args, args.rule, prompt)
+    documents = load_documents(args)
+
+    val_records = []
+    if args.optimizer == "gepa" and args.val_fraction > 0:
+        documents, val_documents = split_documents(documents, args.val_fraction)
+        val_records = chunk_records(
+            val_documents, args.rule, config, args.empty_chunk_ratio
+        )
+    train_records = chunk_records(documents, args.rule, config, args.empty_chunk_ratio)
+    if args.max_records and len(train_records) > args.max_records:
+        train_records = seeded_sample(train_records, args.max_records)
+
+    if args.optimizer == "gepa":
+        optimizer = GepaPromptOptimizer(
+            reflection_model=args.reflection_model,
+            max_metric_calls=args.max_metric_calls,
+            display_progress_bar=True,
+            gepa_kwargs={
+                "reflection_prompt_template": GEPA_REFLECTION_TEMPLATE,
+                **({"valset": val_records} if val_records else {}),
+            },
+        )
+    else:
+        optimizer = MetaPromptOptimizer(
+            reflection_model=args.reflection_model, guidelines=args.guidelines
+        )
+
+    runner = PromptRunner(prompt, config, args.budget)
+    with mlflow.start_run(run_name=f"optimise-{args.rule}-{args.optimizer}"):
+        log_run_params(
+            prompt,
+            config,
+            args,
+            reflection_model=args.reflection_model,
+            train_records=len(train_records),
+            val_records=len(val_records),
+            hard_negative_weight=args.hard_negative_weight,
+            unlocatable_weight=args.unlocatable_weight,
+        )
+        result = mlflow.genai.optimize_prompts(
+            predict_fn=mlflow.trace(runner.predict_chunk, name="redact_chunk"),
+            train_data=train_records,
+            prompt_uris=[prompt.uri],
+            optimizer=optimizer,
+            scorers=SCORERS,
+            aggregation=make_objective(
+                args.hard_negative_weight, args.unlocatable_weight
+            ),
+        )
+        optimised = result.optimized_prompts[0]
+        # optimize_prompts registers only the template, so replace it with a version
+        # that has the rule's metadata and structured output, in the standard layout
+        optimised, layout_warning = reregister_optimised(
+            optimised, prompt, config, args.config, args.optimizer, args.alias
+        )
+        mlflow.log_param("optimised_prompt_uri", optimised.uri)
+        mlflow.log_metric("cost_gbp", runner.total_cost)
+
+    print(
+        f"Registered {optimised.uri}"
+        + (f" as @{args.alias}" if args.alias else "")
+        + f": score {result.initial_eval_score} -> {result.final_eval_score},"
+        f" £{runner.total_cost:.2f} on the task model"
+    )
+    if layout_warning:
+        print(f"Warning: {layout_warning}")
+
+
+def corpus_dataset(documents: list[Document], corpus: str, split: str):
+    """The documents as an MLflow dataset. The digest changes if any text or label does,
+    so runs on different corpus versions can be told apart"""
+    frame = pd.DataFrame(
+        {
+            "doc_id": [d.id for d in documents],
+            "doc_type": [d.doc_type for d in documents],
+            "split": [d.split for d in documents],
+            "text": [d.text for d in documents],
+            "entities": [
+                json.dumps([asdict(e) for e in d.entities]) for d in documents
+            ],
+        }
+    )
+    return mlflow.data.from_pandas(
+        frame, source=corpus, name=f"{Path(corpus).stem}-{split}"
+    )
+
+
+def cmd_gate(args: argparse.Namespace):
+    """Compare whole-document results of a candidate and a reference prompt, and pass
+    if the candidate's F2 is significantly better without more hard-negative hits"""
+    prompts = {
+        "reference": load_rule_prompt(args.rule, args.reference),
+        "candidate": load_rule_prompt(args.rule, args.candidate),
+    }
+    # Both prompts use the reference's chunking, so only the prompt differs
+    config = rule_config(args, args.rule, prompts["reference"])
+    runners = {name: PromptRunner(p, config) for name, p in prompts.items()}
+    documents = load_documents(args)
+
+    with mlflow.start_run(
+        run_name=f"gate-{args.rule}-{args.candidate}-vs-{args.reference}"
+    ):
+        log_run_params(
+            prompts["candidate"],
+            config,
+            args,
+            reference_prompt_uri=prompts["reference"].uri,
+            repeats=args.repeats,
+            documents=len(documents),
+        )
+        mlflow.log_input(
+            corpus_dataset(documents, args.corpus, args.split), context="gate"
+        )
+        scored = []
+        for repeat in range(args.repeats):
+            for document in documents:
+                # Interleaved, so throttling or drift affects both prompts equally
+                for name, runner in runners.items():
+                    spent = sum(r.total_cost for r in runners.values())
+                    if args.budget and spent >= args.budget:
+                        raise SystemExit(f"Budget of £{args.budget:.2f} spent")
+                    outputs = runner.predict_document(document.text)
+                    scored.append(
+                        ScoredRun(
+                            variant=name,
+                            rule=args.rule,
+                            repeat=repeat,
+                            doc_id=document.id,
+                            counts=score_document(
+                                document, outputs["redaction_strings"], rule=args.rule
+                            ),
+                            cost_gbp=0.0,
+                            doc_tokens=0,
+                            chunk_count=outputs["chunk_count"],
+                            failed_chunks=outputs["failed_chunks"],
+                            latency_s=0.0,
+                        )
+                    )
+
+        summaries = summarise(scored)
+        low, high = bootstrap_f_beta_differences(scored, args.rule, "reference")[
+            "candidate"
+        ]
+        reference = summaries[("reference", args.rule)].counts
+        candidate = summaries[("candidate", args.rule)].counts
+        hard_negatives_ok = (
+            candidate.hard_negative_fp_rate
+            <= reference.hard_negative_fp_rate + args.hard_negative_tolerance
+        )
+        passed = low > 0 and hard_negatives_ok
+
+        for name, counts in (("reference", reference), ("candidate", candidate)):
+            mlflow.log_metrics(
+                {
+                    f"{name}_f2": counts.f_beta(2.0),
+                    f"{name}_recall": counts.recall,
+                    f"{name}_precision": counts.precision,
+                    f"{name}_hard_negative_fp_rate": counts.hard_negative_fp_rate,
+                    f"{name}_cost_gbp": runners[name].total_cost,
+                }
+            )
+        mlflow.log_metrics(
+            {"f2_diff_ci_low": low, "f2_diff_ci_high": high, "passed": float(passed)}
+        )
+
+    print(
+        f"F2 {reference.f_beta(2.0):.3f} -> {candidate.f_beta(2.0):.3f} "
+        f"(95% CI of difference {low:+.3f} to {high:+.3f}); hard-negative FP rate "
+        f"{reference.hard_negative_fp_rate:.3f} -> {candidate.hard_negative_fp_rate:.3f}"
+    )
+    print("Gate passed" if passed else "Gate failed")
+    if passed and args.promote:
+        candidate_prompt = prompts["candidate"]
+        mlflow.genai.set_prompt_alias(
+            candidate_prompt.name, "champion", candidate_prompt.version
+        )
+        print(f"Set {candidate_prompt.uri} as @champion")
+
+
+def cmd_export(args: argparse.Namespace):
+    """Write the given prompt version (the champion by default) of each rule into one
+    copy of the config. Rules without that version are skipped unless named"""
+    rules = args.rules or list(RULE_NAMES)
+    fields_by_rule = {}
+    for rule in rules:
+        prompt = mlflow.genai.load_prompt(
+            prompt_uri(rule, args.prompt), allow_missing=True
+        )
+        if prompt is None:
+            if args.rules:
+                raise SystemExit(f"No '{args.prompt}' prompt for rule '{rule}'")
+            print(f"Skipping '{rule}': no '{args.prompt}' prompt")
+            continue
+        try:
+            fields_by_rule[rule] = parse_prompt_sections(prompt.template)
+        except PromptStructureError as e:
+            raise SystemExit(f"{prompt.uri} cannot be exported: {e}") from e
+        print(f"Exporting {prompt.uri} as rule '{rule}'")
+    if not fields_by_rule:
+        raise SystemExit(f"No rules have a '{args.prompt}' prompt to export")
+
+    base = (
+        Path(args.base)
+        if args.base
+        else Path(str(resources.files("src.config") / f"{args.config}.yaml"))
+    )
+    export_rules_to_yaml(fields_by_rule, base, Path(args.out))
+    print(f"Wrote {len(fields_by_rule)} rule(s) to {args.out}")
+
+
+def gate_summary_rows(
+    rules: list[str],
+    candidate: str = DEFAULT_SUMMARY_CANDIDATE,
+    reference: str = DEFAULT_SUMMARY_REFERENCE,
+    include_failed: bool = False,
+) -> list[dict]:
+    """
+    The latest gate run of each rule's `candidate` prompt against its `reference` prompt
+    (each an alias or version), as a flat row of its logged parameters and metrics. Only
+    passing runs are used unless `include_failed`. Rules without both prompts, or without
+    a matching run, are skipped with a message.
+    """
+    filter_string = "tags.mlflow.runName LIKE 'gate-%'"
+    if not include_failed:
+        filter_string += " AND metrics.passed = 1"
+    runs = mlflow.search_runs(
+        experiment_names=[EXPERIMENT_NAME],
+        filter_string=filter_string,
+        order_by=["start_time DESC"],
+        output_format="list",
+    )
+    rows = []
+    for rule in rules:
+        uris = {
+            role: _version_uri(rule, ref)
+            for role, ref in (("candidate", candidate), ("reference", reference))
+        }
+        if missing := [
+            ref
+            for ref, role in ((candidate, "candidate"), (reference, "reference"))
+            if uris[role] is None
+        ]:
+            print(f"Skipping '{rule}': no '{missing[0]}' prompt")
+            continue
+        run = next(
+            (
+                r
+                for r in runs
+                if r.data.params.get("prompt_uri") == uris["candidate"]
+                and r.data.params.get("reference_prompt_uri") == uris["reference"]
+            ),
+            None,
+        )
+        if run is None:
+            print(
+                f"Skipping '{rule}': no {'' if include_failed else 'passing '}gate run "
+                f"of {uris['candidate']} against {uris['reference']}"
+            )
+            continue
+        rows.append(_gate_summary_row(rule, uris, run))
+    return rows
+
+
+def _version_uri(rule: str, ref: str) -> str | None:
+    """The URI of the version an alias (or version number) of a rule's prompt points to"""
+    prompt = mlflow.genai.load_prompt(prompt_uri(rule, ref), allow_missing=True)
+    return None if prompt is None else prompt_uri(rule, str(prompt.version))
+
+
+def _gate_summary_row(rule: str, uris: dict[str, str], run) -> dict:
+    metrics, params = run.data.metrics, run.data.params
+    row = {
+        "rule": rule,
+        "candidate": uris["candidate"],
+        "reference": uris["reference"],
+        "run_id": run.info.run_id,
+        "passed": bool(metrics["passed"]),
+        "documents": int(params["documents"]),
+        "repeats": int(params["repeats"]),
+        "f2_diff_ci_low": metrics["f2_diff_ci_low"],
+        "f2_diff_ci_high": metrics["f2_diff_ci_high"],
+    }
+    for metric in GATE_METRICS:
+        for side in ("reference", "candidate"):
+            row[f"{side}_{metric}"] = metrics[f"{side}_{metric}"]
+    row["f2_diff"] = row["candidate_f2"] - row["reference_f2"]
+    return row
+
+
+def plot_gates_summary(
+    rows: list[dict],
+    out_path: Path,
+    title: str = "",
+    candidate: str = DEFAULT_SUMMARY_CANDIDATE,
+    reference: str = DEFAULT_SUMMARY_REFERENCE,
+):
+    """Save a forest plot of the F2 difference with its 95% interval, and a reference to
+    candidate chart for each metric, with a row per rule. Failed gates are drawn red"""
+    labels = [
+        f"{row['rule'].replace('_', ' ')}\n(v{row['candidate'].rsplit('/', 1)[-1]})"
+        for row in rows
+    ]
+    y = np.arange(len(rows))[::-1]
+
+    fig, axes = plt.subplots(2, 3, figsize=(18, 8), sharey=True)
+    forest = axes[0, 0]
+    diffs = np.array([row["f2_diff"] for row in rows])
+    low = np.array([row["f2_diff_ci_low"] for row in rows])
+    high = np.array([row["f2_diff_ci_high"] for row in rows])
+    for row, yi, diff, lo, hi in zip(rows, y, diffs, low, high):
+        forest.errorbar(
+            diff,
+            yi,
+            xerr=[[diff - lo], [hi - diff]],
+            fmt="o",
+            capsize=4,
+            color="C0" if row["passed"] else "C3",
+        )
+    forest.axvline(0, color="black", linewidth=1, linestyle="--")
+    for yi, lo, hi in zip(y, low, high):
+        forest.annotate(
+            f"[{lo:+.3f}, {hi:+.3f}]",
+            (hi, yi),
+            textcoords="offset points",
+            xytext=(6, 0),
+            va="center",
+            fontsize=7,
+        )
+    forest.set_title(
+        f"F2 difference, {candidate} - {reference} (95% CI)"
+        + ("" if all(row["passed"] for row in rows) else ", red = gate failed"),
+        fontsize=10,
+    )
+    forest.margins(x=0.3)
+
+    # Metrics in [0, 1] share a range ending at 1, and the rest start at 0, so
+    # differences are not exaggerated by each panel's own scale
+    unit_metrics = [m for m in GATE_METRICS if m in UNIT_RANGE_METRICS]
+    unit_left = min(
+        row[f"{side}_{m}"]
+        for row in rows
+        for side in ("reference", "candidate")
+        for m in unit_metrics
+    )
+    for ax, (metric, label) in zip(axes.flat[1:], GATE_METRICS.items()):
+        for yi, row in zip(y, rows):
+            before, after = row[f"reference_{metric}"], row[f"candidate_{metric}"]
+            ax.plot([before, after], [yi, yi], color="grey", zorder=1)
+            ax.scatter(before, yi, color="C1", zorder=2, label=reference, clip_on=False)
+            ax.scatter(after, yi, color="C2", zorder=2, label=candidate, clip_on=False)
+        ax.set_title(label, fontsize=10)
+        if metric in unit_metrics:
+            ax.set_xlim(max(0, unit_left - 0.02), 1.0)
+        else:
+            ax.set_xlim(left=0)
+
+    for ax in axes.flat:
+        ax.set_yticks(y, labels, fontsize=8)
+        ax.spines[["top", "right"]].set_visible(False)
+    handles, names = axes[0, 1].get_legend_handles_labels()
+    by_name = dict(zip(names, handles))
+    fig.legend(by_name.values(), by_name.keys(), loc="lower center", ncol=2)
+    if title:
+        fig.suptitle(title)
+    fig.tight_layout(rect=(0, 0.04, 1, 1))
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+
+
+def cmd_gates_summary(args: argparse.Namespace):
+    """Save a plot and table of each rule's candidate prompt against its reference
+    prompt, from the logged gate runs, so no LLM calls are made"""
+    rows = gate_summary_rows(
+        args.rules or list(RULE_NAMES),
+        args.candidate,
+        args.reference,
+        args.include_failed,
+    )
+    if not rows:
+        raise SystemExit(
+            f"No rules have a gate run of '{args.candidate}' against '{args.reference}'"
+        )
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    defaults = (args.candidate, args.reference) == (
+        DEFAULT_SUMMARY_CANDIDATE,
+        DEFAULT_SUMMARY_REFERENCE,
+    )
+    # Other pairs get their own files, so they do not overwrite the default summary
+    stem = (
+        "gates_summary"
+        if defaults
+        else f"gates_summary_{args.candidate}_vs_{args.reference}"
+    )
+    table_path, plot_path = out_dir / f"{stem}.csv", out_dir / f"{stem}.png"
+    with table_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+        writer.writeheader()
+        writer.writerows(
+            {k: round(v, 5) if isinstance(v, float) else v for k, v in row.items()}
+            for row in rows
+        )
+    plot_gates_summary(
+        rows,
+        plot_path,
+        "Promoted champion of each rule vs baseline"
+        if defaults
+        else f"{args.candidate} vs {args.reference}: latest gate run of each rule",
+        args.candidate,
+        args.reference,
+    )
+
+    for row in rows:
+        print(
+            f"{row['rule']} {row['candidate']}: F2 {row['reference_f2']:.3f} -> "
+            f"{row['candidate_f2']:.3f} (95% CI {row['f2_diff_ci_low']:+.3f} to "
+            f"{row['f2_diff_ci_high']:+.3f}, {row['documents']} documents, "
+            f"{row['repeats']} repeats"
+            f"{'' if row['passed'] else ', gate failed'})"
+        )
+    print(f"Wrote {table_path} and {plot_path}")
+
+
+def parse_args(argv=None) -> argparse.Namespace:
+    """Define and parse the command line arguments for each subcommand"""
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--tracking-uri", default=DEFAULT_TRACKING_URI)
+    common.add_argument("--config", default="default", help="Redaction config name")
+
+    settings = argparse.ArgumentParser(add_help=False)
+    settings.add_argument("--chunk-size", type=int, help="Override the chunk size")
+    settings.add_argument("--chunk-overlap", type=int, help="Override the overlap")
+    settings.add_argument("--max-completion-tokens", type=int)
+    settings.add_argument(
+        "--reasoning-effort", choices=["minimal", "low", "medium", "high"]
+    )
+
+    run = argparse.ArgumentParser(add_help=False, parents=[common, settings])
+    run.add_argument("--rule", required=True, choices=RULE_NAMES)
+    run.add_argument("--corpus", default="eval/data/prompt_corpus.jsonl")
+    run.add_argument("--limit", type=int, help="Only use the first N documents")
+    run.add_argument("--budget", type=float, help="Stop after this cost in GBP")
+
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    register = subparsers.add_parser(
+        "register",
+        parents=[common, settings],
+        help="Register each rule's prompt from the YAML config",
+    )
+    register.add_argument("--rules", nargs="+", default=list(RULE_NAMES))
+    register.add_argument("--alias", default="baseline")
+    register.add_argument("--message", help="Commit message for the new versions")
+    register.set_defaults(func=cmd_register)
+
+    reregister = subparsers.add_parser(
+        "reregister",
+        parents=[common, settings],
+        help="Re-register a prompt, e.g. one edited in the MLflow UI, with the "
+        "rule's tags, structured output and chunk settings",
+    )
+    reregister.add_argument("--rule", required=True, choices=RULE_NAMES)
+    reregister.add_argument(
+        "--prompt", required=True, help="Alias or version to re-register"
+    )
+    reregister.add_argument(
+        "--like",
+        default="baseline",
+        help="Alias or version whose chunk and completion settings are copied. "
+        "The settings above override them",
+    )
+    reregister.add_argument("--alias", help="Alias to set on the new version")
+    reregister.add_argument("--message", help="Commit message for the new version")
+    reregister.add_argument(
+        "--delete-original",
+        action="store_true",
+        help="Delete the version being re-registered",
+    )
+    reregister.set_defaults(func=cmd_reregister)
+
+    evaluate = subparsers.add_parser(
+        "evaluate", parents=[run], help="Score a prompt version with mlflow.genai"
+    )
+    evaluate.add_argument("--prompt", default="baseline", help="Alias or version")
+    evaluate.add_argument("--split", choices=["dev", "test"], default="dev")
+    evaluate.add_argument("--level", choices=["chunk", "document"], default="chunk")
+    evaluate.add_argument("--empty-chunk-ratio", type=float, default=0.25)
+    evaluate.add_argument("--repeats", type=int, default=1)
+    evaluate.set_defaults(func=cmd_evaluate)
+
+    optimise = subparsers.add_parser(
+        "optimise", parents=[run], help="Optimise a prompt version on dev chunks"
+    )
+    optimise.add_argument("--prompt", default="baseline", help="Alias or version")
+    optimise.add_argument("--split", choices=["dev", "test"], default="dev")
+    optimise.add_argument("--optimizer", choices=["meta", "gepa"], default="meta")
+    optimise.add_argument(
+        "--reflection-model",
+        default="azure:/gpt-6-sol",
+        help="MLflow model URI of the model that rewrites the prompt",
+    )
+    optimise.add_argument("--guidelines", default=META_GUIDELINES)
+    optimise.add_argument(
+        "--max-metric-calls",
+        type=int,
+        default=100,
+        help="GEPA budget: each call is one chunk sent to the task model",
+    )
+    optimise.add_argument(
+        "--val-fraction",
+        type=float,
+        default=0.3,
+        help="Share of documents GEPA holds out to select candidates",
+    )
+    optimise.add_argument("--max-records", type=int, help="Sample N training chunks")
+    optimise.add_argument("--empty-chunk-ratio", type=float, default=0.25)
+    optimise.add_argument(
+        "--hard-negative-weight", type=float, default=HARD_NEGATIVE_WEIGHT
+    )
+    optimise.add_argument(
+        "--unlocatable-weight", type=float, default=UNLOCATABLE_WEIGHT
+    )
+    optimise.add_argument("--alias", default="candidate")
+    optimise.set_defaults(func=cmd_optimise)
+
+    gate = subparsers.add_parser(
+        "gate", parents=[run], help="Compare a candidate with a reference prompt"
+    )
+    gate.add_argument("--split", choices=["dev", "test"], default="test")
+    gate.add_argument("--candidate", default="candidate", help="Alias or version")
+    gate.add_argument("--reference", default="baseline", help="Alias or version")
+    gate.add_argument("--repeats", type=int, default=2)
+    gate.add_argument("--hard-negative-tolerance", type=float, default=0.02)
+    gate.add_argument(
+        "--promote", action="store_true", help="Set @champion if the gate passes"
+    )
+    gate.set_defaults(func=cmd_gate)
+
+    export = subparsers.add_parser(
+        "export",
+        parents=[common],
+        help="Write a prompt version into a copy of a YAML config",
+    )
+    export.add_argument(
+        "--rules",
+        "--rule",
+        nargs="+",
+        choices=RULE_NAMES,
+        help="Rules to export. Defaults to every rule that has the prompt",
+    )
+    export.add_argument(
+        "--prompt",
+        default="champion",
+        help="Alias (or version) to export for each rule",
+    )
+    export.add_argument(
+        "--base", help="YAML config to copy. Defaults to the --config file"
+    )
+    export.add_argument("--out", required=True, help="Path of the YAML file to write")
+    export.set_defaults(func=cmd_export)
+
+    gates_summary = subparsers.add_parser(
+        "gates-summary",
+        help="Plot each rule's candidate prompt against a reference from the gates",
+    )
+    gates_summary.add_argument("--tracking-uri", default=DEFAULT_TRACKING_URI)
+    gates_summary.add_argument(
+        "--candidate",
+        default=DEFAULT_SUMMARY_CANDIDATE,
+        help="Alias or version of the prompt that was gated",
+    )
+    gates_summary.add_argument(
+        "--reference",
+        default=DEFAULT_SUMMARY_REFERENCE,
+        help="Alias or version of the prompt it was gated against",
+    )
+    gates_summary.add_argument(
+        "--include-failed",
+        action="store_true",
+        help="Also use gate runs that failed, not only passing ones",
+    )
+    gates_summary.add_argument(
+        "--rules",
+        nargs="+",
+        choices=RULE_NAMES,
+        help="Rules to include. Defaults to every rule",
+    )
+    gates_summary.add_argument(
+        "--out-dir",
+        default=str(RESULTS_DIR / "gates"),
+        help="Where gates_summary.png and gates_summary.csv go (with the aliases in "
+        "their names unless they are the defaults)",
+    )
+    gates_summary.set_defaults(func=cmd_gates_summary)
+
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    setup_mlflow(args.tracking_uri)
+    if args.command in LLM_COMMANDS:
+        check_azure_auth()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    main()

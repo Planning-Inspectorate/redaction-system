@@ -25,12 +25,13 @@ dependencies = [
     "tiktoken>=0.13.0",
     "azure-functions-durable>=1.4.0",
     "azure-servicebus>=7.14.3",
-    "filelock>=4.2.1",
+    "filelock>=3.32.7",
     "python-dotenv>=1.2.2",
     "pymupdf>=1.28.0",
     "unidecode>=1.4.0",
     "strenum>=0.4.15",
     "numpy>=2.5.1",
+    "matplotlib>=3.10.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.13",
@@ -89,6 +90,11 @@ ai-dev = [
     "torch>=2.13.0",
     "torchvision>=0.28.0",
     "transformers>=5.14.1",
+]
+eval = [
+    "gepa>=0.1.4",
+    "litellm>=1.106.2",
+    "mlflow>=3.5",
 ]
     
 [tool.ruff.lint.isort]

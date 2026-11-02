@@ -18,6 +18,7 @@ from ..analysis import AzureImageAnalyser
 from ..monitoring import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
 from ..types import (
     ImageRedactionResult,
+    LLMTextRedactionResult,
     RedactionResult,
     TextRedactionResult,
 )
@@ -384,6 +385,7 @@ class PDFProcessor(FileProcessor):
                 text_to_redact,
                 page_metadata,
                 next_page_metadata,
+                page,
             )
             redaction_instances.extend(page_redaction_instances)
             LoggingUtil().log_info(
@@ -422,6 +424,7 @@ class PDFProcessor(FileProcessor):
         text_to_redact: list[str],
         page_metadata: PDFPageMetadata,
         next_page_metadata: PDFPageMetadata = None,
+        page: pymupdf.Page | None = None,
     ) -> list[tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
@@ -431,6 +434,8 @@ class PDFProcessor(FileProcessor):
         :param PDFPageMetadata page_metadata: The metadata of the page to examine
         :param PDFPageMetadata next_page_metadata: The metadata of the next page to
         examine, in case of a line break on the next page
+        :param pymupdf.Page page: The page to examine, used to redact only the matching
+        part of a word that a term is fused to or part of (e.g. in an email address)
         :return list[tuple[int, pymupdf.Rect, str]]: The list of valid
             redaction instances to apply on the page. Each tuple contains the page number
             (which may be the following page for partial redactions across line breaks),
@@ -455,7 +460,7 @@ class PDFProcessor(FileProcessor):
                 f"    Examining redaction candidate for term '{term_to_redact}'"
             )
             instances_to_apply = PDFUtil.examine_provisional_text_redaction(
-                term_to_redact, page_metadata, next_page_metadata
+                term_to_redact, page_metadata, next_page_metadata, page=page
             )
             redaction_instances.extend(instances_to_apply)
             self.terms_found.update(
@@ -679,17 +684,28 @@ class PDFProcessor(FileProcessor):
 
         if issubclass(redaction_result.__class__, TextRedactionResult):
             self.run_metrics["text_analysis_total_time"] += redaction_time
-            self._text_redaction_summary[redaction_result.rule_name] = {
+            summary = {
                 "redaction_strings": redaction_strings,
                 "n_proposed": n_strings,
                 "n_applied": n_strings,
             }
+            if isinstance(redaction_result, LLMTextRedactionResult) and (
+                redaction_result.redaction_decisions
+                or redaction_result.excluded_decisions
+            ):
+                summary["redaction_decisions"] = redaction_result.redaction_decisions
+                summary["excluded_decisions"] = redaction_result.excluded_decisions
+            self._text_redaction_summary[redaction_result.rule_name] = summary
         elif issubclass(redaction_result.__class__, ImageRedactionResult):
             self.run_metrics["image_analysis_total_time"] += redaction_time
 
+        loggable_result = dataclasses.asdict(redaction_result)
+        # Decisions quote personal data, so keep them out of App Insights
+        loggable_result.pop("redaction_decisions", None)
+        loggable_result.pop("excluded_decisions", None)
         LoggingUtil().log_info(
             f"The redactor {rule} yielded the following result: "
-            f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+            f"{json.dumps(loggable_result, indent=4, default=str)}"
         )
         self.redaction_results.append(redaction_result)
 

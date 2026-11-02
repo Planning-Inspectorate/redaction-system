@@ -251,3 +251,7 @@ memoryProfile/
 signature_detector/model
 
 docs/
+
+# Chunk-size evaluation outputs
+redactor/eval/results/
+redactor/eval/data/corpus_pdfs/

@@ -28,7 +28,8 @@ class TestImageLLMTextRedactor(TestImageTextRedactorBase):
             name="config name",
             redactor_type="ImageLLMTextRedaction",
             model="gpt-5.6-luna",
-            system_prompt="some system prompt",
+            role="some role",
+            task="some task",
             redaction_terms=["rule A"],
             **kwargs,
         )
@@ -109,7 +110,7 @@ class TestAnalyseImageText(TestImageLLMTextRedactor):
             run_metrics={},
             redaction_strings=("Klingon", "Romulan", "Vulcan"),
             metadata=LLMTextRedactionResult.LLMResultMetadata(
-                input_token_count=80, output_token_count=20, total_token_count=100
+                input_token_count=80, completion_token_count=20, total_token_count=100
             ),
         )
         with (
