@@ -970,18 +970,15 @@ class PDFUtil:
                     if end == -1:
                         continue
                     # Calculate the rect for the individual word to redact
-                    elif (
-                        term_found == normalised_term_to_redact
-                        or (
-                            term_found.endswith("'s")
-                            and term_found[:-2] == normalised_term_to_redact
-                        )
-                        or is_email_name_part(term_found, normalised_term_to_redact)
+                    elif term_found == normalised_term_to_redact or (
+                        term_found.endswith("'s")
+                        and term_found[:-2] == normalised_term_to_redact
                     ):
-                        # For the name part of an email address, only that part
-                        email_span = email_name_part_span(
-                            term_found, normalised_term_to_redact
-                        )
+                        rect = cls._construct_pdf_rect(line_to_check, start, end)
+                        redaction_instances.append((page_number, rect, term_to_redact))
+                    elif email_span := email_name_part_span(
+                        term_found, normalised_term_to_redact
+                    ):
                         rect = cls._construct_partial_word_rect(
                             page, line_to_check, start, end, email_span, email_span
                         )

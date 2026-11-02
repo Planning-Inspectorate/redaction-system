@@ -103,6 +103,9 @@ def email_name_part_span(token: str, word: str) -> tuple[int, int] | None:
     name_part, at_sign, _ = token.partition("@")
     if not at_sign or not word or "@" in word:
         return None
+    # (?<![^\W_]) ensures the word is not preceded by an alphanumeric character (or underscore)
+    # (?![^\W_]) ensures the word is not followed by an alphanumeric character (or underscore)
+    # This ensures we match whole components of the name part only, not substrings within components
     matches = list(re.finditer(rf"(?<![^\W_]){re.escape(word)}(?![^\W_])", name_part))
     if not matches:
         return None
