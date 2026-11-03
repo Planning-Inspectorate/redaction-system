@@ -11,7 +11,8 @@ Selection rule:
    worse than the best.
 3. Drop variants that break a guardrail: per-rule recall floors, a hard-negative false
    positive ceiling, and a maximum failed-chunk rate.
-4. Recommend the cheapest remaining variant.
+4. Recommend the cheapest remaining variant, and report its F-beta and cost against the
+   best variant (the cost of every variant against the best is in recommendation.json).
 
 Example:
 
@@ -440,6 +441,87 @@ def best_variant(
     return max(candidates, key=lambda v: summaries[(v, rule)].counts.f_beta(beta))
 
 
+def cost_differences(
+    summaries: dict[tuple[Variant, str], VariantSummary], rule: str, reference: Variant
+) -> dict[Variant, dict[str, float | None]]:
+    """
+    Cost per 1,000 document tokens of every variant less the reference's, in GBP and as a
+    fraction of the reference's cost (None if that is zero).
+    """
+    reference_cost = summaries[(reference, rule)].cost_per_1k_doc_tokens
+    return {
+        variant: {
+            "difference_gbp": summary.cost_per_1k_doc_tokens - reference_cost,
+            "relative": (summary.cost_per_1k_doc_tokens - reference_cost)
+            / reference_cost
+            if reference_cost
+            else None,
+        }
+        for (variant, summary_rule), summary in summaries.items()
+        if summary_rule == rule
+    }
+
+
+def recommended_vs_best(
+    summaries: dict[tuple[Variant, str], VariantSummary],
+    intervals: dict[Variant, tuple[float, float]],
+    rule: str,
+    best: Variant,
+    recommended: Variant,
+    beta: float,
+) -> dict:
+    """The F-beta and cost of the recommended variant against the best F-beta variant,
+    with the interval of the F-beta difference from `bootstrap_f_beta_differences`"""
+    best_summary = summaries[(best, rule)]
+    chosen_summary = summaries[(recommended, rule)]
+    best_f = best_summary.counts.f_beta(beta)
+    chosen_f = chosen_summary.counts.f_beta(beta)
+    cost = cost_differences(summaries, rule, best)[recommended]
+    return {
+        "best_variant": best,
+        "recommended_variant": recommended,
+        "best_f_beta": best_f,
+        "recommended_f_beta": chosen_f,
+        "f_beta_difference": chosen_f - best_f,
+        "f_beta_difference_ci": intervals.get(recommended),
+        "best_cost_per_1k_doc_tokens": best_summary.cost_per_1k_doc_tokens,
+        "recommended_cost_per_1k_doc_tokens": chosen_summary.cost_per_1k_doc_tokens,
+        "cost_difference_gbp": cost["difference_gbp"],
+        "cost_difference_relative": cost["relative"],
+    }
+
+
+def format_recommended_vs_best(comparison: dict, beta: float) -> str:
+    """One line describing a `recommended_vs_best` comparison"""
+    if tuple(comparison["recommended_variant"]) == tuple(comparison["best_variant"]):
+        return f"  the recommendation is the best F{beta:g} variant"
+    interval = comparison["f_beta_difference_ci"]
+    interval_text = (
+        "" if interval is None else f", 95% CI {interval[0]:+.4f} to {interval[1]:+.4f}"
+    )
+    relative = comparison["cost_difference_relative"]
+    relative_text = "n/a" if relative is None else f"{relative:+.1%}"
+    return (
+        f"  vs best: F{beta:g} {comparison['recommended_f_beta']:.4f} vs "
+        f"{comparison['best_f_beta']:.4f} ({comparison['f_beta_difference']:+.4f}"
+        f"{interval_text}); cost per 1,000 document tokens "
+        f"£{comparison['recommended_cost_per_1k_doc_tokens']:.5f} vs "
+        f"£{comparison['best_cost_per_1k_doc_tokens']:.5f} "
+        f"({comparison['cost_difference_gbp']:+.5f}, {relative_text})"
+    )
+
+
+def rounded(value, digits: int = 6):
+    """Round every float in a nested dict, list or tuple, for writing to JSON"""
+    if isinstance(value, float):
+        return round(value, digits)
+    if isinstance(value, dict):
+        return {k: rounded(v, digits) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [rounded(v, digits) for v in value]
+    return value
+
+
 def overlap_ratio(variant: Variant) -> float:
     """Chunk overlap as a fraction of the chunk size"""
     return round(variant[1] / variant[0], 3)
@@ -707,6 +789,17 @@ def main(argv=None):
                 f"{v[0]}/{v[1]}": [round(x, 4) for x in ci]
                 for v, ci in sorted(intervals.items())
             },
+            "cost_per_1k_doc_tokens_difference": {
+                f"{v[0]}/{v[1]}": rounded(difference)
+                for v, difference in sorted(
+                    cost_differences(summaries, rule, best).items()
+                )
+            },
+            "recommended_vs_best": None
+            if chosen is None
+            else rounded(
+                recommended_vs_best(summaries, intervals, rule, best, chosen, args.beta)
+            ),
             "rejections": {
                 f"{v[0]}/{v[1]}": problems for v, problems in sorted(reasons.items())
             },
@@ -731,29 +824,39 @@ def main(argv=None):
         "failed_chunk_rate",
         "cost_per_1k_doc_tokens",
     ]
-    print(" | ".join(columns))
+    lines: list[str] = []
+
+    def emit(text: str):
+        lines.append(text)
+        print(text)
+
+    emit(" | ".join(columns))
     for row in headline:
-        print(" | ".join(str(row[c]) for c in columns))
+        emit(" | ".join(str(row[c]) for c in columns))
     for rule, result in recommendation.items():
-        print(
+        emit(
             f"{rule}: best F{args.beta:g} at {result['best_f_beta_variant']}, "
             f"recommended {result['recommended_variant']}"
         )
-    print(
+        if result["recommended_vs_best"]:
+            emit(format_recommended_vs_best(result["recommended_vs_best"], args.beta))
+    emit(
         f"\nMean F{args.beta:g} difference vs best (95% paired bootstrap CI), {ALL_RULES}:"
     )
     for variant, stats in (
         recommendation.get(ALL_RULES, {}).get("mean_f_beta_difference_ci", {}).items()
     ):
         verdict = "resolved" if stats["conclusive"] else "unresolved"
-        print(
+        emit(
             f"  {variant}: {stats['mean_difference']:+.4f} "
             f"[{stats['ci_lower']:+.4f}, {stats['ci_upper']:+.4f}] "
             f"n={stats['n_documents']} {verdict}"
         )
-    print(
-        f"Wrote {out_dir / 'summary.csv'}, {out_dir / 'recommendation.json'} and plots"
+    emit(
+        f"Wrote {out_dir / 'summary.csv'}, {out_dir / 'recommendation.json'}, "
+        f"{out_dir / 'summary.txt'} and plots"
     )
+    (out_dir / "summary.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
