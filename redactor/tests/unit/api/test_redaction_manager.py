@@ -34,6 +34,9 @@ class MockRedactor:
     def get_proposed_redactions(self):
         pass
 
+    def get_redaction_rationale(self):
+        pass
+
     def get_final_redactions(self):
         pass
 
@@ -348,6 +351,115 @@ class TestRedact:
             MockRedactor.redact.return_value,
             property_example_b="value",
         )
+
+    @staticmethod
+    def _create_manager() -> RedactionManager:
+        inst = RedactionManager()
+        inst.job_id = "inst"
+        inst.stage = "ANALYSE"
+        inst.folder_for_job = "instfolder"
+        inst.storage_name = STORAGE_NAME
+        inst.runtime_errors = []
+        return inst
+
+    @staticmethod
+    def _create_payload(skip_redaction: bool = False) -> dict:
+        return {
+            "skipRedaction": skip_redaction,
+            "configName": "myconfig",
+            "fileKind": "pdf",
+            "readDetails": {
+                "storageKind": "readStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleA": "value"},
+            },
+            "writeDetails": {
+                "storageKind": "writeStorageKind",
+                "teamEmail": "someAccount@planninginspectorate.gov.uk",
+                "properties": {"propertyExampleB": "value"},
+            },
+        }
+
+    def test_redact__saves_rationale(self):
+        """
+        - Given the file processor has a rationale for the proposed redactions
+        - When I call redact
+        - Then the rationale is saved to the job's folder, alongside the job details
+        """
+        rationale = [{"rule_name": "names", "redactions": []}]
+        inst = self._create_manager()
+
+        with patch.object(
+            MockRedactor, "get_redaction_rationale", return_value=rationale
+        ):
+            inst.redact(self._create_payload())
+
+        calls = RedactionManager.save_dict_to_blob_json.call_args_list
+        assert [c.kwargs["blob_path"] for c in calls] == [
+            "instfolder/proposed_redactions.json",
+            "instfolder/rationale.json",
+        ]
+        assert calls[1].args[0] == {
+            "job_id": "inst",
+            "date": datetime(2024, 1, 1, tzinfo=UTC).date().isoformat(),
+            "file_name": "",
+            "config_name": "myconfig",
+            "rules": rationale,
+        }
+        assert inst.runtime_errors == []
+
+    def test_redact__no_rationale_is_not_saved(self):
+        inst = self._create_manager()
+
+        with patch.object(
+            MockRedactor, "get_redaction_rationale", return_value=None
+        ) as mock_get_rationale:
+            inst.redact(self._create_payload())
+
+        mock_get_rationale.assert_called_once()
+        blob_paths = [
+            c.kwargs["blob_path"]
+            for c in RedactionManager.save_dict_to_blob_json.call_args_list
+        ]
+        assert blob_paths == ["instfolder/proposed_redactions.json"]
+
+    def test_redact__skip_redaction_has_no_rationale(self):
+        inst = self._create_manager()
+
+        with patch.object(
+            MockRedactor, "get_redaction_rationale"
+        ) as mock_get_rationale:
+            inst.redact(self._create_payload(skip_redaction=True))
+
+        mock_get_rationale.assert_not_called()
+        RedactionManager.save_dict_to_blob_json.assert_not_called()
+
+    @pytest.mark.parametrize("failing_step", ["get", "save"])
+    def test_redact__rationale_failure_is_recorded_but_not_fatal(self, failing_step):
+        """
+        - Given the rationale cannot be retrieved or saved
+        - When I call redact
+        - Then the redaction still completes and the error is recorded for the
+          exception log
+        """
+        inst = self._create_manager()
+        error = RuntimeError("rationale failure")
+        rationale = [{"rule_name": "names"}]
+
+        with patch.object(
+            MockRedactor,
+            "get_redaction_rationale",
+            side_effect=error if failing_step == "get" else None,
+            return_value=rationale,
+        ):
+            if failing_step == "save":
+                RedactionManager.save_dict_to_blob_json.side_effect = [None, error]
+            inst.redact(self._create_payload())
+
+        # The proposed redactions and the proposed file are still written
+        MockIO.write.assert_called_once()
+        assert len(inst.runtime_errors) == 1
+        assert "rationale failure" in inst.runtime_errors[0]
 
 
 class TestCompareRedactions:
