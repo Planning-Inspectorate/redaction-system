@@ -105,7 +105,7 @@ class LLMTextAnalyser:
     Class that handles the interaction with a large-language model hosted on Azure
     """
 
-    # Azure Foundry quota limits and cost in GBP per 1M tokens - correct on 06/01/26
+    # Azure Foundry quota limits and cost in pence per 1M tokens - correct on 03/11/26
     OPENAI_MODELS: ClassVar[dict[str, dict[str, int]]] = {
         "gpt-5.6-luna": {
             "token_rate_limit": 3000000,  # nosec: B105
@@ -192,7 +192,7 @@ class LLMTextAnalyser:
                         f"Token rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.token_rate_limit} tokens per minute."
                     )
-            else:  # default to 20% of max token rate limit
+            else:  # default to 50% of max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
             default_request_rate_limit = int(
@@ -210,7 +210,7 @@ class LLMTextAnalyser:
                         f"Request rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.request_rate_limit} requests per minute."
                     )
-            else:  # default to 20% of max request rate limit
+            else:  # default to 50% of max request rate limit
                 self.config.request_rate_limit = default_request_rate_limit
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
