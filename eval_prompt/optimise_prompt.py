@@ -12,7 +12,7 @@ file for human review. Run from the `redactor` directory, inside the VNet:
     python -m eval.optimise_prompt export --out src/config/optimised.yaml
     python -m eval.optimise_prompt gates-summary
 
-View results with ``mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db``.
+View results with ``mlflow ui --backend-store-uri sqlite:///eval_prompt/results/mlflow.db``.
 Traces include the corpus text, so only point this at synthetic or approved data.
 """
 
@@ -35,7 +35,7 @@ from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 from src.redaction.config import LLMTextRedactionConfig
 
 from .azure_auth import check_azure_auth
-from .corpus import RULE_NAMES, Document, load_corpus
+from .corpus.utils import RULE_NAMES, Document, load_corpus
 from .mlflow_dataset import (
     PromptRunner,
     chunk_records,
@@ -65,7 +65,7 @@ from .summarise_chunk_sweep import (
 )
 
 EXPERIMENT_NAME = "redaction-prompt-engineering"
-RESULTS_DIR = Path("eval/results")
+RESULTS_DIR = Path("eval_prompt/results")
 DEFAULT_TRACKING_URI = f"sqlite:///{RESULTS_DIR.as_posix()}/mlflow.db"
 AZURE_API_VERSION = "2024-12-01-preview"
 LLM_COMMANDS = ("evaluate", "optimise", "gate")

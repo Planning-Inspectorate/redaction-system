@@ -14,7 +14,7 @@ from src.types import (
 )
 
 from eval_prompt import mlflow_dataset
-from eval_prompt.corpus import Document, Entity
+from eval_prompt.corpus.utils import Document, Entity
 from eval_prompt.mlflow_dataset import (
     PromptRunner,
     chunk_records,

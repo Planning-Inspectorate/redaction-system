@@ -8,7 +8,7 @@ import pytest
 from src.types import LLMTextRedactionResult
 
 from eval_prompt import run_chunk_sweep, summarise_chunk_sweep
-from eval_prompt.corpus import Document, Entity, write_corpus
+from eval_prompt.corpus.utils import Document, Entity, write_corpus
 from eval_prompt.scoring import ScoreCounts
 from eval_prompt.summarise_chunk_sweep import (
     ALL_RULES,

@@ -8,7 +8,7 @@ mlflow = pytest.importorskip("mlflow")
 from src.redaction.config import LLMTextRedactionConfig
 from src.redaction.config_processor import ConfigProcessor
 
-from eval_prompt.corpus import RULE_NAMES
+from eval_prompt.corpus.utils import RULE_NAMES
 from eval_prompt.prompt_registry import (
     PromptStructureError,
     export_rule_to_yaml,

@@ -4,9 +4,9 @@ import pymupdf
 import pytest
 from src.redaction.utils.pdf import ANNOT_HIGHLIGHT_COLOR
 
-from eval_prompt import corpus_to_pdf
-from eval_prompt.corpus import RULE_NAMES, Document, Entity, write_corpus
-from eval_prompt.corpus_to_pdf import KEEP_HIGHLIGHT_COLOR, convert_document
+from eval_prompt.corpus import to_pdf
+from eval_prompt.corpus.to_pdf import KEEP_HIGHLIGHT_COLOR, convert_document
+from eval_prompt.corpus.utils import RULE_NAMES, Document, Entity, write_corpus
 
 TEXT = (
     "My neighbour Ms Joan Whitcombe objects to the terms of the scheme.\n\n"
@@ -156,7 +156,7 @@ def test_main__writes_a_pdf_per_document(tmp_path, capsys):
         ],
     )
 
-    corpus_to_pdf.main(
+    to_pdf.main(
         [
             "--corpus",
             str(corpus),

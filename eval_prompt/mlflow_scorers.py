@@ -11,7 +11,7 @@ from typing import Any
 from mlflow.entities import Feedback
 from mlflow.genai.scorers import scorer
 
-from .corpus import Document, Entity
+from .corpus.utils import Document, Entity
 from .scoring import (
     BETA,
     HARD_NEGATIVE_WEIGHT,

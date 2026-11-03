@@ -16,7 +16,7 @@ and only that part of the address is highlighted.
 
 Example (run from the `redactor` directory):
 
-    python -m eval_prompt.corpus_to_pdf --corpus eval/data/prompt_corpus.jsonl \\
+    python -m eval_prompt.corpus.to_pdf --corpus eval/data/prompt_corpus.jsonl \\
         --split dev --out-dir eval/results/prompt_corpus_pdfs
 """
 
@@ -35,8 +35,8 @@ from src.redaction.utils.text import (
     normalise_text,
 )
 
-from .corpus import RULE_NAMES, Document, Entity, load_corpus
-from .scoring import find_subsequence, normalise_words
+from ..scoring import find_subsequence, normalise_words
+from .utils import RULE_NAMES, Document, Entity, load_corpus
 
 KEEP_HIGHLIGHT_COLOR = (0.6, 0.9, 0.6)  # light green
 MARGIN = 50

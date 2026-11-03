@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from eval_prompt.corpus import (
+from eval_prompt.corpus.utils import (
     CorpusValidationError,
     Document,
     Entity,
