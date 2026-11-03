@@ -204,7 +204,7 @@ class TestGetProposedRedactions:
         document_bytes = BytesIO()
         expected_dict = [
             {
-                "pageNumber": 0,
+                "pageNumber": 1,
                 "annotations": [
                     {
                         "title": "Text Redaction",
@@ -275,7 +275,7 @@ class TestGetProposedRedactions:
         document_bytes = BytesIO()
         expected_dict = [
             {
-                "pageNumber": 0,
+                "pageNumber": 1,
                 "annotations": [
                     {
                         "title": "Text Redaction",
@@ -297,6 +297,25 @@ class TestGetProposedRedactions:
             actual_dict = PDFProcessor().get_proposed_redactions(document_bytes)
 
         assert expected_dict == actual_dict
+
+    def test_page_numbers_start_at_one(self):
+        """
+        - Given highlights on the first and third pages of a PDF
+        - When I call get_proposed_redactions
+        - Then the pages are numbered from 1, matching the pages in the rationale
+        """
+        annotations = (
+            {"page_number": 0, "annotations": []},
+            {"page_number": 1, "annotations": []},
+            {"page_number": 2, "annotations": []},
+        )
+
+        with patch.object(
+            PDFProcessor, "_extract_pdf_annotations", return_value=annotations
+        ):
+            actual = PDFProcessor().get_proposed_redactions(BytesIO())
+
+        assert [page["pageNumber"] for page in actual] == [1, 2, 3]
 
 
 class TestGetRedactorLabel:
