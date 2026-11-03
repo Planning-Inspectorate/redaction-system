@@ -6,11 +6,11 @@ set -euo pipefail
 [[ -f "$1" ]] || { echo "not found: $1" >&2; exit 1; }
 [[ "$1" != "$2" ]] || { echo "OUT must differ from IN" >&2; exit 1; }
 
-# Python computes the overlaps, so rounding matches run_chunk_sweep exactly
+# Python computes the overlaps, so rounding matches chunk_sweep.run exactly
 PYTHONPATH="$PWD" uv run python - "$@" <<'PY'
 import json
 import sys
-from eval.run_chunk_sweep import overlap_for
+from eval.chunk_sweep.run import overlap_for
 
 src, dst, sizes, ratios, rules = sys.argv[1:6]
 keep = {(s, overlap_for(s, r)) for s in map(int, sizes.split()) for r in map(float, ratios.split())}

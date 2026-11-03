@@ -7,10 +7,9 @@ from unittest.mock import Mock, patch
 import pytest
 from src.types import LLMTextRedactionResult
 
-from eval_prompt import run_chunk_sweep, summarise_chunk_sweep
-from eval_prompt.corpus.utils import Document, Entity, write_corpus
-from eval_prompt.scoring import ScoreCounts
-from eval_prompt.summarise_chunk_sweep import (
+from eval_prompt.chunk_sweep import run as run_chunk_sweep
+from eval_prompt.chunk_sweep import summarise as summarise_chunk_sweep
+from eval_prompt.chunk_sweep.summarise import (
     ALL_RULES,
     Guardrails,
     ScoredRun,
@@ -22,6 +21,8 @@ from eval_prompt.summarise_chunk_sweep import (
     select_variant,
     summarise,
 )
+from eval_prompt.corpus.utils import Document, Entity, write_corpus
+from eval_prompt.scoring import ScoreCounts
 
 
 def test_overlap_for():

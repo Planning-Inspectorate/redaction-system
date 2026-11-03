@@ -2,12 +2,12 @@
 
 Each (repeat, document, chunk size, rule) combination is one row of JSONL output,
 containing the raw predictions plus token usage, so scoring can be re-run with
-`summarise_chunk_sweep` without calling the LLM again. Runs are resumable: rows already
+`chunk_sweep.summarise` without calling the LLM again. Runs are resumable: rows already
 present in the output file are skipped.
 
 Example (run from the `redactor` directory, with Azure credentials available):
 
-    python -m tests.eval.run_chunk_sweep \
+    python -m eval_prompt.chunk_sweep.run \
         --corpus tests/eval/data/corpus.jsonl --split dev \
         --chunk-sizes 500 1000 1500 2500 4000 6000 8000 12000 \
         --repeats 2 --out tests/eval/results/coarse.jsonl --budget 50
@@ -26,8 +26,8 @@ from src.redaction.config import LLMTextRedactionConfig
 from src.redaction.config_processor import ConfigProcessor
 from tiktoken import get_encoding
 
-from .corpus.utils import RULE_NAMES, load_corpus
-from .scoring import boundary_split_entities
+from ..corpus.utils import RULE_NAMES, load_corpus
+from ..scoring import boundary_split_entities
 
 
 def load_rule_configs(

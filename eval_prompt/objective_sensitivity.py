@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .chunk_sweep.summarise import ALL_RULES, ScoredRun, Variant, score_rows
 from .corpus.utils import RULE_NAMES, load_corpus
 from .scoring import (
     HARD_NEGATIVE_WEIGHT,
@@ -30,7 +31,6 @@ from .scoring import (
     ScoreCounts,
     objective_score,
 )
-from .summarise_chunk_sweep import ALL_RULES, ScoredRun, Variant, score_rows
 
 Weights = tuple[float, float]
 

@@ -8,6 +8,7 @@ mlflow = pytest.importorskip("mlflow")
 from src.redaction.config import LLMTextRedactionConfig
 from src.redaction.config_processor import ConfigProcessor
 
+from eval_prompt.chunk_sweep.run import load_rule_configs
 from eval_prompt.corpus.utils import RULE_NAMES
 from eval_prompt.prompt_registry import (
     PromptStructureError,
@@ -18,7 +19,6 @@ from eval_prompt.prompt_registry import (
     prompt_uri,
     register_rule_prompt,
 )
-from eval_prompt.run_chunk_sweep import load_rule_configs
 
 DEFAULT_CONFIG = (
     Path(__file__).resolve().parents[2] / "redactor" / "src" / "config" / "default.yaml"

@@ -35,6 +35,12 @@ from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 from src.redaction.config import LLMTextRedactionConfig
 
 from .azure_auth import check_azure_auth
+from .chunk_sweep.run import load_rule_configs
+from .chunk_sweep.summarise import (
+    ScoredRun,
+    bootstrap_f_beta_differences,
+    summarise,
+)
 from .corpus.utils import RULE_NAMES, Document, load_corpus
 from .mlflow_dataset import (
     PromptRunner,
@@ -52,16 +58,10 @@ from .prompt_registry import (
     prompt_uri,
     register_rule_prompt,
 )
-from .run_chunk_sweep import load_rule_configs
 from .scoring import (
     HARD_NEGATIVE_WEIGHT,
     UNLOCATABLE_WEIGHT,
     score_document,
-)
-from .summarise_chunk_sweep import (
-    ScoredRun,
-    bootstrap_f_beta_differences,
-    summarise,
 )
 
 EXPERIMENT_NAME = "redaction-prompt-engineering"
