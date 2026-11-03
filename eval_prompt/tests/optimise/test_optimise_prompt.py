@@ -5,15 +5,17 @@ from unittest.mock import patch
 import pytest
 from azure.core.exceptions import ClientAuthenticationError
 
+from eval_prompt import azure_auth
+
 mlflow = pytest.importorskip("mlflow")
 
-from eval_prompt import azure_auth, optimise_prompt
 from eval_prompt.corpus.utils import (
     Document,
     Entity,
     write_corpus,
 )
-from eval_prompt.prompt_registry import register_rule_prompt
+from eval_prompt.optimise import run
+from eval_prompt.optimise.prompt_registry import register_rule_prompt
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +37,7 @@ def _prompt(model_config=None, name="redaction-names", version=1):
 
 
 def test_parse_args__gate_defaults_to_test_split():
-    args = optimise_prompt.parse_args(["gate", "--rule", "names"])
+    args = run.parse_args(["gate", "--rule", "names"])
 
     assert args.split == "test"
     assert (args.candidate, args.reference) == ("candidate", "baseline")
@@ -48,12 +50,9 @@ def test_parse_args__gate_defaults_to_test_split():
 def test_parse_args__split_default_is_per_command(command, expected):
     """Only gate uses the held-out test split by default. Setting that default on
     gate must not change it for the other commands that share its arguments"""
-    assert optimise_prompt.parse_args([command, "--rule", "names"]).split == expected
+    assert run.parse_args([command, "--rule", "names"]).split == expected
     assert (
-        optimise_prompt.parse_args(
-            [command, "--rule", "names", "--split", "test"]
-        ).split
-        == "test"
+        run.parse_args([command, "--rule", "names", "--split", "test"]).split == "test"
     )
 
 
@@ -62,18 +61,16 @@ def test_rule_config__precedence():
     prompt = _prompt(
         {"max_tokens": 3000, "extra_params": {"chunk_size": 2500, "chunk_overlap": 100}}
     )
-    args = optimise_prompt.parse_args(
-        ["evaluate", "--rule", "names", "--chunk-overlap", "0"]
-    )
+    args = run.parse_args(["evaluate", "--rule", "names", "--chunk-overlap", "0"])
 
-    config = optimise_prompt.rule_config(args, "names", prompt)
+    config = run.rule_config(args, "names", prompt)
 
     assert (config.chunk_size, config.chunk_overlap, config.max_tokens) == (
         2500,
         0,
         3000,
     )
-    assert optimise_prompt.rule_config(args, "names").chunk_size == 1500
+    assert run.rule_config(args, "names").chunk_size == 1500
 
 
 class _FakeRunner:
@@ -112,18 +109,16 @@ def _gate(tmp_path, candidate_name, *extra_args):
         "candidate": _prompt(name=candidate_name, version=2),
         "baseline": _prompt(name="reference"),
     }
-    args = optimise_prompt.parse_args(
+    args = run.parse_args(
         ["gate", "--rule", "names", "--corpus", str(corpus), "--repeats", "1"]
         + list(extra_args)
     )
     with (
-        patch.object(optimise_prompt, "PromptRunner", _FakeRunner),
-        patch.object(
-            optimise_prompt, "load_rule_prompt", side_effect=lambda r, ref: prompts[ref]
-        ),
+        patch.object(run, "PromptRunner", _FakeRunner),
+        patch.object(run, "load_rule_prompt", side_effect=lambda r, ref: prompts[ref]),
         patch.object(mlflow.genai, "set_prompt_alias") as mock_set_alias,
     ):
-        optimise_prompt.cmd_gate(args)
+        run.cmd_gate(args)
     return mock_set_alias
 
 
@@ -162,31 +157,31 @@ def test_main__stops_before_running_if_azure_auth_fails(command):
     error = ClientAuthenticationError(message="no credentials")
 
     with (
-        patch.object(optimise_prompt, "setup_mlflow"),
+        patch.object(run, "setup_mlflow"),
         patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
-        patch.object(optimise_prompt, f"cmd_{command}") as mock_command,
+        patch.object(run, f"cmd_{command}") as mock_command,
     ):
         mock_credential.return_value.get_token.side_effect = error
         with pytest.raises(SystemExit, match="Azure authentication failed"):
-            optimise_prompt.main([command, "--rule", "names"])
+            run.main([command, "--rule", "names"])
 
     mock_command.assert_not_called()
 
 
 def test_main__skips_azure_check_for_commands_without_llm_calls():
     with (
-        patch.object(optimise_prompt, "setup_mlflow"),
-        patch.object(optimise_prompt, "cmd_export") as mock_export,
+        patch.object(run, "setup_mlflow"),
+        patch.object(run, "cmd_export") as mock_export,
         patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
     ):
-        optimise_prompt.main(["export", "--rule", "names", "--out", "x.yaml"])
+        run.main(["export", "--rule", "names", "--out", "x.yaml"])
 
     mock_credential.assert_not_called()
     mock_export.assert_called_once()
 
 
 def _register_source():
-    config = optimise_prompt.load_rule_configs("default", ["names"])["names"]
+    config = run.load_rule_configs("default", ["names"])["names"]
     return config, register_rule_prompt(config, "default", alias="baseline")
 
 
@@ -205,7 +200,7 @@ def test_reregister_optimised__adds_metadata_and_layout():
         model_config=source.model_config,
     )
 
-    version, warning = optimise_prompt.reregister_optimised(
+    version, warning = run.reregister_optimised(
         bare, source, config, "default", "meta", "candidate"
     )
 
@@ -228,7 +223,7 @@ def test_reregister_optimised__keeps_unparseable_template():
     config, source = _register_source()
     bare = mlflow.genai.register_prompt(name=source.name, template="Just some text")
 
-    version, warning = optimise_prompt.reregister_optimised(
+    version, warning = run.reregister_optimised(
         bare, source, config, "default", "meta", None
     )
 
@@ -248,7 +243,7 @@ def _hand_edited_version(source):
 
 
 def _reregister_args(source, edited, *extra):
-    return optimise_prompt.parse_args(
+    return run.parse_args(
         ["reregister", "--rule", "names", "--prompt", str(edited.version), *extra]
     )
 
@@ -268,7 +263,7 @@ def test_cmd_reregister__copies_the_chunk_settings_of_another_version(capsys):
     )
     edited = _hand_edited_version(baseline)
 
-    optimise_prompt.cmd_reregister(
+    run.cmd_reregister(
         _reregister_args(baseline, edited, "--alias", "candidate-reformatted")
     )
 
@@ -291,7 +286,7 @@ def test_cmd_reregister__command_line_overrides_and_deletes_the_original():
     baseline = register_rule_prompt(config, "default", alias="baseline")
     edited = _hand_edited_version(baseline)
 
-    optimise_prompt.cmd_reregister(
+    run.cmd_reregister(
         _reregister_args(
             baseline,
             edited,
@@ -311,9 +306,7 @@ def test_cmd_reregister__command_line_overrides_and_deletes_the_original():
 
 
 def _export_args(tmp_path, *extra_args):
-    return optimise_prompt.parse_args(
-        ["export", "--out", str(tmp_path / "out.yaml"), *extra_args]
-    )
+    return run.parse_args(["export", "--out", str(tmp_path / "out.yaml"), *extra_args])
 
 
 def test_export__exports_every_champion(tmp_path, capsys):
@@ -323,10 +316,10 @@ def test_export__exports_every_champion(tmp_path, capsys):
     - Then both are written to one file and the other rules are skipped
     """
     for rule in ("names", "sensitive_info"):
-        rule_config = optimise_prompt.load_rule_configs("default", [rule])[rule]
+        rule_config = run.load_rule_configs("default", [rule])[rule]
         register_rule_prompt(rule_config, "default", alias="champion")
 
-    optimise_prompt.cmd_export(_export_args(tmp_path))
+    run.cmd_export(_export_args(tmp_path))
 
     out = capsys.readouterr().out
     assert "Skipping 'contact_identity_info'" in out
@@ -336,21 +329,21 @@ def test_export__exports_every_champion(tmp_path, capsys):
 
 def test_export__named_rule_without_champion_fails(tmp_path):
     with pytest.raises(SystemExit, match="No 'champion' prompt for rule 'names'"):
-        optimise_prompt.cmd_export(_export_args(tmp_path, "--rule", "names"))
+        run.cmd_export(_export_args(tmp_path, "--rule", "names"))
 
     assert not (tmp_path / "out.yaml").exists()
 
 
 def test_export__no_champions_fails(tmp_path):
     with pytest.raises(SystemExit, match="No rules have a 'champion' prompt"):
-        optimise_prompt.cmd_export(_export_args(tmp_path))
+        run.cmd_export(_export_args(tmp_path))
 
 
 def _log_gate_run(
     rule, version, passed=1.0, repeats=2, candidate_f2=0.95, reference_version=1
 ):
     """Log a gate run as cmd_gate does, for the given candidate and reference versions"""
-    mlflow.set_experiment(optimise_prompt.EXPERIMENT_NAME)
+    mlflow.set_experiment(run.EXPERIMENT_NAME)
     with mlflow.start_run(run_name=f"gate-{rule}-candidate-vs-baseline"):
         mlflow.log_params(
             {
@@ -376,19 +369,17 @@ def _log_gate_run(
 @pytest.fixture
 def gates_experiment():
     """The experiment setup_mlflow creates, in the test's tracking store"""
-    mlflow.set_experiment(optimise_prompt.EXPERIMENT_NAME)
+    mlflow.set_experiment(run.EXPERIMENT_NAME)
 
 
 def _gates_summary(*args):
-    optimise_prompt.cmd_gates_summary(
-        optimise_prompt.parse_args(["gates-summary", *args])
-    )
+    run.cmd_gates_summary(run.parse_args(["gates-summary", *args]))
 
 
 def _set_champion(rule, version):
     """Register versions up to `version` of a rule's prompt, with the baseline at the
     first and the champion at the last"""
-    config = optimise_prompt.load_rule_configs("default", [rule])[rule]
+    config = run.load_rule_configs("default", [rule])[rule]
     for _ in range(version):
         registered = register_rule_prompt(config, "default")
     mlflow.genai.set_prompt_alias(registered.name, "baseline", 1)
@@ -521,9 +512,9 @@ def test_gates_summary__failed_runs_need_include_failed(
 def test_main__gates_summary_makes_no_llm_calls(tmp_path):
     with (
         patch.object(azure_auth, "ChainedTokenCredential") as mock_credential,
-        patch.object(optimise_prompt, "cmd_gates_summary") as mock_summary,
+        patch.object(run, "cmd_gates_summary") as mock_summary,
     ):
-        optimise_prompt.main(["gates-summary"])
+        run.main(["gates-summary"])
 
     mock_credential.assert_not_called()
     mock_summary.assert_called_once()

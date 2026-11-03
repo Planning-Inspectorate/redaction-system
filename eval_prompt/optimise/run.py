@@ -4,13 +4,13 @@ Each LLMTextRedaction rule's system prompt is registered as ``redaction-<rule>``
 config stays the source of truth: a prompt that passes the gate is exported to a new config
 file for human review. Run from the `redactor` directory, inside the VNet:
 
-    python -m eval.optimise_prompt register --chunk-size 1500 --chunk-overlap 60
-    python -m eval.optimise_prompt reregister --rule names --prompt my-edit --alias candidate
-    python -m eval.optimise_prompt evaluate --rule names --prompt baseline
-    python -m eval.optimise_prompt optimise --rule names --optimizer meta
-    python -m eval.optimise_prompt gate --rule names --candidate candidate --promote
-    python -m eval.optimise_prompt export --out src/config/optimised.yaml
-    python -m eval.optimise_prompt gates-summary
+    python -m eval_prompt.optimise.run register --chunk-size 1500 --chunk-overlap 60
+    python -m eval_prompt.optimise.run reregister --rule names --prompt my-edit --alias candidate
+    python -m eval_prompt.optimise.run evaluate --rule names --prompt baseline
+    python -m eval_prompt.optimise.run optimise --rule names --optimizer meta
+    python -m eval_prompt.optimise.run gate --rule names --candidate candidate --promote
+    python -m eval_prompt.optimise.run export --out src/config/optimised.yaml
+    python -m eval_prompt.optimise.run gates-summary
 
 View results with ``mlflow ui --backend-store-uri sqlite:///eval_prompt/results/mlflow.db``.
 Traces include the corpus text, so only point this at synthetic or approved data.
@@ -34,14 +34,19 @@ from mlflow.entities.model_registry import PromptVersion
 from mlflow.genai.optimize import GepaPromptOptimizer, MetaPromptOptimizer
 from src.redaction.config import LLMTextRedactionConfig
 
-from .azure_auth import check_azure_auth
-from .chunk_sweep.run import load_rule_configs
-from .chunk_sweep.summarise import (
+from ..azure_auth import check_azure_auth
+from ..chunk_sweep.run import load_rule_configs
+from ..chunk_sweep.summarise import (
     ScoredRun,
     bootstrap_f_beta_differences,
     summarise,
 )
-from .corpus.utils import RULE_NAMES, Document, load_corpus
+from ..corpus.utils import RULE_NAMES, Document, load_corpus
+from ..scoring import (
+    HARD_NEGATIVE_WEIGHT,
+    UNLOCATABLE_WEIGHT,
+    score_document,
+)
 from .mlflow_dataset import (
     PromptRunner,
     chunk_records,
@@ -57,11 +62,6 @@ from .prompt_registry import (
     parse_prompt_sections,
     prompt_uri,
     register_rule_prompt,
-)
-from .scoring import (
-    HARD_NEGATIVE_WEIGHT,
-    UNLOCATABLE_WEIGHT,
-    score_document,
 )
 
 EXPERIMENT_NAME = "redaction-prompt-engineering"
