@@ -15,7 +15,10 @@ from eval_prompt.summarise_chunk_sweep import (
     Guardrails,
     ScoredRun,
     bootstrap_f_beta_differences,
+    cost_differences,
     estimate_cost_gbp,
+    format_recommended_vs_best,
+    recommended_vs_best,
     select_variant,
     summarise,
 )
@@ -116,6 +119,65 @@ def test_select_variant__applies_recall_floor():
 
     assert chosen == (500, 20)
     assert any("recall" in r for r in reasons[(1500, 60)])
+
+
+def test_cost_differences__against_the_reference_variant():
+    summaries = summarise(_scored_runs())
+
+    differences = cost_differences(summaries, ALL_RULES, (500, 20))
+
+    assert differences[(500, 20)] == {"difference_gbp": 0.0, "relative": 0.0}
+    assert differences[(1500, 60)]["difference_gbp"] == pytest.approx(-2.0)
+    assert differences[(1500, 60)]["relative"] == pytest.approx(-2 / 3)
+    assert differences[(8000, 320)]["difference_gbp"] == pytest.approx(-2.5)
+
+
+def test_cost_differences__reference_with_no_cost_has_no_relative_difference():
+    summaries = summarise(
+        [
+            _run((500, 20), "d0", 10, 10, cost=0.0),
+            _run((1500, 60), "d0", 10, 10, cost=1.0),
+        ]
+    )
+
+    differences = cost_differences(summaries, ALL_RULES, (500, 20))
+
+    assert differences[(1500, 60)] == {"difference_gbp": 1.0, "relative": None}
+
+
+def test_recommended_vs_best__reports_f_beta_and_cost_against_the_best():
+    scored = _scored_runs()
+    summaries = summarise(scored)
+    intervals = bootstrap_f_beta_differences(scored, ALL_RULES, (500, 20))
+
+    comparison = recommended_vs_best(
+        summaries, intervals, ALL_RULES, (500, 20), (1500, 60), 2.0
+    )
+
+    assert comparison["f_beta_difference"] < 0
+    assert comparison["f_beta_difference"] == pytest.approx(
+        comparison["recommended_f_beta"] - comparison["best_f_beta"]
+    )
+    assert comparison["f_beta_difference_ci"] == intervals[(1500, 60)]
+    assert comparison["cost_difference_gbp"] == pytest.approx(-2.0)
+    text = format_recommended_vs_best(comparison, 2.0)
+    assert "vs best: F2 0.99" in text
+    assert "95% CI" in text
+    assert (
+        "cost per 1,000 document tokens £1.00000 vs £3.00000 (-2.00000, -66.7%)" in text
+    )
+
+
+def test_format_recommended_vs_best__recommendation_is_the_best():
+    summaries = summarise(_scored_runs())
+
+    comparison = recommended_vs_best(
+        summaries, {(500, 20): (0.0, 0.0)}, ALL_RULES, (500, 20), (500, 20), 2.0
+    )
+
+    assert format_recommended_vs_best(comparison, 2.0) == (
+        "  the recommendation is the best F2 variant"
+    )
 
 
 def _grid_summaries():
@@ -269,7 +331,7 @@ def _in_process_sweep(worker_logs: bytes = b""):
         yield
 
 
-def test_sweep_and_summarise_end_to_end(tmp_path):
+def test_sweep_and_summarise_end_to_end(tmp_path, capsys):
     """
     - Given a small corpus and an oracle LLM in place of the real one
     - When I run the sweep, run it again (to resume), then summarise
@@ -291,6 +353,7 @@ def test_sweep_and_summarise_end_to_end(tmp_path):
     assert large["predictions"] == ["Joan Whitcombe"]
 
     out_dir = tmp_path / "summary"
+    capsys.readouterr()  # discard the sweep output
     summarise_chunk_sweep.main(
         [
             "--corpus",
@@ -306,6 +369,14 @@ def test_sweep_and_summarise_end_to_end(tmp_path):
 
     recommendation = json.loads((out_dir / "recommendation.json").read_text())
     assert recommendation[ALL_RULES]["recommended_variant"] == [1000, 40]
+    comparison = recommendation[ALL_RULES]["recommended_vs_best"]
+    assert comparison["recommended_variant"] == [1000, 40]
+    assert set(comparison) >= {"f_beta_difference", "cost_difference_gbp"}
+    assert "1000/40" in recommendation[ALL_RULES]["cost_per_1k_doc_tokens_difference"]
+    out = capsys.readouterr().out
+    assert "vs best:" in out or "the recommendation is the best" in out
+    saved = (out_dir / "summary.txt").read_text(encoding="utf-8")
+    assert saved.rstrip("\n") == out.rstrip("\n")
     assert (out_dir / "summary.csv").exists()
 
 
