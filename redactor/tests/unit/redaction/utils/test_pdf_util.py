@@ -996,3 +996,38 @@ class TestPartialWordHighlights:
         assert _x_range(rect) == pytest.approx(
             _x_range(page.search_for("ada.merrin@post.invalid")[0]), abs=0.5
         )
+
+
+class TestPageOffsets:
+    def test_get_page_offsets(self):
+        """
+        - Given pages whose text is joined with newlines, including an empty page
+        - When I get the page offsets
+        - Then each page's 1-based number is paired with where its text starts
+        """
+        pages = [
+            PDFPageMetadata(page_number=0, raw_text="ab"),
+            PDFPageMetadata(page_number=1, raw_text=""),
+            PDFPageMetadata(page_number=3, raw_text="cde"),
+        ]
+
+        assert PDFUtil.get_page_offsets(pages) == [(1, 0), (2, 3), (4, 4)]
+
+    @pytest.mark.parametrize(
+        ("start", "end", "expected"),
+        [
+            (0, 5, [1]),  # within the first page
+            (12, 15, [2]),  # within the second page
+            (8, 14, [1, 2]),  # across the page break
+            (10, 11, [1]),  # the newline joining the pages
+            (25, 30, [3]),  # within the last page
+            (None, None, []),  # chunk that could not be located
+        ],
+    )
+    def test_get_pages_in_range(self, start, end, expected):
+        page_offsets = [(1, 0), (2, 11), (3, 20)]
+
+        assert PDFUtil.get_pages_in_range(page_offsets, start, end) == expected
+
+    def test_get_pages_in_range__no_pages(self):
+        assert PDFUtil.get_pages_in_range([], 0, 5) == []

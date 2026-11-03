@@ -1,5 +1,7 @@
+import re
 from datetime import UTC, datetime
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -42,6 +44,25 @@ def _make_pdf_with_text(text: str) -> BytesIO:
     doc.save(b)
     b.seek(0)
     return b
+
+
+def _make_pdf_with_pages(*texts: str) -> BytesIO:
+    doc = pymupdf.open()
+    for text in texts:
+        doc.new_page().insert_text((72, 72), text)
+    b = BytesIO()
+    doc.save(b)
+    b.seek(0)
+    return b
+
+
+def _occurrence(chunk_index, span_offsets, **kwargs):
+    return {
+        "chunk_index": chunk_index,
+        "chunk_id": f"id{chunk_index}",
+        "span_offsets": span_offsets,
+        **kwargs,
+    }
 
 
 class TestGetName:
@@ -619,6 +640,42 @@ class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
         }
         assert processor._text_redaction_summary == expected_text_redaction_summary
 
+    def test_records_page_offsets_per_rule(self):
+        """
+        - Given a text rule and an image text rule
+        - When I apply the redaction rules
+        - Then each rule is mapped to the page offsets of the text it was given
+        """
+        text_rule = Mock(spec=["name", "redactor_type", "text"])
+        text_rule.name = "text rule"
+        image_text_rule = Mock(
+            spec=["name", "redactor_type", "text", "images", "rendered_images"]
+        )
+        image_text_rule.name = "image text rule"
+        redactor = Mock(
+            redact=Mock(
+                return_value=TextRedactionResult(rule_name="rule", run_metrics={})
+            )
+        )
+
+        with (
+            patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[]),
+            patch(
+                "src.redaction.file_processor.RedactorFactory.get",
+                return_value=lambda config: redactor,
+            ),
+        ):
+            processor = PDFProcessor()
+            processor.redaction_rules = [text_rule, image_text_rule]
+            processor.pdf_text_page_offsets = [(1, 0)]
+            processor.rendered_pdf_text_page_offsets = [(2, 0)]
+            processor._apply_redaction_rules()
+
+        assert processor._rule_page_offsets == {
+            "text rule": [(1, 0)],
+            "image text rule": [(2, 0)],
+        }
+
 
 class TestExtractPDFTextContent(TestExamineApplyRedactionsBase):
     def test_pdf_with_text_returns_text_content(self):
@@ -766,6 +823,28 @@ class TestExtractPDFTextAndImages(TestExamineApplyRedactionsBase):
         result_images = pdf_processor.pdf_images
         assert len(result_images) == 1
         assert result_images[0] == image_metadata
+
+    def test_sets_page_offsets(self):
+        """
+        - Given a two page PDF with embedded text
+        - When I extract its text
+        - Then the page offsets locate each page's text within the joined text
+        """
+        file_bytes = _make_pdf_with_pages("Hello there", "General Kenobi")
+
+        with (
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
+        ):
+            processor = PDFProcessor()
+            processor._extract_pdf_text_and_images(file_bytes)
+
+        assert processor.pdf_text == "Hello there\nGeneral Kenobi"
+        assert processor.pdf_text_page_offsets == [(1, 0), (2, 12)]
+        for page_number, start in processor.pdf_text_page_offsets:
+            page_text = processor.pages_metadata[page_number - 1].raw_text
+            assert processor.pdf_text[start:].startswith(page_text)
+        assert processor.rendered_pdf_text_page_offsets == [(1, 0), (2, 12)]
 
 
 class TestRedact:
@@ -1099,24 +1178,43 @@ class TestApply:
 
 
 class TestApplyRuleDecisions:
-    def test_decisions_in_summary_but_not_logs(self):
+    def test_decisions_kept_out_of_summary_and_logs(self):
         """
         - Given an LLM rule that returns redaction decisions
         - When I apply the rule
-        - Then the decisions are in the text redaction summary but not in the logs
+        - Then the result is kept for the rationale, but the decisions are not in the
+          text redaction summary (and so run metrics) or the logs
         """
         decision = {
             "text": "Joan Brown",
-            "data_subject": "third_party",
-            "clause_ids": ["T1"],
-            "reason": "uninvolved neighbour",
             "confidence": "high",
+            "clause_ids": ["T1"],
+            "data_subjects": ["third_party"],
             "chunk_count": 1,
+            "occurrences": [
+                {
+                    "chunk_index": 0,
+                    "chunk_id": "id0",
+                    "data_subject": "third_party",
+                    "clause_ids": ["T1"],
+                    "reason": "uninvolved neighbour",
+                    "confidence": "high",
+                }
+            ],
         }
         exclusion = {
             "text": "Cllr Raj Patel",
             "clause_ids": ["D3"],
-            "reason": "councillor",
+            "conflicts_with_redaction": False,
+            "chunk_count": 1,
+            "occurrences": [
+                {
+                    "chunk_index": 0,
+                    "chunk_id": "id0",
+                    "clause_ids": ["D3"],
+                    "reason": "councillor",
+                }
+            ],
         }
         result = LLMTextRedactionResult(
             rule_name="names",
@@ -1132,9 +1230,12 @@ class TestApplyRuleDecisions:
 
         processor._apply_rule(Mock(redact=Mock(return_value=result)))
 
-        summary = processor._text_redaction_summary["names"]
-        assert summary["redaction_decisions"] == (decision,)
-        assert summary["excluded_decisions"] == (exclusion,)
+        assert processor._llm_text_results == [result]
+        assert processor._text_redaction_summary["names"] == {
+            "redaction_strings": ("Joan Brown",),
+            "n_proposed": 1,
+            "n_applied": 1,
+        }
         logged = " ".join(str(c) for c in LoggingUtil.log_info.call_args_list)
         assert "uninvolved neighbour" not in logged
         assert "Cllr Raj Patel" not in logged
@@ -1155,3 +1256,149 @@ class TestApplyRuleDecisions:
             "n_proposed": 1,
             "n_applied": 1,
         }
+        assert processor._llm_text_results == []
+
+
+class TestGetRedactionRationale:
+    def test_returns_none_without_decisions(self):
+        assert PDFProcessor().get_redaction_rationale() is None
+
+    def test_traces_decisions_to_pages(self):
+        """
+        - Given an LLM result for two pages of text analysed in two overlapping chunks
+        - When I get the redaction rationale
+        - Then each occurrence is mapped to the pages of its span, or of its chunk
+          when the span was not found, the redactions are sorted by first page then
+          text, and unapplied terms are flagged
+        """
+        # "Joan Brown lives here.\nMary Jones met Joan Brown."
+        page_offsets = [(1, 0), (2, 23)]
+        result = LLMTextRedactionResult(
+            rule_name="names",
+            run_metrics={},
+            redaction_decisions=(
+                {"text": "Ann Smith", "occurrences": [_occurrence(1, [23])]},
+                {
+                    "text": "Mary Jones",
+                    "occurrences": [_occurrence(1, [])],
+                },
+                {
+                    "text": "Joan Brown",
+                    "occurrences": [_occurrence(0, [0]), _occurrence(1, [38])],
+                },
+            ),
+            excluded_decisions=(
+                {"text": "Cllr Raj Patel", "occurrences": [_occurrence(0, [])]},
+            ),
+            chunk_summaries=(
+                {"chunk_index": 0, "char_start": 0, "char_end": 22},
+                {"chunk_index": 1, "char_start": 17, "char_end": 49},
+            ),
+            clause_legend={"T1": "Names"},
+        )
+        processor = PDFProcessor()
+        processor.redaction_rules = [
+            SimpleNamespace(
+                name="names", model="gpt-5.6-luna", chunk_size=10, chunk_overlap=2
+            )
+        ]
+        processor._llm_text_results = [result]
+        processor._rule_page_offsets = {"names": page_offsets}
+        processor.run_metrics = {"unapplied_text_redaction_terms": ["Mary Jones"]}
+
+        [rationale] = processor.get_redaction_rationale()
+
+        assert {
+            k: v for k, v in rationale.items() if k not in {"redactions", "exclusions"}
+        } == {
+            "rule_name": "names",
+            "model": "gpt-5.6-luna",
+            "chunk_size": 10,
+            "chunk_overlap": 2,
+            "clauses": {"T1": "Names"},
+            "chunks": [
+                {"chunk_index": 0, "char_start": 0, "char_end": 22, "pages": [1]},
+                {"chunk_index": 1, "char_start": 17, "char_end": 49, "pages": [1, 2]},
+            ],
+        }
+        assert [
+            (
+                r["text"],
+                r["pages"],
+                [o["pages"] for o in r["occurrences"]],
+                r["applied"],
+            )
+            for r in rationale["redactions"]
+        ] == [
+            ("Joan Brown", [1, 2], [[1], [2]], True),
+            ("Mary Jones", [1, 2], [[1, 2]], False),
+            ("Ann Smith", [2], [[2]], True),
+        ]
+        assert [(e["text"], e["pages"]) for e in rationale["exclusions"]] == [
+            ("Cllr Raj Patel", [1])
+        ]
+        assert "applied" not in rationale["exclusions"][0]
+
+    def test_redact_keeps_decisions_for_rationale_only(self):
+        """
+        - Given a two page PDF and an LLM rule that redacts a name on both pages and a
+          term that is not in the PDF
+        - When I redact the PDF
+        - Then the run metrics hold no decisions, and the rationale traces the name
+          to both pages and flags the missing term as unapplied
+        """
+        file_bytes = _make_pdf_with_pages(
+            "Joan Brown lives here.", "Mary Jones met Joan Brown."
+        )
+        rule = SimpleNamespace(
+            name="names",
+            label=None,
+            redactor_type="llm_text",
+            text=None,
+            model="gpt-5.6-luna",
+            chunk_size=1500,
+            chunk_overlap=60,
+        )
+
+        def redact():
+            text = rule.text
+            joan_offsets = [m.start() for m in re.finditer("Joan Brown", text)]
+            return LLMTextRedactionResult(
+                rule_name="names",
+                run_metrics={},
+                redaction_strings=("Joan Brown", "Nobody Here"),
+                redaction_decisions=(
+                    {
+                        "text": "Joan Brown",
+                        "occurrences": [_occurrence(0, joan_offsets)],
+                    },
+                    {"text": "Nobody Here", "occurrences": [_occurrence(0, [])]},
+                ),
+                chunk_summaries=(
+                    {"chunk_index": 0, "char_start": 0, "char_end": len(text)},
+                ),
+            )
+
+        with (
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[]),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
+            patch(
+                "src.redaction.file_processor.RedactorFactory.get",
+                return_value=lambda config: Mock(redact=Mock(side_effect=redact)),
+            ),
+        ):
+            processor = PDFProcessor()
+            processor.redact(file_bytes, {"redaction_rules": [rule]})
+
+        summary = processor.get_run_metrics()["text_redaction_summary"]["names"]
+        assert "redaction_decisions" not in summary
+        assert "excluded_decisions" not in summary
+        [rationale] = processor.get_redaction_rationale()
+        assert rationale["chunks"][0]["pages"] == [1, 2]
+        assert [
+            (r["text"], r["pages"], r["applied"]) for r in rationale["redactions"]
+        ] == [
+            ("Joan Brown", [1, 2], True),
+            ("Nobody Here", [1, 2], False),
+        ]
