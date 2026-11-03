@@ -204,7 +204,7 @@ class TestGetProposedRedactions:
         document_bytes = BytesIO()
         expected_dict = [
             {
-                "pageNumber": 0,
+                "pageNumber": 1,
                 "annotations": [
                     {
                         "title": "Text Redaction",
@@ -275,7 +275,7 @@ class TestGetProposedRedactions:
         document_bytes = BytesIO()
         expected_dict = [
             {
-                "pageNumber": 0,
+                "pageNumber": 1,
                 "annotations": [
                     {
                         "title": "Text Redaction",
