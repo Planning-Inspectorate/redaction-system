@@ -227,6 +227,22 @@ def test_plot_metrics_vs_chunk_size__still_one_line_per_overlap(tmp_path):
     assert [list(line.get_xdata()) for line in lines] == [[500, 1500], [500, 1500]]
 
 
+def test_metric_grid__shows_mean_latency_in_place_of_boundary_recall(tmp_path):
+    figures = []
+
+    with patch.object(summarise_chunk_sweep.plt, "close", side_effect=figures.append):
+        summarise_chunk_sweep.plot_metrics_vs_chunk_size(
+            _grid_summaries(), ALL_RULES, 2.0, tmp_path / "by_size.png"
+        )
+
+    titles = [ax.get_title() for ax in figures[0].axes]
+    assert "mean_latency_s" in titles
+    assert "boundary_recall" not in titles
+    latency_ax = figures[0].axes[titles.index("mean_latency_s")]
+    # Each run in _grid_summaries took 1 second
+    assert list(latency_ax.get_lines()[0].get_ydata()) == [1.0, 1.0]
+
+
 def test_plot_variant_summary__writes_both_metric_plots(tmp_path):
     summarise_chunk_sweep.plot_variant_summary(
         _grid_summaries(), tmp_path, 2.0, [ALL_RULES]
