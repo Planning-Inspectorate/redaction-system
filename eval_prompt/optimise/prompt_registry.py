@@ -11,10 +11,9 @@ from pathlib import Path
 import mlflow
 import yaml
 from mlflow.entities.model_registry import PromptVersion
-from tiktoken import get_encoding
-
 from src.redaction.config import EXTRA_SECTION_TAG, LLMTextRedactionConfig
 from src.types import LLMDetailedRedactionResultFormat
+from tiktoken import get_encoding
 
 PROMPT_NAME_PREFIX = "redaction-"
 

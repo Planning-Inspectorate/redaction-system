@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from eval_prompt.chunk_sweep.summarise import ScoredRun
-from eval_prompt.objective_sensitivity import (
+from eval_prompt.optimise.objective_sensitivity import (
     kendall_tau,
     macro_objective,
     objective_grid,

@@ -4,7 +4,7 @@ pytest.importorskip("mlflow")
 
 from mlflow.entities import Feedback
 
-from eval_prompt.mlflow_scorers import (
+from eval_prompt.optimise.mlflow_scorers import (
     clause_citation_valid,
     f2,
     hard_negative_hit_rate,

@@ -9,7 +9,7 @@ ranking that holds across the grid means the weights do not decide the outcome. 
 penalties are only informative if the variants differ in hard-negative or unlocatable
 rates, so also read the per-variant components.
 
-    python -m eval.objective_sensitivity --corpus eval/data/corpus.jsonl \
+    python -m eval_prompt.optimise.objective_sensitivity --corpus eval/data/corpus.jsonl \
         --results eval/results/coarse.jsonl --out-dir eval/results/objective_sensitivity
 """
 
@@ -23,9 +23,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .chunk_sweep.summarise import ALL_RULES, ScoredRun, Variant, score_rows
-from .corpus.utils import RULE_NAMES, load_corpus
-from .scoring import (
+from ..chunk_sweep.summarise import ALL_RULES, ScoredRun, Variant, score_rows
+from ..corpus.utils import RULE_NAMES, load_corpus
+from ..scoring import (
     HARD_NEGATIVE_WEIGHT,
     UNLOCATABLE_WEIGHT,
     ScoreCounts,

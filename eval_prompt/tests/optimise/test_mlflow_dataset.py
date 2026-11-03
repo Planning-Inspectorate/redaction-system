@@ -13,9 +13,9 @@ from src.types import (
     LLMTextRedactionResult,
 )
 
-from eval_prompt import mlflow_dataset
 from eval_prompt.corpus.utils import Document, Entity
-from eval_prompt.mlflow_dataset import (
+from eval_prompt.optimise import mlflow_dataset
+from eval_prompt.optimise.mlflow_dataset import (
     PromptRunner,
     chunk_records,
     document_records,

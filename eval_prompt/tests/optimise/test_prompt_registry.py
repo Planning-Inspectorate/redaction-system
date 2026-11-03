@@ -10,7 +10,7 @@ from src.redaction.config_processor import ConfigProcessor
 
 from eval_prompt.chunk_sweep.run import load_rule_configs
 from eval_prompt.corpus.utils import RULE_NAMES
-from eval_prompt.prompt_registry import (
+from eval_prompt.optimise.prompt_registry import (
     PromptStructureError,
     export_rule_to_yaml,
     export_rules_to_yaml,
