@@ -6,9 +6,9 @@ import pytest
 from azure.core.exceptions import ClientAuthenticationError
 
 from eval_prompt import azure_auth, compare_prompts
+from eval_prompt.chunk_sweep.summarise import ScoredRun
 from eval_prompt.corpus.utils import Document, Entity, write_corpus
 from eval_prompt.scoring import ScoreCounts
-from eval_prompt.summarise_chunk_sweep import ScoredRun
 
 
 def _scored_run(rule, doc_id, tp, positives, fp=0, hits=0, hard_negatives=0, cost=1.0):

@@ -16,7 +16,7 @@ Selection rule:
 
 Example:
 
-    python -m tests.eval.summarise_chunk_sweep \
+    python -m eval_prompt.chunk_sweep.summarise \
         --corpus tests/eval/data/corpus.jsonl \
         --results tests/eval/results/coarse.jsonl \
         --out-dir tests/eval/results/coarse_summary
@@ -37,8 +37,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from src.analysis.text import LLMTextAnalyser
 
-from .corpus.utils import RULE_NAMES, Document, load_corpus
-from .scoring import ScoreCounts, positive_outcomes, score_document
+from ..corpus.utils import RULE_NAMES, Document, load_corpus
+from ..scoring import ScoreCounts, positive_outcomes, score_document
 
 ALL_RULES = "__all__"
 """Pseudo-rule for the combined output of every rule, as applied in production"""

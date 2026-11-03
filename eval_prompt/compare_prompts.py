@@ -1,6 +1,6 @@
 """Compare the metrics of several prompt configs, e.g. basic, default and optimised.
 
-Each config in `src/config` is run over a corpus split with `run_chunk_sweep` at the same
+Each config in `src/config` is run over a corpus split with `chunk_sweep.run` at the same
 chunk settings, so only the prompt differs. The per-document results are scored with the
 repo's scoring and saved as a plot and table. It uses no MLflow, and `--plot-only` makes
 no LLM calls. Run from the `redactor` directory, inside the VNet when running configs:
@@ -19,16 +19,16 @@ import numpy as np
 from src.redaction.config import LLMTextRedactionConfigBase
 
 from .azure_auth import check_azure_auth
+from .chunk_sweep.run import overlap_for, run_sweep
+from .chunk_sweep.run import parse_args as parse_sweep_args
+from .chunk_sweep.summarise import ALL_RULES, ScoredRun, score_rows, summarise
 from .corpus.utils import RULE_NAMES, load_corpus
-from .run_chunk_sweep import overlap_for, run_sweep
-from .run_chunk_sweep import parse_args as parse_sweep_args
 from .scoring import (
     BETA,
     HARD_NEGATIVE_WEIGHT,
     UNLOCATABLE_WEIGHT,
     objective_score,
 )
-from .summarise_chunk_sweep import ALL_RULES, ScoredRun, score_rows, summarise
 
 RESULTS_DIR = Path("eval/results")
 COMPARE_CONFIGS = ("basic", "default", "optimised")
@@ -139,7 +139,7 @@ def plot_comparison(rows: list[dict], out_path: Path, title: str = ""):
 
 
 def sweep_argv(args: argparse.Namespace, config: str, out_path: Path) -> list[str]:
-    """Arguments for `run_chunk_sweep` to run one config at the compared chunk variant"""
+    """Arguments for `chunk_sweep.run` to run one config at the compared chunk variant"""
     size, overlap = compare_chunk_settings(args)
     argv = [
         "--corpus",

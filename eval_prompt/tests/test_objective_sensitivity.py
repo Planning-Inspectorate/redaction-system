@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from eval_prompt.chunk_sweep.summarise import ScoredRun
 from eval_prompt.objective_sensitivity import (
     kendall_tau,
     macro_objective,
@@ -14,7 +15,6 @@ from eval_prompt.scoring import (
     ScoreCounts,
     objective_score,
 )
-from eval_prompt.summarise_chunk_sweep import ScoredRun
 
 
 def _run(variant, doc_id, rule="names", **counts):
