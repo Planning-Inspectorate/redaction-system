@@ -89,6 +89,11 @@ class VariantSummary:
         """Fraction of chunks whose LLM call failed"""
         return self.failed_chunks / self.chunk_count if self.chunk_count else 0.0
 
+    @property
+    def mean_latency_s(self) -> float:
+        """Mean latency in seconds of a run (a document, repeat and rule)"""
+        return self.latency_s / self.runs if self.runs else 0.0
+
     def to_row(self, beta: float) -> dict:
         """Flatten the summary into a rounded dict of metrics for a CSV/report row"""
         boundary_recall = self.counts.boundary_recall
@@ -117,7 +122,7 @@ class VariantSummary:
             "failed_chunk_rate": round(self.failed_chunk_rate, 4),
             "cost_gbp": round(self.cost_gbp, 4),
             "cost_per_1k_doc_tokens": round(self.cost_per_1k_doc_tokens, 6),
-            "mean_latency_s": round(self.latency_s / self.runs, 2) if self.runs else 0,
+            "mean_latency_s": round(self.mean_latency_s, 2),
         }
 
 
@@ -571,7 +576,7 @@ def _metric_definitions(
         ("recall", lambda s: s.counts.recall),
         (f"f{beta:g}", lambda s: s.counts.f_beta(beta)),
         ("hard_negative_fp_rate", lambda s: s.counts.hard_negative_fp_rate),
-        ("boundary_recall", lambda s: s.counts.boundary_recall),
+        ("mean_latency_s", lambda s: s.mean_latency_s),
         ("consistency", lambda s: s.consistency),
         ("within_doc_variance", lambda s: s.within_doc_variance),
         ("between_doc_variance", lambda s: s.between_doc_variance),
@@ -638,7 +643,7 @@ def plot_metrics_vs_chunk_size(
     beta: float,
     out_path: Path,
 ) -> None:
-    """Plot precision, recall, hard-negative FP rate, boundary recall, consistency
+    """Plot precision, recall, hard-negative FP rate, mean latency, consistency
     and failed-chunk rate against chunk size, one line per overlap.
     """
     _plot_metric_grid(
