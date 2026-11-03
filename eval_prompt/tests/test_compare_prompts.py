@@ -6,7 +6,7 @@ import pytest
 from azure.core.exceptions import ClientAuthenticationError
 
 from eval_prompt import azure_auth, compare_prompts
-from eval_prompt.corpus import Document, Entity, write_corpus
+from eval_prompt.corpus.utils import Document, Entity, write_corpus
 from eval_prompt.scoring import ScoreCounts
 from eval_prompt.summarise_chunk_sweep import ScoredRun
 

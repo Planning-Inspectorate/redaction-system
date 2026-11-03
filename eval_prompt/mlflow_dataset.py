@@ -8,11 +8,10 @@ import hashlib
 from dataclasses import asdict
 
 from mlflow.entities.model_registry import PromptVersion
-
 from src.analysis.text import LLMTextAnalyser, merge_redaction_decisions
 from src.redaction.config import LLMTextRedactionConfig
 
-from .corpus import Document, Entity
+from .corpus.utils import Document, Entity
 from .prompt_registry import CLAUSE_ID
 
 

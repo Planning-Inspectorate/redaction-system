@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .corpus import RULE_NAMES, load_corpus
+from .corpus.utils import RULE_NAMES, load_corpus
 from .scoring import (
     HARD_NEGATIVE_WEIGHT,
     UNLOCATABLE_WEIGHT,

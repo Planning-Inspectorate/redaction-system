@@ -14,7 +14,7 @@ from dataclasses import dataclass, fields
 
 from src.redaction.utils.text import get_normalised_words, is_email_name_part
 
-from .corpus import Document, Entity
+from .corpus.utils import Document, Entity
 
 _POSSESSIVE = re.compile(r"['\u2019]s\b", re.IGNORECASE)
 _EMAIL = r"[\w.+\-]+@[^\W_]+(?:-[^\W_]+)*(?:\.[^\W_]+(?:-[^\W_]+)*)+"  # name@domain.tld

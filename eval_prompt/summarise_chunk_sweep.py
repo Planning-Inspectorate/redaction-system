@@ -37,7 +37,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from src.analysis.text import LLMTextAnalyser
 
-from .corpus import RULE_NAMES, Document, load_corpus
+from .corpus.utils import RULE_NAMES, Document, load_corpus
 from .scoring import ScoreCounts, positive_outcomes, score_document
 
 ALL_RULES = "__all__"

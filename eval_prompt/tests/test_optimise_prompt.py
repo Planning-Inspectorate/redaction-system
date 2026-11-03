@@ -8,7 +8,7 @@ from azure.core.exceptions import ClientAuthenticationError
 mlflow = pytest.importorskip("mlflow")
 
 from eval_prompt import azure_auth, optimise_prompt
-from eval_prompt.corpus import (
+from eval_prompt.corpus.utils import (
     Document,
     Entity,
     write_corpus,

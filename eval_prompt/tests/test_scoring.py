@@ -1,6 +1,6 @@
 import pytest
 
-from eval_prompt.corpus import Document, Entity
+from eval_prompt.corpus.utils import Document, Entity
 from eval_prompt.scoring import (
     DocumentWords,
     ScoreCounts,

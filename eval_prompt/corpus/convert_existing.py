@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pymupdf
 
-from .corpus import UNSPECIFIED_RULE, Document, Entity, validate_document, write_corpus
+from .utils import UNSPECIFIED_RULE, Document, Entity, validate_document, write_corpus
 
 E2E_DATA = Path(__file__).parents[1] / "redactor" / "tests" / "e2e" / "data"
 _SAMPLE_HEADING = re.compile(r"^\s*Sample\s+(\d+)\s*:", re.MULTILINE)

@@ -137,7 +137,7 @@ Keep the prompts frozen for the whole sweep. Changing a prompt invalidates the c
 
 `optimise_prompt.py` versions, scores and optimises each rule's system prompt with MLflow
 (install the `eval` extra). It stores everything in `eval/results/mlflow.db`; view it with
-`mlflow ui --backend-store-uri sqlite:///eval/results/mlflow.db`. Traces contain corpus text,
+`mlflow ui --backend-store-uri sqlite:///eval_prompt/results/mlflow.db`. Traces contain corpus text,
 so only use synthetic or approved data. The YAML config stays the source of truth.
 
 1. `register --chunk-size <chosen> --chunk-overlap <chosen>` registers every rule's prompt as

@@ -12,13 +12,13 @@ human-review a sample of documents before relying on the corpus.
 
 Example (run from the `redactor` directory, with Azure credentials available):
 
-    python -m eval_prompt.generate_corpus --model gpt-5.6-sol \
+    python -m eval_prompt.corpus.generate --model gpt-5.6-sol \
         --documents 120 --out eval_prompt/data/corpus.jsonl
 
 A separate corpus for prompt engineering, with mostly medium-length documents and its
 own ids so it can never collide with the chunk-sweep corpus:
 
-    python -m eval_prompt.generate_corpus --model gpt-5.6-sol --profile prompt \
+    python -m eval_prompt.corpus.generate --model gpt-5.6-sol --profile prompt \
         --documents 100 --seed 1 --out eval/data/prompt_corpus.jsonl
 """
 
@@ -45,7 +45,7 @@ from src.redaction.config import LLMTextRedactionConfig, xml_format
 from src.redaction.config_processor import ConfigProcessor
 from tiktoken import get_encoding
 
-from .corpus import RULE_NAMES, Document, Entity, validate_document
+from .utils import RULE_NAMES, Document, Entity, validate_document
 
 load_dotenv(verbose=True)
 

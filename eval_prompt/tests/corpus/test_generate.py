@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from eval_prompt import generate_corpus
-from eval_prompt.generate_corpus import (
+from eval_prompt.corpus import generate
+from eval_prompt.corpus.generate import (
     MIN_SECTION_TOKENS,
     PROFILES,
     SCENARIOS,
@@ -132,10 +132,10 @@ def test_main__uses_profile_id_prefix(tmp_path):
 
     ids = []
     with (
-        patch.object(generate_corpus, "CorpusGenerator", _Generator),
-        patch.object(generate_corpus, "guideline_summary", return_value=""),
+        patch.object(generate, "CorpusGenerator", _Generator),
+        patch.object(generate, "guideline_summary", return_value=""),
     ):
-        generate_corpus.main(
+        generate.main(
             [
                 "--model",
                 "m",
@@ -151,5 +151,5 @@ def test_main__uses_profile_id_prefix(tmp_path):
         )
 
     assert [doc_id.split("-")[0] for doc_id, _ in ids] == ["pe"] * 3
-    allowed = {size for size, _ in generate_corpus.PROMPT_LENGTH_BUCKETS}
+    allowed = {size for size, _ in generate.PROMPT_LENGTH_BUCKETS}
     assert {size for _, size in ids} <= allowed

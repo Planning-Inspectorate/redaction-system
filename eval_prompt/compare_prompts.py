@@ -19,7 +19,7 @@ import numpy as np
 from src.redaction.config import LLMTextRedactionConfigBase
 
 from .azure_auth import check_azure_auth
-from .corpus import RULE_NAMES, load_corpus
+from .corpus.utils import RULE_NAMES, load_corpus
 from .run_chunk_sweep import overlap_for, run_sweep
 from .run_chunk_sweep import parse_args as parse_sweep_args
 from .scoring import (

@@ -30,8 +30,8 @@ where = [".."]
 include = ["eval_prompt*"]
 
 [project.scripts]
-generate-corpus = "eval_prompt.generate_corpus:main"
-convert-samples = "eval_prompt.convert_existing_samples:main"
+generate-corpus = "eval_prompt.corpus.generate:main"
+convert-samples = "eval_prompt.corpus.convert_existing:main"
 
 [dependency-groups]
 dev = [

@@ -26,7 +26,7 @@ from src.redaction.config import LLMTextRedactionConfig
 from src.redaction.config_processor import ConfigProcessor
 from tiktoken import get_encoding
 
-from .corpus import RULE_NAMES, load_corpus
+from .corpus.utils import RULE_NAMES, load_corpus
 from .scoring import boundary_split_entities
 
 
