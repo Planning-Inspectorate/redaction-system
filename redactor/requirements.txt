@@ -13,7 +13,7 @@ langchain-text-splitters==1.1.2
 langdetect==1.0.9
 openai==3.40.0
 pillow==13.0.0
-pre-commit==4.6.1
+pre-commit==4.7.0
 pydantic==2.13.4
 python-dotenv==1.2.2
 # Prefer python-magic-bin on Windows (bundles libmagic); use python-magic elsewhere
