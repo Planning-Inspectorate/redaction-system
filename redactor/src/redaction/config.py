@@ -35,9 +35,9 @@ class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
         '"terms". List them as they appear in the text. '
         "</OutputFormat>"
     )
-    chunk_size: int = Field(1500, gt=0)
+    chunk_size: int = Field(6000, gt=0)
     """Maximum number of tokens in each chunk of text sent to the LLM"""
-    chunk_overlap: int = Field(60, ge=0)
+    chunk_overlap: int = Field(600, ge=0)
     """Number of tokens shared between consecutive chunks"""
 
     @model_validator(mode="after")
