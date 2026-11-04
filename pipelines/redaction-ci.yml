@@ -43,45 +43,21 @@ extends:
           - checkout: self
             clean: true
 
-          - script: |
-              set -e
-              sudo add-apt-repository ppa:deadsnakes/ppa -y
-              sudo apt-get update
-              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
-              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
-              python3 -m ensurepip --upgrade
-              python3 -m pip install --force-reinstall --no-binary cffi cffi
-              python3 --version
-            displayName: 'Install Python 3.13'
+          - template: pipelines/templates/install-python.yml@self
 
           - script: |
               set -e
               cd redaction-system
               python3 -m pip install ruff
-              export PYTHONPATH=$(pwd)
               python3 -m ruff check
               python3 -m ruff format --check
             displayName: 'Python code style check'
 
-      - name: RunTestsJob
+      - name: UnitTests
         steps:
-          - checkout: self
-            clean: true
-
           - checkout: templates
 
-          - script: |
-              set -e
-              sudo add-apt-repository ppa:deadsnakes/ppa -y
-              sudo apt-get update
-              sudo apt-get -o DPkg::Lock::Timeout=180 install -y python3.13 python3.13-venv python3.13-dev libffi-dev
-              sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1
-              python3 --version
-              python3 -m venv $(System.DefaultWorkingDirectory)/.venv
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
-              python3 -m ensurepip --upgrade
-              python3 -m pip install --force-reinstall --no-binary cffi cffi
-            displayName: 'Install Python 3.13'
+          - template: pipelines/templates/install-python.yml@self
 
           - template: ../steps/azure_auth.yml@templates
             parameters:
@@ -89,20 +65,23 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system
-              python3 -m pip install .
+              python3 -m pip install --group dev .
             displayName: 'Install redactor package'
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
               python3 -m pytest tests/unit -vv -rP -n 4 --junitxml=junit/unit_test_results.xml --cov="src" --cov-report=xml:unit_test_coverage.xml
               python3 -m coverage report --fail-under=$(unitTestCoverageThreshold) --show-missing
               mv .coverage .coverage.unit
             displayName: 'Run unit tests'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish unit coverage data'
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/redaction-system/redactor/.coverage.unit'
+              artifactName: 'unit-coverage-data'
 
           - task: PublishTestResults@2
             displayName: 'Publish unit test results'
@@ -112,15 +91,36 @@ extends:
               testRunTitle: 'Redaction System unit test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
 
+      - name: IntegrationTests
+        steps:
+          - checkout: templates
+
+          - template: pipelines/templates/install-python.yml@self
+
+          - template: ../steps/azure_auth.yml@templates
+            parameters:
+              subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+
+          - script: |
+              set -e
+              cd redaction-system
+              python3 -m pip install --group dev . 
+            displayName: 'Install redactor package'
+
           - script: |
               set -e
               source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
-              export PYTHONPATH=$(pwd)
               python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
               mv .coverage .coverage.integration
             displayName: 'Run integration tests'
+
+          - task: PublishPipelineArtifact@1
+            displayName: 'Publish integration coverage data'
+            inputs:
+              targetPath: '$(Build.SourcesDirectory)/redaction-system/redactor/.coverage.integration'
+              artifactName: 'integration-coverage-data'
 
           - task: PublishTestResults@2
             displayName: 'Publish integration test results'
@@ -129,6 +129,22 @@ extends:
               testResultsFiles: '**/integration_test_results.xml'
               testRunTitle: 'Redaction System integration test report - $(Build.BuildId) - $(Build.SourceBranch)'
               mergeTestResults: true
+
+      - name: E2ETests
+        steps:
+          - checkout: templates
+
+          - template: pipelines/templates/install-python.yml@self
+
+          - template: ../steps/azure_auth.yml@templates
+            parameters:
+              subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
+
+          - script: |
+              set -e
+              cd redaction-system
+              python3 -m pip install --group dev .
+            displayName: 'Install redactor package'
 
           - template: ../steps/node_script.yml@templates
             parameters:
@@ -149,7 +165,6 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
 
                 echo "Starting Azurite..."
                 mkdir -p .azurite
@@ -305,7 +320,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
 
               echo "Warming up Durable Functions orchestrator..."
               ORCH_URL="http://localhost:7071/runtime/webhooks/durabletask/orchestrators/trigger_orchestrator"
@@ -336,10 +350,9 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
+          
               export PYTHONPATH=$(pwd)
-
               export E2E_FUNCTION_RECEIVER_BASE_URL="http://localhost:7072"
               export E2E_FUNCTION_PROCESSOR_BASE_URL="http://localhost:7071"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
@@ -385,12 +398,29 @@ extends:
               PathtoPublish: '$(Build.SourcesDirectory)/redaction-system/func-host-processor.log'
               ArtifactName: 'e2e-local-processor-logs'
 
+      - name: Coverage
+        dependsOn:
+          - UnitTests
+          - IntegrationTests
+        steps:
+          - checkout: templates
+
+          - template: pipelines/templates/install-python.yml@self
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+              python3 -m pip install coverage[toml]
+            displayName: 'Install coverage'
+
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download coverage data'
+            inputs:
+              path: '$(Build.SourcesDirectory)/redaction-system/redactor'
+
+          - script: |
+              set -e
               cd redaction-system/redactor
-              python3 -m coverage combine
+              python3 -m coverage combine unit-coverage-data/.coverage.unit integration-coverage-data/.coverage.integration
               python3 -m coverage report
               python3 -m coverage xml -o coverage.xml
             displayName: 'Combine coverage reports'
@@ -408,7 +438,6 @@ extends:
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
               python3 -m coverage report --fail-under=$(totalTestCoverageThreshold) --show-missing
             displayName: 'Fail if test coverage is below the threshold'

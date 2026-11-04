@@ -1,0 +1,11 @@
+steps:
+  - script: |
+      set -e
+      source ~/.bashrc
+      pyenv shell 3.13
+      python3 -m venv $(System.DefaultWorkingDirectory)/.venv
+      echo "##vso[task.prependpath]$(System.DefaultWorkingDirectory)/.venv/bin"
+      python3 -m ensurepip --upgrade
+      python3 -m pip install --force-reinstall --no-binary cffi cffi
+      python3 --version
+    displayName: 'Install Python 3.13'
