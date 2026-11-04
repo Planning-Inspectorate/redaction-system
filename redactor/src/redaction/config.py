@@ -55,9 +55,9 @@ class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
     extra_sections: dict[str, list[str]] | None = None
     """Further prompt sections, keyed by CamelCase XML tag and rendered after the
     examples as a bullet list. Unlike the sections above, they carry no clause IDs"""
-    chunk_size: int = Field(1500, gt=0)
+    chunk_size: int = Field(6000, gt=0)
     """Maximum number of tokens in each chunk of text sent to the LLM"""
-    chunk_overlap: int = Field(60, ge=0)
+    chunk_overlap: int = Field(600, ge=0)
     """Number of tokens shared between consecutive chunks"""
 
     @field_validator("extra_sections")
