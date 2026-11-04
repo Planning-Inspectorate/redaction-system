@@ -86,8 +86,8 @@ def test_llm_text_redaction_config__default_chunk_settings():
     """
     config = _create_config()
 
-    assert config.chunk_size == 1500
-    assert config.chunk_overlap == 60
+    assert config.chunk_size == 6000
+    assert config.chunk_overlap == 600
 
 
 def test_llm_text_redaction_config__default_completion_settings():
