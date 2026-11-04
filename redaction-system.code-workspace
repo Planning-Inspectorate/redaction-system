@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../back-office"
+		},
+		{
+			"path": "../infrastructure-environments"
+		}
+	],
+	"settings": {
+		"azureTerraform.checkTerraformCmd": false
+	}
+}
