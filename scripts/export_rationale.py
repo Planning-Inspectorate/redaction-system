@@ -5,7 +5,8 @@ read than raw JSON
 For each `<job>/rationale.json` in the redactiondata container that was created in the
 date range, this writes:
   - `rationale.csv`: one row per occurrence of a term, for filtering in Excel
-  - `html/<job>.html`: one page per job, grouped by page of the PDF then by term
+  - `html/<job>.html`: one page per job, grouped by page of the PDF then by term in the
+    order they appear, with each term marked with its rule, and the clauses of each rule
 
 The rationale quotes personal data. Write the output somewhere that is not tracked by git,
 and delete it when you are done. The redactiondata container deletes blobs after 7 days,
@@ -125,8 +126,9 @@ h3 { font-size: 1.05rem; margin-top: 1.5rem; border-bottom: 1px solid #ccc; }
         background: #e6eefc; font-size: 0.8rem; font-weight: 400; }
 .chip.low { background: #fde8e8; } .chip.medium { background: #fff4d6; }
 .chip.high { background: #e3f5e1; } .chip.warn { background: #f8d0d0; }
-.chip.excluded { background: #eee; }
+.chip.excluded { background: #eee; } .chip.rule { background: #ece6fb; }
 ul.reasons { margin: 0.2rem 0 0 1.2rem; padding: 0; } .small { color: #555; font-size: 0.85rem; }
+ul.clauses { margin: 0.2rem 0 0 1.2rem; padding: 0; }
 """
 
 
@@ -141,45 +143,84 @@ def _clause_chips(clause_ids: list[str], clauses: dict[str, str]) -> str:
     )
 
 
+def _first_offset_on_page(
+    occurrences: list[dict[str, Any]],
+    page_offsets: list[list[int]],
+    page: int | None,
+) -> float:
+    """Where the earliest of the occurrences' spans that is on the page starts in the
+    analysed text, or infinity if none of their positions are known"""
+    for i, (page_number, start) in enumerate(page_offsets):
+        if page_number == page:
+            end = page_offsets[i + 1][1] if i + 1 < len(page_offsets) else math.inf
+            offsets = [
+                offset
+                for occurrence in occurrences
+                for offset in occurrence.get("span_offsets", [])
+                if start <= offset < end
+            ]
+            return min(offsets, default=math.inf)
+    return math.inf
+
+
 def _entries_by_page(
-    rule: dict[str, Any],
-) -> dict[int | None, list[tuple[str, dict[str, Any], list[dict[str, Any]]]]]:
-    """Group a rule's decisions by the pages they appear on, with the occurrences on
-    each page. Decisions with no known page are grouped under None"""
+    rationale: dict[str, Any],
+) -> dict[int | None, list[dict[str, Any]]]:
+    """Group every rule's decisions by the pages they appear on, in order of
+    appearance in the text. Decisions with no known page are grouped under None"""
     by_page = defaultdict(list)
-    for kind, key in (("redaction", "redactions"), ("exclusion", "exclusions")):
-        for decision in rule.get(key, []):
-            for page in decision.get("pages") or [None]:
-                occurrences = [
-                    o
-                    for o in decision.get("occurrences", [])
-                    if page is None or page in o.get("pages", [])
-                ]
-                by_page[page].append((kind, decision, occurrences))
+    for rule in rationale.get("rules", []):
+        page_offsets = rule.get("page_offsets", [])
+        for kind, key in (("redaction", "redactions"), ("exclusion", "exclusions")):
+            for decision in rule.get(key, []):
+                for page in decision.get("pages") or [None]:
+                    occurrences = [
+                        o
+                        for o in decision.get("occurrences", [])
+                        if page is None or page in o.get("pages", [])
+                    ]
+                    by_page[page].append(
+                        {
+                            "rule": rule,
+                            "kind": kind,
+                            "decision": decision,
+                            "occurrences": occurrences,
+                            "offset": _first_offset_on_page(
+                                occurrences, page_offsets, page
+                            ),
+                        }
+                    )
+    for entries in by_page.values():
+        entries.sort(
+            key=lambda e: (
+                e["offset"],
+                str(e["decision"].get("text")).lower(),
+                e["rule"].get("rule_name") or "",
+            )
+        )
     return by_page
 
 
-def _render_entry(
-    kind: str,
-    decision: dict[str, Any],
-    occurrences: list[dict[str, Any]],
-    clauses: dict[str, str],
-) -> str:
-    badges = []
+def _render_entry(entry: dict[str, Any]) -> str:
+    rule, kind, decision = entry["rule"], entry["kind"], entry["decision"]
+    # Confidence (or kept), then the rule, then the clauses, then any warnings
     if kind == "exclusion":
-        badges.append('<span class="chip excluded">kept</span>')
-        if decision.get("conflicts_with_redaction"):
-            badges.append(
-                '<span class="chip warn">also redacted in another chunk</span>'
-            )
+        badges = ['<span class="chip excluded">kept</span>']
     else:
-        badges.append(
-            f'<span class="chip {_esc(decision.get("confidence"))}">'
-            f"{_esc(decision.get('confidence'))}</span>"
-        )
-        if decision.get("applied") is False:
-            badges.append('<span class="chip warn">not found in the PDF</span>')
-    badges.append(_clause_chips(decision.get("clause_ids", []), clauses))
+        badges = [
+            (
+                f'<span class="chip {_esc(decision.get("confidence"))}">'
+                f"{_esc(decision.get('confidence'))}</span>"
+            )
+        ]
+    badges.append(f'<span class="chip rule">{_esc(rule.get("rule_name"))}</span>')
+    badges.append(
+        _clause_chips(decision.get("clause_ids", []), rule.get("clauses", {}))
+    )
+    if kind == "exclusion" and decision.get("conflicts_with_redaction"):
+        badges.append('<span class="chip warn">also redacted in another chunk</span>')
+    if kind == "redaction" and decision.get("applied") is False:
+        badges.append('<span class="chip warn">not found in the PDF</span>')
     reasons = "".join(
         "<li>"
         f"{_esc(o.get('reason'))} "
@@ -187,7 +228,7 @@ def _render_entry(
         f"{', ' + _esc(o.get('data_subject')) if o.get('data_subject') else ''}"
         f"{', ' + _esc(o.get('confidence')) if kind == 'redaction' else ''})</span>"
         "</li>"
-        for o in occurrences
+        for o in entry["occurrences"]
     )
     return (
         f'<div class="term">{_esc(decision.get("text"))} {"".join(badges)}</div>'
@@ -195,8 +236,25 @@ def _render_entry(
     )
 
 
+def _render_rule_clauses(rule: dict[str, Any]) -> str:
+    chunks = rule.get("chunks", [])
+    not_ok = [c for c in chunks if c.get("status") != "ok"]
+    clauses = "".join(
+        f"<li><b>{_esc(clause_id)}</b> {_esc(wording)}</li>"
+        for clause_id, wording in rule.get("clauses", {}).items()
+    )
+    return (
+        f"<h3>{_esc(rule.get('rule_name'))}</h3>"
+        '<p class="meta">'
+        f"{_esc(rule.get('model'))}, {len(chunks)} chunks"
+        f"{f', <b>{len(not_ok)} not analysed</b>' if not_ok else ''}</p>"
+        f'<ul class="clauses">{clauses}</ul>'
+    )
+
+
 def render_job_html(rationale: dict[str, Any]) -> str:
-    """Render a job's rationale as a page grouped by PDF page, then by term"""
+    """Render a job's rationale as a page grouped by PDF page, then by term in order
+    of appearance, followed by the clauses of each rule"""
     body = [
         f"<h1>Redaction rationale for {_esc(rationale.get('file_name'))}</h1>",
         (
@@ -205,24 +263,12 @@ def render_job_html(rationale: dict[str, Any]) -> str:
             f"config {_esc(rationale.get('config_name'))}</p>"
         ),
     ]
-    for rule in rationale.get("rules", []):
-        clauses = rule.get("clauses", {})
-        chunks = rule.get("chunks", [])
-        not_ok = [c for c in chunks if c.get("status") != "ok"]
-        body.append(f"<h2>{_esc(rule.get('rule_name'))}</h2>")
-        body.append(
-            '<p class="meta">'
-            f"{_esc(rule.get('model'))}, {len(chunks)} chunks"
-            f"{f', <b>{len(not_ok)} not analysed</b>' if not_ok else ''}</p>"
-        )
-        by_page = _entries_by_page(rule)
-        for page in sorted(by_page, key=lambda p: math.inf if p is None else p):
-            heading = "Page unknown" if page is None else f"Page {page}"
-            body.append(f"<h3>{heading}</h3>")
-            entries = sorted(
-                by_page[page], key=lambda e: (e[0], str(e[1].get("text")).lower())
-            )
-            body.extend(_render_entry(*entry, clauses) for entry in entries)
+    by_page = _entries_by_page(rationale)
+    for page in sorted(by_page, key=lambda p: math.inf if p is None else p):
+        body.append(f"<h2>{'Page unknown' if page is None else f'Page {page}'}</h2>")
+        body.extend(_render_entry(entry) for entry in by_page[page])
+    body.append("<h2>Redaction rules</h2>")
+    body.extend(_render_rule_clauses(rule) for rule in rationale.get("rules", []))
     return (
         "<!DOCTYPE html><html><head><meta charset='utf-8'>"
         f"<title>Redaction rationale</title><style>{HTML_STYLE}</style></head>"

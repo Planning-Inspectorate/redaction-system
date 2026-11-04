@@ -23,6 +23,7 @@ def create_rationale(job_id="job-1") -> dict:
                 "rule_name": "names",
                 "model": "gpt-5.6-luna",
                 "clauses": {"T1": "Names of the public", "D1": "Councillors"},
+                "page_offsets": [[1, 0], [2, 50]],
                 "chunks": [
                     {"chunk_index": 0, "status": "ok", "pages": [1]},
                     {"chunk_index": 1, "status": "failed", "pages": [2]},
@@ -42,7 +43,7 @@ def create_rationale(job_id="job-1") -> dict:
                                 "clause_ids": ["T1"],
                                 "reason": "Neighbour",
                                 "confidence": "high",
-                                "span_offsets": [30],
+                                "span_offsets": [60],
                                 "pages": [2],
                             }
                         ],
@@ -50,6 +51,7 @@ def create_rationale(job_id="job-1") -> dict:
                     {
                         "text": "Joan Brown",
                         "confidence": "high",
+                        "clause_ids": ["T1", "X9"],
                         "applied": True,
                         "pages": [1, 2],
                         "occurrences": [
@@ -79,6 +81,7 @@ def create_rationale(job_id="job-1") -> dict:
                 "exclusions": [
                     {
                         "text": "Cllr Raj Patel",
+                        "clause_ids": ["D1"],
                         "conflicts_with_redaction": True,
                         "pages": [],
                         "occurrences": [
@@ -135,11 +138,138 @@ class TestRenderJobHtml:
         assert headings == ["Page 1", "Page 2", "Page unknown"]
         assert page.index("Page 1") < page.index("Page 2") < page.index("Page unknown")
         # Joan Brown is on both pages, but each page only shows its own reason
-        page_one, page_two = page.split("Page 2")[0], page.split("Page 2")[1]
+        page_one = page.split("Page 2")[0]
+        page_two = page.split("Page 2")[1].split("Page unknown")[0]
         assert "Author of the letter" in page_one
         assert "Named again" not in page_one
         assert "Named again" in page_two
         assert "Author of the letter" not in page_two
+
+    def test_terms_are_in_order_of_appearance_across_rules(self):
+        """
+        - Given redactions and exclusions from two rules on the same page, and a term
+          whose position is not known
+        - When I render the job
+        - Then the page lists the terms in the order they appear in the text,
+          regardless of rule or kind, with the unlocated term last
+        """
+
+        def decision(text, offsets):
+            return {
+                "text": text,
+                "confidence": "high",
+                "pages": [1],
+                "occurrences": [
+                    {"chunk_index": 0, "span_offsets": offsets, "pages": [1]}
+                ],
+            }
+
+        def rule(name, redactions, exclusions=()):
+            return {
+                "rule_name": name,
+                "page_offsets": [[1, 0]],
+                "redactions": redactions,
+                "exclusions": list(exclusions),
+            }
+
+        rationale = {
+            "rules": [
+                rule(
+                    "names",
+                    [decision("Zed", [90]), decision("Alice", [10])],
+                    [decision("Cllr Bob", [40])],
+                ),
+                rule("contact", [decision("07700", [20]), decision("Unlocated", [])]),
+            ]
+        }
+
+        page = export_rationale.render_job_html(rationale)
+
+        terms = ["Alice", "07700", "Cllr Bob", "Zed", "Unlocated"]
+        positions = [page.index(f'class="term">{term}') for term in terms]
+        assert positions == sorted(positions)
+
+    def test_offsets_are_taken_from_the_page_being_shown(self):
+        """
+        - Given a term on two pages, and another term only on the second page
+        - When I render the job
+        - Then on the second page the term is placed by its position on that page, not
+          by its earlier position on the first
+        """
+
+        def occurrence(offsets, page):
+            return {"chunk_index": 0, "span_offsets": offsets, "pages": [page]}
+
+        rationale = {
+            "rules": [
+                {
+                    "rule_name": "names",
+                    "page_offsets": [[1, 0], [2, 100]],
+                    "redactions": [
+                        {
+                            "text": "Repeated",
+                            "pages": [1, 2],
+                            "occurrences": [
+                                occurrence([5], 1),
+                                occurrence([180], 2),
+                            ],
+                        },
+                        {
+                            "text": "Second",
+                            "pages": [2],
+                            "occurrences": [occurrence([120], 2)],
+                        },
+                    ],
+                }
+            ]
+        }
+
+        page_two = export_rationale.render_job_html(rationale).split("Page 2")[1]
+
+        assert page_two.index("Second") < page_two.index("Repeated")
+
+    def test_marks_each_term_with_its_rule_between_confidence_and_clauses(self):
+        page = export_rationale.render_job_html(create_rationale())
+
+        joan = page.split('class="term">Joan Brown')[1].split("</div>")[0]
+        assert (
+            joan.index(">high<")
+            < joan.index('class="chip rule">names<')
+            < joan.index(">T1<")
+        )
+        councillor = page.split('class="term">Cllr Raj Patel')[1].split("</div>")[0]
+        assert (
+            councillor.index(">kept<")
+            < councillor.index('class="chip rule">names<')
+            < councillor.index(">D1<")
+        )
+
+    def test_lists_the_clauses_of_each_rule(self):
+        rationale = create_rationale()
+        other_rule = {
+            "rule_name": "contact",
+            "model": "gpt-5.6-luna",
+            "clauses": {"T1": "Phone numbers", "M1": "Emails <all>"},
+            "chunks": [],
+            "redactions": [],
+            "exclusions": [],
+        }
+        rationale["rules"].append(other_rule)
+
+        page = export_rationale.render_job_html(rationale)
+
+        rules_section = page.split("<h2>Redaction rules</h2>")[1]
+        assert page.index("Page unknown") < page.index("Redaction rules")
+        assert rules_section.index("<h3>names</h3>") < rules_section.index(
+            "<h3>contact</h3>"
+        )
+        for expected in (
+            "<b>T1</b> Names of the public",
+            "<b>D1</b> Councillors",
+            "<b>T1</b> Phone numbers",
+            "<b>M1</b> Emails &lt;all&gt;",
+        ):
+            assert expected in rules_section
 
     def test_flags_and_chunk_status(self):
         page = export_rationale.render_job_html(create_rationale())
