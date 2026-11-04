@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from PIL.Image import Image
 from pydantic import (
     BaseModel,
+    Field,
     GetCoreSchemaHandler,
     GetJsonSchemaHandler,
 )
@@ -159,4 +160,10 @@ class ImageLLMTextRedactionResult(LLMTextRedactionResult, ImageRedactionResult):
 
 
 class LLMRedactionResultFormat(BaseModel):
-    redaction_strings: list[str]
+    redaction_strings: list[str] = Field(
+        description=(
+            "The exact text spans to redact, copied verbatim from the input text. "
+            "Do not paraphrase, expand, shorten, or normalise the wording. Do not "
+            "include duplicate entries. Return an empty list if nothing qualifies."
+        )
+    )
