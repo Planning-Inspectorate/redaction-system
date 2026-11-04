@@ -734,6 +734,7 @@ class PDFProcessor(FileProcessor):
                     "chunk_size": getattr(config, "chunk_size", None),
                     "chunk_overlap": getattr(config, "chunk_overlap", None),
                     "clauses": result.clause_legend,
+                    "page_offsets": page_offsets,
                     "chunks": [
                         chunk | {"pages": chunk_pages[chunk["chunk_index"]]}
                         for chunk in result.chunk_summaries

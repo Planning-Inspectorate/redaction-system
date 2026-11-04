@@ -1335,6 +1335,7 @@ class TestGetRedactionRationale:
             "chunk_size": 10,
             "chunk_overlap": 2,
             "clauses": {"T1": "Names"},
+            "page_offsets": page_offsets,
             "chunks": [
                 {"chunk_index": 0, "char_start": 0, "char_end": 22, "pages": [1]},
                 {"chunk_index": 1, "char_start": 17, "char_end": 49, "pages": [1, 2]},
