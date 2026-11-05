@@ -577,6 +577,52 @@ class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
         }
         assert processor._text_redaction_summary == expected_text_redaction_summary
 
+    def test_image_text_rule_not_given_full_page_with_text(self):
+        """
+        - Given a PDF page with extractable text and no embedded images
+        - When I apply the redaction rules
+        - Then the image text rule is given no images, while the image rule
+          (face/signature) is still given the full page
+        """
+        page_image = Image.new("RGB", (100, 100), "white")
+        page_metadata = PDFPageMetadata(
+            page_number=0,
+            raw_text="Hello World",
+            rendered_image=PDFImageMetadata(
+                source_image_resolution=(100, 100),
+                file_format="png",
+                image=page_image,
+                page_number=0,
+                image_transform_in_pdf=(100.0, 0.0, 0.0, 100.0, 0.0, 0.0),
+            ),
+        )
+        image_text_rule = Mock(spec=["name", "redactor_type", "images"])
+        image_text_rule.name = "image text rule"
+        image_text_rule.redactor_type = "ImageTextRedaction"
+        image_rule = Mock(spec=["name", "redactor_type", "images"])
+        image_rule.name = "image rule"
+        image_rule.redactor_type = "ImageRedaction"
+        redactor = Mock(
+            redact=Mock(
+                return_value=ImageRedactionResult(
+                    rule_name="rule", run_metrics={}, redaction_results=()
+                )
+            )
+        )
+
+        with patch(
+            "src.redaction.file_processor.RedactorFactory.get",
+            return_value=lambda config: redactor,
+        ):
+            processor = PDFProcessor()
+            processor.redaction_rules = [image_text_rule, image_rule]
+            processor.pages_metadata = [page_metadata]
+            processor.pdf_images = []
+            processor._apply_redaction_rules()
+
+        assert image_text_rule.images == []
+        assert list(image_rule.images) == [page_image]
+
 
 class TestExtractPDFTextContent(TestExamineApplyRedactionsBase):
     def test_pdf_with_text_returns_text_content(self):
