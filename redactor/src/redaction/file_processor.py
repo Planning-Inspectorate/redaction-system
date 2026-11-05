@@ -729,6 +729,16 @@ class PDFProcessor(FileProcessor):
                     rule.images = unique_pdf_images
             elif hasattr(rule, "text"):
                 rule.text = self.pdf_text
+            elif hasattr(rule, "images") and rule.redactor_type == "ImageTextRedaction":
+                # Embedded images, plus full pages only where no text was extractable
+                rule.images = [
+                    *(
+                        images_for_text_analysis
+                        if pages_rendered
+                        else unique_pdf_images
+                    ),
+                    *(page.rendered_image.image for page in pages_rendered),
+                ]
             elif hasattr(rule, "images"):
                 # Analyse entire PDF page
                 rule.images = tuple(
