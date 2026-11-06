@@ -508,6 +508,71 @@ class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
         mock_add_provisional_redaction.assert_not_called()
 
 
+class TestApplyRule:
+    @staticmethod
+    def _image_llm_text_result():
+        image = Image.new("RGB", (100, 100))
+        return ImageLLMTextRedactionResult(
+            rule_name="ImageRedactor1",
+            run_metrics={"total_images_to_analyse": 1},
+            redaction_results=(
+                ImageRedactionResult.Result(
+                    image_dimensions=image.size,
+                    source_image=image,
+                    redaction_boxes=((0, 0, 100, 100),),
+                    names=("John Smith",),
+                ),
+            ),
+            redaction_strings=("John Smith",),
+        )
+
+    def test_result_to_loggable_dict_excludes_source_images(self):
+        result = self._image_llm_text_result()
+
+        with patch("copy.deepcopy", side_effect=AssertionError("deepcopy called")):
+            loggable = PDFProcessor._result_to_loggable_dict(result)
+
+        assert loggable["redaction_strings"] == ("John Smith",)
+        assert loggable["redaction_results"] == [
+            {
+                "image_dimensions": (100, 100),
+                "source_image": None,
+                "redaction_boxes": ((0, 0, 100, 100),),
+                "names": ("John Smith",),
+            }
+        ]
+
+    def test_result_to_loggable_dict_text_result(self):
+        result = TextRedactionResult(
+            rule_name="TextRedactor1",
+            run_metrics={},
+            redaction_strings=("John Smith",),
+        )
+
+        assert PDFProcessor._result_to_loggable_dict(result) == {
+            "rule_name": "TextRedactor1",
+            "run_metrics": {},
+            "redaction_strings": ("John Smith",),
+        }
+
+    def test_result_is_only_audit_logged(self):
+        result = self._image_llm_text_result()
+        processor = PDFProcessor()
+        processor.run_metrics = {
+            "text_analysis_total_time": 0.0,
+            "image_analysis_total_time": 0.0,
+        }
+        processor._text_redaction_summary = {}
+
+        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+
+        audit_messages = [c.args[0] for c in LoggingUtil.log_audit.call_args_list]
+        info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
+        assert any("John Smith" in message for message in audit_messages)
+        assert not any("John Smith" in message for message in info_messages)
+        assert processor.redaction_results == [result]
+
+
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
     def test_includes_redaction_strings_in_text_summary(self):
         image = Image.new("RGB", (100, 100))
