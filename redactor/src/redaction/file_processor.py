@@ -27,8 +27,18 @@ from .redactor import (
     RedactorFactory,
     TextRedactor,
 )
-from .utils import PDFImageMetadata, PDFPageMetadata, PDFUtil, is_english_text
+from .utils import (
+    PDFImageMetadata,
+    PDFPageMetadata,
+    PDFUtil,
+    is_english_text,
+    normalise_punctuation_unidecode,
+)
 from .utils.pdf import ANNOT_HIGHLIGHT_COLOR
+
+
+def _normalise_for_search(text: str) -> str:
+    return normalise_punctuation_unidecode(text).lower()
 
 
 class UnprocessedRedactionResultException(Exception):  # pragma: no cover
@@ -436,18 +446,22 @@ class PDFProcessor(FileProcessor):
             (which may be the following page for partial redactions across line breaks),
             the bounding box to redact, and the full term being redacted.
         """
-        # Check if the text is found in the joined lines
-        filtered_term_to_redact = [
-            x
-            for x in text_to_redact
-            if re.sub(r"\s+", " ", x.strip())  # Normalise whitespace
-            in (
+        # Check if the text is found in the joined lines, normalised in the same way
+        # as the matching in PDFUtil so the case and punctuation of the term and the
+        # document do not need to agree
+        page_text = (
+            _normalise_for_search(
                 page_metadata.raw_text
                 + (next_page_metadata.raw_text if next_page_metadata else "")
             )
             .replace("-\n", "")  # Handle hyphenated line breaks
             .replace("\n", " ")  # Handle regular line breaks
             .replace("  ", " ")  # Handle any double spaces created by above
+        )
+        filtered_term_to_redact = [
+            x
+            for x in text_to_redact
+            if re.sub(r"\s+", " ", _normalise_for_search(x).strip()) in page_text
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:
