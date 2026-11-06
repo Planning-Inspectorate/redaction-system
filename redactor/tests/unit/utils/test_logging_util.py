@@ -156,8 +156,8 @@ def test_logging_util__log_exception_with_message(mock_logger_exception):
 
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-def test_log_to_appins(mock_init, mock_log_info):
+@patch.object(LoggingUtil, "log_audit", return_value=None)
+def test_log_to_appins(mock_init, mock_log_audit):
     @log_to_appins(log_args=True)
     def my_function():
         return "Hello world"
@@ -166,7 +166,7 @@ def test_log_to_appins(mock_init, mock_log_info):
     kwargs_repr = []
 
     resp = my_function()
-    LoggingUtil.log_info.assert_called_once_with(
+    LoggingUtil.log_audit.assert_called_once_with(
         f"Function my_function called with args: {', '.join(args_repr + kwargs_repr)}"
     )
     assert resp == "Hello world"
@@ -174,8 +174,8 @@ def test_log_to_appins(mock_init, mock_log_info):
 
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-def test_log_to_appins__with_args(mock_init, mock_log_info):
+@patch.object(LoggingUtil, "log_audit", return_value=None)
+def test_log_to_appins__with_args(mock_init, mock_log_audit):
     @log_to_appins(log_args=True)
     def my_function_with_args(a, b, c):
         return f"Hello world ({a}, {b}, {c})"
@@ -184,7 +184,7 @@ def test_log_to_appins__with_args(mock_init, mock_log_info):
     kwargs_repr = ["c='bob'"]
 
     resp = my_function_with_args(1, 2, c="bob")
-    LoggingUtil.log_info.assert_called_once_with(
+    LoggingUtil.log_audit.assert_called_once_with(
         f"Function my_function_with_args called with args: "
         f"{', '.join(args_repr + kwargs_repr)}"
     )
@@ -193,9 +193,9 @@ def test_log_to_appins__with_args(mock_init, mock_log_info):
 
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
+@patch.object(LoggingUtil, "log_audit", return_value=None)
 @patch.object(LoggingUtil, "log_exception_with_message", return_value=None)
-def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_exception):
+def test_log_to_appins__with_exception(mock_init, mock_log_audit, mock_log_exception):
     exception = Exception("Some exception")
 
     @log_to_appins(log_args=True)
@@ -208,7 +208,7 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
     with pytest.raises(Exception):  # noqa: B017
         my_function_with_exception()
 
-    LoggingUtil.log_info.assert_called_once_with(
+    LoggingUtil.log_audit.assert_called_once_with(
         f"Function my_function_with_exception called with args: "
         f"{', '.join(args_repr + kwargs_repr)}"
     )
@@ -219,8 +219,8 @@ def test_log_to_appins__with_exception(mock_init, mock_log_info, mock_log_except
 
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
-@patch.object(LoggingUtil, "log_info", return_value=None)
-def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
+@patch.object(LoggingUtil, "log_audit", return_value=None)
+def test_log_to_appins__with_instance_method(mock_init, mock_log_audit):
     class MyClass:
         @log_to_appins(log_args=True)
         def my_function(self):
@@ -231,7 +231,7 @@ def test_log_to_appins__with_instance_method(mock_init, mock_log_info):
     kwargs_repr = []
 
     resp = inst.my_function()
-    LoggingUtil.log_info.assert_called_once_with(
+    LoggingUtil.log_audit.assert_called_once_with(
         f"Function my_function called with args: {', '.join(args_repr + kwargs_repr)}"
     )
 
@@ -257,7 +257,22 @@ def test_log_to_appins__no_log_args(mock_init, mock_log_info):
 @pytest.mark.nologgerfixt
 @patch.object(LoggingUtil, "__init__", return_value=None)
 @patch.object(LoggingUtil, "log_info", return_value=None)
-def test_log_to_appins__with_class_method(mock_init, mock_log_info):
+def test_log_to_appins__no_log_args_does_not_repr_arguments(mock_init, mock_log_info):
+    class Unreprable:
+        def __repr__(self):
+            raise AssertionError("repr should not be called")
+
+    @log_to_appins(log_args=False)
+    def my_function(arg):
+        return "Hello world"
+
+    assert my_function(Unreprable()) == "Hello world"
+
+
+@pytest.mark.nologgerfixt
+@patch.object(LoggingUtil, "__init__", return_value=None)
+@patch.object(LoggingUtil, "log_audit", return_value=None)
+def test_log_to_appins__with_class_method(mock_init, mock_log_audit):
     class MyClass:
         @classmethod
         @log_to_appins(log_args=True)
@@ -268,7 +283,7 @@ def test_log_to_appins__with_class_method(mock_init, mock_log_info):
     kwargs_repr = []
 
     resp = MyClass.my_function()
-    LoggingUtil.log_info.assert_called_once_with(
+    LoggingUtil.log_audit.assert_called_once_with(
         f"Function my_function called with args: {', '.join(args_repr + kwargs_repr)}"
     )
 
