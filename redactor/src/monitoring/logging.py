@@ -176,12 +176,12 @@ def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):
         def wrapper(*args, **kwargs):
             logger = LoggingUtil()
 
-            args_repr = [repr(a) for a in args]
-            kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
-
             if log_args:
+                args_repr = [repr(a) for a in args]
+                kwargs_repr = [f"{k}={v!r}" for k, v in kwargs.items()]
                 signature = f"{', '.join(args_repr + kwargs_repr)}"
-                logger.log_info(
+                # Arguments may contain personal data, so keep them out of App Insights
+                logger.log_audit(
                     f"Function {func.__name__} called with args: {signature}"
                 )
             else:
