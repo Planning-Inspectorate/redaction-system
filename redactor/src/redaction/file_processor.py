@@ -18,6 +18,7 @@ from ..analysis import AzureImageAnalyser
 from ..monitoring import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
 from ..types import (
     ImageRedactionResult,
+    LLMTextRedactionResult,
     RedactionResult,
     TextRedactionResult,
 )
@@ -145,6 +146,14 @@ class FileProcessor(ABC):
         :return list[dict[str, Any]]: The final redactions
         """
 
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Return the reasons behind the proposed redactions, if the processor recorded any
+
+        :return list[dict[str, Any]] | None: The rationale, or None if there is none
+        """
+        return None
+
 
 class PDFProcessor(FileProcessor):
     """
@@ -155,10 +164,17 @@ class PDFProcessor(FileProcessor):
         super().__init__()
         self.pdf_text: str | None = None
         self.rendered_pdf_text: str | None = None
+        # (1-based page number, start offset) of each page within the joined text
+        self.pdf_text_page_offsets: list[tuple[int, int]] = []
+        self.rendered_pdf_text_page_offsets: list[tuple[int, int]] = []
         self.pdf_images: list[PDFImageMetadata] = []
         self.pages_metadata: list[PDFPageMetadata] = []
         self.redaction_rules: list[RedactionConfig] = []
         self.redaction_results: list[RedactionResult] = []
+        self._rule_page_offsets: dict[str, list[tuple[int, int]]] = {}
+        self._llm_text_results: list[LLMTextRedactionResult] = []
+        # 1-based pages that each term was highlighted on
+        self._highlight_pages: dict[str, set[int]] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -252,7 +268,8 @@ class PDFProcessor(FileProcessor):
         annotations_list = []
         for page in annotations:
             page_dict = {
-                "pageNumber": int(page.pop("page_number", 0)),
+                # pymupdf pages are 0-based, but outputs number pages from 1
+                "pageNumber": int(page.pop("page_number", 0)) + 1,
                 "annotations": [],
             }
             for annot in page.get("annotations", []):
@@ -384,6 +401,7 @@ class PDFProcessor(FileProcessor):
                 text_to_redact,
                 page_metadata,
                 next_page_metadata,
+                page,
             )
             redaction_instances.extend(page_redaction_instances)
             LoggingUtil().log_info(
@@ -394,6 +412,9 @@ class PDFProcessor(FileProcessor):
         LoggingUtil().log_info(
             f"Found {len(redaction_instances)} total redaction candidates."
         )
+        self._highlight_pages = {}
+        for page_to_redact, _, term in redaction_instances:
+            self._highlight_pages.setdefault(term, set()).add(page_to_redact + 1)
         # Report the redaction terms that were not found
         LoggingUtil().log_info(
             f"Redaction terms not found in document: "
@@ -422,6 +443,7 @@ class PDFProcessor(FileProcessor):
         text_to_redact: list[str],
         page_metadata: PDFPageMetadata,
         next_page_metadata: PDFPageMetadata = None,
+        page: pymupdf.Page | None = None,
     ) -> list[tuple[int, pymupdf.Rect, str]]:
         """
         Check whether the provisional redaction candidates on the given page are
@@ -431,6 +453,8 @@ class PDFProcessor(FileProcessor):
         :param PDFPageMetadata page_metadata: The metadata of the page to examine
         :param PDFPageMetadata next_page_metadata: The metadata of the next page to
         examine, in case of a line break on the next page
+        :param pymupdf.Page page: The page to examine, used to redact only the matching
+        part of a word that a term is fused to or part of (e.g. in an email address)
         :return list[tuple[int, pymupdf.Rect, str]]: The list of valid
             redaction instances to apply on the page. Each tuple contains the page number
             (which may be the following page for partial redactions across line breaks),
@@ -455,7 +479,7 @@ class PDFProcessor(FileProcessor):
                 f"    Examining redaction candidate for term '{term_to_redact}'"
             )
             instances_to_apply = PDFUtil.examine_provisional_text_redaction(
-                term_to_redact, page_metadata, next_page_metadata
+                term_to_redact, page_metadata, next_page_metadata, page=page
             )
             redaction_instances.extend(instances_to_apply)
             self.terms_found.update(
@@ -628,18 +652,24 @@ class PDFProcessor(FileProcessor):
         with TimerUtil() as timer:
             self._extract_pdf_text_content(file_bytes)
             # Only include non-printed text content for LLM text redaction
-            pages_text = [
-                page.raw_text
+            text_pages = [
+                page
                 for page in self.pages_metadata
                 if not page.rendered_image.text_rect_map
             ]
+            pages_text = [page.raw_text for page in text_pages]
             if not all(text == "" for text in pages_text):
                 self.pdf_text = "\n".join(pages_text)
+                self.pdf_text_page_offsets = PDFUtil.get_page_offsets(text_pages)
 
-            rendered_page_text = [
-                page.raw_text for page in self.pages_metadata if page.rendered_image
+            rendered_pages = [
+                page for page in self.pages_metadata if page.rendered_image
             ]
+            rendered_page_text = [page.raw_text for page in rendered_pages]
             self.rendered_pdf_text = "\n".join(rendered_page_text)
+            self.rendered_pdf_text_page_offsets = PDFUtil.get_page_offsets(
+                rendered_pages
+            )
         self.run_metrics["pdf_text_extraction_time"] = timer.elapsed_time
 
         if self.pdf_text:
@@ -665,6 +695,65 @@ class PDFProcessor(FileProcessor):
         self.run_metrics["pdf_image_extraction_time"] = timer.elapsed_time
         LoggingUtil().log_info(f"Extracted {len(self.pdf_images)} images from the PDF.")
 
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Get the LLM's rationale for each rule's decisions, with each occurrence traced
+        to its chunk and the pages it was found on
+
+        :return list[dict[str, Any]] | None: The rationale for each LLM rule, or None if
+            no rule produced any decisions
+        """
+        if not self._llm_text_results:
+            return None
+        unapplied_terms = set(
+            self.run_metrics.get("unapplied_text_redaction_terms", [])
+        )
+        rule_configs = {rule.name: rule for rule in self.redaction_rules}
+        rationale = []
+        for result in self._llm_text_results:
+            page_offsets = self._rule_page_offsets.get(result.rule_name, [])
+            chunk_pages = {
+                chunk["chunk_index"]: PDFUtil.get_pages_in_range(
+                    page_offsets, chunk.get("char_start"), chunk.get("char_end")
+                )
+                for chunk in result.chunk_summaries
+            }
+            redactions = []
+            for decision in result.redaction_decisions:
+                # Terms are matched in the PDF with line breaks replaced by spaces
+                term = " ".join(decision["text"].split("\n"))
+                redactions.append(
+                    PDFUtil.add_pages_to_decision(
+                        decision,
+                        page_offsets,
+                        chunk_pages,
+                        self._highlight_pages.get(term),
+                    )
+                    | {"applied": term not in unapplied_terms}
+                )
+            exclusions = [
+                PDFUtil.add_pages_to_decision(decision, page_offsets, chunk_pages)
+                for decision in result.excluded_decisions
+            ]
+            config = rule_configs.get(result.rule_name)
+            rationale.append(
+                {
+                    "rule_name": result.rule_name,
+                    "model": getattr(config, "model", None),
+                    "chunk_size": getattr(config, "chunk_size", None),
+                    "chunk_overlap": getattr(config, "chunk_overlap", None),
+                    "clauses": result.clause_legend,
+                    "page_offsets": page_offsets,
+                    "chunks": [
+                        chunk | {"pages": chunk_pages[chunk["chunk_index"]]}
+                        for chunk in result.chunk_summaries
+                    ],
+                    "redactions": PDFUtil.sort_by_first_page(redactions),
+                    "exclusions": PDFUtil.sort_by_first_page(exclusions),
+                }
+            )
+        return rationale
+
     def _apply_rule(self, rule: Redactor):
         LoggingUtil().log_info(f"Running redaction rule {rule}")
         with TimerUtil() as timer:
@@ -679,17 +768,28 @@ class PDFProcessor(FileProcessor):
 
         if issubclass(redaction_result.__class__, TextRedactionResult):
             self.run_metrics["text_analysis_total_time"] += redaction_time
-            self._text_redaction_summary[redaction_result.rule_name] = {
+            summary = {
                 "redaction_strings": redaction_strings,
                 "n_proposed": n_strings,
                 "n_applied": n_strings,
             }
+            self._text_redaction_summary[redaction_result.rule_name] = summary
+            # Decisions quote personal data, so keep them out of run metrics
+            if isinstance(redaction_result, LLMTextRedactionResult) and (
+                redaction_result.redaction_decisions
+                or redaction_result.excluded_decisions
+            ):
+                self._llm_text_results.append(redaction_result)
         elif issubclass(redaction_result.__class__, ImageRedactionResult):
             self.run_metrics["image_analysis_total_time"] += redaction_time
 
+        loggable_result = dataclasses.asdict(redaction_result)
+        # Decisions quote personal data, so keep them out of App Insights
+        loggable_result.pop("redaction_decisions", None)
+        loggable_result.pop("excluded_decisions", None)
         LoggingUtil().log_info(
             f"The redactor {rule} yielded the following result: "
-            f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+            f"{json.dumps(loggable_result, indent=4, default=str)}"
         )
         self.redaction_results.append(redaction_result)
 
@@ -717,10 +817,12 @@ class PDFProcessor(FileProcessor):
             ]
         )
         # Attach text and images to redaction configs
+        self._rule_page_offsets = {}
         for rule in self.redaction_rules:
             if hasattr(rule, "text") and hasattr(rule, "images"):
                 # Analyse rendered printed pages with text only
                 rule.text = self.rendered_pdf_text if self.rendered_pdf_text else None
+                self._rule_page_offsets[rule.name] = self.rendered_pdf_text_page_offsets
                 rule.rendered_images = image_text_analysis_pages
                 if pages_rendered:
                     # Only include images that are not included in the rendered pages
@@ -729,6 +831,7 @@ class PDFProcessor(FileProcessor):
                     rule.images = unique_pdf_images
             elif hasattr(rule, "text"):
                 rule.text = self.pdf_text
+                self._rule_page_offsets[rule.name] = self.pdf_text_page_offsets
             elif hasattr(rule, "images"):
                 # Analyse entire PDF page
                 rule.images = tuple(
@@ -747,6 +850,7 @@ class PDFProcessor(FileProcessor):
 
         # Apply each redaction rule
         self._text_redaction_summary: dict[str, Any] = {}
+        self._llm_text_results = []
         for rule_to_apply in redaction_rules_to_apply:
             self._apply_rule(rule_to_apply)
 

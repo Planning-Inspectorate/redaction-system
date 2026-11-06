@@ -1,4 +1,5 @@
 import dataclasses
+import hashlib
 import json
 import os
 import time
@@ -34,10 +35,84 @@ from tenacity import (
 from tiktoken import get_encoding
 
 from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
-from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
+from ..types import (
+    CONFIDENCE_RANK,
+    LLMDetailedRedactionResultFormat,
+    LLMRedactionResultFormat,
+    LLMTextRedactionResult,
+)
 from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
+
+
+def get_chunk_id(text: str) -> str:
+    """Stable ID for a chunk, so its decisions can be traced without storing the text"""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def merge_redaction_decisions(
+    parsed_responses: list[tuple[int, str, LLMDetailedRedactionResultFormat]],
+) -> tuple[tuple[dict, ...], tuple[dict, ...]]:
+    """Combine per-chunk decisions into one per span, keeping the highest confidence,
+    every cited clause and data subject, and each chunk's decision as an occurrence.
+
+    :param parsed_responses: (chunk index, chunk ID, parsed response) for each chunk
+    :return: The merged redactions and exclusions. Exclusions of spans redacted in
+        another chunk are flagged with conflicts_with_redaction, since every
+        occurrence of a redaction string is redacted
+    """
+    redactions: dict[str, dict] = {}
+    exclusions: dict[str, dict] = {}
+    for chunk_index, chunk_id, parsed in sorted(parsed_responses, key=lambda r: r[0]):
+        source = {"chunk_index": chunk_index, "chunk_id": chunk_id}
+        for decision in parsed.redactions:
+            merged = redactions.setdefault(
+                decision.text,
+                {
+                    "text": decision.text,
+                    "confidence": decision.confidence,
+                    "clause_ids": [],
+                    "data_subjects": [],
+                    "chunk_count": 0,
+                    "occurrences": [],
+                },
+            )
+            if (
+                CONFIDENCE_RANK[decision.confidence]
+                > CONFIDENCE_RANK[merged["confidence"]]
+            ):
+                merged["confidence"] = decision.confidence
+            merged["clause_ids"] = list(
+                dict.fromkeys(merged["clause_ids"] + decision.clause_ids)
+            )
+            merged["data_subjects"] = list(
+                dict.fromkeys(merged["data_subjects"] + [decision.data_subject])
+            )
+            merged["occurrences"].append(source | decision.model_dump(exclude={"text"}))
+        for exclusion in parsed.excluded:
+            merged = exclusions.setdefault(
+                exclusion.text,
+                {
+                    "text": exclusion.text,
+                    "clause_ids": [],
+                    "conflicts_with_redaction": False,
+                    "chunk_count": 0,
+                    "occurrences": [],
+                },
+            )
+            merged["clause_ids"] = list(
+                dict.fromkeys(merged["clause_ids"] + exclusion.clause_ids)
+            )
+            merged["occurrences"].append(
+                source | exclusion.model_dump(exclude={"text"})
+            )
+
+    for merged in (*redactions.values(), *exclusions.values()):
+        merged["chunk_count"] = len({o["chunk_index"] for o in merged["occurrences"]})
+    for text, merged in exclusions.items():
+        merged["conflicts_with_redaction"] = text in redactions
+    return tuple(redactions.values()), tuple(exclusions.values())
 
 
 @log_to_appins
@@ -72,6 +147,9 @@ class LLMTextAnalyserConfig(BaseModel):
     """Maximum number of tokens per completion, including reasoning tokens"""
     reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     """Reasoning effort for reasoning models. None uses the model's default"""
+    include_rationale: bool = False
+    """Ask the LLM for a reason, clause IDs and confidence for each redaction. This
+    uses more completion tokens, so consider raising max_tokens"""
     request_rate_limit: int | None = None
     """Maximum number of requests per minute. Defaults to 20% of model max RPM."""
     token_rate_limit: int | None = None
@@ -315,7 +393,7 @@ class LLMTextAnalyser:
     ) -> tuple[ParsedChatCompletion, list[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
-        chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
+        chunk_hash_string = f"(chunk ID {get_chunk_id(user_prompt)})"
 
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
@@ -352,18 +430,30 @@ class LLMTextAnalyser:
                 LoggingUtil().log_info(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
-                response = self.invoke_chain(
-                    api_messages, LLMRedactionResultFormat, max_completion_tokens
+                response_format = (
+                    LLMDetailedRedactionResultFormat
+                    if self.config.include_rationale
+                    else LLMRedactionResultFormat
                 )
-                LoggingUtil().log_info(
-                    f"{chunk_hash_string} LLM response received: {response}"
+                response = self.invoke_chain(
+                    api_messages, response_format, max_completion_tokens
                 )
                 usage = response.usage
 
-                response_cleaned: LLMRedactionResultFormat = response.choices[
-                    0
-                ].message.parsed
+                response_cleaned: (
+                    LLMRedactionResultFormat | LLMDetailedRedactionResultFormat
+                ) = response.choices[0].message.parsed
                 redaction_strings = response_cleaned.redaction_strings
+                if self.config.include_rationale:
+                    # Decisions quote personal data, so keep them out of App Insights
+                    LoggingUtil().log_info(
+                        f"{chunk_hash_string} LLM response received: redaction "
+                        f"strings {redaction_strings}, usage {usage}"
+                    )
+                else:
+                    LoggingUtil().log_info(
+                        f"{chunk_hash_string} LLM response received: {response}"
+                    )
                 return response, redaction_strings
             except LengthFinishReasonError as lfe:
                 LoggingUtil().log_exception_with_message(
@@ -443,18 +533,25 @@ class LLMTextAnalyser:
             len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
         )
         with TimerUtil() as timer:
-            chunk_hashes = [
-                {"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks
+            user_prompts = [
+                self.USER_PROMPT_TEMPLATE.format(chunk=chunk) for chunk in text_chunks
+            ]
+            chunk_ids = [get_chunk_id(user_prompt) for user_prompt in user_prompts]
+            chunks_to_log = [
+                {"chunk_index": i, "chunk_id": chunk_id, "chunk": chunk}
+                for i, (chunk_id, chunk) in enumerate(zip(chunk_ids, text_chunks))
             ]
             LoggingUtil().log_info(
-                f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
+                f"The following text chunks will be processed: {json.dumps(chunks_to_log, indent=4)}"
             )
 
             # Initialise LLM interface
             request_counter = 0
             text_to_redact = []
-            responses: list[ParsedChatCompletion] = []
+            responses: list[tuple[int, ParsedChatCompletion]] = []
             failed_chunk_count = 0
+            # Chunks left unprocessed when the budget is exceeded stay "skipped"
+            chunk_statuses = ["skipped"] * chunk_count
 
             # Check max concurrent requests
             if self.config.max_concurrent_requests > 32:
@@ -476,19 +573,21 @@ class LLMTextAnalyser:
                 )
             elif max_workers == 1:
                 # Process chunks sequentially if only one worker is allowed
-                for chunk in text_chunks:
+                for chunk_index, user_prompt in enumerate(user_prompts):
                     request_counter += 1
                     try:
                         response, redaction_strings = self._analyse_text_chunk(
                             system_prompt,
-                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                            user_prompt,
                         )
-                        responses.append(response)
+                        responses.append((chunk_index, response))
                         text_to_redact.extend(redaction_strings)
+                        chunk_statuses[chunk_index] = "ok"
                     except Exception as e:  # noqa: BLE001
                         failed_chunk_count += 1
+                        chunk_statuses[chunk_index] = "failed"
                         LoggingUtil().log_exception_with_message(
-                            f"Error processing chunk {hash(chunk)}",
+                            f"Error processing chunk {chunk_ids[chunk_index]}",
                             e,
                         )
 
@@ -501,27 +600,29 @@ class LLMTextAnalyser:
             else:
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
                     # Submit tasks to the executor
-                    future_to_chunk = {
+                    future_to_chunk_index = {
                         executor.submit(
                             self._analyse_text_chunk,
                             system_prompt,
-                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
-                        ): chunk
-                        for chunk in text_chunks
+                            user_prompt,
+                        ): chunk_index
+                        for chunk_index, user_prompt in enumerate(user_prompts)
                     }
-                    for future in as_completed(future_to_chunk):
-                        chunk = future_to_chunk[future]
+                    for future in as_completed(future_to_chunk_index):
+                        chunk_index = future_to_chunk_index[future]
                         request_counter += 1
 
                         try:
                             # Get redaction result for chunk and append to overall results
                             response, redaction_strings = future.result()
-                            responses.append(response)
+                            responses.append((chunk_index, response))
                             text_to_redact.extend(redaction_strings)
+                            chunk_statuses[chunk_index] = "ok"
                         except Exception as e:  # noqa: BLE001
                             failed_chunk_count += 1
+                            chunk_statuses[chunk_index] = "failed"
                             LoggingUtil().log_exception_with_message(
-                                f"Error processing chunk {hash(chunk)}",
+                                f"Error processing chunk {chunk_ids[chunk_index]}",
                                 e,
                             )
 
@@ -534,6 +635,20 @@ class LLMTextAnalyser:
 
             # Remove duplicates
             text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
+            redaction_decisions, excluded_decisions = (
+                merge_redaction_decisions(
+                    [
+                        (i, chunk_ids[i], response.choices[0].message.parsed)
+                        for i, response in responses
+                    ]
+                )
+                if self.config.include_rationale
+                else ((), ())
+            )
+            chunk_summaries = tuple(
+                {"chunk_index": i, "chunk_id": chunk_id, "status": status}
+                for i, (chunk_id, status) in enumerate(zip(chunk_ids, chunk_statuses))
+            )
 
         # Collect metrics
         metadata = LLMTextRedactionResult.LLMResultMetadata(
@@ -559,6 +674,9 @@ class LLMTextAnalyser:
             run_metrics=run_metrics,
             redaction_strings=text_to_redact_cleaned,
             metadata=metadata,
+            redaction_decisions=redaction_decisions,
+            excluded_decisions=excluded_decisions,
+            chunk_summaries=chunk_summaries,
         )
 
         return result
