@@ -349,16 +349,19 @@ class LLMTextAnalyser:
 
             # Invoke LLM
             try:
-                LoggingUtil().log_info(
+                LoggingUtil().log_audit(
                     f"{chunk_hash_string} The following messages were sent to the LLM: {api_messages}"
                 )
                 response = self.invoke_chain(
                     api_messages, LLMRedactionResultFormat, max_completion_tokens
                 )
-                LoggingUtil().log_info(
+                LoggingUtil().log_audit(
                     f"{chunk_hash_string} LLM response received: {response}"
                 )
                 usage = response.usage
+                LoggingUtil().log_info(
+                    f"{chunk_hash_string} LLM response received, usage {usage}"
+                )
 
                 response_cleaned: LLMRedactionResultFormat = response.choices[
                     0
@@ -446,7 +449,7 @@ class LLMTextAnalyser:
             chunk_hashes = [
                 {"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks
             ]
-            LoggingUtil().log_info(
+            LoggingUtil().log_audit(
                 f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
             )
 
