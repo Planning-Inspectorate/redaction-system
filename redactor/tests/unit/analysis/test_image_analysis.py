@@ -19,7 +19,7 @@ class ImageAnalysisError(Exception):
 class ConcreteAnalysisUtil(ImageAnalyser):
     """Concrete subclass for testing the abstract base."""
 
-    _IMAGE_TEST_CACHE: ClassVar[list] = []
+    _IMAGE_TEST_CACHE: ClassVar[dict] = {}
 
 
 @pytest.fixture(autouse=True)
@@ -58,7 +58,7 @@ class TestCheckImageSize:
 
 class TestClearCache:
     def test_clears_image_caches(self):
-        ConcreteAnalysisUtil._IMAGE_TEST_CACHE.append({"image": Mock()})
+        ConcreteAnalysisUtil._IMAGE_TEST_CACHE["hash"] = ("value",)
         assert len(ConcreteAnalysisUtil._IMAGE_TEST_CACHE) == 1
 
         ConcreteAnalysisUtil.clear_cache()
@@ -191,7 +191,7 @@ class TestDetectFaces(TestAzureImageAnalyserBase):
         assert result == ((10, 20, 40, 60),)
 
     def test_caches_result(self):
-        image = Mock()
+        image = Image.new("RGB", (100, 100))
         people_list = [
             Mock(bounding_box=Mock(x=10, y=20, width=30, height=40), confidence=0.9),
         ]
@@ -207,16 +207,18 @@ class TestDetectFaces(TestAzureImageAnalyserBase):
             AzureImageAnalyser.detect_faces(image, confidence_threshold=0.5)
 
         assert len(AzureImageAnalyser._IMAGE_FACE_CACHE) == 1
-        assert AzureImageAnalyser._IMAGE_FACE_CACHE[0]["image"] == image
+        assert (
+            AzureImageAnalyser.get_image_hash(image)
+            in AzureImageAnalyser._IMAGE_FACE_CACHE
+        )
 
     def test_uses_cached_result(self):
-        image = Mock()
-        AzureImageAnalyser._IMAGE_FACE_CACHE = [
-            {
-                "image": image,
-                "faces": ({"box": (10, 20, 40, 60), "confidence": 0.9},),
-            }
-        ]
+        image = Image.new("RGB", (100, 100))
+        AzureImageAnalyser._IMAGE_FACE_CACHE = {
+            AzureImageAnalyser.get_image_hash(image): (
+                {"box": (10, 20, 40, 60), "confidence": 0.9},
+            )
+        }
 
         with patch.object(
             AzureImageAnalyser, "_azure_vision_analysis"
@@ -342,12 +344,17 @@ class TestDetectText(TestAzureImageAnalyserBase):
             AzureImageAnalyser.detect_text(image)
 
         assert len(AzureImageAnalyser._IMAGE_TEXT_CACHE) == 1
-        assert AzureImageAnalyser._IMAGE_TEXT_CACHE[0]["image"] == image
+        assert (
+            AzureImageAnalyser.get_image_hash(image)
+            in AzureImageAnalyser._IMAGE_TEXT_CACHE
+        )
 
     def test_uses_cached_result(self):
-        image = Mock()
+        image = Image.new("RGB", (100, 100))
         cached_text = (("Hello", (10, 20, 30, 40)),)
-        AzureImageAnalyser._IMAGE_TEXT_CACHE = [{"image": image, "text": cached_text}]
+        AzureImageAnalyser._IMAGE_TEXT_CACHE = {
+            AzureImageAnalyser.get_image_hash(image): cached_text
+        }
 
         with patch.object(
             AzureImageAnalyser, "_azure_vision_analysis"
@@ -520,7 +527,10 @@ class TestDetectSignatures(TestSignatureDetectorBase):
             SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
 
         assert len(SignatureDetector._IMAGE_CACHE) == 1
-        assert SignatureDetector._IMAGE_CACHE[0]["signatures"] == detections
+        assert (
+            SignatureDetector._IMAGE_CACHE[SignatureDetector.get_image_hash(image)]
+            == detections
+        )
 
     def test_uses_cached_result(self):
         image = Image.new("RGB", (100, 100))
@@ -531,9 +541,9 @@ class TestDetectSignatures(TestSignatureDetectorBase):
                 "confidence": 0.9,
             },
         ]
-        SignatureDetector._IMAGE_CACHE = [
-            {"image": image, "signatures": cached_detections}
-        ]
+        SignatureDetector._IMAGE_CACHE = {
+            SignatureDetector.get_image_hash(image): cached_detections
+        }
 
         with patch("src.analysis.images.post") as mock_post:
             result = SignatureDetector.detect_signatures(
