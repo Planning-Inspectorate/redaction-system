@@ -472,6 +472,34 @@ def test__llm_text_analyser___analyse_text_chunk(
 @patch.object(
     LLMTextAnalyser,
     "create_api_message",
+    return_value=[{"role": "user", "content": "John Smith lives here"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__content_is_only_audit_logged(
+    mock_num_tokens_consumed, mock_create_api_message
+):
+    mock_chat_completion = create_mock_chat_completion(redaction_strings=["John Smith"])
+    llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+
+    with patch.object(
+        LLMTextAnalyser, "invoke_chain", return_value=mock_chat_completion
+    ):
+        llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+    audit_messages = [c.args[0] for c in LoggingUtil.log_audit.call_args_list]
+    info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
+    assert any("John Smith lives here" in message for message in audit_messages)
+    assert any("John Smith" in message for message in audit_messages)
+    assert not any("John Smith" in message for message in info_messages)
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
     return_value=[{"role": "system", "content": "system prompt"}],
 )
 @patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
