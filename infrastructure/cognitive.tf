@@ -37,7 +37,7 @@ resource "azurerm_cognitive_account" "computer_vision" {
   location                           = local.location
   resource_group_name                = azurerm_resource_group.primary.name
   kind                               = "ComputerVision"
-  sku_name                           = "F0"
+  sku_name                           = var.environment == "prod" ? "S1" : "F0"
   custom_subdomain_name              = "${local.org}-computervision-${local.resource_suffix}"
   public_network_access_enabled      = false
   outbound_network_access_restricted = true
