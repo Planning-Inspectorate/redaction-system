@@ -288,10 +288,13 @@ class PDFUtil:
         :param list[PDFImageMetadata] image_metadata: The PDF image metadata (from _extract_pdf_images)
         :return: A list of images
         """
+        seen_hashes = set()
         seen_images = []
         for metadata in image_metadata:
             image = metadata.image
-            if not any(image == existing_image for existing_image in seen_images):
+            image_hash = ImageAnalyser.get_image_hash(image)
+            if image_hash not in seen_hashes:
+                seen_hashes.add(image_hash)
                 seen_images.append(image)
         return seen_images
 

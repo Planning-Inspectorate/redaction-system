@@ -495,25 +495,27 @@ class PDFProcessor(FileProcessor):
             )
             return file_bytes
 
-        pdf_images_cleaned = [
-            pdf_image.image.convert("RGB") for pdf_image in pdf_images
+        pdf_image_hashes = [
+            AzureImageAnalyser.get_image_hash(pdf_image.image.convert("RGB"))
+            for pdf_image in pdf_images
         ]
 
         redaction_candidates = [
-            (metadata, metadata.source_image.convert("RGB"))
+            (
+                metadata,
+                AzureImageAnalyser.get_image_hash(metadata.source_image.convert("RGB")),
+            )
             for redaction_result in redactions
             for metadata in redaction_result.redaction_results
             if metadata.redaction_boxes  # Only include candidates with bounding boxes to redact
         ]
 
-        for candidate_metadata, candidate_image in redaction_candidates:
+        for candidate_metadata, candidate_hash in redaction_candidates:
             bounding_boxes = candidate_metadata.redaction_boxes
             redaction_names = candidate_metadata.names
 
-            for pdf_image_metadata, pdf_image_cleaned in zip(
-                pdf_images, pdf_images_cleaned
-            ):
-                if candidate_image != pdf_image_cleaned:
+            for pdf_image_metadata, pdf_image_hash in zip(pdf_images, pdf_image_hashes):
+                if candidate_hash != pdf_image_hash:
                     continue
 
                 # Match found for redaction candidate
@@ -602,7 +604,7 @@ class PDFProcessor(FileProcessor):
                 page = next(
                     page
                     for page in pages_without_text
-                    if page.rendered_image.image == image
+                    if page.rendered_image.image is image
                 )
                 if text_rect_entries:
                     page.rendered_image.text_rect_map = tuple(
