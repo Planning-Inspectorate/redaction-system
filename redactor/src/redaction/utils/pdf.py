@@ -1118,9 +1118,14 @@ class PDFUtil:
         decision: dict[str, Any],
         page_offsets: list[tuple[int, int]],
         chunk_pages: dict[int, list[int]],
+        highlight_pages: set[int] | None = None,
     ) -> dict[str, Any]:
         """Add the pages of each occurrence's span, falling back to its chunk's pages
-        when the span was not found verbatim"""
+        when the span was not found verbatim.
+
+        :param highlight_pages: The pages the term is highlighted on, if it was. These
+            are the term's pages, and limit each occurrence to the pages it could be on
+        """
         span_length = len(decision["text"])
         occurrences = []
         for occurrence in decision["occurrences"]:
@@ -1138,9 +1143,15 @@ class PDFUtil:
                 if span_offsets
                 else chunk_pages.get(occurrence["chunk_index"], [])
             )
+            if highlight_pages:
+                pages = [p for p in pages if p in highlight_pages] or sorted(
+                    highlight_pages
+                )
             occurrences.append(occurrence | {"pages": pages})
         return decision | {
-            "pages": sorted({page for o in occurrences for page in o["pages"]}),
+            "pages": sorted(highlight_pages)
+            if highlight_pages
+            else sorted({page for o in occurrences for page in o["pages"]}),
             "occurrences": occurrences,
         }
 

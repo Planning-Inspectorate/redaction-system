@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from io import BytesIO
+from typing import ClassVar
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -1031,3 +1032,65 @@ class TestPageOffsets:
 
     def test_get_pages_in_range__no_pages(self):
         assert PDFUtil.get_pages_in_range([], 0, 5) == []
+
+
+class TestAddPagesToDecision:
+    PAGE_OFFSETS: ClassVar[list[tuple[int, int]]] = [(1, 0), (2, 100), (3, 200)]
+    CHUNK_PAGES: ClassVar[dict[int, list[int]]] = {0: [1, 2], 1: [2, 3]}
+
+    @staticmethod
+    def _decision(*occurrences):
+        return {"text": "her", "occurrences": list(occurrences)}
+
+    def test_pages_from_span_offsets(self):
+        decision = self._decision(
+            {"chunk_index": 0, "span_offsets": [5]},
+            {"chunk_index": 1, "span_offsets": [150, 250]},
+        )
+
+        result = PDFUtil.add_pages_to_decision(
+            decision, self.PAGE_OFFSETS, self.CHUNK_PAGES
+        )
+
+        assert [o["pages"] for o in result["occurrences"]] == [[1], [2, 3]]
+        assert result["pages"] == [1, 2, 3]
+
+    def test_falls_back_to_chunk_pages_without_span_offsets(self):
+        decision = self._decision({"chunk_index": 1, "span_offsets": []})
+
+        result = PDFUtil.add_pages_to_decision(
+            decision, self.PAGE_OFFSETS, self.CHUNK_PAGES
+        )
+
+        assert result["occurrences"][0]["pages"] == [2, 3]
+
+    def test_highlight_pages_are_the_term_pages(self):
+        """
+        - Given a term highlighted only on page 2, with occurrences whose positions are
+          on pages 1, 2 and 3, or unknown
+        - When I add the pages to the decision
+        - Then the term is on page 2, and each occurrence is limited to that page
+        """
+        decision = self._decision(
+            {"chunk_index": 0, "span_offsets": [5, 150]},
+            {"chunk_index": 1, "span_offsets": [250]},
+            {"chunk_index": 1, "span_offsets": []},
+        )
+
+        result = PDFUtil.add_pages_to_decision(
+            decision, self.PAGE_OFFSETS, self.CHUNK_PAGES, highlight_pages={2}
+        )
+
+        assert result["pages"] == [2]
+        # Occurrences with no candidate page that is highlighted use the highlights
+        assert [o["pages"] for o in result["occurrences"]] == [[2], [2], [2]]
+
+    def test_highlight_pages_include_pages_without_a_known_occurrence(self):
+        decision = self._decision({"chunk_index": 0, "span_offsets": [5]})
+
+        result = PDFUtil.add_pages_to_decision(
+            decision, self.PAGE_OFFSETS, self.CHUNK_PAGES, highlight_pages={1, 3}
+        )
+
+        assert result["pages"] == [1, 3]
+        assert result["occurrences"][0]["pages"] == [1]

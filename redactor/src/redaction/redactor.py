@@ -222,10 +222,12 @@ class LLMTextRedactor(TextRedactor):
         chunk_ranges: list[tuple[int, int] | None],
     ) -> tuple[dict, ...]:
         """Add the start offsets in the analysed text of each occurrence's span within
-        its chunk, so the span can be traced without storing the chunk"""
+        its chunk, so the span can be traced without storing the chunk. Only whole
+        words match, so a span such as 'her' is not found within 'another'"""
         located = []
         for decision in decisions:
             span = decision["text"]
+            pattern = re.compile(rf"(?<!\w){re.escape(span)}(?!\w)") if span else None
             occurrences = []
             for occurrence in decision["occurrences"]:
                 chunk_index = occurrence["chunk_index"]
@@ -233,11 +235,9 @@ class LLMTextRedactor(TextRedactor):
                 span_offsets = (
                     [
                         chunk_range[0] + match.start()
-                        for match in re.finditer(
-                            re.escape(span), text_chunks[chunk_index]
-                        )
+                        for match in pattern.finditer(text_chunks[chunk_index])
                     ]
-                    if chunk_range and span
+                    if chunk_range and pattern
                     else []
                 )
                 occurrences.append(occurrence | {"span_offsets": span_offsets})

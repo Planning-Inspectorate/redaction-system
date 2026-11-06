@@ -243,6 +243,20 @@ def _occurrence(chunk_index, **kwargs):
     return {"chunk_index": chunk_index, "chunk_id": f"id{chunk_index}", **kwargs}
 
 
+def test__llm_text_redactor___add_span_offsets__whole_words_only():
+    """
+    - Given a span that is also part of other words in a chunk
+    - When I add the span offsets
+    - Then only whole-word matches are found, offset by the chunk's start
+    """
+    chunk = "another her, there her."
+    decisions = ({"text": "her", "occurrences": [{"chunk_index": 0}]},)
+
+    [located] = LLMTextRedactor._add_span_offsets(decisions, [chunk], [(10, 32)])
+
+    assert located["occurrences"][0]["span_offsets"] == [18, 29]
+
+
 @patch.object(LLMTextRedactor, "__init__", return_value=None)
 def test__llm_text_redactor___analyse_text__include_rationale_adds_offsets(
     mock_llm_text_redactor_init,

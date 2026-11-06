@@ -887,6 +887,46 @@ class TestGetRedactionRationale:
                 assert occurrence["pages"]
                 assert set(occurrence["pages"]) <= set(redaction["pages"])
 
+    def test_redaction_pages_match_the_pages_highlighted_in_the_pdf(self):
+        """
+        - Given pages where words such as 'her' and 'other' appear inside longer words
+          like 'another' and 'there' as well as on their own
+        - When I redact the PDF and get the redaction rationale
+        - Then each applied redaction is reported on exactly the pages it is
+          highlighted on in the PDF, and each occurrence on one of those pages
+        """
+        pages = (
+            (
+                "Joan Brown told another neighbour, who lives there, about the plans "
+                "for the extension at the rear of the house on Mill Lane."
+            ),
+            (
+                "Mary Jones said her garden would lose light, and that the other "
+                "houses were not affected. She asked Joan Brown to write to the council."
+            ),
+        )
+        config = create_rationale_config(chunk_size=40, chunk_overlap=5)
+        processor = PDFProcessor()
+        redacted = processor.redact(
+            make_pdf_with_pages(*pages), {"redaction_rules": [config]}
+        )
+        [rationale] = processor.get_redaction_rationale()
+        highlighted = {}
+        for page in PDFProcessor.get_proposed_redactions(redacted):
+            for annotation in page["annotations"]:
+                highlighted.setdefault(annotation["proposedRedaction"], set()).add(
+                    page["pageNumber"]
+                )
+
+        applied = [r for r in rationale["redactions"] if r["applied"]]
+        assert applied
+        for redaction in applied:
+            term_pages = highlighted[" ".join(redaction["text"].split("\n"))]
+            assert set(redaction["pages"]) == term_pages, redaction["text"]
+            for occurrence in redaction["occurrences"]:
+                assert occurrence["pages"]
+                assert set(occurrence["pages"]) <= term_pages
+
     def test_redactions_are_sorted_by_first_page(self):
         _, rationale = self.redact_pages(chunk_size=60, chunk_overlap=10)
 

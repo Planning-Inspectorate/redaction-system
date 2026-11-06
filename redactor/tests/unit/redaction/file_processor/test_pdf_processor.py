@@ -1359,6 +1359,52 @@ class TestGetRedactionRationale:
         ]
         assert "applied" not in rationale["exclusions"][0]
 
+    def test_redaction_pages_are_the_pages_it_is_highlighted_on(self):
+        """
+        - Given a term that is part of another word on page 1, and a whole word on page 2
+        - When the provisional redactions are applied, and the term's candidate
+          positions include the one inside the other word
+        - Then the rationale reports the term, and its occurrence, only on the page
+          it is highlighted on, and a term that was not highlighted keeps the pages
+          its positions are on
+        """
+        file_bytes = _make_pdf_with_pages(
+            "Please ask another neighbour.", "She said her name is Joan."
+        )
+        processor = PDFProcessor()
+        processor._apply_provisional_text_redactions(file_bytes, ["her"])
+        assert processor._highlight_pages == {"her": {2}}
+
+        def decision(text, offsets):
+            return {
+                "text": text,
+                "occurrences": [
+                    {"chunk_index": 0, "span_offsets": offsets, "pages": []}
+                ],
+            }
+
+        result = LLMTextRedactionResult(
+            rule_name="names",
+            run_metrics={},
+            redaction_decisions=(
+                decision("her", [14, 41]),
+                decision("Nobody", [45]),
+            ),
+            chunk_summaries=({"chunk_index": 0, "char_start": 0, "char_end": 56},),
+        )
+        processor._llm_text_results = [result]
+        processor._rule_page_offsets = {"names": [(1, 0), (2, 30)]}
+        processor.run_metrics = {"unapplied_text_redaction_terms": ["Nobody"]}
+
+        [rationale] = processor.get_redaction_rationale()
+
+        pages = {r["text"]: r for r in rationale["redactions"]}
+        assert pages["her"]["pages"] == [2]
+        assert pages["her"]["occurrences"][0]["pages"] == [2]
+        assert pages["her"]["applied"] is True
+        assert pages["Nobody"]["pages"] == [2]
+        assert pages["Nobody"]["applied"] is False
+
     def test_redact_keeps_decisions_for_rationale_only(self):
         """
         - Given a two page PDF and an LLM rule that redacts a name on both pages and a

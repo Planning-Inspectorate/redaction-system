@@ -173,6 +173,8 @@ class PDFProcessor(FileProcessor):
         self.redaction_results: list[RedactionResult] = []
         self._rule_page_offsets: dict[str, list[tuple[int, int]]] = {}
         self._llm_text_results: list[LLMTextRedactionResult] = []
+        # 1-based pages that each term was highlighted on
+        self._highlight_pages: dict[str, set[int]] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -410,6 +412,9 @@ class PDFProcessor(FileProcessor):
         LoggingUtil().log_info(
             f"Found {len(redaction_instances)} total redaction candidates."
         )
+        self._highlight_pages = {}
+        for page_to_redact, _, term in redaction_instances:
+            self._highlight_pages.setdefault(term, set()).add(page_to_redact + 1)
         # Report the redaction terms that were not found
         LoggingUtil().log_info(
             f"Redaction terms not found in document: "
@@ -713,15 +718,19 @@ class PDFProcessor(FileProcessor):
                 )
                 for chunk in result.chunk_summaries
             }
-            redactions = [
-                PDFUtil.add_pages_to_decision(decision, page_offsets, chunk_pages)
-                | {
-                    # Terms are matched in the PDF with line breaks replaced by spaces
-                    "applied": " ".join(decision["text"].split("\n"))
-                    not in unapplied_terms
-                }
-                for decision in result.redaction_decisions
-            ]
+            redactions = []
+            for decision in result.redaction_decisions:
+                # Terms are matched in the PDF with line breaks replaced by spaces
+                term = " ".join(decision["text"].split("\n"))
+                redactions.append(
+                    PDFUtil.add_pages_to_decision(
+                        decision,
+                        page_offsets,
+                        chunk_pages,
+                        self._highlight_pages.get(term),
+                    )
+                    | {"applied": term not in unapplied_terms}
+                )
             exclusions = [
                 PDFUtil.add_pages_to_decision(decision, page_offsets, chunk_pages)
                 for decision in result.excluded_decisions
