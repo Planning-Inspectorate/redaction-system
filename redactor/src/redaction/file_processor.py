@@ -395,7 +395,7 @@ class PDFProcessor(FileProcessor):
             f"Found {len(redaction_instances)} total redaction candidates."
         )
         # Report the redaction terms that were not found
-        LoggingUtil().log_info(
+        LoggingUtil().log_audit(
             f"Redaction terms not found in document: "
             f"{[term for term in text_to_redact if self.terms_found[term] == 0]}"
         )
@@ -404,7 +404,7 @@ class PDFProcessor(FileProcessor):
             # Get the name of the redactor that proposed the redaction for the
             # annotation title by checking self._text_redaction_summary for the term
             redactor_label = self._get_redactor_label(term)
-            LoggingUtil().log_info(
+            LoggingUtil().log_audit(
                 f"Applying provisional redaction with label {redactor_label} for term '{term}' on page {page_to_redact}."
             )
             PDFUtil.add_provisional_redaction(
@@ -451,7 +451,7 @@ class PDFProcessor(FileProcessor):
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:
-            LoggingUtil().log_info(
+            LoggingUtil().log_audit(
                 f"    Examining redaction candidate for term '{term_to_redact}'"
             )
             instances_to_apply = PDFUtil.examine_provisional_text_redaction(
@@ -612,7 +612,7 @@ class PDFProcessor(FileProcessor):
                     page.raw_text = "\n".join(
                         entry.text for entry in page.rendered_image.text_rect_map
                     )
-                    LoggingUtil().log_info(
+                    LoggingUtil().log_audit(
                         f"OCR text extracted from rendered image on page {page.page_number}: "
                         f"'{page.raw_text}'"
                     )
@@ -643,11 +643,11 @@ class PDFProcessor(FileProcessor):
         self.run_metrics["pdf_text_extraction_time"] = timer.elapsed_time
 
         if self.pdf_text:
-            LoggingUtil().log_info(
+            LoggingUtil().log_audit(
                 f"The following text was extracted from the PDF:\n'{self.pdf_text}'"
             )
         if rendered_page_text:
-            LoggingUtil().log_info(
+            LoggingUtil().log_audit(
                 f"The following text was extracted from the rendered page images:\n'{self.rendered_pdf_text}'"
             )
 

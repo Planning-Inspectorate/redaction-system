@@ -8,6 +8,7 @@ import pytest
 from PIL import Image
 
 from src.analysis.images import AzureImageAnalyser
+from src.monitoring import LoggingUtil
 from src.redaction.file_processor import NonEnglishContentException, PDFProcessor
 from src.redaction.utils.pdf import (
     PDFImageMetadata,
@@ -402,6 +403,30 @@ class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
 
         assert result == expected_result
 
+    def test_term_is_only_audit_logged(self):
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content="Hello World",
+            lines=["Hello", "World"],
+            y0=[0, 20],
+            y1=[10, 30],
+            x0=[[0], [0]],
+            x1=[[10], [10]],
+        )
+        term = "Hello"
+
+        with patch.object(
+            PDFUtil, "examine_provisional_text_redaction", return_value=[]
+        ):
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            pdf_processor._examine_provisional_redactions_on_page([term], page_metadata)
+
+        audit_messages = [c.args[0] for c in LoggingUtil.log_audit.call_args_list]
+        info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
+        assert any(term in message for message in audit_messages)
+        assert not any(term in message for message in info_messages)
+
     def test_returns_line_broken_match(self):
         page_metadata = self.create_mock_page_metadata(
             page_number=0,
@@ -770,6 +795,35 @@ class TestExtractPDFTextAndImages(TestExamineApplyRedactionsBase):
         result_images = pdf_processor.pdf_images
         assert len(result_images) == 1
         assert result_images[0] == image_metadata
+
+    def test_extracted_text_is_only_audit_logged(self):
+        text_on_page = "Hello World"
+        file_bytes = _make_pdf_with_text(text_on_page)
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content=text_on_page,
+            lines=[text_on_page],
+            y0=[0],
+            y1=[10],
+            x0=[[0]],
+            x1=[[10]],
+        )
+
+        with (
+            patch.object(
+                PDFUtil,
+                "extract_page_content",
+                return_value=page_metadata,
+            ),
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
+        ):
+            PDFProcessor()._extract_pdf_text_and_images(file_bytes)
+
+        audit_messages = [c.args[0] for c in LoggingUtil.log_audit.call_args_list]
+        info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
+        assert any(text_on_page in message for message in audit_messages)
+        assert not any(text_on_page in message for message in info_messages)
 
 
 class TestRedact:
