@@ -108,6 +108,13 @@ class LoggingUtil(metaclass=Singleton):
         self.raw_logs.append(f"INFO: {msg}\n")
         self.logger.info(msg)
 
+    def log_audit(self, msg: str):
+        """
+        Log a message that may contain personal data. It is kept in the logs saved
+        to blob storage for auditing, but is never sent to App Insights.
+        """
+        self.raw_logs.append(f"AUDIT: {msg}\n")
+
     def log_exception(self, ex: Exception):
         """
         Log an exception

@@ -98,6 +98,24 @@ def test_logging_util__log_info(mock_logger_info):
 
 
 @pytest.mark.nologgerfixt
+@patch.object(Logger, "warning", return_value=None)
+@patch.object(Logger, "exception", return_value=None)
+@patch.object(Logger, "info", return_value=None)
+def test_logging_util__log_audit(mock_info, mock_exception, mock_warning):
+    logging_util_inst = get_new_logging_instance()
+    logging_util_inst.logger = getLogger()
+    mock_info.reset_mock()
+
+    logging_util_inst.log_audit("some_sensitive_message")
+
+    assert "AUDIT: some_sensitive_message\n" in logging_util_inst.raw_logs
+    assert b"some_sensitive_message" in logging_util_inst.get_log_bytes()
+    mock_info.assert_not_called()
+    mock_exception.assert_not_called()
+    mock_warning.assert_not_called()
+
+
+@pytest.mark.nologgerfixt
 @patch.object(Logger, "exception", return_value=None)
 def test_logging_util__log_exception(mock_logger_exception):
     logging_util_inst = get_new_logging_instance()
