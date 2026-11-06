@@ -688,10 +688,30 @@ class PDFProcessor(FileProcessor):
             self.run_metrics["image_analysis_total_time"] += redaction_time
 
         LoggingUtil().log_info(
+            f"The redactor {rule} yielded {n_strings} redaction strings in "
+            f"{redaction_time:.2f}s"
+        )
+        LoggingUtil().log_audit(
             f"The redactor {rule} yielded the following result: "
-            f"{json.dumps(dataclasses.asdict(redaction_result), indent=4, default=str)}"
+            f"{json.dumps(self._result_to_loggable_dict(redaction_result), indent=4, default=str)}"
         )
         self.redaction_results.append(redaction_result)
+
+    @staticmethod
+    def _result_to_loggable_dict(redaction_result: RedactionResult) -> dict[str, Any]:
+        """
+        Convert a redaction result to a dictionary, without copying the source images
+        """
+        if not isinstance(redaction_result, ImageRedactionResult):
+            return dataclasses.asdict(redaction_result)
+        loggable = dataclasses.asdict(
+            dataclasses.replace(redaction_result, redaction_results=())
+        )
+        loggable["redaction_results"] = [
+            dataclasses.asdict(dataclasses.replace(result, source_image=None))
+            for result in redaction_result.redaction_results
+        ]
+        return loggable
 
     def _apply_redaction_rules(self):
         # Generate list of redaction rules from config
