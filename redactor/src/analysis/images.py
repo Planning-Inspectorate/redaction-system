@@ -1,3 +1,4 @@
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import BytesIO
@@ -43,8 +44,21 @@ class ImageAnalyser:
         """Clear cached image analysis results from previous invocations."""
         with cls.CACHE_LOCK:
             for attr in dir(cls):
-                if attr.startswith("_IMAGE_") and isinstance(getattr(cls, attr), list):
+                if attr.startswith("_IMAGE_") and isinstance(
+                    getattr(cls, attr), list | dict
+                ):
                     getattr(cls, attr).clear()
+
+    @staticmethod
+    def get_image_hash(image: Image.Image) -> str:
+        """Content hash of an image, memoised on the image object. Images must not be mutated after hashing."""
+        image_hash = getattr(image, "_content_hash", None)
+        if image_hash is None:
+            digest = hashlib.sha256(f"{image.mode}{image.size}".encode())
+            digest.update(image.tobytes())
+            image_hash = digest.hexdigest()
+            image._content_hash = image_hash
+        return image_hash
 
     @staticmethod
     def _save_image_to_bytes(image: Image.Image) -> bytes:
@@ -161,8 +175,8 @@ class ImageAnalyser:
 
 
 class AzureImageAnalyser(ImageAnalyser):
-    _IMAGE_TEXT_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
-    _IMAGE_FACE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
+    _IMAGE_TEXT_CACHE: ClassVar[dict[str, tuple]] = {}
+    _IMAGE_FACE_CACHE: ClassVar[dict[str, tuple]] = {}
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
 
     @classmethod
@@ -207,16 +221,12 @@ class AzureImageAnalyser(ImageAnalyser):
         :returns: Bounding boxes of faces as a 4-tuple of the form (top left corner x, top left corner y, bottom right corner x, bottom right corner y), for boxes
                   with confidence above the threshold
         """
-        try:
-            # Check cache
-            with cls.CACHE_LOCK:
-                faces_detected = next(
-                    item["faces"]
-                    for item in cls._IMAGE_FACE_CACHE
-                    if item["image"] == image
-                )
+        image_hash = cls.get_image_hash(image)
+        with cls.CACHE_LOCK:
+            faces_detected = cls._IMAGE_FACE_CACHE.get(image_hash)
+        if faces_detected is not None:
             LoggingUtil().log_info("Using cached face detection result.")
-        except StopIteration:
+        else:
             result = cls._azure_vision_analysis(image, [VisualFeatures.PEOPLE])
             if result is None:
                 return ()
@@ -236,7 +246,7 @@ class AzureImageAnalyser(ImageAnalyser):
 
             # Cache result
             with cls.CACHE_LOCK:
-                cls._IMAGE_FACE_CACHE.append({"image": image, "faces": faces_detected})
+                cls._IMAGE_FACE_CACHE[image_hash] = faces_detected
 
         return tuple(
             person["box"]
@@ -321,18 +331,12 @@ class AzureImageAnalyser(ImageAnalyser):
         :return Tuple[Tuple[str, Tuple[float, float, float, float]], ...]: The text content
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
-        try:
-            # Check cache
-            with cls.CACHE_LOCK:
-                text_detected = next(
-                    item["text"]
-                    for item in cls._IMAGE_TEXT_CACHE
-                    if item["image"] == image
-                )
+        image_hash = cls.get_image_hash(image)
+        with cls.CACHE_LOCK:
+            text_detected = cls._IMAGE_TEXT_CACHE.get(image_hash)
+        if text_detected is not None:
             LoggingUtil().log_info("Using cached text detection result.")
             return text_detected
-        except StopIteration:
-            pass
 
         result = cls._azure_vision_analysis(image, [VisualFeatures.READ])
         if result is None:
@@ -355,13 +359,13 @@ class AzureImageAnalyser(ImageAnalyser):
 
         # Cache result
         with cls.CACHE_LOCK:
-            cls._IMAGE_TEXT_CACHE.append({"image": image, "text": text_detected})
+            cls._IMAGE_TEXT_CACHE[image_hash] = text_detected
 
         return text_detected
 
 
 class SignatureDetector(ImageAnalyser):
-    _IMAGE_CACHE: ClassVar[list[dict[Image.Image, tuple]]] = []
+    _IMAGE_CACHE: ClassVar[dict[str, list]] = {}
     _ENDPOINT: ClassVar[str | None] = None
 
     @classmethod
@@ -424,21 +428,16 @@ class SignatureDetector(ImageAnalyser):
             )
             return ()
 
-        try:
-            with cls.CACHE_LOCK:
-                cached = next(
-                    item["signatures"]
-                    for item in cls._IMAGE_CACHE
-                    if item["image"] == image
-                )
+        image_hash = cls.get_image_hash(image)
+        with cls.CACHE_LOCK:
+            cached = cls._IMAGE_CACHE.get(image_hash)
+        if cached is not None:
             LoggingUtil().log_info("Using cached signature detection result.")
             return tuple(
                 cls._get_bounding_box(d)
                 for d in cached
                 if d["score"] >= confidence_threshold
             )
-        except StopIteration:
-            pass
 
         image_bytes = cls._save_image_to_bytes(image)
 
@@ -456,7 +455,7 @@ class SignatureDetector(ImageAnalyser):
         detections = result.get("detections", [])
 
         with cls.CACHE_LOCK:
-            cls._IMAGE_CACHE.append({"image": image, "signatures": detections})
+            cls._IMAGE_CACHE[image_hash] = detections
 
         return tuple(
             cls._get_bounding_box(d)
