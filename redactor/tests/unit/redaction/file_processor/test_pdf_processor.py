@@ -482,6 +482,48 @@ class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
         mock_examine_provisional_redactions_on_page.assert_not_called()
         mock_add_provisional_redaction.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("page_text", "term"),
+        [
+            ("Thanks to Monica Cowan for that", "Monica Cowan"),
+            ("Thanks to monica cowan for that", "Monica Cowan"),
+            ("Thanks to MONICA COWAN for that", "Monica Cowan"),
+            ("Thanks to Monica Cowan for that", "MONICA COWAN"),
+            ("Thanks to somethingmonica cowan for that", "Monica Cowan"),
+            ("Thanks to somethingMonica Cowan for that", "MONICA COWAN"),
+            ("Thanks to monica for that", "Monica"),
+            ("It was O'Brien who spoke", "o\u2019brien"),
+        ],
+    )
+    def test_highlights_regardless_of_case_and_punctuation_style(self, page_text, term):
+        """
+        - Given a term whose case or punctuation style differs from the document's
+        - When I apply the provisional redactions
+        - Then the term is still highlighted
+        """
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {}
+
+        result = pdf_processor._apply_provisional_text_redactions(
+            _make_pdf_with_text(page_text), [term]
+        )
+
+        annotations = [a for page in pymupdf.open(stream=result) for a in page.annots()]
+        assert len(annotations) == 1
+        assert pdf_processor.terms_found == {term: 1}
+
+    def test_does_not_highlight_a_single_word_inside_a_longer_word(self):
+        """Ignoring case must not loosen the matching of a word within another word"""
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {}
+
+        result = pdf_processor._apply_provisional_text_redactions(
+            _make_pdf_with_text("Thanks to monicasmith for that"), ["Monica"]
+        )
+
+        assert not [a for page in pymupdf.open(stream=result) for a in page.annots()]
+        assert pdf_processor.terms_found == {"Monica": 0}
+
 
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
     def test_includes_redaction_strings_in_text_summary(self):
