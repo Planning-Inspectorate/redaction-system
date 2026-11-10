@@ -281,6 +281,18 @@ def test__llm_text_analyser____init__():
     assert client_kwargs["max_retries"] == 0
 
 
+def test__llm_text_analyser____init__shares_client_between_analysers():
+    with (
+        patch(f"{MODULE}.get_bearer_token_provider"),
+        patch(f"{MODULE}.AzureOpenAI") as mock_azure_openai,
+    ):
+        first = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+        second = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+
+    mock_azure_openai.assert_called_once()
+    assert second.llm is first.llm
+
+
 def test__llm_text_analyser____init__shares_limits_with_matching_analysers():
     with patch(f"{MODULE}.get_bearer_token_provider"), patch(f"{MODULE}.AzureOpenAI"):
         first = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))

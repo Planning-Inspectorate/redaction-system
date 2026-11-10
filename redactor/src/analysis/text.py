@@ -164,28 +164,30 @@ class LLMTextAnalyser:
     ] = {}
     _SHARED_LIMITS_LOCK: ClassVar[Lock] = Lock()
     _CLIENT: ClassVar[AzureOpenAI | None] = None
+    _CLIENT_LOCK: ClassVar[Lock] = Lock()
 
     @classmethod
     def _get_client(cls) -> AzureOpenAI:
-        """Get the Azure OpenAI client."""
-        if cls._CLIENT is None:
-            azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-            credential = ChainedTokenCredential(
-                ManagedIdentityCredential(), AzureCliCredential()
-            )
-            token_provider = get_bearer_token_provider(
-                credential, "https://cognitiveservices.azure.com/.default"
-            )
-            LoggingUtil().log_info(
-                f"Establishing connection to the LLM at {azure_endpoint}"
-            )
-            cls._CLIENT = AzureOpenAI(
-                azure_endpoint=azure_endpoint,
-                api_version="2024-12-01-preview",
-                azure_ad_token_provider=token_provider,
-                # _analyse_text_chunk retries, so SDK retries would multiply attempts
-                max_retries=0,
-            )
+        """Get the Azure OpenAI client, which analysers share to reuse its connections."""
+        with cls._CLIENT_LOCK:
+            if cls._CLIENT is None:
+                azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
+                credential = ChainedTokenCredential(
+                    ManagedIdentityCredential(), AzureCliCredential()
+                )
+                token_provider = get_bearer_token_provider(
+                    credential, "https://cognitiveservices.azure.com/.default"
+                )
+                LoggingUtil().log_info(
+                    f"Establishing connection to the LLM at {azure_endpoint}"
+                )
+                cls._CLIENT = AzureOpenAI(
+                    azure_endpoint=azure_endpoint,
+                    api_version="2024-12-01-preview",
+                    azure_ad_token_provider=token_provider,
+                    # _analyse_text_chunk retries, so SDK retries would multiply attempts
+                    max_retries=0,
+                )
         return cls._CLIENT
 
     def __init__(
