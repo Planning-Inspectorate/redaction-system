@@ -15,3 +15,10 @@ storage_containers = [
   "redactiondata",
   "analytics"
 ]
+
+worker_caps = {
+  llm       = 32
+  vision    = 32
+  signature = 4
+}
+vision_requests_per_minute = 1000 # Vision S1, below the tier limit of 20 per second = 1200 per minute
