@@ -437,6 +437,41 @@ class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
 
         assert result == expected_result
 
+    def test_returns_match_spanning_page_break(self):
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content="Hello",
+            lines=["Hello"],
+            y0=[0],
+            y1=[10],
+            x0=[[0]],
+            x1=[[10]],
+        )
+        next_page_metadata = self.create_mock_page_metadata(
+            page_number=1,
+            text_content="World",
+            lines=["World"],
+            y0=[0],
+            y1=[10],
+            x0=[[0]],
+            x1=[[10]],
+        )
+        term = "Hello World"
+        expected_result = [(0, pymupdf.Rect(0, 0, 10, 10), term)]
+        with patch.object(
+            PDFUtil,
+            "examine_provisional_text_redaction",
+            return_value=expected_result,
+        ) as mock_examine:
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            result = pdf_processor._examine_provisional_redactions_on_page(
+                [term], page_metadata, next_page_metadata
+            )
+
+        mock_examine.assert_called_once_with(term, page_metadata, next_page_metadata)
+        assert result == expected_result
+
 
 class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
     def test_skips_no_text_on_page(self):
