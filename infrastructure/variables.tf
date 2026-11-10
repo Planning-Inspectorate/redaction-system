@@ -100,7 +100,13 @@ variable "worker_caps" {
 }
 
 variable "vision_requests_per_minute" {
-  description = "The max Azure Vision requests per minute, or 0 for no limit. Keep below the Vision tier's limit"
+  description = "The max Azure Vision requests per minute for each processor function app instance, or 0 for no limit. Keep below the Vision tier's limit"
   type        = number
   default     = 15 # Vision F0 allows 20 per minute
+}
+
+variable "llm_quota_allocation" {
+  description = "The share (0 to 1) of the OpenAI deployment's quota that each processor function app instance may use, split between its worker processes. The default leaves room for the other users of a shared deployment"
+  type        = number
+  default     = 0.5
 }
