@@ -22,3 +22,4 @@ worker_caps = {
   signature = 4
 }
 vision_requests_per_minute = 1000 # Vision S1, below the tier limit of 20 per second = 1200 per minute
+llm_quota_allocation       = 0.9  # Nothing else uses the prod deployment, so keep 10% headroom
