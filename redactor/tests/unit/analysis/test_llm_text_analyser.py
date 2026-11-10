@@ -22,6 +22,13 @@ from src.types import (
 MODULE = "src.analysis.text"
 
 
+@pytest.fixture(autouse=True)
+def _clear_client():
+    LLMTextAnalyser._CLIENT = None
+    yield
+    LLMTextAnalyser._CLIENT = None
+
+
 class MockLLMChatCompletion:
     def __init__(self, choices, usage):
         self.choices = choices

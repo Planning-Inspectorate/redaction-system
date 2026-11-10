@@ -123,6 +123,29 @@ class LLMTextAnalyser:
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
+    _CLIENT: ClassVar[AzureOpenAI | None] = None
+
+    @classmethod
+    def _get_client(cls) -> AzureOpenAI:
+        """Get the Azure OpenAI client."""
+        if cls._CLIENT is None:
+            azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
+            credential = ChainedTokenCredential(
+                ManagedIdentityCredential(), AzureCliCredential()
+            )
+            token_provider = get_bearer_token_provider(
+                credential, "https://cognitiveservices.azure.com/.default"
+            )
+            LoggingUtil().log_info(
+                f"Establishing connection to the LLM at {azure_endpoint}"
+            )
+            cls._CLIENT = AzureOpenAI(
+                azure_endpoint=azure_endpoint,
+                api_version="2024-12-01-preview",
+                azure_ad_token_provider=token_provider,
+            )
+        return cls._CLIENT
+
     def __init__(
         self,
         config: LLMTextAnalyserConfig,
@@ -131,21 +154,7 @@ class LLMTextAnalyser:
         self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
-        self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-        credential = ChainedTokenCredential(
-            ManagedIdentityCredential(), AzureCliCredential()
-        )
-        token_provider = get_bearer_token_provider(
-            credential, "https://cognitiveservices.azure.com/.default"
-        )
-        LoggingUtil().log_info(
-            f"Establishing connection to the LLM at {self.azure_endpoint}"
-        )
-        self.llm = AzureOpenAI(
-            azure_endpoint=self.azure_endpoint,
-            api_version="2024-12-01-preview",
-            azure_ad_token_provider=token_provider,
-        )
+        self.llm = self._get_client()
 
         # Validates and sets input_token_cost, completion_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
