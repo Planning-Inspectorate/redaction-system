@@ -452,7 +452,7 @@ class PDFProcessor(FileProcessor):
         page_text = (
             _normalise_for_search(
                 page_metadata.raw_text
-                + (next_page_metadata.raw_text if next_page_metadata else "")
+                + ("\n" + next_page_metadata.raw_text if next_page_metadata else "")
             )
             .replace("-\n", "")  # Handle hyphenated line breaks
             .replace("\n", " ")  # Handle regular line breaks
