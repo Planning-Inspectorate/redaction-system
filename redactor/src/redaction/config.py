@@ -5,6 +5,14 @@ from pydantic import BaseModel, Field, model_validator
 from ..analysis.text import LLMTextAnalyserConfig
 from ..types import PydanticImage
 
+CLAUSE_SECTIONS = {
+    "redaction_terms": "T",
+    "must_redact": "M",
+    "do_not_redact": "D",
+    "examples": "E",
+}
+"""Config fields whose list items are cited by clause ID, with each ID prefix"""
+
 
 class InvalidRedactionConfigException(Exception):  # pragma: no cover
     pass
@@ -23,18 +31,21 @@ class TextRedactionConfig(RedactionConfig):
 
 
 class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
-    system_prompt: str
-    """The system prompt for the LLM"""
+    role: str
+    """A short statement of the assistant's role and the domain context for the
+    redaction task"""
+    task: str
+    """The specific instruction describing what counts as personal data here and how
+    to apply it consistently"""
     redaction_terms: list[str]
     """A list of redaction rule strings to apply"""
-    constraints: list[str] = None
-    """A list of constraint strings to apply"""
-    output_format: str = (
-        "<OutputFormat> You respond in JSON format. You return the "
-        "successfully extracted terms from the text in JSON list named "
-        '"terms". List them as they appear in the text. '
-        "</OutputFormat>"
-    )
+    must_redact: list[str] | None = None
+    """A list of additional rules clarifying what must be redacted"""
+    do_not_redact: list[str] | None = None
+    """A list of exceptions/exclusions describing what must never be redacted"""
+    examples: list[str] | None = None
+    """A list of worked examples illustrating correct redaction decisions for
+    ambiguous cases"""
     chunk_size: int = Field(6000, gt=0)
     """Maximum number of tokens in each chunk of text sent to the LLM"""
     chunk_overlap: int = Field(600, ge=0)
@@ -58,20 +69,54 @@ class LLMTextRedactionConfigBase(RedactionConfig, LLMTextAnalyserConfig):
 
 class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
     def create_system_prompt(self) -> str:
+        def clause_ids(field: str) -> str | None:
+            # Detailed responses cite these IDs to say which clause drove a decision
+            return CLAUSE_SECTIONS[field] if self.include_rationale else None
+
         system_prompt_list: list[str] = []
-        # Add the system role and redaction_terms to redact
-        system_prompt_list.append(xml_format(self.system_prompt, "SystemRole"))
+        # Add the role, task and redaction_terms to redact
+        system_prompt_list.append(xml_format(self.role, "Role"))
+        system_prompt_list.append(xml_format(self.task, "Task"))
         system_prompt_list.append(
-            xml_format(self.redaction_terms, "Terms", as_list=True)
+            xml_format(
+                self.redaction_terms,
+                "Terms",
+                as_list=True,
+                id_prefix=clause_ids("redaction_terms"),
+            )
         )
 
-        # Add the output format instructions
-        system_prompt_list.append(self.output_format)
-
-        # Add any constraints to the System prompt
-        if self.constraints:
+        # Add any rules clarifying what must be redacted
+        if self.must_redact:
             system_prompt_list.append(
-                xml_format(self.constraints, "Constraints", as_list=True)
+                xml_format(
+                    self.must_redact,
+                    "MustRedact",
+                    as_list=True,
+                    id_prefix=clause_ids("must_redact"),
+                )
+            )
+
+        # Add any exceptions/exclusions describing what must never be redacted
+        if self.do_not_redact:
+            system_prompt_list.append(
+                xml_format(
+                    self.do_not_redact,
+                    "DoNotRedact",
+                    as_list=True,
+                    id_prefix=clause_ids("do_not_redact"),
+                )
+            )
+
+        # Add any worked examples
+        if self.examples:
+            system_prompt_list.append(
+                xml_format(
+                    self.examples,
+                    "Examples",
+                    as_list=True,
+                    id_prefix=clause_ids("examples"),
+                )
             )
 
         # Add the defined redaction rules to the System prompt
@@ -83,11 +128,34 @@ class LLMTextRedactionConfig(TextRedactionConfig, LLMTextRedactionConfigBase):
         )
         return system_prompt_template.format()
 
+    def get_clause_legend(self) -> dict[str, str]:
+        """Map each clause ID that detailed responses cite to the clause's wording"""
+        return {
+            f"{prefix}{i}": strip_list_marker(item)
+            for field, prefix in CLAUSE_SECTIONS.items()
+            for i, item in enumerate(getattr(self, field) or [], start=1)
+        }
 
-def xml_format(input: str | list, format_string: str, as_list: bool = False) -> str:
-    """Wrap the input string in XML tags of the given format string"""
+
+def strip_list_marker(item: str) -> str:
+    return item[1:].lstrip() if item.startswith("-") else item
+
+
+def xml_format(
+    input: str | list,
+    format_string: str,
+    as_list: bool = False,
+    id_prefix: str | None = None,
+) -> str:
+    """Wrap the input string in XML tags of the given format string. List items are
+    labelled [<id_prefix>1], [<id_prefix>2], ... when id_prefix is given"""
     if isinstance(input, list):
-        if as_list:
+        if as_list and id_prefix:
+            joined_input = "\n".join(
+                f"- [{id_prefix}{i}] {strip_list_marker(x)}"
+                for i, x in enumerate(input, start=1)
+            )
+        elif as_list:
             joined_input = "\n".join(
                 ["- " + x if not x.startswith("-") else x for x in input]
             )
