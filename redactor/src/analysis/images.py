@@ -20,7 +20,7 @@ from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
 from ..monitoring import LoggingUtil, log_to_appins
-from .utils import get_max_workers
+from .utils import RateLimiter, get_max_workers
 
 load_dotenv(verbose=True)
 
@@ -35,6 +35,7 @@ def handle_last_retry_error(retry_state):
 
 class ImageAnalyser:
     CACHE_LOCK = Lock()
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = None
 
     class EndpointNotSetError(EnvironmentError):
         pass
@@ -121,7 +122,7 @@ class ImageAnalyser:
         :returns: A list of tuples containing the image and the detected objects
         """
         responses: list[tuple[Image.Image, tuple[str, tuple]]] = []
-        max_workers = get_max_workers()
+        max_workers = get_max_workers(env_var=cls.MAX_WORKERS_ENV_VAR)
         LoggingUtil().log_info(
             f"Detecting {object_to_detect}s in {len(images)} images using up to "
             f"{max_workers} workers..."
@@ -175,9 +176,24 @@ class ImageAnalyser:
 
 
 class AzureImageAnalyser(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "VISION_MAX_WORKERS"
     _IMAGE_TEXT_CACHE: ClassVar[dict[str, tuple]] = {}
     _IMAGE_FACE_CACHE: ClassVar[dict[str, tuple]] = {}
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
+    _RATE_LIMITER: ClassVar[RateLimiter | None] = None
+    _RATE_LIMITER_LOCK: ClassVar[Lock] = Lock()
+
+    @classmethod
+    def _wait_for_rate_limit(cls) -> None:
+        """Pace requests to VISION_REQUESTS_PER_MINUTE; unset or 0 means no limit."""
+        requests_per_minute = int(os.environ.get("VISION_REQUESTS_PER_MINUTE") or 0)
+        if requests_per_minute < 1:
+            return
+        with cls._RATE_LIMITER_LOCK:
+            if cls._RATE_LIMITER is None:
+                cls._RATE_LIMITER = RateLimiter(requests_per_minute)
+            rate_limiter = cls._RATE_LIMITER
+        rate_limiter.wait()
 
     @classmethod
     def _get_client(cls) -> ImageAnalysisClient:
@@ -294,6 +310,7 @@ class AzureImageAnalyser(ImageAnalyser):
             f"Analysing image using Azure Computer Vision API for features: {visual_features}..."
         )
         try:
+            cls._wait_for_rate_limit()
             result = cls._get_client().analyze(
                 image_bytes,
                 visual_features,
@@ -365,6 +382,7 @@ class AzureImageAnalyser(ImageAnalyser):
 
 
 class SignatureDetector(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "SIGNATURE_MAX_WORKERS"
     _IMAGE_CACHE: ClassVar[dict[str, list]] = {}
     _ENDPOINT: ClassVar[str | None] = None
 
