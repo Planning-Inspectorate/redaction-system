@@ -462,6 +462,41 @@ class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
 
         assert result == expected_result
 
+    def test_returns_match_spanning_page_break(self):
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content="Hello",
+            lines=["Hello"],
+            y0=[0],
+            y1=[10],
+            x0=[[0]],
+            x1=[[10]],
+        )
+        next_page_metadata = self.create_mock_page_metadata(
+            page_number=1,
+            text_content="World",
+            lines=["World"],
+            y0=[0],
+            y1=[10],
+            x0=[[0]],
+            x1=[[10]],
+        )
+        term = "Hello World"
+        expected_result = [(0, pymupdf.Rect(0, 0, 10, 10), term)]
+        with patch.object(
+            PDFUtil,
+            "examine_provisional_text_redaction",
+            return_value=expected_result,
+        ) as mock_examine:
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            result = pdf_processor._examine_provisional_redactions_on_page(
+                [term], page_metadata, next_page_metadata
+            )
+
+        mock_examine.assert_called_once_with(term, page_metadata, next_page_metadata)
+        assert result == expected_result
+
 
 class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
     def test_skips_no_text_on_page(self):
@@ -506,6 +541,48 @@ class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
 
         mock_examine_provisional_redactions_on_page.assert_not_called()
         mock_add_provisional_redaction.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("page_text", "term"),
+        [
+            ("Thanks to Monica Cowan for that", "Monica Cowan"),
+            ("Thanks to monica cowan for that", "Monica Cowan"),
+            ("Thanks to MONICA COWAN for that", "Monica Cowan"),
+            ("Thanks to Monica Cowan for that", "MONICA COWAN"),
+            ("Thanks to somethingmonica cowan for that", "Monica Cowan"),
+            ("Thanks to somethingMonica Cowan for that", "MONICA COWAN"),
+            ("Thanks to monica for that", "Monica"),
+            ("It was O'Brien who spoke", "o\u2019brien"),
+        ],
+    )
+    def test_highlights_regardless_of_case_and_punctuation_style(self, page_text, term):
+        """
+        - Given a term whose case or punctuation style differs from the document's
+        - When I apply the provisional redactions
+        - Then the term is still highlighted
+        """
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {}
+
+        result = pdf_processor._apply_provisional_text_redactions(
+            _make_pdf_with_text(page_text), [term]
+        )
+
+        annotations = [a for page in pymupdf.open(stream=result) for a in page.annots()]
+        assert len(annotations) == 1
+        assert pdf_processor.terms_found == {term: 1}
+
+    def test_does_not_highlight_a_single_word_inside_a_longer_word(self):
+        """Ignoring case must not loosen the matching of a word within another word"""
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {}
+
+        result = pdf_processor._apply_provisional_text_redactions(
+            _make_pdf_with_text("Thanks to monicasmith for that"), ["Monica"]
+        )
+
+        assert not [a for page in pymupdf.open(stream=result) for a in page.annots()]
+        assert pdf_processor.terms_found == {"Monica": 0}
 
 
 class TestApplyRule:
