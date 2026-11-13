@@ -20,6 +20,7 @@ from src.redaction.utils.text import get_normalised_words, is_english_text
 from src.types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
+    LLMTextRedactionResult,
     TextRedactionResult,
 )
 from tests.utils import (
@@ -507,6 +508,46 @@ class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
         mock_examine_provisional_redactions_on_page.assert_not_called()
         mock_add_provisional_redaction.assert_not_called()
 
+    @pytest.mark.parametrize(
+        ("page_text", "term", "highlighted_text"),
+        [
+            (
+                "Contact Ada.Merrin@post.invalid today",
+                "Ada.Merrin",
+                "Ada.Merrin",
+            ),
+            (
+                "Thanks somethingMonica Cowan for that",
+                "Monica Cowan",
+                "Monica Cowan",
+            ),
+        ],
+    )
+    def test_highlights_only_the_part_of_a_word_that_matches(
+        self, page_text, term, highlighted_text
+    ):
+        """
+        - Given a term that is the name part of an email address, or is fused to the
+          word before it by a missing space
+        - When I apply the provisional redactions
+        - Then only that part of the word is highlighted
+        """
+        file_bytes = _make_pdf_with_text(page_text)
+        pdf_processor = PDFProcessor()
+        pdf_processor.terms_found = {term: 0}
+
+        result = pdf_processor._apply_provisional_text_redactions(file_bytes, [term])
+
+        page = pymupdf.open(stream=result)[0]
+        [annotation] = list(page.annots())
+        vertices = annotation.vertices
+        highlighted = pymupdf.Rect(*vertices[0], *vertices[-1])
+        expected = page.search_for(highlighted_text)[0]
+        assert (highlighted.x0, highlighted.x1) == pytest.approx(
+            (expected.x0, expected.x1), abs=0.5
+        )
+        assert annotation.info["content"] == term
+
 
 class TestApplyRule:
     @staticmethod
@@ -572,6 +613,22 @@ class TestApplyRule:
         assert not any("John Smith" in message for message in info_messages)
         assert processor.redaction_results == [result]
 
+    def test_no_decisions_leaves_summary_unchanged(self):
+        result = LLMTextRedactionResult(
+            rule_name="names", run_metrics={}, redaction_strings=("Joan Brown",)
+        )
+        processor = PDFProcessor()
+        processor.run_metrics = {"text_analysis_total_time": 0.0}
+        processor._text_redaction_summary = {}
+        processor.redaction_results = []
+
+        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+
+        assert processor._text_redaction_summary["names"] == {
+            "redaction_strings": ("Joan Brown",),
+            "n_proposed": 1,
+            "n_applied": 1,
+        }
 
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
     def test_includes_redaction_strings_in_text_summary(self):

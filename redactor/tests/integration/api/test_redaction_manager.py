@@ -16,7 +16,14 @@ from dotenv import load_dotenv
 
 from src.api.redaction_manager import RedactionManager
 from src.monitoring import LoggingUtil
-from tests.utils import PDF_DIR, PROPOSED_PDF, SOURCE_PDF, ServiceBusReceiver, TestCase
+from tests.utils import (
+    PDF_DIR,
+    PROPOSED_PDF,
+    RR_PDF,
+    SOURCE_PDF,
+    ServiceBusReceiver,
+    TestCase,
+)
 
 load_dotenv(verbose=True)
 ENV = os.environ.get("ENV")
@@ -306,7 +313,7 @@ class TestRedactionManager(TestCase):
 
         # Run test
         guid = f"{RUN_ID}-trmtr"
-        params, response = self._invoke(guid, "try_redact", source_file=SOURCE_PDF)
+        params, response = self._invoke(guid, "try_redact", source_file=RR_PDF)
 
         self.validate_process_status(response)
         blob_bytes = self.validate_blob_exists_and_download(params.write_file_name)
@@ -397,7 +404,7 @@ class TestRedactionManager(TestCase):
 
         # Run first stage of redaction
         _, response = self._invoke(
-            redact_guid, blob_file_name, source_file=SOURCE_PDF, stage="ANALYSE"
+            redact_guid, blob_file_name, source_file=RR_PDF, stage="ANALYSE"
         )
 
         # Apply redaction and check analytics

@@ -7,50 +7,63 @@ from src.redaction.config import LLMTextRedactionConfig
 
 def test_llm_text_redactor__create_system_prompt():
     """
-    - Given I have some llm redaction config
-    - When I call LLMTextRedactionConfig._create_system_prompt
-    - Then the returned system prompt should be correctly formatted
+    - Given I have some llm redaction config with every section populated
+    - When I call LLMTextRedactionConfig.create_system_prompt
+    - Then the returned system prompt should be correctly formatted, with every
+      section present
     """
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
         text="some text",
-        system_prompt="Some system prompt",
+        role="Some role",
+        task="Some task",
         redaction_terms=[
             "rule A",
             "rule B",
             "rule C",
         ],
-        constraints=[
-            "constraint X",
-            "constraint Y",
+        must_redact=[
+            "must redact X",
+            "must redact Y",
+        ],
+        do_not_redact=[
+            "do not redact P",
+            "do not redact Q",
+        ],
+        examples=[
+            "example 1",
+            "example 2",
         ],
     )
 
     expected_system_prompt = (
-        "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
+        "<Role>\nSome role\n</Role>\n\n"
+        "<Task>\nSome task\n</Task>\n\n"
         "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
-        f"{config.output_format}\n\n"
-        "<Constraints>\n- constraint X\n- constraint Y\n</Constraints>"
+        "<MustRedact>\n- must redact X\n- must redact Y\n</MustRedact>\n\n"
+        "<DoNotRedact>\n- do not redact P\n- do not redact Q\n</DoNotRedact>\n\n"
+        "<Examples>\n- example 1\n- example 2\n</Examples>"
     )
     actual_system_prompt = config.create_system_prompt()
 
     assert expected_system_prompt == actual_system_prompt
 
 
-def test_llm_text_redactor__create_system_prompt_no_constraints():
+def test_llm_text_redactor__create_system_prompt_only_required_fields():
     """
-    - Given I have some llm redaction config
-    - When I call LLMTextRedactionConfig._create_system_prompt with no constraints
-    - Then the returned system prompt should be correctly formatted
+    - Given I have some llm redaction config with only the required fields set
+    - When I call LLMTextRedactionConfig.create_system_prompt
+    - Then the returned system prompt should omit the optional sections entirely
     """
     config = LLMTextRedactionConfig(
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
         text="some text",
-        system_prompt="Some system prompt",
+        role="Some role",
+        task="Some task",
         redaction_terms=[
             "rule A",
             "rule B",
@@ -59,13 +72,38 @@ def test_llm_text_redactor__create_system_prompt_no_constraints():
     )
 
     expected_system_prompt = (
-        "<SystemRole>\nSome system prompt\n</SystemRole>\n\n"
-        "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>\n\n"
-        f"{config.output_format}"
+        "<Role>\nSome role\n</Role>\n\n"
+        "<Task>\nSome task\n</Task>\n\n"
+        "<Terms>\n- rule A\n- rule B\n- rule C\n</Terms>"
     )
     actual_system_prompt = config.create_system_prompt()
 
     assert expected_system_prompt == actual_system_prompt
+
+
+def test_llm_text_redactor__create_system_prompt__include_rationale_numbers_clauses():
+    """
+    - Given I have llm redaction config with include_rationale enabled
+    - When I call LLMTextRedactionConfig.create_system_prompt
+    - Then every list item is labelled with a clause ID for its section
+    """
+    config = _create_config(
+        include_rationale=True,
+        must_redact=["must redact X"],
+        do_not_redact=["- do not redact P", "do not redact Q"],
+        examples=["example 1"],
+    )
+    expected_system_prompt = (
+        "<Role>\nSome role\n</Role>\n\n"
+        "<Task>\nSome task\n</Task>\n\n"
+        "<Terms>\n- [T1] rule A\n</Terms>\n\n"
+        "<MustRedact>\n- [M1] must redact X\n</MustRedact>\n\n"
+        "<DoNotRedact>\n- [D1] do not redact P\n- [D2] do not redact Q\n"
+        "</DoNotRedact>\n\n"
+        "<Examples>\n- [E1] example 1\n</Examples>"
+    )
+
+    assert config.create_system_prompt() == expected_system_prompt
 
 
 def _create_config(**kwargs) -> LLMTextRedactionConfig:
@@ -73,7 +111,8 @@ def _create_config(**kwargs) -> LLMTextRedactionConfig:
         name="config name",
         redactor_type="LLMTextRedaction",
         model="gpt-5.6-luna",
-        system_prompt="System prompt",
+        role="Some role",
+        task="Some task",
         redaction_terms=["rule A"],
         **kwargs,
     )
@@ -144,3 +183,18 @@ def test_llm_text_redaction_config__create_text_splitter__chunks_by_tokens():
     assert len(chunks) > 1
     assert all(len(encoding.encode(chunk)) <= 50 for chunk in chunks)
     assert " ".join(chunks).split() == text.split()
+
+
+def test_llm_text_redaction_config__optional_sections_survive_a_round_trip():
+    """A config without the optional sections can be rebuilt from its own dump, as
+    the prompt tooling does to apply overrides"""
+    config = _create_config()
+
+    rebuilt = LLMTextRedactionConfig(**(config.model_dump() | {"chunk_size": 4500}))
+
+    assert (rebuilt.must_redact, rebuilt.do_not_redact, rebuilt.examples) == (
+        None,
+        None,
+        None,
+    )
+    assert rebuilt.chunk_size == 4500
