@@ -84,3 +84,35 @@ variable "openai_quotas" {
     gpt_56_luna = 3000
   }
 }
+
+variable "worker_caps" {
+  description = "The max worker threads per service in the processor function app"
+  type = object({
+    llm       = number
+    vision    = number
+    signature = number
+  })
+  default = {
+    llm       = 16
+    vision    = 2 # Sized for the Vision F0 tier
+    signature = 4
+  }
+}
+
+variable "vision_requests_per_minute" {
+  description = "The max Azure Vision requests per minute, or 0 for no limit. Keep below the Vision tier's limit"
+  type        = number
+  default     = 15 # Vision F0 allows 20 per minute
+}
+
+variable "llm_quota_allocation" {
+  description = "The share (0 to 1) of the OpenAI deployment's quota that each processor function app instance may use"
+  type        = number
+  default     = 0.5
+}
+
+variable "rule_max_workers" {
+  description = "The max redaction rules that the processor runs at the same time for a document, where 1 runs them one at a time"
+  type        = number
+  default     = 4
+}

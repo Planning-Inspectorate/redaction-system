@@ -84,9 +84,10 @@ class LLMTextAnalyserConfig(BaseModel):
     """Number of completions to generate per prompt"""
     budget: float | None = None
     """The budget in GBP for LLM usage"""
-    token_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring tokens from the token semaphore"""
-    request_timeout: float | None = 60.0
+    token_timeout: float | None = 600.0
+    """The timeout in seconds for acquiring tokens from the token semaphore. Chunks
+    from every rule queue for the shared limits, so this must outlast that queue"""
+    request_timeout: float | None = 600.0
     """The timeout in seconds for acquiring request semaphore"""
 
     def __init__(self, **data):
@@ -118,6 +119,34 @@ class LLMTextAnalyser:
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
+    # Shared so that analysers running at the same time draw on one budget
+    _SHARED_LIMITS: ClassVar[dict[tuple, tuple[Semaphore, TokenSemaphore]]] = {}
+    _SHARED_LIMITS_LOCK: ClassVar[Lock] = Lock()
+    _CLIENT: ClassVar[AzureOpenAI | None] = None
+    _CLIENT_LOCK: ClassVar[Lock] = Lock()
+
+    @classmethod
+    def _get_client(cls) -> AzureOpenAI:
+        """Get the Azure OpenAI client, which analysers share to reuse its connections."""
+        with cls._CLIENT_LOCK:
+            if cls._CLIENT is None:
+                azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
+                credential = ChainedTokenCredential(
+                    ManagedIdentityCredential(), AzureCliCredential()
+                )
+                token_provider = get_bearer_token_provider(
+                    credential, "https://cognitiveservices.azure.com/.default"
+                )
+                LoggingUtil().log_info(
+                    f"Establishing connection to the LLM at {azure_endpoint}"
+                )
+                cls._CLIENT = AzureOpenAI(
+                    azure_endpoint=azure_endpoint,
+                    api_version="2024-12-01-preview",
+                    azure_ad_token_provider=token_provider,
+                )
+            return cls._CLIENT
+
     def __init__(
         self,
         config: LLMTextAnalyserConfig,
@@ -126,32 +155,14 @@ class LLMTextAnalyser:
         self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
-        self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-        credential = ChainedTokenCredential(
-            ManagedIdentityCredential(), AzureCliCredential()
-        )
-        token_provider = get_bearer_token_provider(
-            credential, "https://cognitiveservices.azure.com/.default"
-        )
-        LoggingUtil().log_info(
-            f"Establishing connection to the LLM at {self.azure_endpoint}"
-        )
-        self.llm = AzureOpenAI(
-            azure_endpoint=self.azure_endpoint,
-            api_version="2024-12-01-preview",
-            azure_ad_token_provider=token_provider,
-        )
+        self.llm = self._get_client()
 
         # Validates and sets input_token_cost, completion_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
 
         # Validate and set max concurrent requests
         self._set_workers(self.config.max_concurrent_requests)
-        self.request_semaphore = Semaphore(self.config.max_concurrent_requests)
-
-        self.token_semaphore = TokenSemaphore(
-            self.config.token_rate_limit, self.config.token_timeout
-        )
+        self.request_semaphore, self.token_semaphore = self._get_shared_limits()
 
         self.input_token_count = 0
         self.cached_input_token_count = 0
@@ -161,12 +172,39 @@ class LLMTextAnalyser:
         self.total_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
+    def _get_shared_limits(self) -> tuple[Semaphore, TokenSemaphore]:
+        """Get the request and token limits shared by analysers with the same settings."""
+        config = self.config
+        key = (
+            config.model,
+            config.max_concurrent_requests,
+            config.token_rate_limit,
+            config.token_timeout,
+        )
+        with self._SHARED_LIMITS_LOCK:
+            if key not in self._SHARED_LIMITS:
+                self._SHARED_LIMITS[key] = (
+                    Semaphore(config.max_concurrent_requests),
+                    TokenSemaphore(config.token_rate_limit, config.token_timeout),
+                )
+            return self._SHARED_LIMITS[key]
+
     @log_to_appins
     def _set_model_details(self):
-        instance_quota_allocation = 0.5
+        # The share of the deployment's quota that this app instance may use
+        instance_quota_allocation = float(os.environ.get("LLM_QUOTA_ALLOCATION") or 0.5)
         try:
             # Get specified model
             model_details = self.OPENAI_MODELS[self.config.model]
+            # The deployment's limits, which the environment overrides for its capacity
+            max_token_rate_limit = int(
+                os.environ.get("LLM_TOKEN_RATE_LIMIT")
+                or model_details["token_rate_limit"]
+            )
+            max_request_rate_limit = int(
+                os.environ.get("LLM_REQUEST_RATE_LIMIT")
+                or model_details["request_rate_limit"]
+            )
 
             # Set cost per token in GBP
             multiplier = 1e-8
@@ -179,24 +217,24 @@ class LLMTextAnalyser:
 
             # Validate and set token rate limit per minute
             default_token_rate_limit = int(
-                model_details["token_rate_limit"] * instance_quota_allocation
+                max_token_rate_limit * instance_quota_allocation
             )
 
             token_limit = self.config.token_rate_limit
             if token_limit is not None:
                 if token_limit < 1:
                     self.config.token_rate_limit = default_token_rate_limit
-                if token_limit > model_details["token_rate_limit"]:
-                    self.config.token_rate_limit = model_details["token_rate_limit"]
+                if token_limit > max_token_rate_limit:
+                    self.config.token_rate_limit = max_token_rate_limit
                     LoggingUtil().log_info(
                         f"Token rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.token_rate_limit} tokens per minute."
                     )
-            else:  # default to 50% of max token rate limit
+            else:  # default to the instance's share of the max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
             default_request_rate_limit = int(
-                model_details["request_rate_limit"] * instance_quota_allocation
+                max_request_rate_limit * instance_quota_allocation
             )
 
             # Validate and set request rate limit per minute
@@ -204,13 +242,13 @@ class LLMTextAnalyser:
             if req_limit is not None:
                 if req_limit < 1:
                     self.config.request_rate_limit = default_request_rate_limit
-                if req_limit > model_details["request_rate_limit"]:
-                    self.config.request_rate_limit = model_details["request_rate_limit"]
+                if req_limit > max_request_rate_limit:
+                    self.config.request_rate_limit = max_request_rate_limit
                     LoggingUtil().log_info(
                         f"Request rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.request_rate_limit} requests per minute."
                     )
-            else:  # default to 50% of max request rate limit
+            else:  # default to the instance's share of the max request rate limit
                 self.config.request_rate_limit = default_request_rate_limit
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
@@ -218,7 +256,9 @@ class LLMTextAnalyser:
     def _set_workers(self, n: int | None = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
-        self.config.max_concurrent_requests = get_max_workers(n)
+        self.config.max_concurrent_requests = get_max_workers(
+            n, env_var="LLM_MAX_WORKERS"
+        )
 
     @log_to_appins
     def _num_tokens_consumed(

@@ -47,6 +47,14 @@ resource "azurerm_linux_function_app" "processor" {
     "AZURE_SERVICE_BUS_NAMESPACE"                   = data.azurerm_servicebus_namespace.backoffice.name
     "AZURE_SERVICE_BUS_NAMESPACE_CONNECTION_STRING" = data.azurerm_servicebus_namespace.backoffice.default_primary_connection_string
     "SIGNATURE_DETECTOR_ENDPOINT"                   = azurerm_linux_web_app.signature_detector.default_hostname
+    "LLM_MAX_WORKERS"                               = var.worker_caps.llm
+    "VISION_MAX_WORKERS"                            = var.worker_caps.vision
+    "SIGNATURE_MAX_WORKERS"                         = var.worker_caps.signature
+    "VISION_REQUESTS_PER_MINUTE"                    = var.vision_requests_per_minute
+    "LLM_TOKEN_RATE_LIMIT"                          = var.openai_quotas.gpt_56_luna * 1000
+    "LLM_REQUEST_RATE_LIMIT"                        = var.openai_quotas.gpt_56_luna
+    "LLM_QUOTA_ALLOCATION"                          = var.llm_quota_allocation
+    "RULE_MAX_WORKERS"                              = var.rule_max_workers
   }
 }
 

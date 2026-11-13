@@ -1,3 +1,6 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event, Lock
 from typing import ClassVar
 from unittest.mock import Mock, patch
 
@@ -65,6 +68,106 @@ class TestClearCache:
         assert len(ConcreteAnalysisUtil._IMAGE_TEST_CACHE) == 0
 
 
+class TestFetchOnce:
+    def test_concurrent_callers_share_one_fetch(self):
+        calls = []
+
+        def fetch():
+            calls.append(1)
+            time.sleep(0.2)
+            return ("result",)
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(
+                executor.map(
+                    lambda _: ConcreteAnalysisUtil._fetch_once(
+                        ConcreteAnalysisUtil._IMAGE_TEST_CACHE, "hash", fetch
+                    ),
+                    range(5),
+                )
+            )
+
+        assert len(calls) == 1
+        assert results == [("result",)] * 5
+
+    def test_failed_fetch_is_not_cached_and_can_be_retried(self):
+        cache = ConcreteAnalysisUtil._IMAGE_TEST_CACHE
+
+        with pytest.raises(ImageAnalysisError):
+            ConcreteAnalysisUtil._fetch_once(
+                cache, "hash", Mock(side_effect=ImageAnalysisError("boom"))
+            )
+        result = ConcreteAnalysisUtil._fetch_once(
+            cache, "hash", Mock(return_value=("ok",))
+        )
+
+        assert result == ("ok",)
+        assert cache["hash"] == ("ok",)
+
+    def test_waiting_callers_get_the_failure_and_a_later_call_retries(self):
+        cache = ConcreteAnalysisUtil._IMAGE_TEST_CACHE
+        owner_started = Event()
+        release_owner = Event()
+        waiter_fetch = Mock(return_value=("unused",))
+
+        def failing_fetch():
+            owner_started.set()
+            release_owner.wait(timeout=5)
+            raise ImageAnalysisError("image analysis failed")
+
+        with (
+            patch("src.analysis.images.LoggingUtil") as mock_logger,
+            ThreadPoolExecutor(max_workers=4) as executor,
+        ):
+            # Start a fetch that blocks until the test releases it
+            owner = executor.submit(
+                ConcreteAnalysisUtil._fetch_once, cache, "hash", failing_fetch
+            )
+            assert owner_started.wait(timeout=5)
+
+            # Start additional fetches for the same image while fetch is running
+            waiters = [
+                executor.submit(
+                    ConcreteAnalysisUtil._fetch_once, cache, "hash", waiter_fetch
+                )
+                for _ in range(3)
+            ]
+
+            # Release the owner only once every waiter is blocked on its request
+            log_info = mock_logger.return_value.log_info
+            deadline = time.monotonic() + 5
+            while (
+                sum("Waiting" in call.args[0] for call in log_info.call_args_list) < 3
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            release_owner.set()
+
+            # Check that all futures raised the expected exception
+            for future in [owner, *waiters]:
+                with pytest.raises(ImageAnalysisError, match="image analysis failed"):
+                    future.result(timeout=5)
+
+        # Waiter threads should not have called the fetch function since the owner failed
+        waiter_fetch.assert_not_called()
+        assert "hash" not in cache
+        assert ConcreteAnalysisUtil._IN_FLIGHT_REQUESTS == {}
+
+        # Retry to ensure it works correctly after a failed fetch
+        retried = ConcreteAnalysisUtil._fetch_once(
+            cache, "hash", Mock(return_value=("ok",))
+        )
+        assert retried == ("ok",)
+        assert cache["hash"] == ("ok",)
+        assert ConcreteAnalysisUtil._IN_FLIGHT_REQUESTS == {}
+
+    def test_none_result_is_not_cached(self):
+        cache = ConcreteAnalysisUtil._IMAGE_TEST_CACHE
+
+        assert ConcreteAnalysisUtil._fetch_once(cache, "hash", lambda: None) is None
+        assert "hash" not in cache
+
+
 class TestImageDetection:
     def test_returns_results_for_all_images(self):
         images = [Image.new("RGB", (51, 51), i) for i in range(5)]
@@ -117,6 +220,19 @@ class TestImageDetection:
 
         compare_unhashable_lists(expected_results, results)
 
+    @pytest.mark.parametrize(
+        ("analyser", "env_var"),
+        [
+            (AzureImageAnalyser, "VISION_MAX_WORKERS"),
+            (SignatureDetector, "SIGNATURE_MAX_WORKERS"),
+        ],
+    )
+    def test_worker_cap_uses_service_env_var(self, analyser, env_var):
+        with patch("src.analysis.images.get_max_workers", return_value=2) as mock_get:
+            analyser._image_detection([], "test", lambda image: ())
+
+        mock_get.assert_called_once_with(env_var=env_var)
+
 
 class TestAzureImageAnalyserBase:
     # Avoid checking for the environment variable in tests
@@ -162,6 +278,82 @@ class TestGetClient(TestAzureImageAnalyserBase):
         monkeypatch.delenv("AZURE_VISION_ENDPOINT", raising=False)
         with pytest.raises(AzureImageAnalyser.EndpointNotSetError):
             AzureImageAnalyser._get_client()
+
+
+class TestAzureVisionAnalysisRateLimit(TestAzureImageAnalyserBase):
+    @pytest.fixture(autouse=True)
+    def _reset_rate_limiter(self):
+        AzureImageAnalyser._RATE_LIMITER = None
+        yield
+        AzureImageAnalyser._RATE_LIMITER = None
+
+    def test_waits_for_shared_rate_limiter_before_each_request(self, monkeypatch):
+        monkeypatch.setenv("VISION_REQUESTS_PER_MINUTE", "15")
+        image = Image.new("RGB", (100, 100))
+        client = Mock()
+
+        with (
+            patch.object(AzureImageAnalyser, "_get_client", return_value=client),
+            patch("src.analysis.images.RateLimiter") as mock_rate_limiter,
+        ):
+            for _ in range(2):
+                AzureImageAnalyser._azure_vision_analysis(image, [])
+
+        mock_rate_limiter.assert_called_once_with(15)
+        assert mock_rate_limiter.return_value.wait.call_count == 2
+
+    def test_no_rate_limiter_when_unset(self, monkeypatch):
+        monkeypatch.delenv("VISION_REQUESTS_PER_MINUTE", raising=False)
+        image = Image.new("RGB", (100, 100))
+
+        with (
+            patch.object(AzureImageAnalyser, "_get_client", return_value=Mock()),
+            patch("src.analysis.images.RateLimiter") as mock_rate_limiter,
+        ):
+            AzureImageAnalyser._azure_vision_analysis(image, [])
+
+        mock_rate_limiter.assert_not_called()
+
+
+class TestAzureVisionConcurrencyLimit(TestAzureImageAnalyserBase):
+    @pytest.fixture(autouse=True)
+    def _reset_call_limits(self):
+        AzureImageAnalyser._CALL_LIMITS.clear()
+        yield
+        AzureImageAnalyser._CALL_LIMITS.clear()
+
+    def test_limits_concurrent_calls_across_thread_pools(self, monkeypatch):
+        monkeypatch.setenv("VISION_MAX_WORKERS", "2")
+        image = Image.new("RGB", (100, 100))
+        lock = Lock()
+        active = 0
+        peak = 0
+
+        def analyze(*args):
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            time.sleep(0.05)
+            with lock:
+                active -= 1
+
+        client = Mock()
+        client.analyze.side_effect = analyze
+
+        with (
+            patch.object(AzureImageAnalyser, "_get_client", return_value=client),
+            ThreadPoolExecutor(max_workers=6) as executor,
+        ):
+            list(
+                executor.map(
+                    lambda _: AzureImageAnalyser._azure_vision_analysis(image, []),
+                    range(6),
+                )
+            )
+
+        assert client.analyze.call_count == 6
+        assert peak <= 2
 
 
 class TestDetectFaces(TestAzureImageAnalyserBase):
