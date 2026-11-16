@@ -1,3 +1,4 @@
+import json
 import math
 import re
 from collections import Counter
@@ -14,10 +15,12 @@ from tests.perf.harness import (
     _percentiles,
     _run_id,
     has_highlights,
+    job_row,
     load_expected_strings,
     proposed_redaction_terms,
     redaction_recall,
     select_fixtures,
+    write_results,
 )
 
 
@@ -168,3 +171,67 @@ def test_load_expected_strings(tmp_path):
 )
 def test_redaction_recall(expected, proposed, recall):
     assert redaction_recall(expected, proposed) == recall
+
+
+def _result(outcome, durable_status=None, **kwargs):
+    return PerfResult(
+        outcome=outcome,
+        runtime_status=kwargs.pop("runtime_status", "Completed"),
+        seconds=12.3456,
+        checked_blob_exists=False,
+        out_blob_exists=None,
+        poll_url=None,
+        instance_id="job-1",
+        durable_status=durable_status,
+    )
+
+
+def test_job_row_of_a_success_has_the_server_timings():
+    status = {
+        "output": {
+            "execution_time_seconds": 10.0,
+            "run_metrics": {"analysis_wall_time": 8.0},
+        }
+    }
+
+    row = job_row(
+        {"i": 3, "fixture": "doc.pdf"}, _result(Outcome.SUCCESS, status), recall=0.5
+    )
+
+    assert row == {
+        "index": 3,
+        "fixture": "doc.pdf",
+        "outcome": "success",
+        "failure_category": None,
+        "client_seconds": 12.346,
+        "server_seconds": 10.0,
+        "analysis_seconds": 8.0,
+        "failed_chunks": 0,
+        "recall": 0.5,
+        "instance_id": "job-1",
+    }
+
+
+def test_job_row_of_an_app_failure_has_its_failure_category():
+    result = _result(Outcome.APP_FAIL, runtime_status="Timeout")
+
+    row = job_row({"i": 0, "fixture": "doc.pdf"}, result, recall=None)
+
+    assert row["failure_category"] == "timeout"
+    assert row["server_seconds"] is None
+
+
+def test_write_results_writes_json_without_nan_and_a_csv_of_the_jobs(tmp_path):
+    path = tmp_path / "out" / "perf_results.json"
+    rows = [{"index": 0, "fixture": "a.pdf"}, {"index": 1, "fixture": "b.pdf"}]
+
+    write_results(path, {"latency_seconds": {"p50": float("nan")}}, rows)
+
+    document = json.loads(path.read_text())
+    assert document["summary"] == {"latency_seconds": {"p50": None}}
+    assert document["jobs"] == rows
+    assert path.with_suffix(".csv").read_text().splitlines() == [
+        "index,fixture",
+        "0,a.pdf",
+        "1,b.pdf",
+    ]

@@ -98,6 +98,7 @@ extends:
               export PERF_FIXTURE_PDF="${{ parameters.perfFixturePdf }}"
               export PERF_FIXTURE_DIR="${{ parameters.perfFixtureDir }}"
               export PERF_MIN_RECALL="${{ parameters.perfMinRecall }}"
+              export PERF_RESULTS_FILE="junit/perf_results.json"
 
               echo "env=${{ parameters.env }}"
               echo "E2E_FUNCTION_RECEIVER_BASE_URL=${E2E_FUNCTION_RECEIVER_BASE_URL}"
@@ -135,3 +136,12 @@ extends:
               testResultsFiles: '**/perf_test_results.xml'
               mergeTestResults: true
               failTaskOnFailedTests: true
+
+          # The JSON and CSV results sit beside the JUnit XML, so one folder has them all
+          - task: PublishPipelineArtifact@1
+            displayName: Publish perf results
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: $(System.DefaultWorkingDirectory)/redaction-system/redactor/junit
+              artifact: perf-results
+              publishLocation: pipeline

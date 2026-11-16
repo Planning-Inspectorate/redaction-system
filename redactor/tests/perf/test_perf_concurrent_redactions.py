@@ -30,10 +30,12 @@ from .harness import (
     _run_id,
     _summarise_durable_status,
     has_highlights,
+    job_row,
     load_expected_strings,
     proposed_redaction_terms,
     redaction_recall,
     select_fixtures,
+    write_results,
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -101,6 +103,9 @@ PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "pas_13.pdf")
 # the caches that repeating one document would hit
 PERF_FIXTURE_DIR = os.getenv("PERF_FIXTURE_DIR", "")
 PERF_SEED = _int_env("PERF_SEED", 0)
+
+# Where to write the results as JSON, with a CSV of the jobs beside it. Not written if empty
+PERF_RESULTS_FILE = os.getenv("PERF_RESULTS_FILE", "")
 
 # The share of a fixture's labelled strings that the proposed redactions must cover, on
 # average. Needs the output to be downloaded, so set PERF_EXISTS_SAMPLE_EVERY=1
@@ -638,15 +643,17 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         )
 
     # How much of what the fixtures label as sensitive the redactor proposed
-    recalls = [
+    job_recalls = [
         redaction_recall(
             job["expected"], proposed_redaction_terms(Path(result.downloaded_to))
         )
-        for job, result in zip(jobs, results, strict=True)
         if result.outcome == Outcome.SUCCESS
         and result.downloaded_to
         and job["expected"]
+        else None
+        for job, result in zip(jobs, results, strict=True)
     ]
+    recalls = [recall for recall in job_recalls if recall is not None]
     mean_recall = sum(recalls) / len(recalls) if recalls else None
     if recalls:
         print(
@@ -656,12 +663,14 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
 
     # The app's own timings, so queueing and polling in the client timings can be told apart
     server_metrics = [_extract_server_metrics(r.durable_status) for r in successes]
+    server_stats: dict[str, dict[str, float]] = {}
     for name in ("server_seconds", "analysis_seconds"):
         values = [m[name] for m in server_metrics if m.get(name) is not None]
         if values:
+            server_stats[name] = _percentiles(values)
             print(
                 f"{name}:",
-                {k: round(v, 3) for k, v in _percentiles(values).items()},
+                {k: round(v, 3) for k, v in server_stats[name].items()},
             )
     overheads = [
         r.seconds - m["server_seconds"]
@@ -669,9 +678,13 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         if m.get("server_seconds") is not None
     ]
     if overheads:
+        server_stats["client_overhead_seconds"] = _percentiles(overheads)
         print(
             "client_overhead_seconds (queueing, start and polling):",
-            {k: round(v, 3) for k, v in _percentiles(overheads).items()},
+            {
+                k: round(v, 3)
+                for k, v in server_stats["client_overhead_seconds"].items()
+            },
         )
     failed_chunks = sum(m.get("failed_chunks", 0) for m in server_metrics)
     print(f"failed_chunks={failed_chunks}")
@@ -705,6 +718,51 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                 print("  durable_status:", json.dumps(r.durable_status, default=str))
             if r.diagnostics:
                 print("  diagnostics:", r.diagnostics)
+
+    # ----------------------------
+    # Results file
+    # ----------------------------
+    if PERF_RESULTS_FILE:
+        write_results(
+            Path(PERF_RESULTS_FILE),
+            {
+                "run_id": run_id,
+                "commit": os.getenv("BUILD_SOURCEVERSION"),
+                "settings": {
+                    "concurrency": PERF_CONCURRENCY,
+                    "total": PERF_TOTAL,
+                    "timeout_s": PERF_TIMEOUT_S,
+                    "seed": PERF_SEED,
+                    "fixtures": sorted({j["fixture"] for j in jobs}),
+                },
+                "counts": {
+                    "success": len(successes),
+                    "app_fail": len(app_failures),
+                    "test_fail": len(test_failures),
+                },
+                "success_rate": len(successes) / len(results) if results else 0.0,
+                "wall_seconds": wall_elapsed,
+                "throughput_success_per_sec": throughput,
+                "latency_seconds": stats,
+                "latency_p50_by_fixture": {
+                    name: _percentiles(values)["p50"]
+                    for name, values in sorted(latency_by_fixture.items())
+                },
+                "server_seconds": server_stats,
+                "failure_categories": failure_categories,
+                "failed_chunks": failed_chunks,
+                "recall": {
+                    "mean": mean_recall,
+                    "min": min(recalls) if recalls else None,
+                    "jobs_checked": len(recalls),
+                },
+            },
+            [
+                job_row(job, result, recall)
+                for job, result, recall in zip(jobs, results, job_recalls, strict=True)
+            ],
+        )
+        print(f"results_file={PERF_RESULTS_FILE}")
 
     # ----------------------------
     # Assertions

@@ -1,6 +1,8 @@
 """Perf test helpers that need neither Azure nor the e2e utilities."""
 
+import csv
 import json
+import math
 import os
 import random
 import re
@@ -188,3 +190,47 @@ def redaction_recall(expected: list[str], proposed: list[str]) -> float | None:
         for string in expected
     )
     return covered / len(expected)
+
+
+def job_row(job: dict, result: PerfResult, recall: float | None) -> dict:
+    """One job's outcome and timings, flat so that it fits a CSV row"""
+    server = _extract_server_metrics(result.durable_status)
+    failed = result.outcome == Outcome.APP_FAIL
+    return {
+        "index": job["i"],
+        "fixture": job["fixture"],
+        "outcome": result.outcome.value,
+        "failure_category": _failure_category(result) if failed else None,
+        "client_seconds": round(result.seconds, 3),
+        "server_seconds": server.get("server_seconds"),
+        "analysis_seconds": server.get("analysis_seconds"),
+        "failed_chunks": server.get("failed_chunks"),
+        "recall": recall,
+        "instance_id": result.instance_id,
+    }
+
+
+def _json_safe(value):
+    """Replace NaN, which JSON can't hold, with None"""
+    if isinstance(value, float) and math.isnan(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def write_results(path: Path, summary: dict, rows: list[dict]) -> None:
+    """Write the summary and a row per job as JSON, and the rows as a CSV beside it"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = _json_safe({"summary": summary, "jobs": rows})
+    path.write_text(
+        json.dumps(document, indent=2, allow_nan=False, default=str) + "\n",
+        encoding="utf-8",
+    )
+    if rows:
+        with path.with_suffix(".csv").open("w", newline="", encoding="utf-8") as file:
+            writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
