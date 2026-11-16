@@ -20,6 +20,7 @@ from ..e2e.utils import (
     build_payload,
     function_start_url,
 )
+from .completions import CompletionWatcher, open_completion_topic
 from .harness import (
     Outcome,
     PerfResult,
@@ -230,44 +231,6 @@ async def _trigger_start(
     return r.json()
 
 
-async def _poll_until_done(
-    client: httpx.AsyncClient,
-    poll_url: str,
-    timeout_s: int,
-    poll_s: float,
-) -> dict:
-    deadline = time.time() + timeout_s
-    last_status: dict | None = None
-    while time.time() < deadline:
-        r = await client.get(poll_url, timeout=60)
-
-        # durable polling endpoint returning 5xx/429 is considered app-side acceptable failure
-        if _classify_http_as_app_fail(r.status_code):
-            return {
-                "runtimeStatus": "Failed",
-                "errorMessage": f"Durable poll HTTP {r.status_code}",
-                "output": {"status": "FAIL", "message": (r.text or "")[:2000]},
-            }
-
-        # 4xx on poll suggests the poll URL is invalid/expired or auth wrong -> test fail
-        if 400 <= r.status_code < 500:
-            raise RuntimeError(
-                f"Durable poll returned HTTP {r.status_code}: {(r.text or '')[:500]}"
-            )
-
-        r.raise_for_status()
-        status = r.json()
-        last_status = status
-        state = status.get("runtimeStatus")
-        if state in ("Completed", "Failed", "Terminated"):
-            return status
-        await asyncio.sleep(poll_s)
-
-    raise TimeoutError(
-        f"Timed out waiting for orchestration. pollEndpoint={poll_url} last={last_status}"
-    )
-
-
 def _is_app_failure_from_status(durable_status: dict | None) -> bool:
     """
     Decide if this run failed due to the *app* (acceptable), even if runtimeStatus == Completed.
@@ -296,7 +259,7 @@ async def _run_one(
     start_url: str,
     payload: dict,
     timeout_s: int,
-    poll_s: float,
+    watcher: CompletionWatcher,
     do_exists_check: bool,
     storage_account: str,
     container_name: str,
@@ -341,16 +304,18 @@ async def _run_one(
                 error=f"TEST FAIL: start returned HTTP {start.get('status_code')}: {start.get('text')}",
             )
 
-        poll_url = start.get("pollEndpoint")
         instance_id = start.get("id") or start.get("instanceId")
+        if not instance_id:
+            raise RuntimeError(f"Missing id in start response: {start}")
 
-        if not poll_url:
-            raise RuntimeError(f"Missing pollEndpoint in start response: {start}")
-
-        durable_status = await _poll_until_done(
-            client, poll_url, timeout_s=timeout_s, poll_s=poll_s
-        )
-        runtime_status = durable_status.get("runtimeStatus", "Unknown")
+        # The completion message holds what the orchestration returns as its output
+        completion = await watcher.wait_for(instance_id, timeout_s)
+        durable_status = {
+            "instanceId": instance_id,
+            "runtimeStatus": "Completed",
+            "output": completion,
+        }
+        runtime_status = "Completed"
         elapsed = time.perf_counter() - t0
 
         # Determine if app reported failure (acceptable)
@@ -523,6 +488,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     _load_dotenv_if_present()
     storage_account = _env_required("E2E_STORAGE_ACCOUNT")
     container_name = _env_required("E2E_CONTAINER_NAME")
+    service_bus_namespace = _env_required("AZURE_SERVICE_BUS_NAMESPACE")
     run_id = _run_id()
     start_url = function_start_url()
 
@@ -563,6 +529,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
             in_blob=in_blob,
             out_blob=out_blob,
             skip_redaction=False,
+            # Without it, the processor sends no completion message to wait for
+            pins_service="REDACTION_SYSTEM",
         )
 
         jobs.append(
@@ -584,7 +552,11 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         )
         timeout = httpx.Timeout(60.0)
 
-        async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
+        async with (
+            httpx.AsyncClient(limits=limits, timeout=timeout) as client,
+            open_completion_topic(service_bus_namespace) as peek,
+            CompletionWatcher(peek, PERF_POLL_S) as watcher,
+        ):
             sem = asyncio.Semaphore(PERF_CONCURRENCY)
 
             async def wrapped(job: dict[str, Any]) -> PerfResult:
@@ -598,7 +570,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                         start_url=start_url,
                         payload=job["payload"],
                         timeout_s=PERF_TIMEOUT_S,
-                        poll_s=PERF_POLL_S,
+                        watcher=watcher,
                         do_exists_check=do_exists_check,
                         storage_account=storage_account,
                         container_name=container_name,

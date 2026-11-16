@@ -80,6 +80,7 @@ extends:
               export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_${{ upper(parameters.env) }})"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+              export AZURE_SERVICE_BUS_NAMESPACE="$(AZURE_SERVICE_BUS_NAMESPACE)"
 
               # Debug/validation knobs
               export PERF_EXISTS_SAMPLE_EVERY=1
