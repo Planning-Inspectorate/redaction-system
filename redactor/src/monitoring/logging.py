@@ -7,6 +7,8 @@ from typing import ClassVar
 
 from dotenv import load_dotenv
 
+from .job_scope import current_job_state
+
 load_dotenv(verbose=True)
 
 
@@ -101,11 +103,17 @@ class LoggingUtil(metaclass=Singleton):
         self.logger.setLevel(self.log_level)
         self.log_info(f"Logging initialised for {self.namespace}.")
 
+    @property
+    def _log_buffer(self) -> list[str]:
+        """The current job's log lines, or the process-wide lines outside a job"""
+        state = current_job_state()
+        return state.logs if state is not None else self.raw_logs
+
     def log_info(self, msg: str):
         """
         Log an information message
         """
-        self.raw_logs.append(f"INFO: {msg}\n")
+        self._log_buffer.append(f"INFO: {msg}\n")
         self.logger.info(msg)
 
     def log_audit(self, msg: str):
@@ -113,7 +121,7 @@ class LoggingUtil(metaclass=Singleton):
         Log a message that may contain personal data. It is kept in the logs saved
         to blob storage for auditing, but is never sent to App Insights.
         """
-        self.raw_logs.append(f"AUDIT: {msg}\n")
+        self._log_buffer.append(f"AUDIT: {msg}\n")
 
     def log_exception(self, ex: Exception):
         """
@@ -121,7 +129,7 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        self._log_buffer.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_exception_with_message(self, message: str, ex: Exception):
@@ -130,24 +138,24 @@ class LoggingUtil(metaclass=Singleton):
         """
         stack_trace = "".join(traceback.TracebackException.from_exception(ex).format())
         message = f"{message}: {ex}\n\n The Exception stack trace is below:\n\n{stack_trace}\n"
-        self.raw_logs.append(f"ERROR: {message}\n")
+        self._log_buffer.append(f"ERROR: {message}\n")
         self.logger.exception(message)
 
     def log_warning(self, msg: str):
         """
         Log a warning message
         """
-        self.raw_logs.append(f"WARNING: {msg}\n")
+        self._log_buffer.append(f"WARNING: {msg}\n")
         self.logger.warning(msg)
 
     def get_log_bytes(self) -> bytes:
-        return "".join(self.raw_logs).encode("utf-8")
+        return "".join(self._log_buffer).encode("utf-8")
 
     def clear_logs(self) -> None:
         """
         Clear all accumulated logs.
         """
-        self.raw_logs.clear()
+        self._log_buffer.clear()
 
 
 def log_to_appins(_func=None, log_args: bool = False, *args, **kwargs):
