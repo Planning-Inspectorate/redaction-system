@@ -686,7 +686,11 @@ class TestApplyRule:
         }
         processor._text_redaction_summary = {}
 
-        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+        processor._record_rule_result(
+            rule=Mock(),
+            redaction_result=result,
+            redaction_time=0.0,
+        )
 
         audit_messages = [c.args[0] for c in LoggingUtil.log_audit.call_args_list]
         info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
