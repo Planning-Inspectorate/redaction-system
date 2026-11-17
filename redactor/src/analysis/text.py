@@ -2,7 +2,7 @@ import dataclasses
 import json
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from threading import Lock, Semaphore
 from typing import ClassVar, Literal
 
@@ -33,7 +33,12 @@ from tenacity import (
 )
 from tiktoken import get_encoding
 
-from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
+from ..monitoring import (
+    ContextThreadPoolExecutor,
+    LoggingUtil,
+    TimerUtil,
+    log_to_appins,
+)
 from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
 from .utils import TokenSemaphore, get_max_workers
 
@@ -502,7 +507,7 @@ class LLMTextAnalyser:
                         LoggingUtil().log_exception(re)
                         break
             else:
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                with ContextThreadPoolExecutor(max_workers=max_workers) as executor:
                     # Submit tasks to the executor
                     future_to_chunk = {
                         executor.submit(

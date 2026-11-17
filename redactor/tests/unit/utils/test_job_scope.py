@@ -1,4 +1,6 @@
+import re
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from src.monitoring.job_scope import (
     ContextThreadPoolExecutor,
@@ -45,3 +47,16 @@ def test_context_thread_pool_executor__concurrent_jobs_keep_separate_state():
 
     assert sorted(logs_a) == ["a 0", "a 1", "a 2"]
     assert sorted(logs_b) == ["b 0", "b 1", "b 2"]
+
+
+def test_src_only_uses_context_thread_pool_executor():
+    # A plain pool drops the job scope, so its threads' logs and caches leak between jobs
+    src = Path(__file__).resolve().parents[3] / "src"
+    allowed = src / "monitoring" / "job_scope.py"
+    offenders = [
+        str(path.relative_to(src))
+        for path in src.rglob("*.py")
+        if path != allowed
+        and re.search(r"(?<!Context)ThreadPoolExecutor\(", path.read_text("utf-8"))
+    ]
+    assert offenders == []
