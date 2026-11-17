@@ -19,7 +19,12 @@ from requests import HTTPError, post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
-from ..monitoring import ContextThreadPoolExecutor, LoggingUtil, log_to_appins
+from ..monitoring import (
+    ContextThreadPoolExecutor,
+    LoggingUtil,
+    current_job_state,
+    log_to_appins,
+)
 from .utils import get_max_workers
 
 load_dotenv(verbose=True)
@@ -41,13 +46,27 @@ class ImageAnalyser:
 
     @classmethod
     def clear_cache(cls):
-        """Clear cached image analysis results from previous invocations."""
+        """Clear the class-level fallback caches, which are not part of any job."""
         with cls.CACHE_LOCK:
             for attr in dir(cls):
                 if attr.startswith("_IMAGE_") and isinstance(
                     getattr(cls, attr), list | dict
                 ):
                     getattr(cls, attr).clear()
+
+    @classmethod
+    def _get_cache(cls, name: str) -> dict:
+        """The named cache for the current job, or the class-level cache outside a job"""
+        state = current_job_state()
+        if state is None:
+            # A job's threads reach here if they lost the job scope, so make it visible
+            LoggingUtil().log_warning(
+                f"No job scope is active, so {cls.__name__} is using its process-wide "
+                f"{name}."
+            )
+            return getattr(cls, name)
+        with cls.CACHE_LOCK:
+            return state.caches.setdefault(f"{cls.__name__}.{name}", {})
 
     @staticmethod
     def get_image_hash(image: Image.Image) -> str:
@@ -175,6 +194,9 @@ class ImageAnalyser:
 
 
 class AzureImageAnalyser(ImageAnalyser):
+    # Fallback caches, used only when no job scope is active (see _get_cache). A thread
+    # that loses its job scope shares these with every concurrent job, so they are
+    # cleared when a job ends and must hold nothing that is specific to one job
     _IMAGE_TEXT_CACHE: ClassVar[dict[str, tuple]] = {}
     _IMAGE_FACE_CACHE: ClassVar[dict[str, tuple]] = {}
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
@@ -222,8 +244,9 @@ class AzureImageAnalyser(ImageAnalyser):
                   with confidence above the threshold
         """
         image_hash = cls.get_image_hash(image)
+        cache = cls._get_cache("_IMAGE_FACE_CACHE")
         with cls.CACHE_LOCK:
-            faces_detected = cls._IMAGE_FACE_CACHE.get(image_hash)
+            faces_detected = cache.get(image_hash)
         if faces_detected is not None:
             LoggingUtil().log_info("Using cached face detection result.")
         else:
@@ -246,7 +269,7 @@ class AzureImageAnalyser(ImageAnalyser):
 
             # Cache result
             with cls.CACHE_LOCK:
-                cls._IMAGE_FACE_CACHE[image_hash] = faces_detected
+                cache[image_hash] = faces_detected
 
         return tuple(
             person["box"]
@@ -332,8 +355,9 @@ class AzureImageAnalyser(ImageAnalyser):
         detected in the image, as a 2D tuple of <word, bounding box>.
         """
         image_hash = cls.get_image_hash(image)
+        cache = cls._get_cache("_IMAGE_TEXT_CACHE")
         with cls.CACHE_LOCK:
-            text_detected = cls._IMAGE_TEXT_CACHE.get(image_hash)
+            text_detected = cache.get(image_hash)
         if text_detected is not None:
             LoggingUtil().log_info("Using cached text detection result.")
             return text_detected
@@ -359,12 +383,14 @@ class AzureImageAnalyser(ImageAnalyser):
 
         # Cache result
         with cls.CACHE_LOCK:
-            cls._IMAGE_TEXT_CACHE[image_hash] = text_detected
+            cache[image_hash] = text_detected
 
         return text_detected
 
 
 class SignatureDetector(ImageAnalyser):
+    # Fallback cache, used only when no job scope is active (see _get_cache). Shared by
+    # concurrent jobs if a thread loses its scope, so see the note on AzureImageAnalyser
     _IMAGE_CACHE: ClassVar[dict[str, list]] = {}
     _ENDPOINT: ClassVar[str | None] = None
 
@@ -430,8 +456,9 @@ class SignatureDetector(ImageAnalyser):
             return ()
 
         image_hash = cls.get_image_hash(image)
+        cache = cls._get_cache("_IMAGE_CACHE")
         with cls.CACHE_LOCK:
-            cached = cls._IMAGE_CACHE.get(image_hash)
+            cached = cache.get(image_hash)
         if cached is not None:
             LoggingUtil().log_info("Using cached signature detection result.")
             return tuple(
@@ -456,7 +483,7 @@ class SignatureDetector(ImageAnalyser):
         detections = result.get("detections", [])
 
         with cls.CACHE_LOCK:
-            cls._IMAGE_CACHE[image_hash] = detections
+            cache[image_hash] = detections
 
         return tuple(
             cls._get_bounding_box(d)

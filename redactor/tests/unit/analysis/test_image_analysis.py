@@ -10,6 +10,7 @@ from src.analysis.images import (
     ImageAnalyser,
     SignatureDetector,
 )
+from src.monitoring import LoggingUtil, job_scope
 from tests.utils import compare_unhashable_lists
 
 
@@ -228,6 +229,45 @@ class TestDetectFaces(TestAzureImageAnalyserBase):
 
         mock_analysis.assert_not_called()
         assert result == ((10, 20, 40, 60),)
+
+    def test_each_job_has_its_own_cache(self):
+        image = Image.new("RGB", (100, 100))
+        people_list = [
+            Mock(bounding_box=Mock(x=10, y=20, width=30, height=40), confidence=0.9),
+        ]
+
+        with patch.object(
+            AzureImageAnalyser,
+            "_azure_vision_analysis",
+            return_value=self._mock_vision_result_people(people_list),
+        ) as mock_analysis:
+            with job_scope() as first_job:
+                AzureImageAnalyser.detect_faces(image)
+                AzureImageAnalyser.detect_faces(image)
+            with job_scope():
+                AzureImageAnalyser.detect_faces(image)
+
+        # Cached within a job, but not shared with the next job or the process
+        assert mock_analysis.call_count == 2
+        assert first_job.caches["AzureImageAnalyser._IMAGE_FACE_CACHE"]
+        assert AzureImageAnalyser._IMAGE_FACE_CACHE == {}
+
+    def test_warns_when_using_the_fallback_cache_without_a_job(self):
+        image = Image.new("RGB", (100, 100))
+
+        with patch.object(
+            AzureImageAnalyser,
+            "_azure_vision_analysis",
+            return_value=self._mock_vision_result_people([]),
+        ):
+            AzureImageAnalyser.detect_faces(image)
+            LoggingUtil.log_warning.assert_called_once()
+            LoggingUtil.log_warning.reset_mock()
+
+            with job_scope():
+                AzureImageAnalyser.detect_faces(image)
+
+        LoggingUtil.log_warning.assert_not_called()
 
     def test_skips_image_too_small(self):
         image = Image.new("RGB", (49, 49))
