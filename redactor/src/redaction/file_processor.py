@@ -6,7 +6,6 @@ import os
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Generator
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -17,7 +16,13 @@ if TYPE_CHECKING:
     from .config import RedactionConfig
 
 from ..analysis import AzureImageAnalyser
-from ..monitoring import LoggingUtil, MetricUtil, TimerUtil, log_to_appins
+from ..monitoring import (
+    ContextThreadPoolExecutor,
+    LoggingUtil,
+    MetricUtil,
+    TimerUtil,
+    log_to_appins,
+)
 from ..types import (
     ImageRedactionResult,
     RedactionResult,
@@ -810,7 +815,7 @@ class PDFProcessor(FileProcessor):
                 len(redaction_rules_to_apply),
             ),
         )
-        with TimerUtil() as timer, ThreadPoolExecutor(max_workers) as executor:
+        with TimerUtil() as timer, ContextThreadPoolExecutor(max_workers) as executor:
             # Image rules wait on rate-limited services and take longest, so start them
             # first. The sort is stable, so other rules keep their order
             submit_order = sorted(
