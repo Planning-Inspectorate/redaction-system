@@ -7,4 +7,4 @@ from .api import (  # noqa: F401
     send_llm_message,
     send_service_bus_message,
 )
-from .monitoring import LoggingUtil, log_to_appins  # noqa: F401
+from .monitoring import LoggingUtil, job_scope, log_to_appins  # noqa: F401

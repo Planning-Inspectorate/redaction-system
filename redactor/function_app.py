@@ -125,12 +125,13 @@ def trigger_task(params):
     """
     # Import inside this function so that the function app has a chance to start
     # Exceptions will instead be raised when this function is trigger
-    from src import AzureImageAnalyser, LoggingUtil, RedactionManager, SignatureDetector
-
-    # Clear static state from any previous invocation sharing this process
-    LoggingUtil().clear_logs()
-    AzureImageAnalyser.clear_cache()
-    SignatureDetector.clear_cache()
+    from src import (
+        AzureImageAnalyser,
+        LoggingUtil,
+        RedactionManager,
+        SignatureDetector,
+        job_scope,
+    )
 
     logger.info("Request params: %s", params)
 
@@ -138,7 +139,15 @@ def trigger_task(params):
     stage = params["stage"]
 
     if stage in ["ANALYSE", "REDACT", "SANITISE"]:
-        return RedactionManager(job_id, stage)._try_process(params)
+        try:
+            # Jobs can overlap in this process, so each keeps its own logs and caches
+            with job_scope():
+                return RedactionManager(job_id, stage)._try_process(params)
+        finally:
+            # Bound the process-wide fallbacks that a thread without the job scope uses
+            LoggingUtil().clear_logs()
+            AzureImageAnalyser.clear_cache()
+            SignatureDetector.clear_cache()
 
     raise ValueError(f"Unknown stage extracted from service bus message {params}")
 
