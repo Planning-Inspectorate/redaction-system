@@ -1,6 +1,6 @@
 import hashlib
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import as_completed
 from io import BytesIO
 from threading import Lock
 from typing import ClassVar
@@ -19,7 +19,7 @@ from requests import post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
-from ..monitoring import LoggingUtil, log_to_appins
+from ..monitoring import ContextThreadPoolExecutor, LoggingUtil, log_to_appins
 from .utils import get_max_workers
 
 load_dotenv(verbose=True)
@@ -126,7 +126,7 @@ class ImageAnalyser:
             f"Detecting {object_to_detect}s in {len(images)} images using up to "
             f"{max_workers} workers..."
         )
-        with ThreadPoolExecutor(max_workers) as tpe:
+        with ContextThreadPoolExecutor(max_workers) as tpe:
             finished_futures = 0
             futures_map = {
                 tpe.submit(detection_function, image, *args, **kwargs): image

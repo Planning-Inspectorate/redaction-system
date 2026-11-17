@@ -1,7 +1,6 @@
 import asyncio
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Any
 
@@ -13,6 +12,8 @@ from azure.identity.aio import (
 from azure.servicebus import ServiceBusMessage
 from azure.servicebus.aio import ServiceBusClient
 from strenum import StrEnum
+
+from ..monitoring import ContextThreadPoolExecutor
 
 
 class PINSService(StrEnum):
@@ -87,6 +88,6 @@ class ServiceBusUtil:
                 self._send_message("redaction-process-complete", pins_service, payload)
             )
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
+        with ContextThreadPoolExecutor(max_workers=1) as executor:
             response = executor.submit(inner_wrapper)
             return response.result()
