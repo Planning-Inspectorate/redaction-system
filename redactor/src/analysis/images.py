@@ -15,7 +15,7 @@ from azure.identity import (
 )
 from dotenv import load_dotenv
 from PIL import Image
-from requests import post
+from requests import HTTPError, post
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tenacity.retry import retry_if_exception
 
@@ -407,8 +407,9 @@ class SignatureDetector(ImageAnalyser):
     @retry(
         retry=retry_if_exception(
             lambda exception: (
-                isinstance(exception, HttpResponseError)
-                and exception.status_code in [429, 503]
+                isinstance(exception, HTTPError)
+                and exception.response is not None
+                and exception.response.status_code in [429, 503]
             )
         ),
         wait=wait_random_exponential(min=1, max=60),
