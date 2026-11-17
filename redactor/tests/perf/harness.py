@@ -7,6 +7,7 @@ import os
 import random
 import re
 import statistics
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum
@@ -139,6 +140,32 @@ def _failure_category(result: PerfResult) -> str:
     if result.checked_blob_exists and result.out_blob_exists is not True:
         return "output_blob_missing"
     return "other"
+
+
+def completion_id(result: PerfResult) -> str | None:
+    """The id that the app gave the job, which names its folder in the redaction storage"""
+    output = (result.durable_status or {}).get("output")
+    return output.get("id") if isinstance(output, dict) else None
+
+
+def log_isolation_problems(
+    log_text: str, job_id: str, other_job_ids: Iterable[str]
+) -> list[str]:
+    """
+    What shows that other jobs interfered with a job's saved log. A job logs its own id
+    once, when it starts, so a log without that line has been cleared by another job, and
+    a log with another job's id in it holds that job's lines.
+    """
+    problems = []
+    start_lines = log_text.count(f"Storage folder for run with id '{job_id}'")
+    if start_lines != 1:
+        problems.append(f"has {start_lines} start lines of its own job, expected 1")
+    problems.extend(
+        f"contains the id of job {other}"
+        for other in other_job_ids
+        if other != job_id and other in log_text
+    )
+    return problems
 
 
 def select_fixtures(paths: list[Path], total: int, seed: int = 0) -> list[Path]:

@@ -7,6 +7,7 @@ import os
 import subprocess
 import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +30,11 @@ from .harness import (
     _percentiles,
     _run_id,
     _summarise_durable_status,
+    completion_id,
     has_highlights,
     job_row,
     load_expected_strings,
+    log_isolation_problems,
     proposed_redaction_terms,
     redaction_recall,
     select_fixtures,
@@ -110,6 +113,15 @@ PERF_RESULTS_FILE = os.getenv("PERF_RESULTS_FILE", "")
 # The share of a fixture's labelled strings that the proposed redactions must cover, on
 # average. Needs the output to be downloaded, so set PERF_EXISTS_SAMPLE_EVERY=1
 PERF_MIN_RECALL = _float_env("PERF_MIN_RECALL", 0.0)
+
+# Check the saved log of every this many jobs for lines of, or gaps caused by, other jobs
+# running in the same process. 0 turns it off. Needs jobs to overlap to show anything
+PERF_LOG_CHECK_EVERY = _int_env("PERF_LOG_CHECK_EVERY", 1)
+# The processor sends its completion message before it saves the log, so allow for that
+PERF_LOG_WAIT_S = _float_env("PERF_LOG_WAIT_S", 60.0)
+
+# The container in the processor's storage account that holds each job's logs
+LOG_CONTAINER = "redactiondata"
 
 
 # ----------------------------
@@ -488,6 +500,42 @@ async def _run_one(
 # ----------------------------
 
 
+def _check_job_logs(
+    storage_account: str, jobs: list[dict], results: list[PerfResult], out_dir: Path
+) -> dict[int, list[str]]:
+    """The problems in the saved log of each checked job, by job index. None means clean"""
+    job_ids = {
+        job["i"]: completion_id(result)
+        for job, result in zip(jobs, results, strict=True)
+    }
+    run_job_ids = [job_id for job_id in job_ids.values() if job_id]
+
+    def check(index: int) -> list[str]:
+        job_id = job_ids[index]
+        blob_name = f"{job_id}/ANALYSE_log.txt"
+        if not _wait_for_blob_exists(
+            storage_account=storage_account,
+            container_name=LOG_CONTAINER,
+            blob_name=blob_name,
+            timeout_s=PERF_LOG_WAIT_S,
+            poll_s=2.0,
+        ):
+            return ["log was not saved"]
+        log_file = out_dir / f"{index:05d}_ANALYSE_log.txt"
+        az_download(storage_account, LOG_CONTAINER, blob_name, log_file)
+        return log_isolation_problems(
+            log_file.read_text(encoding="utf-8"), job_id, run_job_ids
+        )
+
+    to_check = [
+        index
+        for index, job_id in job_ids.items()
+        if job_id and PERF_LOG_CHECK_EVERY > 0 and index % PERF_LOG_CHECK_EVERY == 0
+    ]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        return dict(zip(to_check, executor.map(check, to_check), strict=True))
+
+
 @pytest.mark.perf
 def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     _load_dotenv_if_present()
@@ -688,6 +736,16 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         )
     failed_chunks = sum(m.get("failed_chunks", 0) for m in server_metrics)
     print(f"failed_chunks={failed_chunks}")
+
+    # Jobs that overlap in a process must not clear or fill each other's saved logs
+    log_checks = _check_job_logs(storage_account, jobs, results, tmp_path / "job_logs")
+    jobs_with_log_problems = {i: p for i, p in log_checks.items() if p}
+    print(
+        f"logs_checked={len(log_checks)} "
+        f"logs_with_problems={len(jobs_with_log_problems)}"
+    )
+    for index, problems in list(jobs_with_log_problems.items())[:5]:
+        print(f"- job {index} log: {'; '.join(problems)}")
     print(
         f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}"
     )
@@ -751,6 +809,11 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                 "server_seconds": server_stats,
                 "failure_categories": failure_categories,
                 "failed_chunks": failed_chunks,
+                "log_isolation": {
+                    "jobs_checked": len(log_checks),
+                    "jobs_with_problems": len(jobs_with_log_problems),
+                    "problems": {str(i): p for i, p in jobs_with_log_problems.items()},
+                },
                 "recall": {
                     "mean": mean_recall,
                     "min": min(recalls) if recalls else None,
@@ -779,6 +842,10 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     )
     assert failed_chunks == 0, (
         f"{failed_chunks} LLM chunks failed, so redactions may be missing"
+    )
+    assert not jobs_with_log_problems, (
+        f"{len(jobs_with_log_problems)} saved logs were affected by other jobs: "
+        f"{jobs_with_log_problems}"
     )
     if PERF_MIN_RECALL > 0:
         assert mean_recall is not None, (

@@ -14,9 +14,11 @@ from tests.perf.harness import (
     _failure_category,
     _percentiles,
     _run_id,
+    completion_id,
     has_highlights,
     job_row,
     load_expected_strings,
+    log_isolation_problems,
     proposed_redaction_terms,
     redaction_recall,
     select_fixtures,
@@ -235,3 +237,36 @@ def test_write_results_writes_json_without_nan_and_a_csv_of_the_jobs(tmp_path):
         "0,a.pdf",
         "1,b.pdf",
     ]
+
+
+def test_completion_id_is_the_id_in_the_completion_message():
+    result = _result(Outcome.SUCCESS, {"output": {"id": "job-1-1794849341"}})
+
+    assert completion_id(result) == "job-1-1794849341"
+    assert completion_id(_result(Outcome.APP_FAIL)) is None
+
+
+@pytest.mark.parametrize(
+    ("log_text", "expected"),
+    [
+        ("INFO: Storage folder for run with id 'job-a-1'\nINFO: done\n", []),
+        # Another job cleared the start of this job's log
+        ("INFO: Starting the redaction process\n", ["has 0 start lines"]),
+        # Another job's lines are in this job's log
+        (
+            (
+                "INFO: Storage folder for run with id 'job-a-1'\n"
+                "INFO: Storage folder for run with id 'job-b-2'\n"
+            ),
+            ["contains the id of job job-b-2"],
+        ),
+    ],
+)
+def test_log_isolation_problems(log_text, expected):
+    problems = log_isolation_problems(log_text, "job-a-1", ["job-a-1", "job-b-2"])
+
+    assert len(problems) == len(expected)
+    assert all(
+        expected_text in problem
+        for expected_text, problem in zip(expected, problems, strict=True)
+    )
