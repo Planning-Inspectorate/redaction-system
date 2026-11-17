@@ -1,3 +1,4 @@
+import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -6,6 +7,7 @@ from unittest.mock import call, patch
 
 import pytest
 
+from src.monitoring.job_scope import job_scope
 from src.monitoring.logging import LoggingUtil, Singleton, log_to_appins
 
 
@@ -133,6 +135,30 @@ def test_logging_util__log_exception(mock_logger_exception):
 
     Logger.exception.assert_called_once_with(base_message)
     assert f"ERROR: {base_message}\n" in logging_util_inst.raw_logs
+
+
+@pytest.mark.nologgerfixt
+@patch.object(Logger, "info", return_value=None)
+def test_logging_util__concurrent_jobs_keep_separate_logs(mock_logger_info):
+    logging_util_inst = get_new_logging_instance()
+    logging_util_inst.logger = getLogger()
+    both_logged = threading.Barrier(2, timeout=5)
+
+    def run_job(name: str) -> bytes:
+        with job_scope():
+            LoggingUtil().log_info(f"{name} started")
+            # Hold both jobs open, so each logs while the other is running
+            both_logged.wait()
+            log_bytes = LoggingUtil().get_log_bytes()
+            LoggingUtil().clear_logs()
+            return log_bytes
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        logs_a, logs_b = executor.map(run_job, ["job a", "job b"])
+
+    assert logs_a == b"INFO: job a started\n"
+    assert logs_b == b"INFO: job b started\n"
+    assert "INFO: job a started\n" not in logging_util_inst.raw_logs
 
 
 @pytest.mark.nologgerfixt
