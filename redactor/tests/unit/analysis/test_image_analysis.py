@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 from PIL import Image
+from requests import HTTPError
 
 from src.analysis.images import (
     AzureImageAnalyser,
@@ -489,6 +490,45 @@ class TestDetectSignatures(TestSignatureDetectorBase):
             )
 
         assert result == ((10, 20, 50, 60),)
+
+    @pytest.mark.parametrize("status_code", [429, 503])
+    def test_retries_on_throttled_or_unavailable_response(self, status_code):
+        image = Image.new("RGB", (100, 100))
+        failed = self._mock_response([], status_code=status_code)
+        failed.raise_for_status.side_effect = HTTPError(response=failed)
+        detections = [
+            {
+                "score": 0.9,
+                "box": {"x_min": 10, "y_min": 20, "x_max": 50, "y_max": 60},
+            }
+        ]
+
+        with (
+            patch("tenacity.nap.time.sleep"),
+            patch(
+                "src.analysis.images.post",
+                side_effect=[failed, self._mock_response(detections)],
+            ) as mock_post,
+        ):
+            result = SignatureDetector.detect_signatures(
+                image, confidence_threshold=0.5
+            )
+
+        assert mock_post.call_count == 2
+        assert result == ((10, 20, 50, 60),)
+
+    def test_does_not_retry_on_other_http_errors(self):
+        image = Image.new("RGB", (100, 100))
+        failed = self._mock_response([], status_code=400)
+        failed.raise_for_status.side_effect = HTTPError(response=failed)
+
+        with (
+            patch("src.analysis.images.post", return_value=failed) as mock_post,
+            pytest.raises(HTTPError),
+        ):
+            SignatureDetector.detect_signatures(image, confidence_threshold=0.5)
+
+        assert mock_post.call_count == 1
 
     def test_returns_empty_for_no_detections(self):
         image = Image.new("RGB", (100, 100))
