@@ -494,7 +494,9 @@ class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
                 [term], page_metadata, next_page_metadata
             )
 
-        mock_examine.assert_called_once_with(term, page_metadata, next_page_metadata)
+        mock_examine.assert_called_once_with(
+            term, page_metadata, next_page_metadata, page=None
+        )
         assert result == expected_result
 
 
