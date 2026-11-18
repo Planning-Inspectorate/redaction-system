@@ -12,7 +12,7 @@ parameters:
   default: 5
 - name: perfTimeoutSeconds
   type: number
-  default: 200
+  default: 300
 - name: perfPollSeconds
   type: number
   default: 2
