@@ -419,10 +419,12 @@ class PDFUtil:
             if "-" in word and last_word_on_line in word:
                 # Get the part of the word before the hyphen
                 split_word = word.split("-")[:-1]
+                # Try the longest leading part first, e.g. if the term is a-b-c then
+                # look for a-b, then a (hyphen is removed by pymupdf)
                 while split_word:
                     if last_word_on_line == "-".join(split_word):
                         break
-                    split_word.pop(0)
+                    split_word.pop()
             else:
                 continue
             if split_word:
@@ -988,7 +990,14 @@ class PDFUtil:
                         redaction_instances.append((page_number, rect, term_to_redact))
                     # Check for partial redaction if term contains a hyphen
                     elif "-" in term_to_redact and end == len(words_to_check) - 1:
-                        unhyphenated_terms = normalised_term_to_redact.split("-")
+                        if normalised_term_to_redact.startswith(term_found + "-"):
+                            # Keep the remainder intact; it may be one token on the next line
+                            unhyphenated_terms = [
+                                term_found,
+                                normalised_term_to_redact[len(term_found) + 1 :],
+                            ]
+                        else:
+                            unhyphenated_terms = normalised_term_to_redact.split("-")
                         results = cls._check_partial_redaction_across_line_breaks(
                             unhyphenated_terms,
                             term_found,

@@ -531,6 +531,21 @@ class TestExamineProvisionalTextRedaction:
             f"Failed for case {test_case.name}: expected {expected}, got {result}"
         )
 
+    def test_multi_hyphen_term_split_after_first_hyphen(self):
+        page_metadata = create_mock_page_metadata(
+            "a 13-\nyear-old boy", ["a 13-", "year-old boy"]
+        )
+
+        result = PDFUtil.examine_provisional_text_redaction(
+            "13-year-old", page_metadata
+        )
+
+        assert [(r[0], r[1]) for r in result] == [
+            (0, pymupdf.Rect(0, 0, 3, 10)),
+            (0, pymupdf.Rect(0, 20, 8, 30)),
+        ]
+        assert all(r[2] == "13-year-old" for r in result)
+
 
 class TestMatchWordToRedactInLine:
     def test_non_fused_word(self):
@@ -731,6 +746,12 @@ class TestCheckPartialMatchBeforeHyphen:
                 "check-this",
                 np.array(["now", "check-this"], dtype=str),
                 None,
+            ),
+            Parameters(
+                "match_leading_part_of_multi_hyphen_word",
+                "13-year-old",
+                np.array(["a", "13"], dtype=str),
+                ("13", 1, 1),
             ),
         ],
     )
