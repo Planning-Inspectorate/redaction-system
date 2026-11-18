@@ -108,7 +108,7 @@ variable "vision_requests_per_minute" {
 variable "llm_quota_allocation" {
   description = "The share (0 to 1) of the OpenAI deployment's quota that each processor function app instance may use"
   type        = number
-  default     = 0.5
+  default     = 0.25
 }
 
 variable "rule_max_workers" {
