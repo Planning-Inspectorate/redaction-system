@@ -141,6 +141,11 @@ extends:
 
               - template: pipelines/templates/install-python.yml@self
 
+              - script: |
+                  set -e
+                  python3 -m pip install pytest dotenv requests
+                displayName: 'Install Python dependencies'
+
               # Run a quick smoke test to check connectivity
               - task: AzureCLI@2
                 displayName: 'Run function app smoke test'
@@ -149,10 +154,8 @@ extends:
                   scriptType: 'bash'
                   scriptLocation: 'inlineScript'
                   inlineScript: |
-                    python3 -m pip install pytest
-                    python3 -m pip install dotenv
+                    set -e
                     python3 -m pytest redactor/tests/smoke/test_connectivity.py
-                    
 
               - task: AzureCLI@2
                 displayName: Test signature detection
