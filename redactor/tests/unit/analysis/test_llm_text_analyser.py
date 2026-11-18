@@ -1,6 +1,7 @@
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import ANY, MagicMock, Mock, patch
 
 import pytest
 from openai import LengthFinishReasonError, RateLimitError
@@ -10,11 +11,16 @@ from tenacity import stop_after_attempt, wait_none
 from src.analysis.text import (
     LLMTextAnalyser,
     LLMTextAnalyserConfig,
+    get_chunk_id,
     handle_last_retry_error,
+    merge_redaction_decisions,
     update_max_tokens,
 )
 from src.monitoring import LoggingUtil
 from src.types import (
+    LLMDetailedRedactionResultFormat,
+    LLMExclusionDecision,
+    LLMRedactionDecision,
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
@@ -570,7 +576,7 @@ def test__llm_text_analyser___analyse_text_chunk__timeout_on_request_semaphore(
     logging_util_calls_as_string = [str(x) for x in logging_util_calls]
     timeout_error = str(
         TimeoutError(
-            f"(chunk ID {hash(user_prompt)}) Timeout while waiting for request semaphore to be available."
+            f"(chunk ID {get_chunk_id(user_prompt)}) Timeout while waiting for request semaphore to be available."
         )
     )
     assert any(timeout_error in x for x in logging_util_calls_as_string), (
@@ -734,6 +740,337 @@ def test__llm_text_analyser__analyse_text():
     assert llm_text_analyser.input_token_count == 10
     assert llm_text_analyser.completion_token_count == 8
     assert llm_text_analyser.total_cost == 26.0
+
+
+def _decision(text, clause_ids=("T1",), confidence="high", reason="a reason"):
+    return LLMRedactionDecision(
+        text=text,
+        data_subject="third_party",
+        clause_ids=list(clause_ids),
+        reason=reason,
+        confidence=confidence,
+    )
+
+
+def _exclusion(text):
+    return LLMExclusionDecision(text=text, clause_ids=["D1"], reason="councillor")
+
+
+def create_mock_detailed_chat_completion(redactions, excluded=()):
+    return MockLLMChatCompletion(
+        choices=[
+            MockLLMChatCompletionChoice(
+                message=MockLLMChatCompletionChoiceMessage(
+                    parsed=LLMDetailedRedactionResultFormat(
+                        redactions=list(redactions), excluded=list(excluded)
+                    )
+                )
+            )
+        ],
+        usage=MockLLMChatCompletionUsage(prompt_tokens=5, completion_tokens=4),
+    )
+
+
+def test__get_chunk_id():
+    """
+    - Given some chunk text
+    - When I get its chunk ID
+    - Then it is the first 16 hex characters of the text's SHA-256 digest, so it
+      is the same in every process
+    """
+    expected = hashlib.sha256(b"chunk A").hexdigest()[:16]
+
+    assert get_chunk_id("chunk A") == expected
+    assert get_chunk_id("chunk B") != expected
+
+
+def test__merge_redaction_decisions():
+    """
+    - Given two chunks that both redact a span with different clauses and confidence
+    - When I merge their decisions
+    - Then there is one decision for the span with the highest confidence, every
+      clause and data subject, and one occurrence per chunk with its reason
+    """
+    first = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Joan Brown", ["T1"], "low", "first reason")],
+        excluded=[_exclusion("Cllr Raj Patel")],
+    )
+    second = LLMDetailedRedactionResultFormat(
+        redactions=[
+            LLMRedactionDecision(
+                text="Joan Brown",
+                data_subject="author",
+                clause_ids=["T1", "M2"],
+                reason="second reason",
+                confidence="high",
+            ),
+            _decision("Mary Jones"),
+        ],
+        excluded=[],
+    )
+
+    redactions, excluded = merge_redaction_decisions(
+        [(0, "id0", first), (1, "id1", second)]
+    )
+
+    assert redactions == (
+        {
+            "text": "Joan Brown",
+            "confidence": "high",
+            "clause_ids": ["T1", "M2"],
+            "data_subjects": ["third_party", "author"],
+            "chunk_count": 2,
+            "occurrences": [
+                {
+                    "chunk_index": 0,
+                    "chunk_id": "id0",
+                    "data_subject": "third_party",
+                    "clause_ids": ["T1"],
+                    "reason": "first reason",
+                    "confidence": "low",
+                },
+                {
+                    "chunk_index": 1,
+                    "chunk_id": "id1",
+                    "data_subject": "author",
+                    "clause_ids": ["T1", "M2"],
+                    "reason": "second reason",
+                    "confidence": "high",
+                },
+            ],
+        },
+        {
+            "text": "Mary Jones",
+            "confidence": "high",
+            "clause_ids": ["T1"],
+            "data_subjects": ["third_party"],
+            "chunk_count": 1,
+            "occurrences": [
+                {
+                    "chunk_index": 1,
+                    "chunk_id": "id1",
+                    "data_subject": "third_party",
+                    "clause_ids": ["T1"],
+                    "reason": "a reason",
+                    "confidence": "high",
+                },
+            ],
+        },
+    )
+    assert excluded == (
+        {
+            "text": "Cllr Raj Patel",
+            "clause_ids": ["D1"],
+            "conflicts_with_redaction": False,
+            "chunk_count": 1,
+            "occurrences": [
+                {
+                    "chunk_index": 0,
+                    "chunk_id": "id0",
+                    "clause_ids": ["D1"],
+                    "reason": "councillor",
+                },
+            ],
+        },
+    )
+
+
+def test__merge_redaction_decisions__exclusion_redacted_elsewhere_is_flagged():
+    """
+    - Given a span that one chunk excludes and another chunk redacts
+    - When I merge their decisions
+    - Then the exclusion is kept and flagged as conflicting with a redaction
+    """
+    first = LLMDetailedRedactionResultFormat(
+        redactions=[], excluded=[_exclusion("Mary Jones")]
+    )
+    second = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Mary Jones")], excluded=[]
+    )
+
+    redactions, excluded = merge_redaction_decisions(
+        [(0, "id0", first), (1, "id1", second)]
+    )
+
+    assert [r["text"] for r in redactions] == ["Mary Jones"]
+    assert [(e["text"], e["conflicts_with_redaction"]) for e in excluded] == [
+        ("Mary Jones", True)
+    ]
+
+
+def test__merge_redaction_decisions__ordered_by_chunk_index():
+    """
+    - Given chunk responses that arrive out of order, as with parallel processing
+    - When I merge their decisions
+    - Then spans and occurrences are ordered by chunk index
+    """
+    first = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Joan Brown", reason="first")], excluded=[]
+    )
+    second = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Mary Jones"), _decision("Joan Brown", reason="second")],
+        excluded=[],
+    )
+
+    redactions, _ = merge_redaction_decisions([(1, "id1", second), (0, "id0", first)])
+
+    assert [r["text"] for r in redactions] == ["Joan Brown", "Mary Jones"]
+    assert [o["reason"] for o in redactions[0]["occurrences"]] == ["first", "second"]
+
+
+def test__merge_redaction_decisions__chunk_count_counts_distinct_chunks():
+    """
+    - Given a chunk that repeats the same span
+    - When I merge its decisions
+    - Then each repeat is an occurrence but the chunk is only counted once
+    """
+    parsed = LLMDetailedRedactionResultFormat(
+        redactions=[_decision("Joan Brown"), _decision("Joan Brown")], excluded=[]
+    )
+
+    redactions, _ = merge_redaction_decisions([(0, "id0", parsed)])
+
+    assert len(redactions[0]["occurrences"]) == 2
+    assert redactions[0]["chunk_count"] == 1
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__include_rationale(
+    mock_num_tokens_consumed, mock_create_api_message
+):
+    """
+    - Given an analyser with include_rationale enabled
+    - When I analyse a chunk
+    - Then the detailed format is requested, the strings are returned, and the
+      decisions' reasons are not logged
+    """
+    completion = create_mock_detailed_chat_completion(
+        [_decision("Joan Brown", reason="uninvolved neighbour")],
+        [_exclusion("Cllr Raj Patel")],
+    )
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", include_rationale=True)
+    )
+    llm_text_analyser.request_semaphore = Mock()
+    llm_text_analyser.token_semaphore = Mock()
+
+    with patch.object(
+        LLMTextAnalyser, "invoke_chain", return_value=completion
+    ) as mock_invoke_chain:
+        response, redaction_strings = llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+    assert mock_invoke_chain.call_args.args[1] is LLMDetailedRedactionResultFormat
+    assert response is completion
+    assert redaction_strings == ["Joan Brown"]
+    logged = " ".join(str(c) for c in LoggingUtil.log_info.call_args_list)
+    assert "uninvolved neighbour" not in logged
+    assert "Cllr Raj Patel" not in logged
+
+
+def test__llm_text_analyser__analyse_text__include_rationale():
+    """
+    - Given an analyser with include_rationale enabled
+    - When I analyse two chunks that both redact the same span
+    - Then the result has one merged decision for it alongside the strings
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(model="gpt-5.6-luna", include_rationale=True)
+    )
+    results = iter(
+        [
+            (
+                create_mock_detailed_chat_completion([_decision("Joan Brown")]),
+                ["Joan Brown"],
+            ),
+            (
+                create_mock_detailed_chat_completion(
+                    [_decision("Joan Brown", confidence="low")],
+                    [_exclusion("Cllr Raj Patel")],
+                ),
+                ["Joan Brown"],
+            ),
+        ]
+    )
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=lambda *args, **kwargs: next(results),
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt", text_chunks=["chunk A", "chunk B"]
+        )
+
+    assert actual_result.redaction_strings == ("Joan Brown",)
+    assert [d["text"] for d in actual_result.redaction_decisions] == ["Joan Brown"]
+    assert actual_result.redaction_decisions[0]["confidence"] == "high"
+    assert actual_result.redaction_decisions[0]["chunk_count"] == 2
+    assert [d["text"] for d in actual_result.excluded_decisions] == ["Cllr Raj Patel"]
+
+
+@patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
+def test__llm_text_analyser__analyse_text__include_rationale_traces_chunks():
+    """
+    - Given an analyser with include_rationale enabled processing chunks in parallel
+    - When each chunk returns a different decision
+    - Then each occurrence carries the index and stable ID of the chunk it came from
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(
+            model="gpt-5.6-luna", include_rationale=True, max_concurrent_requests=4
+        )
+    )
+    results = {
+        "chunk A": (
+            create_mock_detailed_chat_completion([_decision("Joan Brown")]),
+            ["Joan Brown"],
+        ),
+        "chunk B": (
+            create_mock_detailed_chat_completion([_decision("Mary Jones")]),
+            ["Mary Jones"],
+        ),
+    }
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        side_effect=lambda system_prompt, user_prompt: results[user_prompt],
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt", text_chunks=["chunk A", "chunk B"]
+        )
+
+    sources = {
+        d["text"]: [(o["chunk_index"], o["chunk_id"]) for o in d["occurrences"]]
+        for d in actual_result.redaction_decisions
+    }
+    assert sources == {
+        "Joan Brown": [(0, get_chunk_id("chunk A"))],
+        "Mary Jones": [(1, get_chunk_id("chunk B"))],
+    }
+
+
+def test__llm_text_analyser__analyse_text__no_rationale_has_no_decisions():
+    llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+
+    with patch.object(
+        LLMTextAnalyser,
+        "_analyse_text_chunk",
+        return_value=(create_mock_chat_completion(["string A"]), ["string A"]),
+    ):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt", text_chunks=["chunk A"]
+        )
+
+    assert actual_result.redaction_decisions == ()
+    assert actual_result.excluded_decisions == ()
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
@@ -923,6 +1260,41 @@ def test__llm_text_analyser__analyse_text__sequential_failed_chunk_counted(
     assert actual_result.redaction_strings == ("string B",)
     assert actual_result.metadata.request_count == 2
     assert actual_result.metadata.failed_chunk_count == 1
+    assert actual_result.chunk_summaries == (
+        {"chunk_index": 0, "chunk_id": get_chunk_id("chunk A"), "status": "failed"},
+        {"chunk_index": 1, "chunk_id": get_chunk_id("chunk B"), "status": "ok"},
+    )
+    LoggingUtil.log_exception_with_message.assert_any_call(
+        f"Error processing chunk {get_chunk_id('chunk A')}", ANY
+    )
+
+
+@patch("time.sleep", return_value=None)
+def test__llm_text_analyser__analyse_text__budget_exceeded_chunks_skipped(
+    mock_time_sleep,
+):
+    """
+    - Given a budget that is exceeded after the first chunk
+    - When analyse_text processes chunks sequentially
+    - Then the unprocessed chunks are summarised as skipped
+    """
+    llm_text_analyser = LLMTextAnalyser(
+        LLMTextAnalyserConfig(
+            model="gpt-5.6-luna", budget=1.0, max_concurrent_requests=1
+        )
+    )
+
+    def side_effect(system_prompt, user_prompt):
+        llm_text_analyser.total_cost = 2.0
+        return create_mock_chat_completion(["string A"]), ["string A"]
+
+    with patch.object(LLMTextAnalyser, "_analyse_text_chunk", side_effect=side_effect):
+        actual_result = llm_text_analyser.analyse_text(
+            system_prompt="system prompt",
+            text_chunks=["chunk A", "chunk B"],
+        )
+
+    assert [s["status"] for s in actual_result.chunk_summaries] == ["ok", "skipped"]
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
@@ -952,6 +1324,7 @@ def test__llm_text_analyser__analyse_text__parallel_failed_chunk_counted():
 
     assert actual_result.redaction_strings == ("string B",)
     assert actual_result.metadata.failed_chunk_count == 1
+    assert [s["status"] for s in actual_result.chunk_summaries] == ["failed", "ok"]
 
 
 @patch.object(LLMTextAnalyser, "analyse_text", LLMTextAnalyser.analyse_text.__wrapped__)
