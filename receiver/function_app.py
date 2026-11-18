@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -12,7 +14,7 @@ from azure.identity.aio import (
     ManagedIdentityCredential,
 )
 from azure.servicebus import ServiceBusMessage
-from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus.aio import ServiceBusClient, ServiceBusSender
 from azure.servicebus.exceptions import (
     MessageSizeExceededError,
     OperationTimeoutError,
@@ -20,6 +22,50 @@ from azure.servicebus.exceptions import (
 )
 
 app = func.FunctionApp()
+
+QUEUE_NAME = "redaction-internal-queue"
+
+# The Python Service Bus clients are not coroutine-safe, so all use of them is serialised by this lock
+_sender_lock = asyncio.Lock()
+_credential: ChainedTokenCredential | None = None
+_client: ServiceBusClient | None = None
+_sender: ServiceBusSender | None = None
+
+
+async def _close_sender() -> None:
+    """Discard the shared sender so the next send reconnects. Caller must hold the lock"""
+    global _credential, _client, _sender
+    resources = (_sender, _client, _credential)
+    _sender = _client = _credential = None
+    for resource in resources:
+        if resource is not None:
+            with contextlib.suppress(Exception):
+                await resource.close()
+
+
+async def _send_message(service_bus_name: str, message: ServiceBusMessage) -> None:
+    """Send using a sender shared across requests, created on first use"""
+    global _credential, _client, _sender
+    async with _sender_lock:
+        if _sender is None:
+            # Create the global sender, client, and credential on first use
+            _credential = ChainedTokenCredential(
+                ManagedIdentityCredential(), AzureCliCredential()
+            )
+            _client = ServiceBusClient(
+                fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
+                credential=_credential,
+                logging_enable=True,
+            )
+            _sender = _client.get_queue_sender(QUEUE_NAME)
+        try:
+            await _sender.send_messages([message])
+        except MessageSizeExceededError:
+            raise  # the message is at fault, not the connection
+        except (OperationTimeoutError, ServiceBusError):
+            # connection fault - discard so next send will recreate the sender
+            await _close_sender()
+            raise
 
 
 async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
@@ -46,22 +92,11 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
             "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
         )
     try:
-        credential = ChainedTokenCredential(
-            ManagedIdentityCredential(), AzureCliCredential()
+        logger.info("Adding message to service bus queue")
+        message = ServiceBusMessage(
+            json.dumps(request_params), time_to_live=timedelta(days=1)
         )
-        async with ServiceBusClient(
-            fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
-            credential=credential,
-            logging_enable=True,
-        ) as service_bus_client:
-            logger.info("Adding message to service bus queue")
-            async with service_bus_client.get_queue_sender(
-                "redaction-internal-queue"
-            ) as sender:
-                message = ServiceBusMessage(
-                    json.dumps(request_params), time_to_live=timedelta(days=1)
-                )
-                await sender.send_messages([message])
+        await _send_message(service_bus_name, message)
     except (OperationTimeoutError, MessageSizeExceededError, ServiceBusError) as e:
         logger.error(
             f"Failed to send the new message to the service bus queue with the following exception: {e}"
