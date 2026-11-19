@@ -3,15 +3,26 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from openai import LengthFinishReasonError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    BadRequestError,
+    ConflictError,
+    InternalServerError,
+    LengthFinishReasonError,
+    RateLimitError,
+)
 from pydantic import ValidationError
 from tenacity import stop_after_attempt, wait_none
 
 from src.analysis.text import (
+    MAX_RETRY_WAIT_SECONDS,
     LLMTextAnalyser,
     LLMTextAnalyserConfig,
     handle_last_retry_error,
+    is_transient_api_error,
     update_max_tokens,
+    wait_for_retry_after,
 )
 from src.monitoring import LoggingUtil
 from src.types import (
@@ -58,8 +69,79 @@ class MockOpenAIAPIResponse:
     request = None
     status_code = None
 
-    def __init__(self):
-        self.headers = {}
+    def __init__(self, status_code=None, headers=None):
+        self.status_code = status_code
+        self.headers = headers or {}
+
+
+def _status_error(error_class, status_code=None, headers=None):
+    return error_class(
+        "message",
+        response=MockOpenAIAPIResponse(status_code, headers),
+        body="body",
+    )
+
+
+def _retry_state(exception, attempt_number=1):
+    return Mock(
+        outcome=Mock(exception=Mock(return_value=exception)),
+        attempt_number=attempt_number,
+    )
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        APIConnectionError(request=Mock()),
+        _status_error(RateLimitError, 429),
+        _status_error(ConflictError, 409),
+        _status_error(InternalServerError, 500),
+        _status_error(APIStatusError, 408),
+    ],
+)
+def test__is_transient_api_error(exception):
+    assert is_transient_api_error(exception)
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        _status_error(BadRequestError, 400),
+        _status_error(APIStatusError, 404),
+        ValueError("not an API error"),
+    ],
+)
+def test__is_transient_api_error__not_transient(exception):
+    assert not is_transient_api_error(exception)
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected_wait"),
+    [
+        ({"retry-after-ms": "2500"}, 2.5),
+        ({"retry-after": "3"}, 3.0),
+        ({"retry-after-ms": "1500", "retry-after": "2"}, 1.5),
+        ({"retry-after": "600"}, MAX_RETRY_WAIT_SECONDS),
+    ],
+)
+def test__wait_for_retry_after__uses_header(headers, expected_wait):
+    exception = _status_error(RateLimitError, 429, headers)
+
+    assert wait_for_retry_after(_retry_state(exception)) == expected_wait
+
+
+@pytest.mark.parametrize(
+    "exception",
+    [
+        _status_error(RateLimitError, 429),
+        _status_error(RateLimitError, 429, {"retry-after": "Wed, 21 Oct 2026"}),
+        TimeoutError("no response"),
+    ],
+)
+def test__wait_for_retry_after__falls_back_to_exponential_backoff(exception):
+    wait = wait_for_retry_after(_retry_state(exception, attempt_number=3))
+
+    assert 1 <= wait <= MAX_RETRY_WAIT_SECONDS
 
 
 TOKEN_RATE_LIMIT = 3000000
@@ -195,6 +277,8 @@ def test__llm_text_analyser____init__():
         client_kwargs["azure_ad_token_provider"] is mock_get_token_provider.return_value
     )
     assert "azure_ad_token" not in client_kwargs
+    # Retries are left to _analyse_text_chunk, so they are not multiplied
+    assert client_kwargs["max_retries"] == 0
 
 
 def test__llm_text_analyser____init__shares_client_between_analysers():
@@ -748,6 +832,8 @@ def test__llm_text_analyser___analyse_text_chunk__length_finish_reason(
     "exception",
     [
         RateLimitError("message", response=MockOpenAIAPIResponse(), body="body"),
+        APIConnectionError(request=Mock()),
+        _status_error(InternalServerError, 503),
         TimeoutError("Some LLM invocation error"),
         LengthFinishReasonError(completion=create_mock_chat_completion()),
         AttributeError("'str' object has no attribute 'choices'"),
@@ -792,6 +878,32 @@ def test__llm_text_analyser___analyse_text_chunk__retry_on_exception(
         if isinstance(exception, LengthFinishReasonError):
             # Last call should have updated max_completion_tokens to 2000
             assert LLMTextAnalyser.invoke_chain.call_args.args[-1] == 2000
+
+
+@patch.object(
+    LLMTextAnalyser,
+    "create_api_message",
+    return_value=[{"role": "system", "content": "system prompt"}],
+)
+@patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+def test__llm_text_analyser___analyse_text_chunk__no_retry_on_bad_request(
+    mock_num_tokens, mock_api_message
+):
+    with patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=_status_error(BadRequestError, 400),
+    ):
+        llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(3)
+
+        with pytest.raises(BadRequestError):
+            llm_text_analyser._analyse_text_chunk(
+                system_prompt="system prompt", user_prompt=""
+            )
+
+        assert LLMTextAnalyser.invoke_chain.call_count == 1
 
 
 def test__llm_text_analyser__analyse_text():
