@@ -295,12 +295,15 @@ class LLMTextAnalyser:
         api_messages: str,
     ):
         """
-        Estimate the number of tokens consumed by a request to the LLM
+        Estimate the prompt tokens in a request to the LLM
+
+        Azure counts actual input and generated tokens towards the rate limit, so the
+        max_completion_tokens allowance is not added
+        https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#understanding-rate-limits
 
         Based on https://github.com/openai/openai-cookbook/blob/970d8261fbf6206718fe205e88e37f4745f9cf76/examples/api_request_parallel_processor.py#L339
         """
         encoding = get_encoding(self.config.token_encoding_name)
-        completion_tokens = self.config.n * self.config.max_tokens
         n_tokens = 0
         try:
             for message in api_messages:
@@ -310,9 +313,7 @@ class LLMTextAnalyser:
                     if key == "name":  # if there's a name, the role is omitted
                         n_tokens += -1  # role is always required and always 1 token
             n_tokens += 2  # every reply is primed with <im_start>assistant
-
-            total_tokens = n_tokens + completion_tokens
-            return total_tokens
+            return n_tokens
         except Exception as e:  # noqa: BLE001
             LoggingUtil().log_exception_with_message(
                 "An error occurred while counting tokens:", e
