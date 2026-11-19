@@ -1,7 +1,6 @@
 import dataclasses
 import json
 import os
-import time
 from concurrent.futures import as_completed
 from threading import Lock, Semaphore
 from typing import ClassVar, Literal
@@ -40,9 +39,13 @@ from ..monitoring import (
     log_to_appins,
 )
 from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
-from .utils import TokenSemaphore, get_max_workers
+from .utils import RateLimiter, get_max_workers
 
 load_dotenv(verbose=True)
+
+# Azure evaluates rate limits over 1 or 10 second periods, so allow at most 1s of burst
+# https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#understanding-rate-limits
+RATE_LIMIT_BURST_SECONDS = 1.0
 
 
 @log_to_appins
@@ -90,10 +93,11 @@ class LLMTextAnalyserConfig(BaseModel):
     budget: float | None = None
     """The budget in GBP for LLM usage"""
     token_timeout: float | None = 600.0
-    """The timeout in seconds for acquiring tokens from the token semaphore. Chunks
+    """The timeout in seconds for waiting on the shared token rate limit. Chunks
     from every rule queue for the shared limits, so this must outlast that queue"""
     request_timeout: float | None = 600.0
-    """The timeout in seconds for acquiring request semaphore"""
+    """The timeout in seconds for acquiring the request semaphore and for waiting on
+    the shared request rate limit"""
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -125,7 +129,9 @@ class LLMTextAnalyser:
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
     # Shared so that analysers running at the same time draw on one budget
-    _SHARED_LIMITS: ClassVar[dict[tuple, tuple[Semaphore, TokenSemaphore]]] = {}
+    _SHARED_LIMITS: ClassVar[
+        dict[tuple, tuple[Semaphore, RateLimiter, RateLimiter]]
+    ] = {}
     _SHARED_LIMITS_LOCK: ClassVar[Lock] = Lock()
     _CLIENT: ClassVar[AzureOpenAI | None] = None
     _CLIENT_LOCK: ClassVar[Lock] = Lock()
@@ -167,7 +173,11 @@ class LLMTextAnalyser:
 
         # Validate and set max concurrent requests
         self._set_workers(self.config.max_concurrent_requests)
-        self.request_semaphore, self.token_semaphore = self._get_shared_limits()
+        (
+            self.request_semaphore,
+            self.request_rate_limiter,
+            self.token_rate_limiter,
+        ) = self._get_shared_limits()
 
         self.input_token_count = 0
         self.cached_input_token_count = 0
@@ -177,20 +187,21 @@ class LLMTextAnalyser:
         self.total_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
 
-    def _get_shared_limits(self) -> tuple[Semaphore, TokenSemaphore]:
-        """Get the request and token limits shared by analysers with the same settings."""
+    def _get_shared_limits(self) -> tuple[Semaphore, RateLimiter, RateLimiter]:
+        """Get the concurrency and rate limits shared by analysers with the same settings."""
         config = self.config
         key = (
             config.model,
             config.max_concurrent_requests,
+            config.request_rate_limit,
             config.token_rate_limit,
-            config.token_timeout,
         )
         with self._SHARED_LIMITS_LOCK:
             if key not in self._SHARED_LIMITS:
                 self._SHARED_LIMITS[key] = (
                     Semaphore(config.max_concurrent_requests),
-                    TokenSemaphore(config.token_rate_limit, config.token_timeout),
+                    RateLimiter(config.request_rate_limit, RATE_LIMIT_BURST_SECONDS),
+                    RateLimiter(config.token_rate_limit, RATE_LIMIT_BURST_SECONDS),
                 )
             return self._SHARED_LIMITS[key]
 
@@ -382,12 +393,15 @@ class LLMTextAnalyser:
             raise TimeoutError
 
         try:
-            # Acquire token semaphore
+            # Wait while holding a permit, so that requests are sent at the paced times
             try:
-                self.token_semaphore.acquire(estimated_tokens)
+                self.request_rate_limiter.wait(timeout=self.config.request_timeout)
+                self.token_rate_limiter.wait(
+                    estimated_tokens, timeout=self.config.token_timeout
+                )
             except TimeoutError as te:
                 LoggingUtil().log_exception_with_message(
-                    f"{chunk_hash_string} Timeout while waiting for tokens to be released :",
+                    f"{chunk_hash_string} Timeout while waiting for the rate limit:",
                     te,
                 )
                 raise
@@ -435,13 +449,10 @@ class LLMTextAnalyser:
                 # Update token counts and costs
                 with self.lock:
                     self._compute_costs(usage)
-                # Release token semaphore
-                self.token_semaphore.release(estimated_tokens)
 
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(60 / self.config.request_rate_limit)  # Rate limiting delay
 
     def _compute_costs(self, usage: CompletionUsage = None):
         if usage is None:
