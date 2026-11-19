@@ -93,7 +93,7 @@ variable "worker_caps" {
     signature = number
   })
   default = {
-    llm       = 16
+    llm       = 32
     vision    = 2 # Sized for the Vision F0 tier
     signature = 4
   }
