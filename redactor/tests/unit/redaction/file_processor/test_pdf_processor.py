@@ -499,6 +499,26 @@ class TestExamineProvisionalRedactionsOnPage(TestExamineApplyRedactionsBase):
         )
         assert result == expected_result
 
+    @pytest.mark.parametrize("term", ["13-year-old", "13- year-old", "13 year-old"])
+    def test_examines_hyphenated_term_wrapped_across_lines(self, term):
+        page_metadata = self.create_mock_page_metadata(
+            page_number=0,
+            text_content="a 13-\nyear-old boy",
+            lines=["a 13-", "year-old boy"],
+            y0=[0, 20],
+            y1=[10, 30],
+            x0=[[0, 0], [0, 0]],
+            x1=[[1, 3], [8, 3]],
+        )
+        with patch.object(
+            PDFUtil, "examine_provisional_text_redaction", return_value=[]
+        ) as mock_examine:
+            pdf_processor = PDFProcessor()
+            pdf_processor.terms_found = {term: 0}
+            pdf_processor._examine_provisional_redactions_on_page([term], page_metadata)
+
+        mock_examine.assert_called_once_with(term, page_metadata, None, page=None)
+
 
 class TestApplyProvisionalTextRedactions(TestExamineApplyRedactionsBase):
     def test_skips_no_text_on_page(self):
