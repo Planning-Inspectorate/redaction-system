@@ -35,10 +35,10 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
                 }
             )
         )
-    logger.info(f"Request added to queue with parameters {request_params}")
     request_params["stage"] = stage
     job_id = str(request_params.pop("overrideId", uuid4()))
     request_params["job_id"] = job_id
+    logger.info(f"Adding message to service bus queue with job_id: {job_id}")
     service_bus_name = os.environ.get("AZURE_SERVICE_BUS_NAMESPACE", None)
     if not service_bus_name:
         logger.error("AZURE_SERVICE_BUS_NAMESPACE variable not set in the function app")
@@ -52,7 +52,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
         async with ServiceBusClient(
             fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
             credential=credential,
-            logging_enable=True,
+            logging_enable=False,
         ) as service_bus_client:
             logger.info("Adding message to service bus queue")
             async with service_bus_client.get_queue_sender(
