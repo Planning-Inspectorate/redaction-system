@@ -1,61 +1,97 @@
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 import pytest
 
-from src.analysis.utils import RateLimiter, TokenSemaphore, get_max_workers
+from src.analysis.utils import RateLimiter, get_max_workers
 
 
-def test__token_semaphore__acquire():
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.acquire(50)
-    assert token_semaphore.tokens == 50
+def _sleeps(mock_sleep) -> list[float]:
+    return [call.args[0] for call in mock_sleep.call_args_list]
 
 
-def test__token_semaphore__release():
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.acquire(50)
-    token_semaphore.release(30)
-    assert token_semaphore.tokens == 80
+def test__rate_limiter__amount_uses_proportional_budget():
+    # 60 per minute is one unit per second
+    rate_limiter = RateLimiter(per_minute=60)
+
+    with (
+        patch("src.analysis.utils.time.monotonic", return_value=100.0),
+        patch("src.analysis.utils.time.sleep") as mock_sleep,
+    ):
+        rate_limiter.wait(5)
+        rate_limiter.wait(1)
+
+    assert _sleeps(mock_sleep) == [5.0]
 
 
-def token_semaphore_task(self, tokens: int):
-    self.acquire(tokens)
-    # Simulate some processing
-    self.release(tokens)
+def test__rate_limiter__no_wait_below_the_rate():
+    rate_limiter = RateLimiter(per_minute=60)
+
+    with patch("src.analysis.utils.time.sleep") as mock_sleep:
+        for now in (100.0, 101.0, 105.0):
+            with patch("src.analysis.utils.time.monotonic", return_value=now):
+                rate_limiter.wait()
+
+    mock_sleep.assert_not_called()
 
 
-def test__token_semaphore__insufficient_tokens():
-    # Test that in a parallel scenario, only one thread waits when tokens are insufficient
-    # Define a task that tries to acquire more tokens than available
-    token_semaphore = TokenSemaphore(max_tokens=100)
-    token_semaphore.task = token_semaphore_task
+def test__rate_limiter__burst_allows_units_at_once():
+    rate_limiter = RateLimiter(per_minute=60, burst_seconds=2)
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        # Submit tasks to the executor
-        future_to_semaphore = {
-            executor.submit(token_semaphore.task, token_semaphore, x): x
-            for x in [80, 80]
-        }
-        for future in as_completed(future_to_semaphore):
-            # Ensure the task completed successfully
-            assert future.done()
-            assert token_semaphore.tokens >= 0
+    with (
+        patch("src.analysis.utils.time.monotonic", return_value=100.0),
+        patch("src.analysis.utils.time.sleep") as mock_sleep,
+    ):
+        for _ in range(4):
+            rate_limiter.wait()
 
-    assert token_semaphore.tokens == 100
+    # The first call plus 2s of burst are immediate, then calls are spaced again
+    assert _sleeps(mock_sleep) == [1.0]
 
 
-def test__token_semaphore__timeout():
-    # Test that acquiring tokens times out appropriately when tokens are insufficient
-    token_semaphore = TokenSemaphore(max_tokens=100, timeout=1)
-    token_semaphore.acquire(100)
+def test__rate_limiter__burst_recovers_after_idle():
+    rate_limiter = RateLimiter(per_minute=60, burst_seconds=2)
 
-    with pytest.raises(TimeoutError):
-        token_semaphore.acquire(10)
+    with patch("src.analysis.utils.time.sleep") as mock_sleep:
+        for now in (100.0, 200.0):
+            with patch("src.analysis.utils.time.monotonic", return_value=now):
+                for _ in range(3):
+                    rate_limiter.wait()
 
-    assert token_semaphore.tokens == 0
+    mock_sleep.assert_not_called()
+
+
+def test__rate_limiter__timeout_raises_without_reserving():
+    rate_limiter = RateLimiter(per_minute=60)
+
+    with (
+        patch("src.analysis.utils.time.monotonic", return_value=100.0),
+        patch("src.analysis.utils.time.sleep") as mock_sleep,
+    ):
+        rate_limiter.wait(10)
+        with pytest.raises(TimeoutError):
+            rate_limiter.wait(timeout=5)
+        rate_limiter.wait(timeout=10)
+
+    # The timed out call did not push the next call back
+    assert _sleeps(mock_sleep) == [10.0]
+
+
+def test__rate_limiter__threads_never_share_a_slot():
+    rate_limiter = RateLimiter(per_minute=60)
+    n_threads = 10
+
+    with (
+        patch("src.analysis.utils.time.monotonic", return_value=100.0),
+        patch("src.analysis.utils.time.sleep") as mock_sleep,
+        ThreadPoolExecutor(max_workers=n_threads) as executor,
+    ):
+        list(executor.map(lambda _: rate_limiter.wait(), range(n_threads)))
+
+    # One thread goes immediately and each other thread waits for its own slot
+    assert sorted(_sleeps(mock_sleep)) == [float(n) for n in range(1, n_threads)]
 
 
 def test__get_max_workers():
@@ -79,7 +115,7 @@ def test__get_max_workers__env_var_is_capped_at_32(monkeypatch):
 
 
 def test__rate_limiter__spaces_calls_by_interval():
-    rate_limiter = RateLimiter(requests_per_minute=20)
+    rate_limiter = RateLimiter(per_minute=20)
 
     with (
         patch("src.analysis.utils.time.monotonic", return_value=100.0),
@@ -89,12 +125,12 @@ def test__rate_limiter__spaces_calls_by_interval():
             rate_limiter.wait()
 
     # The first call is immediate, then each call waits one more 3s interval
-    assert [call.args[0] for call in mock_sleep.call_args_list] == [3.0, 6.0]
+    assert _sleeps(mock_sleep) == [3.0, 6.0]
 
 
 def test__rate_limiter__wait_is_approximately_one_interval_per_request():
     # 600 requests per minute is one request every 0.1s
-    rate_limiter = RateLimiter(requests_per_minute=600)
+    rate_limiter = RateLimiter(per_minute=600)
     n_requests = 6
 
     start = time.monotonic()

@@ -1,12 +1,98 @@
+import time
+from concurrent.futures import ThreadPoolExecutor
+from itertools import pairwise
+from unittest.mock import Mock, patch
+
+import pytest
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
 
 from src.analysis.text import LLMTextAnalyser, LLMTextAnalyserConfig
-from src.types import LLMTextRedactionResult
+from src.types import LLMRedactionResultFormat, LLMTextRedactionResult
 
 
 class SampleResultFormat(BaseModel):
     some_strings: list[str]
+
+
+@pytest.fixture
+def paced_analysers():
+    """Build analysers with fresh shared limits and no burst, recording when each
+    request is sent"""
+    sent_at: list[float] = []
+    completion = Mock(
+        usage=None,
+        choices=[
+            Mock(message=Mock(parsed=LLMRedactionResultFormat(redaction_strings=[])))
+        ],
+    )
+
+    def record_request(*_args, **_kwargs):
+        sent_at.append(time.monotonic())
+        return completion
+
+    LLMTextAnalyser._SHARED_LIMITS.clear()
+    with (
+        patch("src.analysis.text.RATE_LIMIT_BURST_SECONDS", 0),
+        patch.object(LLMTextAnalyser, "invoke_chain", side_effect=record_request),
+    ):
+        yield (
+            lambda **config: LLMTextAnalyser(
+                LLMTextAnalyserConfig(model="gpt-5.6-luna", **config)
+            ),
+            sent_at,
+        )
+    LLMTextAnalyser._SHARED_LIMITS.clear()
+
+
+def _analyse_at_once(analysers: list[LLMTextAnalyser], chunks_each: int) -> None:
+    chunks = [f"chunk {i}" for i in range(chunks_each)]
+    with ThreadPoolExecutor(max_workers=len(analysers)) as executor:
+        list(
+            executor.map(
+                lambda analyser: analyser.analyse_text("system prompt", chunks),
+                analysers,
+            )
+        )
+
+
+def _gaps(sent_at: list[float]) -> list[float]:
+    return [later - earlier for earlier, later in pairwise(sorted(sent_at))]
+
+
+def test__llm_text_analyser__analyse_text__analysers_share_request_rate_limit(
+    paced_analysers,
+):
+    """
+    - Given two analysers with the same settings, limited to 600 requests per minute
+    - When they analyse chunks at the same time
+    - Then their requests together are spaced at the shared rate of one per 0.1s
+    """
+    make_analyser, sent_at = paced_analysers
+    # Small prompts, so that the token rate limit does not affect the spacing
+    with patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=1):
+        analysers = [make_analyser(request_rate_limit=600) for _ in range(2)]
+        _analyse_at_once(analysers, chunks_each=3)
+
+    assert len(sent_at) == 6
+    assert min(_gaps(sent_at)) == pytest.approx(0.1, abs=0.03)
+
+
+def test__llm_text_analyser__analyse_text__analysers_share_token_rate_limit(
+    paced_analysers,
+):
+    """
+    - Given two analysers limited to 60,000 tokens per minute, with 100-token prompts
+    - When they analyse chunks at the same time
+    - Then their requests together are spaced at the shared rate of one per 0.1s
+    """
+    make_analyser, sent_at = paced_analysers
+    with patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=100):
+        analysers = [make_analyser(token_rate_limit=60000) for _ in range(2)]
+        _analyse_at_once(analysers, chunks_each=3)
+
+    assert len(sent_at) == 6
+    assert min(_gaps(sent_at)) == pytest.approx(0.1, abs=0.03)
 
 
 def test__llm_text_analyser___num_tokens_consumed():
