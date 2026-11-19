@@ -6,9 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 import azure.functions as func
+from azure.core.credentials_async import AsyncTokenCredential
 from azure.identity.aio import (
-    AzureCliCredential,
-    ChainedTokenCredential,
     ManagedIdentityCredential,
 )
 from azure.servicebus import ServiceBusMessage
@@ -20,6 +19,19 @@ from azure.servicebus.exceptions import (
 )
 
 app = func.FunctionApp()
+
+
+def _get_credential() -> AsyncTokenCredential:
+    # WEBSITE_SITE_NAME is only set when running in Azure; locally fall back to the Azure CLI login
+    if os.environ.get("WEBSITE_SITE_NAME"):
+        return ManagedIdentityCredential()
+
+    from azure.identity.aio import (
+        AzureCliCredential,
+        ChainedTokenCredential,
+    )
+
+    return ChainedTokenCredential(ManagedIdentityCredential(), AzureCliCredential())
 
 
 async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
@@ -46,9 +58,7 @@ async def _add_message_to_service_bus_queue(stage: str, req: func.HttpRequest):
             "No 'AZURE_SERVICE_BUS_NAMESPACE' environment variable is defined"
         )
     try:
-        credential = ChainedTokenCredential(
-            ManagedIdentityCredential(), AzureCliCredential()
-        )
+        credential = _get_credential()
         async with ServiceBusClient(
             fully_qualified_namespace=f"{service_bus_name}.servicebus.windows.net",
             credential=credential,
