@@ -25,7 +25,7 @@ from ..monitoring import (
     current_job_state,
     log_to_appins,
 )
-from .utils import RateLimiter, get_max_workers
+from .utils import RateLimiter, get_max_workers, get_worker_process_count
 
 load_dotenv(verbose=True)
 
@@ -214,7 +214,10 @@ class AzureImageAnalyser(ImageAnalyser):
             return
         with cls._RATE_LIMITER_LOCK:
             if cls._RATE_LIMITER is None:
-                cls._RATE_LIMITER = RateLimiter(requests_per_minute)
+                # Each worker process paces its own requests, so split the instance's budget
+                cls._RATE_LIMITER = RateLimiter(
+                    requests_per_minute / get_worker_process_count()
+                )
             rate_limiter = cls._RATE_LIMITER
         rate_limiter.wait()
 
