@@ -15,7 +15,7 @@
   },
   "extensions": {
     "durableTask": {
-      "maxConcurrentActivityFunctions": 2,
+      "maxConcurrentActivityFunctions": 8,
       "maxConcurrentOrchestratorFunctions": 10,
       "storageProvider": {
         "controlQueueBatchSize": 16,

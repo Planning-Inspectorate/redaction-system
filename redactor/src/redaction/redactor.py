@@ -7,7 +7,12 @@ from typing import Any, ClassVar
 from PIL import Image
 
 from ..analysis import AzureImageAnalyser, LLMTextAnalyser, SignatureDetector
-from ..monitoring import LoggingUtil, TimerUtil, log_to_appins
+from ..monitoring import (
+    ContextThreadPoolExecutor,
+    LoggingUtil,
+    TimerUtil,
+    log_to_appins,
+)
 from ..types import (
     ImageLLMTextRedactionResult,
     ImageRedactionResult,
@@ -218,11 +223,12 @@ class ImageRedactor(Redactor):  # pragma: no cover
             return init_result
 
         thresholds = self.config.confidence_thresholds
-        detection_results = []
-        for detection_function, detection_type in [
-            (AzureImageAnalyser.detect_faces_in_images, "face"),
-            (SignatureDetector.detect_signatures_in_images, "signature"),
-        ]:
+
+        # Lazily loaded images are not thread-safe to load, so load them up front
+        for image in self.config.images:
+            image.load()
+
+        def detect(detection_function, detection_type):
             with TimerUtil() as timer:
                 results: list[tuple[Image.Image, tuple[str, tuple]]] = (
                     detection_function(
@@ -230,16 +236,31 @@ class ImageRedactor(Redactor):  # pragma: no cover
                         getattr(thresholds, f"{detection_type}_detection"),
                     )
                 )
-                detection_results.append(results)
-            self.run_metrics[f"total_{detection_type}_analysis_time"] = (
-                timer.elapsed_time
-            )
+            return results, timer.elapsed_time
 
-        self.run_metrics["total_image_analysis_time"] = sum(
-            self.run_metrics[metric]
-            for metric in self.run_metrics
-            if "analysis_time" in metric
-        )
+        detectors = [
+            (AzureImageAnalyser.detect_faces_in_images, "face"),
+            (SignatureDetector.detect_signatures_in_images, "signature"),
+        ]
+        # Face and signature detection call separate services, so they can overlap
+        with (
+            TimerUtil() as total_timer,
+            ContextThreadPoolExecutor(len(detectors)) as executor,
+        ):
+            futures = [
+                executor.submit(detect, detection_function, detection_type)
+                for detection_function, detection_type in detectors
+            ]
+            outcomes = [future.result() for future in futures]
+
+        detection_results = []
+        for (_, detection_type), (results, elapsed_time) in zip(
+            detectors, outcomes, strict=True
+        ):
+            detection_results.append(results)
+            self.run_metrics[f"total_{detection_type}_analysis_time"] = elapsed_time
+
+        self.run_metrics["total_image_analysis_time"] = total_timer.elapsed_time
 
         redaction_results = self._create_redaction_results(detection_results)
 
