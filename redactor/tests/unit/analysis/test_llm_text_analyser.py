@@ -384,6 +384,21 @@ class TestSetModelDetails:
         assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.8
 
     @patch.object(LLMTextAnalyser, "__init__", return_value=None)
+    def test_quota_allocation_split_between_processes(
+        self, mock_llm_text_analyser_init, monkeypatch
+    ):
+        """Each worker process enforces its own limits, so they share the instance's quota"""
+        monkeypatch.setenv("LLM_QUOTA_ALLOCATION", "0.8")
+        monkeypatch.setenv("FUNCTIONS_WORKER_PROCESS_COUNT", "4")
+        llm_text_analyser = LLMTextAnalyser()
+        llm_text_analyser.config = LLMTextAnalyserConfig(model="gpt-5.6-luna")
+
+        llm_text_analyser._set_model_details()
+
+        assert llm_text_analyser.config.token_rate_limit == TOKEN_RATE_LIMIT * 0.2
+        assert llm_text_analyser.config.request_rate_limit == REQUEST_RATE_LIMIT * 0.2
+
+    @patch.object(LLMTextAnalyser, "__init__", return_value=None)
     def test_sets_deployment_limits_from_env(
         self, mock_llm_text_analyser_init, monkeypatch
     ):

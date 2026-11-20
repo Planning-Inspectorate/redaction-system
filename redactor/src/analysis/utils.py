@@ -35,6 +35,11 @@ class RateLimiter:
             time.sleep(delay)
 
 
+def get_worker_process_count() -> int:
+    """The number of Python worker processes the Functions host runs per instance."""
+    return max(1, int(os.environ.get("FUNCTIONS_WORKER_PROCESS_COUNT") or 1))
+
+
 def get_max_workers(n: int | None = None, env_var: str | None = None) -> int:
     """Determine the number of worker threads to use, capped at 32 or
     (os.cpu_count() or 1) + 4.
