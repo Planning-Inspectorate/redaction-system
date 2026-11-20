@@ -25,7 +25,7 @@ from ..monitoring import (
     current_job_state,
     log_to_appins,
 )
-from .utils import get_max_workers
+from .utils import RateLimiter, get_max_workers, get_worker_process_count
 
 load_dotenv(verbose=True)
 
@@ -40,6 +40,7 @@ def handle_last_retry_error(retry_state):
 
 class ImageAnalyser:
     CACHE_LOCK = Lock()
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = None
 
     class EndpointNotSetError(EnvironmentError):
         pass
@@ -140,7 +141,7 @@ class ImageAnalyser:
         :returns: A list of tuples containing the image and the detected objects
         """
         responses: list[tuple[Image.Image, tuple[str, tuple]]] = []
-        max_workers = get_max_workers()
+        max_workers = get_max_workers(env_var=cls.MAX_WORKERS_ENV_VAR)
         LoggingUtil().log_info(
             f"Detecting {object_to_detect}s in {len(images)} images using up to "
             f"{max_workers} workers..."
@@ -194,12 +195,31 @@ class ImageAnalyser:
 
 
 class AzureImageAnalyser(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "VISION_MAX_WORKERS"
+
     # Fallback caches, used only when no job scope is active (see _get_cache). A thread
     # that loses its job scope shares these with every concurrent job, so they are
     # cleared when a job ends and must hold nothing that is specific to one job
     _IMAGE_TEXT_CACHE: ClassVar[dict[str, tuple]] = {}
     _IMAGE_FACE_CACHE: ClassVar[dict[str, tuple]] = {}
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
+    _RATE_LIMITER: ClassVar[RateLimiter | None] = None
+    _RATE_LIMITER_LOCK: ClassVar[Lock] = Lock()
+
+    @classmethod
+    def _wait_for_rate_limit(cls) -> None:
+        """Pace requests to VISION_REQUESTS_PER_MINUTE; unset or 0 means no limit."""
+        requests_per_minute = int(os.environ.get("VISION_REQUESTS_PER_MINUTE") or 0)
+        if requests_per_minute < 1:
+            return
+        with cls._RATE_LIMITER_LOCK:
+            if cls._RATE_LIMITER is None:
+                # Each worker process paces its own requests, so split the instance's budget
+                cls._RATE_LIMITER = RateLimiter(
+                    requests_per_minute / get_worker_process_count()
+                )
+            rate_limiter = cls._RATE_LIMITER
+        rate_limiter.wait()
 
     @classmethod
     def _get_client(cls) -> ImageAnalysisClient:
@@ -317,6 +337,7 @@ class AzureImageAnalyser(ImageAnalyser):
             f"Analysing image using Azure Computer Vision API for features: {visual_features}..."
         )
         try:
+            cls._wait_for_rate_limit()
             result = cls._get_client().analyze(
                 image_bytes,
                 visual_features,
@@ -389,6 +410,8 @@ class AzureImageAnalyser(ImageAnalyser):
 
 
 class SignatureDetector(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "SIGNATURE_MAX_WORKERS"
+
     # Fallback cache, used only when no job scope is active (see _get_cache). Shared by
     # concurrent jobs if a thread loses its scope, so see the note on AzureImageAnalyser
     _IMAGE_CACHE: ClassVar[dict[str, list]] = {}
