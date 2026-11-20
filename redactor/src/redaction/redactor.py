@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import re
 from abc import ABC, abstractmethod
@@ -166,12 +167,7 @@ class LLMTextRedactor(TextRedactor):
             system_prompt,
             text_chunks,
         )
-        return LLMTextRedactionResult(
-            rule_name=self.config.name,
-            run_metrics=llm_redaction_result.run_metrics,
-            redaction_strings=tuple(llm_redaction_result.redaction_strings),
-            metadata=llm_redaction_result.metadata,
-        )
+        return dataclasses.replace(llm_redaction_result, rule_name=self.config.name)
 
     def redact(self) -> LLMTextRedactionResult:
         self.config: LLMTextRedactionConfig
