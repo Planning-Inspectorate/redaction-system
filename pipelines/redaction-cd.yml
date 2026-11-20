@@ -10,6 +10,19 @@ parameters:
   - 'Test'
   - 'Training'
   - 'Prod'
+# Defaults deploy everything, which is what the build-triggered run uses
+- name: deployReceiver
+  displayName: Deploy receiver function
+  type: boolean
+  default: true
+- name: deployProcessor
+  displayName: Deploy processor function
+  type: boolean
+  default: true
+- name: deploySignatureDetector
+  displayName: Deploy signature detector
+  type: boolean
+  default: true
 
 # trigger after build only
 pr: none
@@ -50,84 +63,87 @@ extends:
     deploymentStages:
       - name: Deploy
         deploymentJobs:
-          - name: Deploy Receiver Functions
-            steps:
-              - bash: |
-                  git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
-                displayName: Checkout Build-Commit
-              - download: build
-                artifact: receiver-function
-                displayName: Download receiver-function
-              # Use the Azure CLI to deploy the zip file to the Function App in Azure.
-              - task: AzureCLI@2
-                displayName: 'Deploy to function app'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    az functionapp deployment source config-zip \
-                    --resource-group $(resourceGroup) \
-                    --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(Pipeline.Workspace)/build/receiver-function/receiver.zip' \
-                    --build-remote true \
-                    --verbose
-                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
-          - name: Deploy Processor Functions
-            steps:
-              - bash: |
-                  git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
-                displayName: Checkout Build-Commit
-              - download: build
-                artifact: redactor-function
-                displayName: Download redactor-function
+          - ${{ if eq(parameters.deployReceiver, true) }}:
+            - name: Deploy Receiver Functions
+              steps:
+                - bash: |
+                    git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
+                  displayName: Checkout Build-Commit
+                - download: build
+                  artifact: receiver-function
+                  displayName: Download receiver-function
+                # Use the Azure CLI to deploy the zip file to the Function App in Azure.
+                - task: AzureCLI@2
+                  displayName: 'Deploy to function app'
+                  inputs:
+                    azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az functionapp deployment source config-zip \
+                      --resource-group $(resourceGroup) \
+                      --name 'pins-func-redaction-system-${{ lower(parameters.env) }}-uks' \
+                      --src '$(Pipeline.Workspace)/build/receiver-function/receiver.zip' \
+                      --build-remote true \
+                      --verbose
+                      python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }} -d "receiver"
+          - ${{ if eq(parameters.deployProcessor, true) }}:
+            - name: Deploy Processor Functions
+              steps:
+                - bash: |
+                    git clone --depth=1 --no-tags --revision="$(resources.pipeline.build.sourceCommit)" $(Build.Repository.Uri) .
+                  displayName: Checkout Build-Commit
+                - download: build
+                  artifact: redactor-function
+                  displayName: Download redactor-function
 
-              # Use the Azure CLI to deploy the zip file to the Function App in Azure.
-              - task: AzureCLI@2
-                displayName: 'Deploy to function app'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    az functionapp deployment source config-zip \
-                    --resource-group $(resourceGroup) \
-                    --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
-                    --src '$(Pipeline.Workspace)/build/redactor-function/redactor.zip' \
-                    --build-remote true \
-                    --verbose
-                    python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
-          - name: Deploy Signature detection
-            steps:
-              - template: ../steps/azure_web_app_deploy_slot.yml@templates
-                parameters:
-                  appName: pins-app-signature-detector-redaction-system-${{ lower(parameters.env) }}-uks
-                  appResourceGroup: $(resourceGroup)
-                  azurecrName: $(azurecrName)
-                  repository: redaction-system/signature-detector
-                  slot: default
-                  gitCommitHash: $(resources.pipeline.signatureBuild.sourceCommit)
+                # Use the Azure CLI to deploy the zip file to the Function App in Azure.
+                - task: AzureCLI@2
+                  displayName: 'Deploy to function app'
+                  inputs:
+                    azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      az functionapp deployment source config-zip \
+                      --resource-group $(resourceGroup) \
+                      --name 'pins-func-processor-redaction-system-${{ lower(parameters.env) }}-uks' \
+                      --src '$(Pipeline.Workspace)/build/redactor-function/redactor.zip' \
+                      --build-remote true \
+                      --verbose
+                      python3 pipelines/scripts/wait_for_function_app_to_be_running.py -e ${{ parameters.env }}  -d "processor"
+          - ${{ if eq(parameters.deploySignatureDetector, true) }}:
+            - name: Deploy Signature detection
+              steps:
+                - template: ../steps/azure_web_app_deploy_slot.yml@templates
+                  parameters:
+                    appName: pins-app-signature-detector-redaction-system-${{ lower(parameters.env) }}-uks
+                    appResourceGroup: $(resourceGroup)
+                    azurecrName: $(azurecrName)
+                    repository: redaction-system/signature-detector
+                    slot: default
+                    gitCommitHash: $(resources.pipeline.signatureBuild.sourceCommit)
 
-              - task: AzureCLI@2
-                displayName: 'Wait for healthy deployment'
-                inputs:
-                  azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
-                  scriptType: 'bash'
-                  scriptLocation: 'inlineScript'
-                  inlineScript: |
-                    set -e
-                    echo "Waiting for App Service to become healthy..."
-                    for i in $(seq 1 30); do
-                      STATUS=$(az webapp show --resource-group $(resourceGroup) --name $(signatureDetectorAppName) --query state -o tsv)
-                      if [ "$STATUS" = "Running" ]; then
-                        echo "App Service is running."
-                        exit 0
-                      fi
-                      echo "Status: $STATUS. Retrying in 10s..."
-                      sleep 10
-                    done
-                    echo "App Service did not become healthy in time."
-                    exit 1
+                - task: AzureCLI@2
+                  displayName: 'Wait for healthy deployment'
+                  inputs:
+                    azureSubscription: 'Azure DevOps Pipelines - Redaction System - Deployment ${{ upper(parameters.env) }}'
+                    scriptType: 'bash'
+                    scriptLocation: 'inlineScript'
+                    inlineScript: |
+                      set -e
+                      echo "Waiting for App Service to become healthy..."
+                      for i in $(seq 1 30); do
+                        STATUS=$(az webapp show --resource-group $(resourceGroup) --name $(signatureDetectorAppName) --query state -o tsv)
+                        if [ "$STATUS" = "Running" ]; then
+                          echo "App Service is running."
+                          exit 0
+                        fi
+                        echo "Status: $STATUS. Retrying in 10s..."
+                        sleep 10
+                      done
+                      echo "App Service did not become healthy in time."
+                      exit 1
 
 
       - name: Run Smoke Tests

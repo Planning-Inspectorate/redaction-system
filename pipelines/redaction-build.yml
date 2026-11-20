@@ -2,6 +2,17 @@
 pr: none
 trigger: none
 
+# Defaults build everything, which is what the main-triggered run uses
+parameters:
+- name: buildReceiver
+  displayName: Build receiver
+  type: boolean
+  default: true
+- name: buildRedactor
+  displayName: Build redactor
+  type: boolean
+  default: true
+
 resources:
   repositories:
     - repository: templates
@@ -24,31 +35,33 @@ extends:
     globalVariables:
       - template: pipelines/azure-pipelines-variables.yml@self
     validationJobs:
-      - name: Build receiver
-        steps:
-          - task: ArchiveFiles@2
-            displayName: Archive receiver
-            inputs:
-              rootFolderOrFile: $(Build.Repository.LocalPath)/receiver
-              includeRootFolder: false
-              archiveFile: $(System.DefaultWorkingDirectory)/receiver.zip
-          - publish: $(System.DefaultWorkingDirectory)/receiver.zip
-            artifact: receiver-function
-            displayName: Publish receiver function
-      - name: Build redactor
-        steps:
-          - script: |
-              set -e
-              rm -rf $(Build.SourcesDirectory)/redactor/tests/*
-              rm -rf $(Build.SourcesDirectory)/redactor/__pycache__/*
-              rm -rf $(Build.SourcesDirectory)/redactor/*/__pycache__/*
-            displayName: 'Remove files before archiving'
-          - task: ArchiveFiles@2
-            displayName: Archive redactor
-            inputs:
-              rootFolderOrFile: $(Build.Repository.LocalPath)/redactor
-              includeRootFolder: false
-              archiveFile: $(System.DefaultWorkingDirectory)/redactor.zip
-          - publish: $(System.DefaultWorkingDirectory)/redactor.zip
-            artifact: redactor-function
-            displayName: Publish redactor function
+      - ${{ if eq(parameters.buildReceiver, true) }}:
+        - name: Build receiver
+          steps:
+            - task: ArchiveFiles@2
+              displayName: Archive receiver
+              inputs:
+                rootFolderOrFile: $(Build.Repository.LocalPath)/receiver
+                includeRootFolder: false
+                archiveFile: $(System.DefaultWorkingDirectory)/receiver.zip
+            - publish: $(System.DefaultWorkingDirectory)/receiver.zip
+              artifact: receiver-function
+              displayName: Publish receiver function
+      - ${{ if eq(parameters.buildRedactor, true) }}:
+        - name: Build redactor
+          steps:
+            - script: |
+                set -e
+                rm -rf $(Build.SourcesDirectory)/redactor/tests/*
+                rm -rf $(Build.SourcesDirectory)/redactor/__pycache__/*
+                rm -rf $(Build.SourcesDirectory)/redactor/*/__pycache__/*
+              displayName: 'Remove files before archiving'
+            - task: ArchiveFiles@2
+              displayName: Archive redactor
+              inputs:
+                rootFolderOrFile: $(Build.Repository.LocalPath)/redactor
+                includeRootFolder: false
+                archiveFile: $(System.DefaultWorkingDirectory)/redactor.zip
+            - publish: $(System.DefaultWorkingDirectory)/redactor.zip
+              artifact: redactor-function
+              displayName: Publish redactor function
