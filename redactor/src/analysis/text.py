@@ -45,7 +45,7 @@ from ..monitoring import (
     log_to_appins,
 )
 from ..types import LLMRedactionResultFormat, LLMTextRedactionResult
-from .utils import RateLimiter, get_max_workers
+from .utils import RateLimiter, get_max_workers, get_worker_process_count
 
 load_dotenv(verbose=True)
 
@@ -214,8 +214,12 @@ class LLMTextAnalyser:
 
     @log_to_appins
     def _set_model_details(self):
-        # The share of the deployment's quota that this app instance may use
-        instance_quota_allocation = float(os.environ.get("LLM_QUOTA_ALLOCATION") or 0.5)
+        # The share of the deployment's quota that this app instance may use. Each
+        # worker process enforces its own limits, so the share is split between them
+        instance_quota_allocation = (
+            float(os.environ.get("LLM_QUOTA_ALLOCATION") or 0.5)
+            / get_worker_process_count()
+        )
         try:
             # Get specified model
             model_details = self.OPENAI_MODELS[self.config.model]

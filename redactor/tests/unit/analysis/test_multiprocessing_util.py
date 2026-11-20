@@ -5,7 +5,18 @@ from unittest.mock import patch
 
 import pytest
 
-from src.analysis.utils import RateLimiter, get_max_workers
+from src.analysis.utils import RateLimiter, get_max_workers, get_worker_process_count
+
+
+def test__get_worker_process_count__defaults_to_one(monkeypatch):
+    monkeypatch.delenv("FUNCTIONS_WORKER_PROCESS_COUNT", raising=False)
+    assert get_worker_process_count() == 1
+
+
+@pytest.mark.parametrize(("value", "expected"), [("4", 4), ("", 1), ("0", 1)])
+def test__get_worker_process_count__from_env(monkeypatch, value, expected):
+    monkeypatch.setenv("FUNCTIONS_WORKER_PROCESS_COUNT", value)
+    assert get_worker_process_count() == expected
 
 
 def _sleeps(mock_sleep) -> list[float]:
