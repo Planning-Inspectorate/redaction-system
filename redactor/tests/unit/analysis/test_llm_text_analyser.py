@@ -34,9 +34,11 @@ MODULE = "src.analysis.text"
 
 
 @pytest.fixture(autouse=True)
-def _clear_client():
+def _clear_shared_limits():
+    LLMTextAnalyser._SHARED_LIMITS.clear()
     LLMTextAnalyser._CLIENT = None
     yield
+    LLMTextAnalyser._SHARED_LIMITS.clear()
     LLMTextAnalyser._CLIENT = None
 
 
@@ -277,6 +279,19 @@ def test__llm_text_analyser____init__():
     assert "azure_ad_token" not in client_kwargs
     # Retries are left to _analyse_text_chunk, so they are not multiplied
     assert client_kwargs["max_retries"] == 0
+
+
+def test__llm_text_analyser____init__shares_limits_with_matching_analysers():
+    with patch(f"{MODULE}.get_bearer_token_provider"), patch(f"{MODULE}.AzureOpenAI"):
+        first = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+        second = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
+        other = LLMTextAnalyser(
+            LLMTextAnalyserConfig(model="gpt-5.6-luna", token_rate_limit=2000)
+        )
+
+    assert second.request_rate_limiter is first.request_rate_limiter
+    assert second.token_rate_limiter is first.token_rate_limiter
+    assert other.token_rate_limiter is not first.token_rate_limiter
 
 
 @patch.object(LLMTextAnalyser, "__init__", return_value=None)
@@ -606,8 +621,8 @@ def test__llm_text_analyser___analyse_text_chunk(
     llm_text_analyser.request_semaphore.acquire.assert_called_once()
     llm_text_analyser.request_semaphore.release.assert_called_once()
 
-    llm_text_analyser.request_rate_limiter.wait.assert_called_once_with(timeout=60.0)
-    llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(10, timeout=60.0)
+    llm_text_analyser.request_rate_limiter.wait.assert_called_once_with(timeout=600.0)
+    llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(10, timeout=600.0)
 
 
 @patch.object(

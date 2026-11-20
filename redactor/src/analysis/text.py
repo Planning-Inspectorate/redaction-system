@@ -122,10 +122,12 @@ class LLMTextAnalyserConfig(BaseModel):
     """Number of completions to generate per prompt"""
     budget: float | None = None
     """The budget in GBP for LLM usage"""
-    token_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring tokens from the token rate limit."""
-    request_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring the request semaphore and request rate limit"""
+    token_timeout: float | None = 600.0
+    """The timeout in seconds for waiting on the shared token rate limit. Chunks
+    from every rule queue for the shared limits, so this must outlast that queue"""
+    request_timeout: float | None = 600.0
+    """The timeout in seconds for acquiring the request semaphore and for waiting on
+    the shared request rate limit"""
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -156,6 +158,11 @@ class LLMTextAnalyser:
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
+    # Shared so that analysers running at the same time draw on one budget
+    _SHARED_LIMITS: ClassVar[
+        dict[tuple, tuple[Semaphore, RateLimiter, RateLimiter]]
+    ] = {}
+    _SHARED_LIMITS_LOCK: ClassVar[Lock] = Lock()
     _CLIENT: ClassVar[AzureOpenAI | None] = None
 
     @classmethod
@@ -196,12 +203,8 @@ class LLMTextAnalyser:
 
         # Validate and set max concurrent requests
         self._set_workers(self.config.max_concurrent_requests)
-        self.request_semaphore = Semaphore(self.config.max_concurrent_requests)
-        self.request_rate_limiter = RateLimiter(
-            config.request_rate_limit, RATE_LIMIT_BURST_SECONDS
-        )
-        self.token_rate_limiter = RateLimiter(
-            config.token_rate_limit, RATE_LIMIT_BURST_SECONDS
+        self.request_semaphore, self.request_rate_limiter, self.token_rate_limiter = (
+            self._get_shared_limits()
         )
 
         self.input_token_count = 0
@@ -211,6 +214,25 @@ class LLMTextAnalyser:
         self.completion_token_count = 0
         self.total_token_count = 0
         self.total_cost = 0.0  # Total cost of LLM calls in GBP
+
+    def _get_shared_limits(self) -> tuple[Semaphore, RateLimiter, RateLimiter]:
+        """Get the concurrency and rate limits shared by analysers with the same settings."""
+        config = self.config
+        key = (
+            config.model,
+            config.max_concurrent_requests,
+            config.request_rate_limit,
+            config.token_rate_limit,
+            config.token_timeout,
+        )
+        with self._SHARED_LIMITS_LOCK:
+            if key not in self._SHARED_LIMITS:
+                self._SHARED_LIMITS[key] = (
+                    Semaphore(config.max_concurrent_requests),
+                    RateLimiter(config.request_rate_limit, RATE_LIMIT_BURST_SECONDS),
+                    RateLimiter(config.token_rate_limit, RATE_LIMIT_BURST_SECONDS),
+                )
+            return self._SHARED_LIMITS[key]
 
     @log_to_appins
     def _set_model_details(self):
