@@ -12,13 +12,21 @@ parameters:
   default: 5
 - name: perfTimeoutSeconds
   type: number
-  default: 200
+  default: 300
 - name: perfPollSeconds
   type: number
   default: 2
 - name: perfFixturePdf
   type: string
   default: PINS_first_10_pages.pdf
+- name: perfFixtureDir
+  type: string
+  default: perf
+  displayName: Folder of fixtures under redactor/tests/resources/pdf (empty to use perfFixturePdf)
+- name: perfMinRecall
+  type: number
+  default: 0
+  displayName: Minimum mean share of labelled strings redacted (0 to only report it)
 
 pr: none
 trigger: none
@@ -55,7 +63,7 @@ extends:
           - script: |
               set -e
               cd redaction-system
-              python3 -m pip install .
+              python3 -m pip install --group dev .
             displayName: Install redactor package
 
           - script: |
@@ -67,11 +75,12 @@ extends:
               export PYTHONUNBUFFERED=1
 
               # Pull env-specific pipeline variables (macro expansion), then export as env vars for pytest
-              export E2E_FUNCTION_BASE_URL="$(E2E_FUNCTION_BASE_URL_${{ upper(parameters.env) }})"
+              export E2E_FUNCTION_RECEIVER_BASE_URL="$(E2E_FUNCTION_RECEIVER_BASE_URL_${{ upper(parameters.env) }})"
               export E2E_FUNCTION_KEY="$(FUNCTION_APP_KEY_${{ upper(parameters.env) }})"
               export E2E_CONTAINER_NAME="$(E2E_CONTAINER_NAME_${{ upper(parameters.env) }})"
               export E2E_STORAGE_ACCOUNT="pinsstredaction${{ parameters.env }}uks"
               export E2E_RUN_ID="ado-perf-$(Build.BuildId)"
+              export AZURE_SERVICE_BUS_NAMESPACE="$(AZURE_SERVICE_BUS_NAMESPACE)"
 
               # Debug/validation knobs
               export PERF_EXISTS_SAMPLE_EVERY=1
@@ -87,19 +96,22 @@ extends:
               export PERF_TIMEOUT_S="${{ parameters.perfTimeoutSeconds }}"
               export PERF_POLL_S="${{ parameters.perfPollSeconds }}"
               export PERF_FIXTURE_PDF="${{ parameters.perfFixturePdf }}"
+              export PERF_FIXTURE_DIR="${{ parameters.perfFixtureDir }}"
+              export PERF_MIN_RECALL="${{ parameters.perfMinRecall }}"
+              export PERF_RESULTS_FILE="junit/perf_results.json"
 
               echo "env=${{ parameters.env }}"
-              echo "E2E_FUNCTION_BASE_URL=${E2E_FUNCTION_BASE_URL}"
+              echo "E2E_FUNCTION_RECEIVER_BASE_URL=${E2E_FUNCTION_RECEIVER_BASE_URL}"
               echo "E2E_STORAGE_ACCOUNT=${E2E_STORAGE_ACCOUNT}"
               echo "E2E_CONTAINER_NAME=${E2E_CONTAINER_NAME}"
               echo "PERF_CONCURRENCY=${PERF_CONCURRENCY} PERF_TOTAL=${PERF_TOTAL}"
-              echo "fixture=$PERF_FIXTURE_PDF"
+              echo "fixture=$PERF_FIXTURE_PDF dir=$PERF_FIXTURE_DIR"
 
 
               # Run tests (capture exit code so we can list blobs even on failure)
               set +e
               python3 -m pytest -q -s \
-                tests/perf_test/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
+                tests/perf/test_perf_concurrent_redactions.py::test_concurrent_redactions_perf \
                 --junitxml=junit/perf_test_results.xml
               PYTEST_EXIT=$?
               set -e
@@ -124,3 +136,12 @@ extends:
               testResultsFiles: '**/perf_test_results.xml'
               mergeTestResults: true
               failTaskOnFailedTests: true
+
+          # The JSON and CSV results sit beside the JUnit XML, so one folder has them all
+          - task: PublishPipelineArtifact@1
+            displayName: Publish perf results
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: $(System.DefaultWorkingDirectory)/redaction-system/redactor/junit
+              artifact: perf-results
+              publishLocation: pipeline

@@ -1,15 +1,13 @@
-# redactor/tests/perf_test/test_perf_concurrent_redactions.py
+# redactor/tests/perf/test_perf_concurrent_redactions.py
 
 import asyncio
 import json
 import logging
 import os
-import statistics
 import subprocess
 import time
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +20,25 @@ from ..e2e.utils import (
     az_upload,
     build_payload,
     function_start_url,
+)
+from .completions import CompletionWatcher, open_completion_topic
+from .harness import (
+    Outcome,
+    PerfResult,
+    _extract_server_metrics,
+    _failure_category,
+    _percentiles,
+    _run_id,
+    _summarise_durable_status,
+    completion_id,
+    has_highlights,
+    job_row,
+    load_expected_strings,
+    log_isolation_problems,
+    proposed_redaction_terms,
+    redaction_recall,
+    select_fixtures,
+    write_results,
 )
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -79,7 +96,32 @@ PERF_DOWNLOAD_SAMPLE_EVERY = _int_env("PERF_DOWNLOAD_SAMPLE_EVERY", 1)
 
 PERF_MAX_P95_S = _float_env("PERF_MAX_P95_S", 0.0)
 
+# Share of jobs that must succeed. Jobs that fail on the app side count against it
+PERF_MIN_SUCCESS_RATE = _float_env("PERF_MIN_SUCCESS_RATE", 0.99)
+
 PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "pas_13.pdf")
+
+# A folder of PDFs, relative to tests/resources/pdf, that the jobs take turns to use
+# instead of PERF_FIXTURE_PDF. Distinct documents give a realistic mix and avoid
+# the caches that repeating one document would hit
+PERF_FIXTURE_DIR = os.getenv("PERF_FIXTURE_DIR", "")
+PERF_SEED = _int_env("PERF_SEED", 0)
+
+# Where to write the results as JSON, with a CSV of the jobs beside it. Not written if empty
+PERF_RESULTS_FILE = os.getenv("PERF_RESULTS_FILE", "")
+
+# The share of a fixture's labelled strings that the proposed redactions must cover, on
+# average. Needs the output to be downloaded, so set PERF_EXISTS_SAMPLE_EVERY=1
+PERF_MIN_RECALL = _float_env("PERF_MIN_RECALL", 0.0)
+
+# Check the saved log of every this many jobs for lines of, or gaps caused by, other jobs
+# running in the same process. 0 turns it off. Needs jobs to overlap to show anything
+PERF_LOG_CHECK_EVERY = _int_env("PERF_LOG_CHECK_EVERY", 1)
+# The processor sends its completion message before it saves the log, so allow for that
+PERF_LOG_WAIT_S = _float_env("PERF_LOG_WAIT_S", 60.0)
+
+# The container in the processor's storage account that holds each job's logs
+LOG_CONTAINER = "redactiondata"
 
 
 # ----------------------------
@@ -90,45 +132,11 @@ PERF_FIXTURE_PDF = os.getenv("PERF_FIXTURE_PDF", "pas_13.pdf")
 def _repo_root() -> Path:
     """
     This file is typically:
-      <repo>/redactor/tests/perf_test/test_perf_concurrent_redactions.py
+      <repo>/redactor/tests/perf/test_perf_concurrent_redactions.py
 
     parents[3] -> <repo>
     """
     return Path(__file__).resolve().parents[3]
-
-
-def _run_id() -> str:
-    return os.getenv("E2E_RUN_ID") or datetime.now(tz=datetime.timezone.utc).strftime(
-        "%Y%m%d-%H%M%S"
-    )
-
-
-# ----------------------------
-# Stats
-# ----------------------------
-
-
-def _percentiles(values: list[float]) -> dict[str, float]:
-    xs = sorted(values)
-
-    def p(q: float) -> float:
-        if not xs:
-            return float("nan")
-        k = (len(xs) - 1) * q
-        f = int(k)
-        c = min(f + 1, len(xs) - 1)
-        if f == c:
-            return xs[f]
-        return xs[f] + (xs[c] - xs[f]) * (k - f)
-
-    return {
-        "min": xs[0],
-        "p50": p(0.50),
-        "p95": p(0.95),
-        "p99": p(0.99),
-        "max": xs[-1],
-        "mean": statistics.mean(xs),
-    }
 
 
 # ----------------------------
@@ -204,52 +212,6 @@ def _wait_for_blob_exists(
 
 
 # ----------------------------
-# Outcome + results
-# ----------------------------
-
-
-class Outcome(str, Enum):
-    SUCCESS = "success"
-    APP_FAIL = "app_fail"  # acceptable
-    TEST_FAIL = "test_fail"  # not acceptable
-
-
-@dataclass(frozen=True)
-class PerfResult:
-    outcome: Outcome
-    runtime_status: str
-    seconds: float
-    checked_blob_exists: bool
-    out_blob_exists: bool | None
-    poll_url: str | None
-    instance_id: str | None
-    durable_status: dict | None
-    diagnostics: str | None = None
-    error: str | None = None
-    downloaded_to: str | None = None
-
-    @property
-    def ok(self) -> bool:
-        # OK means: not a test-side failure
-        return self.outcome != Outcome.TEST_FAIL
-
-
-def _summarise_durable_status(status: dict | None) -> dict:
-    if not status:
-        return {}
-    keys = [
-        "instanceId",
-        "runtimeStatus",
-        "createdTime",
-        "lastUpdatedTime",
-        "customStatus",
-        "output",
-        "errorMessage",
-    ]
-    return {k: status.get(k) for k in keys if k in status}
-
-
-# ----------------------------
 # Async durable runner
 # ----------------------------
 
@@ -286,44 +248,6 @@ async def _trigger_start(
     return r.json()
 
 
-async def _poll_until_done(
-    client: httpx.AsyncClient,
-    poll_url: str,
-    timeout_s: int,
-    poll_s: float,
-) -> dict:
-    deadline = time.time() + timeout_s
-    last_status: dict | None = None
-    while time.time() < deadline:
-        r = await client.get(poll_url, timeout=60)
-
-        # durable polling endpoint returning 5xx/429 is considered app-side acceptable failure
-        if _classify_http_as_app_fail(r.status_code):
-            return {
-                "runtimeStatus": "Failed",
-                "errorMessage": f"Durable poll HTTP {r.status_code}",
-                "output": {"status": "FAIL", "message": (r.text or "")[:2000]},
-            }
-
-        # 4xx on poll suggests the poll URL is invalid/expired or auth wrong -> test fail
-        if 400 <= r.status_code < 500:
-            raise RuntimeError(
-                f"Durable poll returned HTTP {r.status_code}: {(r.text or '')[:500]}"
-            )
-
-        r.raise_for_status()
-        status = r.json()
-        last_status = status
-        state = status.get("runtimeStatus")
-        if state in ("Completed", "Failed", "Terminated"):
-            return status
-        await asyncio.sleep(poll_s)
-
-    raise TimeoutError(
-        f"Timed out waiting for orchestration. pollEndpoint={poll_url} last={last_status}"
-    )
-
-
 def _is_app_failure_from_status(durable_status: dict | None) -> bool:
     """
     Decide if this run failed due to the *app* (acceptable), even if runtimeStatus == Completed.
@@ -352,7 +276,7 @@ async def _run_one(
     start_url: str,
     payload: dict,
     timeout_s: int,
-    poll_s: float,
+    watcher: CompletionWatcher,
     do_exists_check: bool,
     storage_account: str,
     container_name: str,
@@ -397,16 +321,18 @@ async def _run_one(
                 error=f"TEST FAIL: start returned HTTP {start.get('status_code')}: {start.get('text')}",
             )
 
-        poll_url = start.get("pollEndpoint")
         instance_id = start.get("id") or start.get("instanceId")
+        if not instance_id:
+            raise RuntimeError(f"Missing id in start response: {start}")
 
-        if not poll_url:
-            raise RuntimeError(f"Missing pollEndpoint in start response: {start}")
-
-        durable_status = await _poll_until_done(
-            client, poll_url, timeout_s=timeout_s, poll_s=poll_s
-        )
-        runtime_status = durable_status.get("runtimeStatus", "Unknown")
+        # The completion message holds what the orchestration returns as its output
+        completion = await watcher.wait_for(instance_id, timeout_s)
+        durable_status = {
+            "instanceId": instance_id,
+            "runtimeStatus": "Completed",
+            "output": completion,
+        }
+        runtime_status = "Completed"
         elapsed = time.perf_counter() - t0
 
         # Determine if app reported failure (acceptable)
@@ -538,6 +464,20 @@ async def _run_one(
             downloaded_to=downloaded_to,
         )
 
+    except TimeoutError as e:
+        # A job that outlasts the timeout is a performance failure of the app
+        return PerfResult(
+            outcome=Outcome.APP_FAIL,
+            runtime_status="Timeout",
+            seconds=time.perf_counter() - t0,
+            checked_blob_exists=do_exists_check,
+            out_blob_exists=None,
+            poll_url=poll_url,
+            instance_id=instance_id,
+            durable_status=_summarise_durable_status(durable_status),
+            error=str(e),
+        )
+
     except Exception as e:  # noqa: BLE001
         elapsed = time.perf_counter() - t0
         # Anything unexpected in the harness is test-side
@@ -560,17 +500,66 @@ async def _run_one(
 # ----------------------------
 
 
+def _check_job_logs(
+    storage_account: str, jobs: list[dict], results: list[PerfResult], out_dir: Path
+) -> dict[int, list[str]]:
+    """The problems in the saved log of each checked job, by job index. None means clean"""
+    job_ids = {
+        job["i"]: completion_id(result)
+        for job, result in zip(jobs, results, strict=True)
+    }
+    run_job_ids = [job_id for job_id in job_ids.values() if job_id]
+
+    def check(index: int) -> list[str]:
+        job_id = job_ids[index]
+        blob_name = f"{job_id}/ANALYSE_log.txt"
+        if not _wait_for_blob_exists(
+            storage_account=storage_account,
+            container_name=LOG_CONTAINER,
+            blob_name=blob_name,
+            timeout_s=PERF_LOG_WAIT_S,
+            poll_s=2.0,
+        ):
+            return ["log was not saved"]
+        log_file = out_dir / f"{index:05d}_ANALYSE_log.txt"
+        az_download(storage_account, LOG_CONTAINER, blob_name, log_file)
+        return log_isolation_problems(
+            log_file.read_text(encoding="utf-8"), job_id, run_job_ids
+        )
+
+    to_check = [
+        index
+        for index, job_id in job_ids.items()
+        if job_id and PERF_LOG_CHECK_EVERY > 0 and index % PERF_LOG_CHECK_EVERY == 0
+    ]
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        return dict(zip(to_check, executor.map(check, to_check), strict=True))
+
+
 @pytest.mark.perf
 def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     _load_dotenv_if_present()
     storage_account = _env_required("E2E_STORAGE_ACCOUNT")
     container_name = _env_required("E2E_CONTAINER_NAME")
+    service_bus_namespace = _env_required("AZURE_SERVICE_BUS_NAMESPACE")
     run_id = _run_id()
     start_url = function_start_url()
 
     repo_root = _repo_root()
-    fixture_path = repo_root / "redactor/tests/resources/pdf" / PERF_FIXTURE_PDF
-    assert fixture_path.exists(), f"Missing fixture PDF: {fixture_path}"
+    pdf_dir = repo_root / "redactor/tests/resources/pdf"
+    if PERF_FIXTURE_DIR:
+        fixture_paths = sorted((pdf_dir / PERF_FIXTURE_DIR).glob("*.pdf"))
+    else:
+        fixture_paths = [pdf_dir / PERF_FIXTURE_PDF]
+    assert fixture_paths, f"No fixture PDFs found for {PERF_FIXTURE_DIR or pdf_dir}"
+    for fixture_path in fixture_paths:
+        assert fixture_path.exists(), f"Missing fixture PDF: {fixture_path}"
+    highlighted = [p.name for p in fixture_paths if has_highlights(p)]
+    assert not highlighted, (
+        f"{highlighted} have highlights, which the redactor would read as its own "
+        "proposed redactions. Use PDFs without highlights"
+    )
+    fixtures = select_fixtures(fixture_paths, PERF_TOTAL, PERF_SEED)
 
     # where we will download sampled outputs (proof they can be written to disk)
     downloads_dir = tmp_path / "downloaded_redactions"
@@ -585,7 +574,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         in_blob = f"perf/{run_id}/in/{idx}.pdf"
         out_blob = f"perf/{run_id}/out/{idx}_REDACTED.pdf"
 
-        az_upload(storage_account, container_name, in_blob, fixture_path)
+        az_upload(storage_account, container_name, in_blob, fixtures[i])
 
         payload = build_payload(
             storage_account=storage_account,
@@ -593,6 +582,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
             in_blob=in_blob,
             out_blob=out_blob,
             skip_redaction=False,
+            # Without it, the processor sends no completion message to wait for
+            pins_service="REDACTION_SYSTEM",
         )
 
         jobs.append(
@@ -601,6 +592,8 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                 "out_blob": out_blob,
                 "i": i,
                 "idx": idx,
+                "fixture": fixtures[i].name,
+                "expected": load_expected_strings(fixtures[i]),
                 "out_prefix": f"perf/{run_id}/out/",
             }
         )
@@ -612,7 +605,11 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
         )
         timeout = httpx.Timeout(60.0)
 
-        async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
+        async with (
+            httpx.AsyncClient(limits=limits, timeout=timeout) as client,
+            open_completion_topic(service_bus_namespace) as peek,
+            CompletionWatcher(peek, PERF_POLL_S) as watcher,
+        ):
             sem = asyncio.Semaphore(PERF_CONCURRENCY)
 
             async def wrapped(job: dict[str, Any]) -> PerfResult:
@@ -626,7 +623,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                         start_url=start_url,
                         payload=job["payload"],
                         timeout_s=PERF_TIMEOUT_S,
-                        poll_s=PERF_POLL_S,
+                        watcher=watcher,
                         do_exists_check=do_exists_check,
                         storage_account=storage_account,
                         container_name=container_name,
@@ -645,12 +642,12 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     # ----------------------------
     # Report
     # ----------------------------
-    times = [r.seconds for r in results]
-    stats = _percentiles(times)
-
     successes = [r for r in results if r.outcome == Outcome.SUCCESS]
     app_failures = [r for r in results if r.outcome == Outcome.APP_FAIL]
     test_failures = [r for r in results if r.outcome == Outcome.TEST_FAIL]
+
+    # Failed jobs usually return early, so they would understate the latency
+    stats = _percentiles([r.seconds for r in successes])
 
     # throughput: successes per wall-clock second
     throughput = (len(successes) / wall_elapsed) if wall_elapsed > 0 else 0.0
@@ -663,7 +660,7 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     downloaded = [r for r in results if r.downloaded_to]
 
     print("\n=== PERF SUMMARY ===")
-    print(f"fixture={PERF_FIXTURE_PDF}")
+    print(f"fixtures={sorted({j['fixture'] for j in jobs})} seed={PERF_SEED}")
     print(f"concurrency={PERF_CONCURRENCY} total={PERF_TOTAL} poll_s={PERF_POLL_S}")
     print(f"timeout_s={PERF_TIMEOUT_S} exists_sample_every={PERF_EXISTS_SAMPLE_EVERY}")
     print(
@@ -675,14 +672,89 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
     print(
         f"wall_seconds={wall_elapsed:.2f} throughput_success_per_sec={throughput:.4f}"
     )
-    print("timings_seconds:", {k: round(v, 3) for k, v in stats.items()})
+    print(
+        "timings_seconds (successful jobs):",
+        {k: round(v, 3) for k, v in stats.items()},
+    )
+
+    latency_by_fixture: dict[str, list[float]] = {}
+    for job, result in zip(jobs, results, strict=True):
+        if result.outcome == Outcome.SUCCESS:
+            latency_by_fixture.setdefault(job["fixture"], []).append(result.seconds)
+    if len(latency_by_fixture) > 1:
+        print(
+            "p50_seconds_by_fixture:",
+            {
+                name: round(_percentiles(values)["p50"], 1)
+                for name, values in sorted(latency_by_fixture.items())
+            },
+        )
+
+    # How much of what the fixtures label as sensitive the redactor proposed
+    job_recalls = [
+        redaction_recall(
+            job["expected"], proposed_redaction_terms(Path(result.downloaded_to))
+        )
+        if result.outcome == Outcome.SUCCESS
+        and result.downloaded_to
+        and job["expected"]
+        else None
+        for job, result in zip(jobs, results, strict=True)
+    ]
+    recalls = [recall for recall in job_recalls if recall is not None]
+    mean_recall = sum(recalls) / len(recalls) if recalls else None
+    if recalls:
+        print(
+            f"recall_of_labelled_strings: mean={mean_recall:.3f} "
+            f"min={min(recalls):.3f} jobs_checked={len(recalls)}"
+        )
+
+    # The app's own timings, so queueing and polling in the client timings can be told apart
+    server_metrics = [_extract_server_metrics(r.durable_status) for r in successes]
+    server_stats: dict[str, dict[str, float]] = {}
+    for name in ("server_seconds", "analysis_seconds"):
+        values = [m[name] for m in server_metrics if m.get(name) is not None]
+        if values:
+            server_stats[name] = _percentiles(values)
+            print(
+                f"{name}:",
+                {k: round(v, 3) for k, v in server_stats[name].items()},
+            )
+    overheads = [
+        r.seconds - m["server_seconds"]
+        for r, m in zip(successes, server_metrics, strict=True)
+        if m.get("server_seconds") is not None
+    ]
+    if overheads:
+        server_stats["client_overhead_seconds"] = _percentiles(overheads)
+        print(
+            "client_overhead_seconds (queueing, start and polling):",
+            {
+                k: round(v, 3)
+                for k, v in server_stats["client_overhead_seconds"].items()
+            },
+        )
+    failed_chunks = sum(m.get("failed_chunks", 0) for m in server_metrics)
+    print(f"failed_chunks={failed_chunks}")
+
+    # Jobs that overlap in a process must not clear or fill each other's saved logs
+    log_checks = _check_job_logs(storage_account, jobs, results, tmp_path / "job_logs")
+    jobs_with_log_problems = {i: p for i, p in log_checks.items() if p}
+    print(
+        f"logs_checked={len(log_checks)} "
+        f"logs_with_problems={len(jobs_with_log_problems)}"
+    )
+    for index, problems in list(jobs_with_log_problems.items())[:5]:
+        print(f"- job {index} log: {'; '.join(problems)}")
     print(
         f"blob_exists_checked={exists_checked} blob_exists_checked_failures={len(exists_failures)}"
     )
     print(f"downloaded_files={len(downloaded)} downloads_dir={downloads_dir}")
 
+    failure_categories = dict(Counter(_failure_category(r) for r in app_failures))
     if app_failures:
-        print("\nApp failures (acceptable) (up to 5):")
+        print(f"\nApp failures by category: {failure_categories}")
+        print("App failures (up to 5):")
         for r in app_failures[:5]:
             print(
                 f"- runtime={r.runtime_status} seconds={r.seconds:.2f} "
@@ -706,13 +778,87 @@ def test_concurrent_redactions_perf(tmp_path: Path) -> None:
                 print("  diagnostics:", r.diagnostics)
 
     # ----------------------------
+    # Results file
+    # ----------------------------
+    if PERF_RESULTS_FILE:
+        write_results(
+            Path(PERF_RESULTS_FILE),
+            {
+                "run_id": run_id,
+                "commit": os.getenv("BUILD_SOURCEVERSION"),
+                "settings": {
+                    "concurrency": PERF_CONCURRENCY,
+                    "total": PERF_TOTAL,
+                    "timeout_s": PERF_TIMEOUT_S,
+                    "seed": PERF_SEED,
+                    "fixtures": sorted({j["fixture"] for j in jobs}),
+                },
+                "counts": {
+                    "success": len(successes),
+                    "app_fail": len(app_failures),
+                    "test_fail": len(test_failures),
+                },
+                "success_rate": len(successes) / len(results) if results else 0.0,
+                "wall_seconds": wall_elapsed,
+                "throughput_success_per_sec": throughput,
+                "latency_seconds": stats,
+                "latency_p50_by_fixture": {
+                    name: _percentiles(values)["p50"]
+                    for name, values in sorted(latency_by_fixture.items())
+                },
+                "server_seconds": server_stats,
+                "failure_categories": failure_categories,
+                "failed_chunks": failed_chunks,
+                "log_isolation": {
+                    "jobs_checked": len(log_checks),
+                    "jobs_with_problems": len(jobs_with_log_problems),
+                    "problems": {str(i): p for i, p in jobs_with_log_problems.items()},
+                },
+                "recall": {
+                    "mean": mean_recall,
+                    "min": min(recalls) if recalls else None,
+                    "jobs_checked": len(recalls),
+                },
+            },
+            [
+                job_row(job, result, recall)
+                for job, result, recall in zip(jobs, results, job_recalls, strict=True)
+            ],
+        )
+        print(f"results_file={PERF_RESULTS_FILE}")
+
+    # ----------------------------
     # Assertions
     # ----------------------------
     assert len(test_failures) == 0, (
         f"{len(test_failures)} test-side failures (see summary above)"
     )
 
-    if PERF_MAX_P95_S and PERF_MAX_P95_S > 0:
+    success_rate = len(successes) / len(results) if results else 0.0
+    assert success_rate >= PERF_MIN_SUCCESS_RATE, (
+        f"success rate {success_rate:.1%} is below "
+        f"PERF_MIN_SUCCESS_RATE={PERF_MIN_SUCCESS_RATE:.1%}; "
+        f"app failures by category: {failure_categories}"
+    )
+    assert failed_chunks == 0, (
+        f"{failed_chunks} LLM chunks failed, so redactions may be missing"
+    )
+    assert not jobs_with_log_problems, (
+        f"{len(jobs_with_log_problems)} saved logs were affected by other jobs: "
+        f"{jobs_with_log_problems}"
+    )
+    if PERF_MIN_RECALL > 0:
+        assert mean_recall is not None, (
+            "PERF_MIN_RECALL is set, but no output with labelled strings was "
+            "downloaded to check. Use labelled fixtures and PERF_EXISTS_SAMPLE_EVERY=1"
+        )
+        assert mean_recall >= PERF_MIN_RECALL, (
+            f"mean recall {mean_recall:.3f} is below PERF_MIN_RECALL={PERF_MIN_RECALL}"
+        )
+
+    if PERF_MAX_P95_S > 0:
         assert stats["p95"] <= PERF_MAX_P95_S, (
             f"p95 {stats['p95']:.2f}s exceeds PERF_MAX_P95_S={PERF_MAX_P95_S:.2f}s"
         )
+    else:
+        print("WARNING: PERF_MAX_P95_S is not set, so latency is not enforced")
