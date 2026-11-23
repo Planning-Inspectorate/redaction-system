@@ -2,6 +2,7 @@ from math import isclose
 from string import punctuation
 
 import pymupdf
+import pytest
 from pymupdf import Rect
 
 from src.redaction.config import (
@@ -779,4 +780,48 @@ class TestApply:
         assert expected_metadata == redacted_document.metadata, (
             "Expected the metadata in the pdf to have been scrubbed, but it was not. "
             f"Expected: {expected_metadata}, Actual: {redacted_document.metadata}"
+        )
+
+
+def page_content_streams(pdf: pymupdf.Document) -> list[bytes]:
+    """Decompressed content streams currently referenced by each page"""
+    return [pdf.xref_stream(xref) for page in pdf for xref in page.get_contents()]
+
+
+def all_stream_bytes(pdf: pymupdf.Document) -> list[bytes]:
+    """Decompressed bytes of every stream object in the file, referenced or not"""
+    return [
+        pdf.xref_stream(xref)
+        for xref in range(1, pdf.xref_length())
+        if pdf.xref_is_stream(xref)
+    ]
+
+
+class TestSanitise:
+    @pytest.mark.parametrize("file_name", [SOURCE_PDF, PROPOSED_PDF])
+    def test_removes_original_content_streams(self, file_name: str):
+        """
+        - Given a real PDF
+        - When I call sanitise() (which rewrites each page's content stream)
+        - Then none of the original content streams should remain in the output file,
+          even as unreferenced objects
+        """
+        original_streams = {
+            stream
+            for stream in page_content_streams(pymupdf.open(stream=open_pdf(file_name)))
+            if stream
+        }
+        assert original_streams
+
+        sanitised = pymupdf.open(
+            stream=PDFProcessor().sanitise(open_pdf(file_name), {})
+        )
+
+        # Guard against a vacuous pass: scrubbing must have rewritten the page contents
+        assert not original_streams & set(page_content_streams(sanitised))
+
+        leftover = original_streams & set(all_stream_bytes(sanitised))
+        assert not leftover, (
+            f"{len(leftover)} original content stream(s) are still present in the "
+            f"sanitised file as unreferenced objects"
         )
