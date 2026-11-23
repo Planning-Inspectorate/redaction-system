@@ -1013,7 +1013,7 @@ class PDFProcessor(FileProcessor):
         self._scrub_pdf(pdf)
 
         new_file_bytes = BytesIO()
-        pdf.save(new_file_bytes, deflate=True)
+        self.save_final_pdf(pdf, new_file_bytes)
         new_file_bytes.seek(0)
         return new_file_bytes, redactions_applied
 
@@ -1043,9 +1043,13 @@ class PDFProcessor(FileProcessor):
         self._scrub_pdf(pdf)
 
         new_file_bytes = BytesIO()
-        pdf.save(new_file_bytes, deflate=True)
+        self.save_final_pdf(pdf, new_file_bytes)
         new_file_bytes.seek(0)
         return new_file_bytes
+
+    @staticmethod
+    def save_final_pdf(pdf: pymupdf.Document, new_file_bytes: BytesIO):
+        pdf.save(new_file_bytes, garbage=4, deflate=True, use_objstms=True)
 
     @classmethod
     def get_applicable_redactors(cls) -> set[type[Redactor]]:
