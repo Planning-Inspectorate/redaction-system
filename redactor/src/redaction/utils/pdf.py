@@ -1,4 +1,7 @@
+import math
+from bisect import bisect_right
 from io import BytesIO
+from typing import Any
 
 import numpy as np
 import pymupdf
@@ -1094,3 +1097,65 @@ class PDFUtil:
         # Transform the normalised bounding box
         transformed = normalised_bbox.transform(image_transform)
         return transformed
+
+    @staticmethod
+    def get_page_offsets(pages: list[PDFPageMetadata]) -> list[tuple[int, int]]:
+        """
+        Get the (1-based page number, start offset) of each page within the text made
+        by joining the pages' raw text with newlines
+        """
+        page_offsets = []
+        start = 0
+        for page in pages:
+            page_offsets.append((page.page_number + 1, start))
+            start += len(page.raw_text) + 1
+        return page_offsets
+
+    @staticmethod
+    def get_pages_in_range(
+        page_offsets: list[tuple[int, int]], start: int | None, end: int | None
+    ) -> list[int]:
+        """Get the 1-based numbers of the pages that the character range [start, end)
+        overlaps"""
+        if start is None or end is None or not page_offsets:
+            return []
+        page_starts = [page_start for _, page_start in page_offsets]
+        first = max(bisect_right(page_starts, start) - 1, 0)
+        last = max(bisect_right(page_starts, max(start, end - 1)) - 1, 0)
+        return [page_number for page_number, _ in page_offsets[first : last + 1]]
+
+    @staticmethod
+    def add_pages_to_decision(
+        decision: dict[str, Any],
+        chunk_pages: dict[int, list[int]],
+        positions: dict[int, tuple[float, float]] | None = None,
+    ) -> dict[str, Any]:
+        """Add the pages of the decision and of each of its occurrences, and where the
+        term is on each page.
+
+        :param chunk_pages: The pages that each chunk is on
+        :param positions: The (y, x) of the first match of the term on each page that it
+            was matched on in the PDF. These are the term's pages, and limit each
+            occurrence to the pages of its chunk that the term is on. If the term was
+            not matched, the pages of the chunks are used
+        """
+        occurrences = []
+        for occurrence in decision["occurrences"]:
+            pages = chunk_pages.get(occurrence["chunk_index"], [])
+            if positions:
+                pages = [p for p in pages if p in positions] or sorted(positions)
+            occurrences.append(occurrence | {"pages": pages})
+        return decision | {
+            "pages": sorted(positions)
+            if positions
+            else sorted({page for o in occurrences for page in o["pages"]}),
+            "positions": {page: list(y_x) for page, y_x in (positions or {}).items()},
+            "occurrences": occurrences,
+        }
+
+    @staticmethod
+    def sort_by_first_page(decisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            decisions,
+            key=lambda d: (d["pages"][0] if d["pages"] else math.inf, d["text"]),
+        )

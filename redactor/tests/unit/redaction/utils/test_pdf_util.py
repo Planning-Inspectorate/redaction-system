@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from io import BytesIO
+from typing import ClassVar
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -1017,3 +1018,96 @@ class TestPartialWordHighlights:
         assert _x_range(rect) == pytest.approx(
             _x_range(page.search_for("ada.merrin@post.invalid")[0]), abs=0.5
         )
+
+
+class TestPageOffsets:
+    def test_get_page_offsets(self):
+        """
+        - Given pages whose text is joined with newlines, including an empty page
+        - When I get the page offsets
+        - Then each page's 1-based number is paired with where its text starts
+        """
+        pages = [
+            PDFPageMetadata(page_number=0, raw_text="ab"),
+            PDFPageMetadata(page_number=1, raw_text=""),
+            PDFPageMetadata(page_number=3, raw_text="cde"),
+        ]
+
+        assert PDFUtil.get_page_offsets(pages) == [(1, 0), (2, 3), (4, 4)]
+
+    @pytest.mark.parametrize(
+        ("start", "end", "expected"),
+        [
+            (0, 5, [1]),  # within the first page
+            (12, 15, [2]),  # within the second page
+            (8, 14, [1, 2]),  # across the page break
+            (10, 11, [1]),  # the newline joining the pages
+            (25, 30, [3]),  # within the last page
+            (None, None, []),  # chunk that could not be located
+        ],
+    )
+    def test_get_pages_in_range(self, start, end, expected):
+        page_offsets = [(1, 0), (2, 11), (3, 20)]
+
+        assert PDFUtil.get_pages_in_range(page_offsets, start, end) == expected
+
+    def test_get_pages_in_range__no_pages(self):
+        assert PDFUtil.get_pages_in_range([], 0, 5) == []
+
+
+class TestAddPagesToDecision:
+    CHUNK_PAGES: ClassVar[dict[int, list[int]]] = {0: [1, 2], 1: [2, 3]}
+
+    @staticmethod
+    def _decision(*chunk_indexes):
+        return {
+            "text": "her",
+            "occurrences": [{"chunk_index": i} for i in chunk_indexes],
+        }
+
+    def test_without_positions_uses_the_pages_of_the_chunks(self):
+        result = PDFUtil.add_pages_to_decision(self._decision(0, 1), self.CHUNK_PAGES)
+
+        assert [o["pages"] for o in result["occurrences"]] == [[1, 2], [2, 3]]
+        assert result["pages"] == [1, 2, 3]
+        assert result["positions"] == {}
+
+    def test_positions_are_the_term_pages(self):
+        """
+        - Given a term matched only on pages 2 and 3, found in chunks on pages 1-2 and
+          2-3
+        - When I add the pages to the decision
+        - Then the term is on pages 2 and 3, and each occurrence is limited to the
+          pages of its chunk that the term is on
+        """
+        positions = {2: (10.0, 72.0), 3: (40.5, 100.0)}
+
+        result = PDFUtil.add_pages_to_decision(
+            self._decision(0, 1), self.CHUNK_PAGES, positions
+        )
+
+        assert result["pages"] == [2, 3]
+        assert [o["pages"] for o in result["occurrences"]] == [[2], [2, 3]]
+        assert result["positions"] == {2: [10.0, 72.0], 3: [40.5, 100.0]}
+
+    def test_occurrence_with_no_matching_chunk_page_uses_the_term_pages(self):
+        """
+        - Given a chunk that is only on pages the term was not matched on, or that
+          could not be located
+        - When I add the pages to the decision
+        - Then its occurrence is on the pages the term was matched on
+        """
+        decision = self._decision(0, 2)
+
+        result = PDFUtil.add_pages_to_decision(
+            decision, self.CHUNK_PAGES, {3: (1.0, 2.0)}
+        )
+
+        assert [o["pages"] for o in result["occurrences"]] == [[3], [3]]
+
+    def test_does_not_change_the_decision_passed_in(self):
+        decision = self._decision(0)
+
+        PDFUtil.add_pages_to_decision(decision, self.CHUNK_PAGES, {1: (1.0, 2.0)})
+
+        assert decision == self._decision(0)
