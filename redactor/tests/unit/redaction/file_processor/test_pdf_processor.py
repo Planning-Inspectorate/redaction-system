@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from io import BytesIO
-from typing import ClassVar
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
