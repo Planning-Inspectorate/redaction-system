@@ -1,4 +1,5 @@
 import dataclasses
+import hashlib
 import json
 import os
 import time
@@ -75,34 +76,86 @@ def update_max_tokens(retry_state):
     )
 
 
+def get_chunk_id(text: str) -> str:
+    """Stable ID for a chunk, so its decisions can be traced without storing the text"""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
 def merge_redaction_decisions(
-    parsed_responses: list[LLMDetailedRedactionResultFormat],
+    parsed_responses: list[tuple[int, LLMDetailedRedactionResultFormat]],
 ) -> tuple[tuple[dict, ...], tuple[dict, ...]]:
-    """Combine per-chunk decisions into one per span, keeping the highest confidence
-    and every cited clause. Exclusions of spans redacted elsewhere are dropped,
-    since every occurrence of a redaction string is redacted"""
+    """Combine per-chunk decisions into one per span, keeping the highest confidence,
+    every cited clause and data subject, and each chunk's decision as an occurrence.
+
+    :param parsed_responses: (chunk index, parsed response) for each chunk
+    :return: The merged redactions and exclusions. Exclusions of spans redacted in
+        another chunk are flagged with conflicts_with_redaction, since every
+        occurrence of a redaction string is redacted
+    """
     redactions: dict[str, dict] = {}
     exclusions: dict[str, dict] = {}
-    for parsed in parsed_responses:
+    for chunk_index, parsed in sorted(parsed_responses, key=lambda r: r[0]):
+        source = {"chunk_index": chunk_index}
         for decision in parsed.redactions:
-            merged = redactions.get(decision.text)
-            if merged is None:
-                redactions[decision.text] = decision.model_dump() | {"chunk_count": 1}
-                continue
-            merged["chunk_count"] += 1
-            merged["clause_ids"] = list(
-                dict.fromkeys(merged["clause_ids"] + decision.clause_ids)
+            # Merge the decision for this text span into the existing entry, or create a
+            # new one if it doesn't exist
+            merged = redactions.setdefault(
+                decision.text,
+                {
+                    "text": decision.text,
+                    "confidence": decision.confidence,
+                    "clause_ids": [],
+                    "data_subjects": [],
+                    "chunk_count": 0,  # Set once every chunk is merged
+                    "occurrences": [],
+                },
             )
             if (
                 CONFIDENCE_RANK[decision.confidence]
                 > CONFIDENCE_RANK[merged["confidence"]]
             ):
+                # Update the confidence if it's higher than the current confidence
                 merged["confidence"] = decision.confidence
+
+            # Update the clause IDs and data subjects with any new ones from this decision
+            merged["clause_ids"] = list(
+                dict.fromkeys(merged["clause_ids"] + decision.clause_ids)
+            )
+            merged["data_subjects"] = list(
+                dict.fromkeys(merged["data_subjects"] + [decision.data_subject])
+            )
+            merged["occurrences"].append(source | decision.model_dump(exclude={"text"}))
         for exclusion in parsed.excluded:
-            exclusions.setdefault(exclusion.text, exclusion.model_dump())
-    return tuple(redactions.values()), tuple(
-        e for text, e in exclusions.items() if text not in redactions
-    )
+            # Merge the exclusion for this text span into the existing entry, or create a
+            # new one if it doesn't exist
+            merged = exclusions.setdefault(
+                exclusion.text,
+                {
+                    "text": exclusion.text,
+                    "clause_ids": [],
+                    # Set once every chunk is merged
+                    "conflicts_with_redaction": False,
+                    "chunk_count": 0,
+                    "occurrences": [],
+                },
+            )
+
+            # Update the clause IDs with any new ones from this exclusion
+            merged["clause_ids"] = list(
+                dict.fromkeys(merged["clause_ids"] + exclusion.clause_ids)
+            )
+            merged["occurrences"].append(
+                source | exclusion.model_dump(exclude={"text"})
+            )
+
+    for merged in (*redactions.values(), *exclusions.values()):
+        merged["chunk_count"] = len({o["chunk_index"] for o in merged["occurrences"]})
+
+    # Update the conflict status for each exclusion if it exists in redactions
+    for text, merged in exclusions.items():
+        merged["conflicts_with_redaction"] = text in redactions
+
+    return tuple(redactions.values()), tuple(exclusions.values())
 
 
 class LLMTextAnalyserConfig(BaseModel):
@@ -355,10 +408,11 @@ class LLMTextAnalyser:
         system_prompt: str,
         user_prompt: str,
         max_completion_tokens: int | None = None,
+        chunk_id: str | None = None,
     ) -> tuple[ParsedChatCompletion, list[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
-        chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
+        chunk_hash_string = f"(chunk ID {chunk_id or get_chunk_id(user_prompt)})"
 
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
@@ -496,18 +550,25 @@ class LLMTextAnalyser:
             len([x.strip() for x in chunk.split(" ")]) for chunk in text_chunks
         )
         with TimerUtil() as timer:
-            chunk_hashes = [
-                {"chunk": chunk, "hash": hash(chunk)} for chunk in text_chunks
+            user_prompts = [
+                self.USER_PROMPT_TEMPLATE.format(chunk=chunk) for chunk in text_chunks
+            ]
+            chunk_ids = [get_chunk_id(user_prompt) for user_prompt in user_prompts]
+            chunks_to_log = [
+                {"chunk_index": i, "chunk_id": chunk_id, "chunk": chunk}
+                for i, (chunk_id, chunk) in enumerate(zip(chunk_ids, text_chunks))
             ]
             LoggingUtil().log_audit(
-                f"The following text chunks will be processed: {json.dumps(chunk_hashes, indent=4)}"
+                f"The following text chunks will be processed: {json.dumps(chunks_to_log, indent=4)}"
             )
 
             # Initialise LLM interface
             request_counter = 0
             text_to_redact = []
-            responses: list[ParsedChatCompletion] = []
+            responses: list[tuple[int, ParsedChatCompletion]] = []
             failed_chunk_count = 0
+            # Chunks left unprocessed when the budget is exceeded stay "skipped"
+            chunk_statuses = ["skipped"] * chunk_count
 
             # Check max concurrent requests
             if self.config.max_concurrent_requests > 32:
@@ -529,19 +590,23 @@ class LLMTextAnalyser:
                 )
             elif max_workers == 1:
                 # Process chunks sequentially if only one worker is allowed
-                for chunk in text_chunks:
+                for chunk_index, user_prompt in enumerate(user_prompts):
                     request_counter += 1
+                    chunk_id = chunk_ids[chunk_index]
                     try:
                         response, redaction_strings = self._analyse_text_chunk(
                             system_prompt,
-                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
+                            user_prompt,
+                            chunk_id=chunk_id,
                         )
-                        responses.append(response)
+                        responses.append((chunk_index, response))
                         text_to_redact.extend(redaction_strings)
+                        chunk_statuses[chunk_index] = "ok"
                     except Exception as e:  # noqa: BLE001
                         failed_chunk_count += 1
+                        chunk_statuses[chunk_index] = "failed"
                         LoggingUtil().log_exception_with_message(
-                            f"Error processing chunk {hash(chunk)}",
+                            f"Error processing chunk {chunk_index} ({chunk_id})",
                             e,
                         )
 
@@ -554,27 +619,30 @@ class LLMTextAnalyser:
             else:
                 with ContextThreadPoolExecutor(max_workers=max_workers) as executor:
                     # Submit tasks to the executor
-                    future_to_chunk = {
+                    future_to_chunk_index = {
                         executor.submit(
                             self._analyse_text_chunk,
                             system_prompt,
-                            self.USER_PROMPT_TEMPLATE.format(chunk=chunk),
-                        ): chunk
-                        for chunk in text_chunks
+                            user_prompt,
+                            chunk_id=chunk_ids[chunk_index],
+                        ): chunk_index
+                        for chunk_index, user_prompt in enumerate(user_prompts)
                     }
-                    for future in as_completed(future_to_chunk):
-                        chunk = future_to_chunk[future]
+                    for future in as_completed(future_to_chunk_index):
+                        chunk_index = future_to_chunk_index[future]
                         request_counter += 1
 
                         try:
                             # Get redaction result for chunk and append to overall results
                             response, redaction_strings = future.result()
-                            responses.append(response)
+                            responses.append((chunk_index, response))
                             text_to_redact.extend(redaction_strings)
+                            chunk_statuses[chunk_index] = "ok"
                         except Exception as e:  # noqa: BLE001
                             failed_chunk_count += 1
+                            chunk_statuses[chunk_index] = "failed"
                             LoggingUtil().log_exception_with_message(
-                                f"Error processing chunk {hash(chunk)}",
+                                f"Error processing chunk {chunk_ids[chunk_index]}",
                                 e,
                             )
 
@@ -589,10 +657,17 @@ class LLMTextAnalyser:
             text_to_redact_cleaned = tuple(dict.fromkeys(text_to_redact))
             redaction_decisions, excluded_decisions = (
                 merge_redaction_decisions(
-                    [response.choices[0].message.parsed for response in responses]
+                    [
+                        (i, response.choices[0].message.parsed)
+                        for i, response in responses
+                    ]
                 )
                 if self.config.include_rationale
                 else ((), ())
+            )
+            chunk_summaries = tuple(
+                {"chunk_index": i, "chunk_id": chunk_id, "status": status}
+                for i, (chunk_id, status) in enumerate(zip(chunk_ids, chunk_statuses))
             )
 
         # Collect metrics
@@ -621,6 +696,7 @@ class LLMTextAnalyser:
             metadata=metadata,
             redaction_decisions=redaction_decisions,
             excluded_decisions=excluded_decisions,
+            chunk_summaries=chunk_summaries,
         )
 
         return result
