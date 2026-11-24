@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Generator
@@ -175,6 +176,8 @@ class PDFProcessor(FileProcessor):
         self.pages_metadata: list[PDFPageMetadata] = []
         self.redaction_rules: list[RedactionConfig] = []
         self.redaction_results: list[RedactionResult] = []
+        # The 1-based pages that each term was matched on in the PDF
+        self._term_pages: dict[str, set[int]] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -683,6 +686,34 @@ class PDFProcessor(FileProcessor):
             self.pdf_images = PDFUtil.extract_pdf_images(file_bytes)
         self.run_metrics["pdf_image_extraction_time"] = timer.elapsed_time
         LoggingUtil().log_info(f"Extracted {len(self.pdf_images)} images from the PDF.")
+
+    def _add_pages_to_decision(
+        self, decision: dict[str, Any], chunk_pages: dict[int, list[int]]
+    ) -> dict[str, Any]:
+        """Add the pages of the decision and of each of its occurrences. The pages the
+        term was matched on in the PDF limit each occurrence to the pages of its chunk
+        that the term is on. If the term was not matched, the chunks' pages are used
+        """
+        term_pages = self._term_pages.get(" ".join(decision["text"].split("\n")))
+        occurrences = []
+        for occurrence in decision["occurrences"]:
+            pages = chunk_pages.get(occurrence["chunk_index"], [])
+            if term_pages:
+                pages = [p for p in pages if p in term_pages] or sorted(term_pages)
+            occurrences.append(occurrence | {"pages": pages})
+        return decision | {
+            "pages": sorted(
+                term_pages or {page for o in occurrences for page in o["pages"]}
+            ),
+            "occurrences": occurrences,
+        }
+
+    @staticmethod
+    def _sort_by_first_page(decisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            decisions,
+            key=lambda d: (d["pages"][0] if d["pages"] else math.inf, d["text"]),
+        )
 
     def _apply_rule(self, rule: Redactor):
         LoggingUtil().log_info(f"Running redaction rule {rule}")

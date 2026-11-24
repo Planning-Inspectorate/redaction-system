@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from io import BytesIO
+from typing import ClassVar
 from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
@@ -1401,3 +1402,64 @@ class TestApply:
         assert run_metrics["redaction_time"] >= 0
         assert run_metrics["scrub_time"] >= 0
         assert run_metrics["n_highlights"] >= 0
+
+
+class TestAddPagesToDecision:
+    CHUNK_PAGES: ClassVar[dict[int, list[int]]] = {0: [1, 2], 1: [2, 3]}
+
+    @staticmethod
+    def _decision(*chunk_indexes):
+        return {
+            "text": "her",
+            "occurrences": [{"chunk_index": i} for i in chunk_indexes],
+        }
+
+    @staticmethod
+    def _processor(term_pages=None):
+        processor = PDFProcessor()
+        if term_pages:
+            processor._term_pages = {"her": term_pages}
+        return processor
+
+    def test_without_term_pages_uses_the_pages_of_the_chunks(self):
+        result = self._processor()._add_pages_to_decision(
+            self._decision(0, 1), self.CHUNK_PAGES
+        )
+
+        assert [o["pages"] for o in result["occurrences"]] == [[1, 2], [2, 3]]
+        assert result["pages"] == [1, 2, 3]
+
+    def test_term_pages_limit_the_occurrence_pages(self):
+        """
+        - Given a term matched only on pages 2 and 3, found in chunks on pages 1-2 and
+          2-3
+        - When I add the pages to the decision
+        - Then the term is on pages 2 and 3, and each occurrence is limited to the
+          pages of its chunk that the term is on
+        """
+        result = self._processor({2, 3})._add_pages_to_decision(
+            self._decision(0, 1), self.CHUNK_PAGES
+        )
+
+        assert result["pages"] == [2, 3]
+        assert [o["pages"] for o in result["occurrences"]] == [[2], [2, 3]]
+
+    def test_occurrence_with_no_matching_chunk_page_uses_the_term_pages(self):
+        """
+        - Given a chunk that is only on pages the term was not matched on, or that
+          could not be located
+        - When I add the pages to the decision
+        - Then its occurrence is on the pages the term was matched on
+        """
+        result = self._processor({3})._add_pages_to_decision(
+            self._decision(0, 2), self.CHUNK_PAGES
+        )
+
+        assert [o["pages"] for o in result["occurrences"]] == [[3], [3]]
+
+    def test_does_not_change_the_decision_passed_in(self):
+        decision = self._decision(0)
+
+        self._processor({1})._add_pages_to_decision(decision, self.CHUNK_PAGES)
+
+        assert decision == self._decision(0)
