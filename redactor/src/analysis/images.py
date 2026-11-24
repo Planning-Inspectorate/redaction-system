@@ -25,7 +25,7 @@ from ..monitoring import (
     current_job_state,
     log_to_appins,
 )
-from .utils import get_max_workers
+from .utils import RateLimiter, get_max_workers
 
 load_dotenv(verbose=True)
 
@@ -203,6 +203,20 @@ class AzureImageAnalyser(ImageAnalyser):
     _IMAGE_TEXT_CACHE: ClassVar[dict[str, tuple]] = {}
     _IMAGE_FACE_CACHE: ClassVar[dict[str, tuple]] = {}
     _VISION_CLIENT: ClassVar[ImageAnalysisClient | None] = None
+    _RATE_LIMITER: ClassVar[RateLimiter | None] = None
+    _RATE_LIMITER_LOCK: ClassVar[Lock] = Lock()
+
+    @classmethod
+    def _wait_for_rate_limit(cls) -> None:
+        """Pace requests to VISION_REQUESTS_PER_MINUTE; unset or 0 means no limit."""
+        requests_per_minute = int(os.environ.get("VISION_REQUESTS_PER_MINUTE") or 0)
+        if requests_per_minute < 1:
+            return
+        with cls._RATE_LIMITER_LOCK:
+            if cls._RATE_LIMITER is None:
+                cls._RATE_LIMITER = RateLimiter(requests_per_minute)
+            rate_limiter = cls._RATE_LIMITER
+        rate_limiter.wait()
 
     @classmethod
     def _get_client(cls) -> ImageAnalysisClient:
@@ -320,6 +334,7 @@ class AzureImageAnalyser(ImageAnalyser):
             f"Analysing image using Azure Computer Vision API for features: {visual_features}..."
         )
         try:
+            cls._wait_for_rate_limit()
             result = cls._get_client().analyze(
                 image_bytes,
                 visual_features,
