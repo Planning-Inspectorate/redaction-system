@@ -709,6 +709,31 @@ class TestApplyRule:
             "n_applied": 1,
         }
 
+    def test_decisions_are_included_in_summary(self):
+        redaction_decisions = ({"string": "Joan Brown", "rationale": "A name"},)
+        excluded_decisions = ({"string": "Acme Ltd", "rationale": "A company"},)
+        result = LLMTextRedactionResult(
+            rule_name="names",
+            run_metrics={},
+            redaction_strings=("Joan Brown",),
+            redaction_decisions=redaction_decisions,
+            excluded_decisions=excluded_decisions,
+        )
+        processor = PDFProcessor()
+        processor.run_metrics = {"text_analysis_total_time": 0.0}
+        processor._text_redaction_summary = {}
+        processor.redaction_results = []
+
+        processor._apply_rule(Mock(redact=Mock(return_value=result)))
+
+        assert processor._text_redaction_summary["names"] == {
+            "redaction_strings": ("Joan Brown",),
+            "n_proposed": 1,
+            "n_applied": 1,
+            "redaction_decisions": redaction_decisions,
+            "excluded_decisions": excluded_decisions,
+        }
+
 
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
     def test_includes_redaction_strings_in_text_summary(self):
