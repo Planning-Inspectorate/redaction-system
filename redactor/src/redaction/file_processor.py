@@ -179,6 +179,7 @@ class PDFProcessor(FileProcessor):
         self.pages_metadata: list[PDFPageMetadata] = []
         self.redaction_rules: list[RedactionConfig] = []
         self.redaction_results: list[RedactionResult] = []
+        self._llm_text_results: list[TextRedactionResult] = []
         # The 1-based pages that each term was matched on in the PDF
         self._term_pages: dict[str, set[int]] = {}
 
@@ -753,6 +754,56 @@ class PDFProcessor(FileProcessor):
             decisions,
             key=lambda d: (d["pages"][0] if d["pages"] else math.inf, d["text"]),
         )
+
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Get the LLM's rationale for each rule's decisions, with each occurrence traced
+        to its chunk and the pages it was found on
+
+        :return list[dict[str, Any]] | None: The rationale for each LLM rule, or None if
+            no rule produced any decisions
+        """
+        if not self._llm_text_results:
+            return None
+        unapplied_terms = set(
+            self.run_metrics.get("unapplied_text_redaction_terms", [])
+        )
+        rule_configs = {rule.name: rule for rule in self.redaction_rules}
+        rationale = []
+        for result in self._llm_text_results:
+            page_offsets = self._rule_page_offsets.get(result.rule_name, [])
+            chunk_pages = {
+                chunk["chunk_index"]: PDFUtil.get_pages_in_range(
+                    page_offsets, chunk.get("char_start"), chunk.get("char_end")
+                )
+                for chunk in result.chunk_summaries
+            }
+            redactions = [
+                self._add_pages_to_decision(d, chunk_pages)
+                | {"applied": self._term_key(d["text"]) not in unapplied_terms}
+                for d in result.redaction_decisions
+            ]
+            exclusions = [
+                self._add_pages_to_decision(d, chunk_pages)
+                for d in result.excluded_decisions
+            ]
+            config = rule_configs.get(result.rule_name)
+            rationale.append(
+                {
+                    "rule_name": result.rule_name,
+                    "model": getattr(config, "model", None),
+                    "chunk_size": getattr(config, "chunk_size", None),
+                    "chunk_overlap": getattr(config, "chunk_overlap", None),
+                    "clauses": result.clause_legend,
+                    "chunks": [
+                        chunk | {"pages": chunk_pages[chunk["chunk_index"]]}
+                        for chunk in result.chunk_summaries
+                    ],
+                    "redactions": self._sort_by_first_page(redactions),
+                    "exclusions": self._sort_by_first_page(exclusions),
+                }
+            )
+        return rationale
 
     def _apply_rule(self, rule: Redactor):
         LoggingUtil().log_info(f"Running redaction rule {rule}")
