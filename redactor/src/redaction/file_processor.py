@@ -741,6 +741,64 @@ class PDFProcessor(FileProcessor):
         self.run_metrics["pdf_image_extraction_time"] = timer.elapsed_time
         LoggingUtil().log_info(f"Extracted {len(self.pdf_images)} images from the PDF.")
 
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Get the LLM's rationale for each rule's decisions, with each occurrence traced
+        to its chunk and the pages it was found on
+
+        :return list[dict[str, Any]] | None: The rationale for each LLM rule, or None if
+            no rule produced any decisions
+        """
+        if not self._llm_text_results:
+            return None
+        unapplied_terms = set(
+            self.run_metrics.get("unapplied_text_redaction_terms", [])
+        )
+        rule_configs = {rule.name: rule for rule in self.redaction_rules}
+        rationale = []
+        for result in self._llm_text_results:
+            page_offsets = self._rule_page_offsets.get(result.rule_name, [])
+            chunk_pages = {
+                chunk["chunk_index"]: PDFUtil.get_pages_in_range(
+                    page_offsets, chunk.get("char_start"), chunk.get("char_end")
+                )
+                for chunk in result.chunk_summaries
+            }
+            redactions = []
+            for decision in result.redaction_decisions:
+                term = self._term_key(decision["text"])
+                redactions.append(
+                    PDFUtil.add_pages_to_decision(
+                        decision, chunk_pages, self._term_positions.get(term)
+                    )
+                    | {"applied": term not in unapplied_terms}
+                )
+            exclusions = [
+                PDFUtil.add_pages_to_decision(
+                    decision,
+                    chunk_pages,
+                    self._term_positions.get(self._term_key(decision["text"])),
+                )
+                for decision in result.excluded_decisions
+            ]
+            config = rule_configs.get(result.rule_name)
+            rationale.append(
+                {
+                    "rule_name": result.rule_name,
+                    "model": getattr(config, "model", None),
+                    "chunk_size": getattr(config, "chunk_size", None),
+                    "chunk_overlap": getattr(config, "chunk_overlap", None),
+                    "clauses": result.clause_legend,
+                    "chunks": [
+                        chunk | {"pages": chunk_pages[chunk["chunk_index"]]}
+                        for chunk in result.chunk_summaries
+                    ],
+                    "redactions": PDFUtil.sort_by_first_page(redactions),
+                    "exclusions": PDFUtil.sort_by_first_page(exclusions),
+                }
+            )
+        return rationale
+
     def _apply_rule(self, rule: Redactor):
         LoggingUtil().log_info(f"Running redaction rule {rule}")
         with TimerUtil() as timer:
