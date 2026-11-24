@@ -44,6 +44,16 @@ def _make_pdf_with_text(text: str) -> BytesIO:
     return b
 
 
+def _make_pdf_with_pages(*texts: str) -> BytesIO:
+    doc = pymupdf.open()
+    for text in texts:
+        doc.new_page().insert_text((72, 72), text)
+    b = BytesIO()
+    doc.save(b)
+    b.seek(0)
+    return b
+
+
 class TestGetName:
     def test_returns_str(self):
         """
@@ -748,7 +758,7 @@ class TestApplyRule:
             "n_applied": 1,
         }
 
-    def test_decisions_are_included_in_summary(self):
+    def test_decisions_are_kept_out_of_summary(self):
         redaction_decisions = ({"string": "Joan Brown", "rationale": "A name"},)
         excluded_decisions = ({"string": "Acme Ltd", "rationale": "A company"},)
         result = LLMTextRedactionResult(
@@ -769,9 +779,8 @@ class TestApplyRule:
             "redaction_strings": ("Joan Brown",),
             "n_proposed": 1,
             "n_applied": 1,
-            "redaction_decisions": redaction_decisions,
-            "excluded_decisions": excluded_decisions,
         }
+        assert processor._llm_text_results == [result]
 
 
 class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
@@ -913,6 +922,42 @@ class TestApplyRedactionRules(TestExamineApplyRedactionsBase):
 
         assert image_text_rule.images == []
         assert list(image_rule.images) == [page_image]
+
+    def test_records_page_offsets_per_rule(self):
+        """
+        - Given a text rule and an image text rule
+        - When I apply the redaction rules
+        - Then each rule is mapped to the page offsets of the text it was given
+        """
+        text_rule = Mock(spec=["name", "redactor_type", "text"])
+        text_rule.name = "text rule"
+        image_text_rule = Mock(
+            spec=["name", "redactor_type", "text", "images", "rendered_images"]
+        )
+        image_text_rule.name = "image text rule"
+        redactor = Mock(
+            redact=Mock(
+                return_value=TextRedactionResult(rule_name="rule", run_metrics={})
+            )
+        )
+
+        with (
+            patch.object(PDFUtil, "extract_unique_pdf_images", return_value=[]),
+            patch(
+                "src.redaction.file_processor.RedactorFactory.get",
+                return_value=lambda config: redactor,
+            ),
+        ):
+            processor = PDFProcessor()
+            processor.redaction_rules = [text_rule, image_text_rule]
+            processor.pdf_text_page_offsets = [(1, 0)]
+            processor.rendered_pdf_text_page_offsets = [(2, 0)]
+            processor._apply_redaction_rules()
+
+        assert processor._rule_page_offsets == {
+            "text rule": [(1, 0)],
+            "image text rule": [(2, 0)],
+        }
 
 
 class TestExtractPDFTextContent(TestExamineApplyRedactionsBase):
@@ -1090,6 +1135,28 @@ class TestExtractPDFTextAndImages(TestExamineApplyRedactionsBase):
         info_messages = [c.args[0] for c in LoggingUtil.log_info.call_args_list]
         assert any(text_on_page in message for message in audit_messages)
         assert not any(text_on_page in message for message in info_messages)
+
+    def test_sets_page_offsets(self):
+        """
+        - Given a two page PDF with embedded text
+        - When I extract its text
+        - Then the page offsets locate each page's text within the joined text
+        """
+        file_bytes = _make_pdf_with_pages("Hello there", "General Kenobi")
+
+        with (
+            patch.object(PDFUtil, "extract_pdf_images", return_value=[]),
+            patch("src.redaction.file_processor.is_english_text", return_value=True),
+        ):
+            processor = PDFProcessor()
+            processor._extract_pdf_text_and_images(file_bytes)
+
+        assert processor.pdf_text == "Hello there\nGeneral Kenobi"
+        assert processor.pdf_text_page_offsets == [(1, 0), (2, 12)]
+        for page_number, start in processor.pdf_text_page_offsets:
+            page_text = processor.pages_metadata[page_number - 1].raw_text
+            assert processor.pdf_text[start:].startswith(page_text)
+        assert processor.rendered_pdf_text_page_offsets == [(1, 0), (2, 12)]
 
 
 class TestRedact:
