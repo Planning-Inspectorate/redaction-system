@@ -172,6 +172,9 @@ class PDFProcessor(FileProcessor):
         super().__init__()
         self.pdf_text: str | None = None
         self.rendered_pdf_text: str | None = None
+        # (1-based page number, start offset) of each page within the joined text
+        self.pdf_text_page_offsets: list[tuple[int, int]] = []
+        self.rendered_pdf_text_page_offsets: list[tuple[int, int]] = []
         self.pdf_images: list[PDFImageMetadata] = []
         self.pages_metadata: list[PDFPageMetadata] = []
         self.redaction_rules: list[RedactionConfig] = []
@@ -384,6 +387,8 @@ class PDFProcessor(FileProcessor):
         redaction_instances = []
         for term in text_to_redact:
             self.terms_found[term] = 0
+        self._term_positions = {}
+        exclusion_terms = self._get_exclusion_terms(text_to_redact)
         for i, page in enumerate(pdf):
             if i == 0:
                 page_metadata = PDFUtil.extract_page_metadata(page)
@@ -407,6 +412,19 @@ class PDFProcessor(FileProcessor):
                 page,
             )
             redaction_instances.extend(page_redaction_instances)
+            for _, _, term in page_redaction_instances:
+                self.terms_found[term] += 1
+            self._record_term_pages(page_redaction_instances)
+            if exclusion_terms:
+                # Excluded terms are not highlighted, but are located in the same way
+                self._record_term_pages(
+                    self._examine_provisional_redactions_on_page(
+                        exclusion_terms,
+                        page_metadata,
+                        next_page_metadata,
+                        page,
+                    )
+                )
             LoggingUtil().log_info(
                 f"    Found {len(page_redaction_instances)} redaction candidates on "
                 f"page {page.number}."
@@ -471,20 +489,35 @@ class PDFProcessor(FileProcessor):
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:
-            LoggingUtil().log_audit(
-                f"    Examining redaction candidate for term '{term_to_redact}'"
-            )
+            LoggingUtil().log_audit(f"    Examining term '{term_to_redact}'")
             instances_to_apply = PDFUtil.examine_provisional_text_redaction(
                 term_to_redact, page_metadata, next_page_metadata, page=page
             )
             redaction_instances.extend(instances_to_apply)
-            self.terms_found.update(
-                {
-                    term_to_redact: self.terms_found.get(term_to_redact, 0)
-                    + len(instances_to_apply)
-                }
-            )
         return redaction_instances
+
+    @staticmethod
+    def _term_key(text: str) -> str:
+        # Terms are matched in the PDF with line breaks replaced by spaces
+        return " ".join(text.split("\n"))
+
+    def _get_exclusion_terms(self, text_to_redact: list[str]) -> list[str]:
+        # Terms also redacted are already located by the redaction pass
+        return sorted(
+            {
+                self._term_key(decision["text"])
+                for result in self._llm_text_results
+                for decision in result.excluded_decisions
+            }
+            - set(text_to_redact)
+        )
+
+    def _record_term_pages(
+        self, instances: list[tuple[int, pymupdf.Rect, str]]
+    ) -> None:
+        for page_number, _, term in instances:
+            # pymupdf pages are 0-based, but outputs number pages from 1
+            self._term_pages.setdefault(term, set()).add(page_number + 1)
 
     def _apply_provisional_image_redactions(
         self,
@@ -650,18 +683,24 @@ class PDFProcessor(FileProcessor):
         with TimerUtil() as timer:
             self._extract_pdf_text_content(file_bytes)
             # Only include non-printed text content for LLM text redaction
-            pages_text = [
-                page.raw_text
+            text_pages = [
+                page
                 for page in self.pages_metadata
                 if not page.rendered_image.text_rect_map
             ]
+            pages_text = [page.raw_text for page in text_pages]
             if not all(text == "" for text in pages_text):
                 self.pdf_text = "\n".join(pages_text)
+                self.pdf_text_page_offsets = PDFUtil.get_page_offsets(text_pages)
 
-            rendered_page_text = [
-                page.raw_text for page in self.pages_metadata if page.rendered_image
+            rendered_pages = [
+                page for page in self.pages_metadata if page.rendered_image
             ]
+            rendered_page_text = [page.raw_text for page in rendered_pages]
             self.rendered_pdf_text = "\n".join(rendered_page_text)
+            self.rendered_pdf_text_page_offsets = PDFUtil.get_page_offsets(
+                rendered_pages
+            )
         self.run_metrics["pdf_text_extraction_time"] = timer.elapsed_time
 
         if self.pdf_text:
@@ -694,7 +733,7 @@ class PDFProcessor(FileProcessor):
         term was matched on in the PDF limit each occurrence to the pages of its chunk
         that the term is on. If the term was not matched, the chunks' pages are used
         """
-        term_pages = self._term_pages.get(" ".join(decision["text"].split("\n")))
+        term_pages = self._term_pages.get(self._term_key(decision["text"]))
         occurrences = []
         for occurrence in decision["occurrences"]:
             pages = chunk_pages.get(occurrence["chunk_index"], [])
@@ -734,13 +773,13 @@ class PDFProcessor(FileProcessor):
                 "n_proposed": n_strings,
                 "n_applied": n_strings,
             }
+            self._text_redaction_summary[redaction_result.rule_name] = summary
+            # Decisions quote personal data, so keep them out of run metrics
             if isinstance(redaction_result, LLMTextRedactionResult) and (
                 redaction_result.redaction_decisions
                 or redaction_result.excluded_decisions
             ):
-                summary["redaction_decisions"] = redaction_result.redaction_decisions
-                summary["excluded_decisions"] = redaction_result.excluded_decisions
-            self._text_redaction_summary[redaction_result.rule_name] = summary
+                self._llm_text_results.append(redaction_result)
         elif issubclass(redaction_result.__class__, ImageRedactionResult):
             self.run_metrics["image_analysis_total_time"] += redaction_time
 
@@ -795,10 +834,12 @@ class PDFProcessor(FileProcessor):
             ]
         )
         # Attach text and images to redaction configs
+        self._rule_page_offsets = {}
         for rule in self.redaction_rules:
             if hasattr(rule, "text") and hasattr(rule, "images"):
                 # Analyse rendered printed pages with text only
                 rule.text = self.rendered_pdf_text if self.rendered_pdf_text else None
+                self._rule_page_offsets[rule.name] = self.rendered_pdf_text_page_offsets
                 rule.rendered_images = image_text_analysis_pages
                 if pages_rendered:
                     # Only include images that are not included in the rendered pages
@@ -807,6 +848,7 @@ class PDFProcessor(FileProcessor):
                     rule.images = unique_pdf_images
             elif hasattr(rule, "text"):
                 rule.text = self.pdf_text
+                self._rule_page_offsets[rule.name] = self.pdf_text_page_offsets
             elif hasattr(rule, "images") and rule.redactor_type == "ImageTextRedaction":
                 # Embedded images, plus full pages only where no text was extractable
                 rule.images = [
@@ -835,6 +877,7 @@ class PDFProcessor(FileProcessor):
 
         # Apply each redaction rule
         self._text_redaction_summary: dict[str, Any] = {}
+        self._llm_text_results = []
         for rule_to_apply in redaction_rules_to_apply:
             self._apply_rule(rule_to_apply)
 
@@ -859,7 +902,7 @@ class PDFProcessor(FileProcessor):
             )
         ]
         text_redactions = [
-            " ".join(redaction_string.split("\n"))
+            self._term_key(redaction_string)
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]
