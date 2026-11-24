@@ -15,8 +15,12 @@ from azure.identity import (
 from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
 from openai import (
+    APIConnectionError,
+    APIStatusError,
     AzureOpenAI,
+    ConflictError,
     ContentFilterFinishReasonError,
+    InternalServerError,
     LengthFinishReasonError,
     RateLimitError,
 )
@@ -24,8 +28,10 @@ from openai.types.chat.chat_completion import CompletionUsage
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel, ValidationError
 from tenacity import (
+    RetryCallState,
     retry,
     retry_any,
+    retry_if_exception,
     retry_if_exception_message,
     retry_if_exception_type,
     stop_after_attempt,
@@ -48,6 +54,35 @@ from ..types import (
 from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
+
+MAX_RETRY_WAIT_SECONDS = 60
+_exponential_backoff = wait_random_exponential(min=1, max=MAX_RETRY_WAIT_SECONDS)
+
+
+def is_transient_api_error(exception: BaseException) -> bool:
+    """Whether the request failed in a way that the OpenAI SDK itself would retry.
+
+    The SDK retries 429s, connection errors, 408, 409 and 5xx twice by default.
+    With a custom retry, Azure recommends setting max_retries=0 on the client:
+    https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#rate-limit-best-practices
+    """
+    return isinstance(
+        exception,
+        (APIConnectionError, RateLimitError, ConflictError, InternalServerError),
+    ) or (isinstance(exception, APIStatusError) and exception.status_code == 408)
+
+
+def wait_for_retry_after(retry_state: RetryCallState) -> float:
+    """Wait as long as a throttled response asks, otherwise back off exponentially."""
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+    headers = getattr(getattr(exception, "response", None), "headers", None) or {}
+    for header, seconds_per_unit in (("retry-after-ms", 0.001), ("retry-after", 1)):
+        try:
+            wait = float(headers[header]) * seconds_per_unit
+        except (KeyError, TypeError, ValueError):  # missing, or an HTTP date
+            continue
+        return min(max(wait, 0.0), MAX_RETRY_WAIT_SECONDS)
+    return _exponential_backoff(retry_state)
 
 
 @log_to_appins
@@ -181,6 +216,8 @@ class LLMTextAnalyser:
                 azure_endpoint=azure_endpoint,
                 api_version="2024-12-01-preview",
                 azure_ad_token_provider=token_provider,
+                # _analyse_text_chunk retries, so SDK retries would multiply attempts
+                max_retries=0,
             )
         return cls._CLIENT
 
@@ -342,14 +379,14 @@ class LLMTextAnalyser:
         return self.llm.chat.completions.parse(**kwargs)
 
     @log_to_appins
-    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
-    # Only retry if there is a rate limit exception. All other errors are logged and skipped
+    # Retry transient API errors and bad responses, honouring Retry-After when throttled
+    # https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#rate-limit-best-practices
     @retry(
         retry=retry_any(
+            retry_if_exception(is_transient_api_error),
             retry_if_exception_type(
                 (
-                    RateLimitError,  # API rate limit exceeded
-                    TimeoutError,  # Timeout while waiting for semaphore
+                    TimeoutError,  # Timeout while waiting for the semaphore or rate limit
                     LengthFinishReasonError,  # LLM response truncated due to length
                     ContentFilterFinishReasonError,  # LLM response blocked by content filter
                     ValidationError,  # LLM response could not be parsed into expected format
@@ -359,7 +396,7 @@ class LLMTextAnalyser:
                 "'str' object has no attribute 'choices'"
             ),
         ),
-        wait=wait_random_exponential(min=1, max=60),
+        wait=wait_for_retry_after,
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info(
             "Retrying LLM analysis..."
