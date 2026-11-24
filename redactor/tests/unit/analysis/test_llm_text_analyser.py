@@ -86,12 +86,12 @@ class TestUpdateMaxTokens:
 
     def test_caps_at_max_tokens(self):
         retry_state = Mock()
-        retry_state.kwargs = {"max_completion_tokens": 5000}
+        retry_state.kwargs = {"max_completion_tokens": 20000}
         update_max_tokens(retry_state)
         LoggingUtil.log_info.assert_called_with(
-            "Updating max_completion_tokens to 8000 for next attempt."
+            "Updating max_completion_tokens to 32000 for next attempt."
         )
-        assert retry_state.kwargs["max_completion_tokens"] == 8000
+        assert retry_state.kwargs["max_completion_tokens"] == 32000
 
     def test_defaults_to_analyser_limit(self):
         retry_state = Mock()

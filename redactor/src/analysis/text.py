@@ -68,7 +68,7 @@ def update_max_tokens(retry_state):
         or retry_state.args[0].config.max_tokens
         or 1000
     )
-    retry_state.kwargs.update({"max_completion_tokens": min(current * 2, 8000)})
+    retry_state.kwargs.update({"max_completion_tokens": min(current * 2, 32000)})
     LoggingUtil().log_info(
         f"Updating max_completion_tokens to {retry_state.kwargs['max_completion_tokens']}"
         " for next attempt."
