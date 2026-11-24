@@ -544,7 +544,7 @@ class TestAnalyseTextChunk:
         return_value=[{"role": "system", "content": "system prompt"}],
     )
     @patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
-    def test_computes_costs_and_uses_request_token_semaphores(
+    def test_computes_costs_and_uses_request_semaphore_and_rate_limiters(
         self, mock_num_tokens_consumed, mock_create_api_message
     ):
         mock_chat_completion = create_mock_chat_completion()
@@ -558,7 +558,8 @@ class TestAnalyseTextChunk:
         )
         llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
         llm_text_analyser.input_token_cost = 1
         llm_text_analyser.completion_token_cost = 2
 
@@ -578,8 +579,12 @@ class TestAnalyseTextChunk:
         llm_text_analyser.request_semaphore.acquire.assert_called_once()
         llm_text_analyser.request_semaphore.release.assert_called_once()
 
-        llm_text_analyser.token_semaphore.acquire.assert_called_once_with(10)
-        llm_text_analyser.token_semaphore.release.assert_called_once_with(10)
+        llm_text_analyser.request_rate_limiter.wait.assert_called_once_with(
+            timeout=60.0
+        )
+        llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(
+            10, timeout=60.0
+        )
 
     @patch.object(
         LLMTextAnalyser,
@@ -595,7 +600,8 @@ class TestAnalyseTextChunk:
         )
         llm_text_analyser = LLMTextAnalyser(LLMTextAnalyserConfig(model="gpt-5.6-luna"))
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
 
         with patch.object(
             LLMTextAnalyser, "invoke_chain", return_value=mock_chat_completion
@@ -655,7 +661,8 @@ class TestAnalyseTextChunk:
         )
         llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
 
         llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
         llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(1)
@@ -673,8 +680,8 @@ class TestAnalyseTextChunk:
         llm_text_analyser.request_semaphore.acquire.assert_called_once()
         llm_text_analyser.request_semaphore.release.assert_not_called()
 
-        llm_text_analyser.token_semaphore.acquire.assert_not_called()
-        llm_text_analyser.token_semaphore.release.assert_not_called()
+        llm_text_analyser.request_rate_limiter.wait.acquire.assert_not_called()
+        llm_text_analyser.token_rate_limiter.wait.release.assert_not_called()
 
         logging_util_calls = LoggingUtil.log_exception.call_args_list
         logging_util_calls_as_string = [str(x) for x in logging_util_calls]
@@ -686,6 +693,40 @@ class TestAnalyseTextChunk:
         assert any(timeout_error in x for x in logging_util_calls_as_string), (
             f"Expected {timeout_error} to be called. Called list was {logging_util_calls}"
         )
+
+    @patch.object(
+        LLMTextAnalyser,
+        "invoke_chain",
+        side_effect=Exception("Some LLM invocation error"),
+    )
+    @patch.object(
+        LLMTextAnalyser,
+        "create_api_message",
+        return_value=[{"role": "system", "content": "system prompt"}],
+    )
+    @patch.object(LLMTextAnalyser, "_num_tokens_consumed", return_value=10)
+    def test_timeout_on_rate_limit(
+        self, mock_num_tokens_consumed, mock_create_api_message, mock_invoke_chain
+    ):
+        llm_text_analyser = LLMTextAnalyser(
+            LLMTextAnalyserConfig(model="gpt-5.6-luna", token_timeout=1)
+        )
+        llm_text_analyser.request_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter.wait.side_effect = TimeoutError("too long")
+
+        llm_text_analyser._analyse_text_chunk.retry.wait = wait_none()
+        llm_text_analyser._analyse_text_chunk.retry.stop = stop_after_attempt(1)
+
+        result = llm_text_analyser._analyse_text_chunk(
+            system_prompt="system prompt", user_prompt=""
+        )
+
+        assert result is None  # The timeout is retried, then the chunk is skipped
+        llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(10, timeout=1)
+        mock_invoke_chain.assert_not_called()
+        llm_text_analyser.request_semaphore.release.assert_called_once()
 
     @patch.object(
         LLMTextAnalyser,
@@ -821,7 +862,8 @@ class TestAnalyseTextChunk:
             LLMTextAnalyserConfig(model="gpt-5.6-luna", include_rationale=True)
         )
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
 
         with patch.object(
             LLMTextAnalyser, "invoke_chain", return_value=completion
@@ -845,7 +887,8 @@ class TestAnalyseText:
         )
         llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
         llm_text_analyser.input_token_cost = 1
         llm_text_analyser.completion_token_cost = 2
 
@@ -1043,7 +1086,8 @@ class TestAnalyseText:
         )
         llm_text_analyser = LLMTextAnalyser(llm_text_analyser_config)
         llm_text_analyser.request_semaphore = Mock()
-        llm_text_analyser.token_semaphore = Mock()
+        llm_text_analyser.request_rate_limiter = Mock()
+        llm_text_analyser.token_rate_limiter = Mock()
         llm_text_analyser.input_token_cost = 1
         llm_text_analyser.completion_token_cost = 2
 
