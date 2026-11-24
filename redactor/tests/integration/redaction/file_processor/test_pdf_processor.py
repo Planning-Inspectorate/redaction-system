@@ -765,7 +765,7 @@ class TestApply:
 
         # Compare the metadata of the redacted document to the expected redacted document
         expected_metadata = {
-            "format": "PDF 1.4",
+            "format": "PDF 1.5",
             "title": "",
             "author": "",
             "subject": "",
