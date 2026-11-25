@@ -60,12 +60,23 @@ def init():
     logger.info("Model loaded successfully")
 
 
-def run(raw_data):
-    request = json.loads(raw_data)
-    image_bytes = bytes.fromhex(request["image"])
-    threshold = request.get("threshold", 0.5)
+class BadRequestError(ValueError):
+    """The request payload is invalid, so retrying cannot help."""
 
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+
+def _parse_request(raw_data):
+    try:
+        request = json.loads(raw_data)
+        image_bytes = bytes.fromhex(request["image"])
+        threshold = request.get("threshold", 0.5)
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except (ValueError, KeyError, TypeError, AttributeError, OSError) as e:
+        raise BadRequestError("Invalid request payload") from e
+    return image, threshold
+
+
+def run(raw_data):
+    image, threshold = _parse_request(raw_data)
 
     inputs = processor(images=image, return_tensors="pt")
 

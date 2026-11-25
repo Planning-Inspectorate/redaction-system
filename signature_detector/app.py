@@ -15,6 +15,9 @@ score.init()
 def predict():
     try:
         result = score.run(request.get_data(as_text=True))
+    except score.BadRequestError:
+        logger.exception("Invalid request")
+        return jsonify({"error": "Invalid request."}), 400
     except Exception:
         logger.exception("Error during inference")
         return jsonify({"error": "An internal error has occurred."}), 500
