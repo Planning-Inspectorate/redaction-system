@@ -1,11 +1,9 @@
 steps:
   - script: |
-      set -e
-      source ~/.bashrc
-      pyenv shell 3.13
-      python3 -m venv $(System.DefaultWorkingDirectory)/.venv
-      echo "##vso[task.prependpath]$(System.DefaultWorkingDirectory)/.venv/bin"
-      python3 -m ensurepip --upgrade
-      python3 -m pip install --force-reinstall --no-binary cffi cffi
-      python3 --version
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      echo "##vso[task.prependpath]$HOME/.local/bin"
+    displayName: 'Install uv'
+
+  - script: |
+      uv python install 3.13 --default
     displayName: 'Install Python 3.13'

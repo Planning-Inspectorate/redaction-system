@@ -48,7 +48,14 @@ extends:
           - script: |
               set -e
               cd redaction-system
-              python3 -m pip install ruff
+              uv venv .venv
+              uv pip install ruff
+              echo "##vso[task.prependpath]$(Build.SourcesDirectory)/redaction-system/.venv/bin"
+            displayName: 'Install Python dependencies'
+
+          - script: |
+              set -e
+              cd redaction-system
               python3 -m ruff check
               python3 -m ruff format --check
             displayName: 'Python code style check'
@@ -63,11 +70,7 @@ extends:
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install --group dev .
-            displayName: 'Install redactor package'
+          - template: pipelines/templates/install-deps.yml@self
 
           - script: |
               set -e
@@ -101,15 +104,10 @@ extends:
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install --group dev . 
-            displayName: 'Install redactor package'
+          - template: pipelines/templates/install-deps.yml@self
 
           - script: |
               set -e
-              source $(System.DefaultWorkingDirectory)/.venv/bin/activate
               cd redaction-system/redactor
               python3 -m pytest tests/integration -vv -rP -n 4 --junitxml=junit/integration_test_results.xml --cov="src" --cov-report=xml:integration_test_coverage.xml
               python3 -m coverage report --fail-under=$(integrationTestCoverageThreshold) --show-missing
@@ -140,11 +138,7 @@ extends:
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install --group dev .
-            displayName: 'Install redactor package'
+          - template: pipelines/templates/install-deps.yml@self
 
           - template: ../steps/node_script.yml@templates
             parameters:
@@ -198,7 +192,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+                source $(Build.SourcesDirectory)/redaction-system/.venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -261,7 +255,7 @@ extends:
               nodeVersion: 22
               script: |
                 set -e
-                source $(System.DefaultWorkingDirectory)/.venv/bin/activate
+                source $(Build.SourcesDirectory)/redaction-system/.venv/bin/activate
 
                 echo "Creating local.settings.json for Functions host..."
 
@@ -409,7 +403,10 @@ extends:
 
           - script: |
               set -e
-              python3 -m pip install coverage[toml]
+              cd redaction-system
+              uv venv .venv
+              uv pip install coverage[toml]
+              echo "##vso[task.prependpath]$(Build.SourcesDirectory)/redaction-system/.venv/bin"
             displayName: 'Install coverage'
 
           - task: DownloadPipelineArtifact@2

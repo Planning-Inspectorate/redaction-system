@@ -1,0 +1,7 @@
+steps:
+  - script: |
+      set -e
+      cd redaction-system/redactor
+      uv sync --frozen --dev
+      echo "##vso[task.prependpath]$(Build.SourcesDirectory)/redaction-system/.venv/bin"
+    displayName: 'Install redactor package'
