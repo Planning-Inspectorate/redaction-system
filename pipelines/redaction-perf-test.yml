@@ -52,11 +52,7 @@ extends:
             parameters:
               subscriptionId: $(SUBSCRIPTION_ID_${{ upper(parameters.env) }})
 
-          - script: |
-              set -e
-              cd redaction-system
-              python3 -m pip install .
-            displayName: Install redactor package
+          - template: pipelines/templates/install-deps.yml@self
 
           - script: |
               set -e

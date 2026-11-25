@@ -143,7 +143,9 @@ extends:
 
               - script: |
                   set -e
-                  python3 -m pip install pytest dotenv requests
+                  cd redaction-system/redactor
+                  uv venv .venv
+                  uv pip install pytest dotenv requests
                 displayName: 'Install Python dependencies'
 
               # Run a quick smoke test to check connectivity
@@ -155,7 +157,8 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    python3 -m pytest redactor/tests/smoke/test_connectivity.py
+                    cd redaction-system/redactor
+                    uv run pytest tests/smoke/test_connectivity.py
 
               - task: AzureCLI@2
                 displayName: Test signature detection
@@ -165,4 +168,5 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    python3 redactor/tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/signature.png
+                    cd redaction-system/redactor
+                    uv run python tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/signature.png
