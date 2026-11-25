@@ -61,42 +61,37 @@ def init():
 
 
 def run(raw_data):
-    try:
-        request = json.loads(raw_data)
-        image_bytes = bytes.fromhex(request["image"])
-        threshold = request.get("threshold", 0.5)
+    request = json.loads(raw_data)
+    image_bytes = bytes.fromhex(request["image"])
+    threshold = request.get("threshold", 0.5)
 
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        inputs = processor(images=image, return_tensors="pt")
+    inputs = processor(images=image, return_tensors="pt")
 
-        with torch.no_grad():
-            outputs = model(**inputs)
+    with torch.no_grad():
+        outputs = model(**inputs)
 
-        target_sizes = torch.tensor([image.size[::-1]])
-        results = processor.post_process_object_detection(
-            outputs, target_sizes=target_sizes, threshold=threshold
-        )[0]
+    target_sizes = torch.tensor([image.size[::-1]])
+    results = processor.post_process_object_detection(
+        outputs, target_sizes=target_sizes, threshold=threshold
+    )[0]
 
-        detections = []
-        for score, label, box in zip(
-            results["scores"], results["labels"], results["boxes"]
-        ):
-            detections.append(
-                {
-                    "score": round(score.item(), 4),
-                    "label": model.config.id2label[label.item()],
-                    "box": {
-                        "x_min": round(box[0].item(), 2),
-                        "y_min": round(box[1].item(), 2),
-                        "x_max": round(box[2].item(), 2),
-                        "y_max": round(box[3].item(), 2),
-                    },
-                }
-            )
+    detections = []
+    for score, label, box in zip(
+        results["scores"], results["labels"], results["boxes"]
+    ):
+        detections.append(
+            {
+                "score": round(score.item(), 4),
+                "label": model.config.id2label[label.item()],
+                "box": {
+                    "x_min": round(box[0].item(), 2),
+                    "y_min": round(box[1].item(), 2),
+                    "x_max": round(box[2].item(), 2),
+                    "y_max": round(box[3].item(), 2),
+                },
+            }
+        )
 
-        return json.dumps({"detections": detections})
-
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Error during inference: {e}")
-        return json.dumps({"error": "An internal error has occurred."})
+    return json.dumps({"detections": detections})

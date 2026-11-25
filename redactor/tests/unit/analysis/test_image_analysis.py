@@ -544,7 +544,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
 
         assert result == ((10, 20, 50, 60),)
 
-    @pytest.mark.parametrize("status_code", [429, 503])
+    @pytest.mark.parametrize("status_code", [429, 500, 503])
     def test_retries_on_throttled_or_unavailable_response(self, status_code):
         image = Image.new("RGB", (100, 100))
         failed = self._mock_response([], status_code=status_code)

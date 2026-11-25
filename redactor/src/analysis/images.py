@@ -440,7 +440,7 @@ class SignatureDetector(ImageAnalyser):
             lambda exception: (
                 isinstance(exception, HTTPError)
                 and exception.response is not None
-                and exception.response.status_code in [429, 503]
+                and exception.response.status_code in [429, 500, 503]
             )
         ),
         wait=wait_random_exponential(min=1, max=60),
