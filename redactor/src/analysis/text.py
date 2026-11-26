@@ -15,8 +15,12 @@ from azure.identity import (
 from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
 from openai import (
+    APIConnectionError,
+    APIStatusError,
     AzureOpenAI,
+    ConflictError,
     ContentFilterFinishReasonError,
+    InternalServerError,
     LengthFinishReasonError,
     RateLimitError,
 )
@@ -24,8 +28,10 @@ from openai.types.chat.chat_completion import CompletionUsage
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel, ValidationError
 from tenacity import (
+    RetryCallState,
     retry,
     retry_any,
+    retry_if_exception,
     retry_if_exception_message,
     retry_if_exception_type,
     stop_after_attempt,
@@ -48,6 +54,35 @@ from ..types import (
 from .utils import TokenSemaphore, get_max_workers
 
 load_dotenv(verbose=True)
+
+MAX_RETRY_WAIT_SECONDS = 60
+_exponential_backoff = wait_random_exponential(min=1, max=MAX_RETRY_WAIT_SECONDS)
+
+
+def is_transient_api_error(exception: BaseException) -> bool:
+    """Whether the request failed in a way that the OpenAI SDK itself would retry.
+
+    The SDK retries 429s, connection errors, 408, 409 and 5xx twice by default.
+    With a custom retry, Azure recommends setting max_retries=0 on the client:
+    https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#rate-limit-best-practices
+    """
+    return isinstance(
+        exception,
+        (APIConnectionError, RateLimitError, ConflictError, InternalServerError),
+    ) or (isinstance(exception, APIStatusError) and exception.status_code == 408)
+
+
+def wait_for_retry_after(retry_state: RetryCallState) -> float:
+    """Wait as long as a throttled response asks, otherwise back off exponentially."""
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+    headers = getattr(getattr(exception, "response", None), "headers", None) or {}
+    for header, seconds_per_unit in (("retry-after-ms", 0.001), ("retry-after", 1)):
+        try:
+            wait = float(headers[header]) * seconds_per_unit
+        except (KeyError, TypeError, ValueError):  # missing, or an HTTP date
+            continue
+        return min(max(wait, 0.0), MAX_RETRY_WAIT_SECONDS)
+    return _exponential_backoff(retry_state)
 
 
 @log_to_appins
@@ -161,6 +196,31 @@ class LLMTextAnalyser:
     }
     USER_PROMPT_TEMPLATE = PromptTemplate(input_variables=["chunk"], template="{chunk}")
 
+    _CLIENT: ClassVar[AzureOpenAI | None] = None
+
+    @classmethod
+    def _get_client(cls) -> AzureOpenAI:
+        """Get the Azure OpenAI client."""
+        if cls._CLIENT is None:
+            azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
+            credential = ChainedTokenCredential(
+                ManagedIdentityCredential(), AzureCliCredential()
+            )
+            token_provider = get_bearer_token_provider(
+                credential, "https://cognitiveservices.azure.com/.default"
+            )
+            LoggingUtil().log_info(
+                f"Establishing connection to the LLM at {azure_endpoint}"
+            )
+            cls._CLIENT = AzureOpenAI(
+                azure_endpoint=azure_endpoint,
+                api_version="2024-12-01-preview",
+                azure_ad_token_provider=token_provider,
+                # _analyse_text_chunk retries, so SDK retries would multiply attempts
+                max_retries=0,
+            )
+        return cls._CLIENT
+
     def __init__(
         self,
         config: LLMTextAnalyserConfig,
@@ -169,21 +229,7 @@ class LLMTextAnalyser:
         self.config: LLMTextAnalyserConfig = config
 
         # Initialise OpenAI client for Azure
-        self.azure_endpoint = os.environ.get("OPENAI_ENDPOINT", None)
-        credential = ChainedTokenCredential(
-            ManagedIdentityCredential(), AzureCliCredential()
-        )
-        token_provider = get_bearer_token_provider(
-            credential, "https://cognitiveservices.azure.com/.default"
-        )
-        LoggingUtil().log_info(
-            f"Establishing connection to the LLM at {self.azure_endpoint}"
-        )
-        self.llm = AzureOpenAI(
-            azure_endpoint=self.azure_endpoint,
-            api_version="2024-12-01-preview",
-            azure_ad_token_provider=token_provider,
-        )
+        self.llm = self._get_client()
 
         # Validates and sets input_token_cost, completion_token_cost, token_rate_limit and request_rate_limit
         self._set_model_details()
@@ -206,10 +252,20 @@ class LLMTextAnalyser:
 
     @log_to_appins
     def _set_model_details(self):
-        instance_quota_allocation = 0.5
+        # The share of the deployment's quota that this app instance may use
+        instance_quota_allocation = float(os.environ.get("LLM_QUOTA_ALLOCATION") or 0.5)
         try:
             # Get specified model
             model_details = self.OPENAI_MODELS[self.config.model]
+            # The deployment's limits, which the environment overrides for its capacity
+            max_token_rate_limit = int(
+                os.environ.get("LLM_TOKEN_RATE_LIMIT")
+                or model_details["token_rate_limit"]
+            )
+            max_request_rate_limit = int(
+                os.environ.get("LLM_REQUEST_RATE_LIMIT")
+                or model_details["request_rate_limit"]
+            )
 
             # Set cost per token in GBP
             multiplier = 1e-8
@@ -222,24 +278,24 @@ class LLMTextAnalyser:
 
             # Validate and set token rate limit per minute
             default_token_rate_limit = int(
-                model_details["token_rate_limit"] * instance_quota_allocation
+                max_token_rate_limit * instance_quota_allocation
             )
 
             token_limit = self.config.token_rate_limit
             if token_limit is not None:
                 if token_limit < 1:
                     self.config.token_rate_limit = default_token_rate_limit
-                if token_limit > model_details["token_rate_limit"]:
-                    self.config.token_rate_limit = model_details["token_rate_limit"]
+                if token_limit > max_token_rate_limit:
+                    self.config.token_rate_limit = max_token_rate_limit
                     LoggingUtil().log_info(
                         f"Token rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.token_rate_limit} tokens per minute."
                     )
-            else:  # default to 50% of max token rate limit
+            else:  # default to the instance's share of the max token rate limit
                 self.config.token_rate_limit = default_token_rate_limit
 
             default_request_rate_limit = int(
-                model_details["request_rate_limit"] * instance_quota_allocation
+                max_request_rate_limit * instance_quota_allocation
             )
 
             # Validate and set request rate limit per minute
@@ -247,13 +303,13 @@ class LLMTextAnalyser:
             if req_limit is not None:
                 if req_limit < 1:
                     self.config.request_rate_limit = default_request_rate_limit
-                if req_limit > model_details["request_rate_limit"]:
-                    self.config.request_rate_limit = model_details["request_rate_limit"]
+                if req_limit > max_request_rate_limit:
+                    self.config.request_rate_limit = max_request_rate_limit
                     LoggingUtil().log_info(
                         f"Request rate limit for model {self.config.model} exceeds maximum. "
                         f"Setting to maximum of {self.config.request_rate_limit} requests per minute."
                     )
-            else:  # default to 50% of max request rate limit
+            else:  # default to the instance's share of the max request rate limit
                 self.config.request_rate_limit = default_request_rate_limit
         except KeyError:
             raise ValueError(f"Model {self.config.model} is not supported.")
@@ -261,7 +317,9 @@ class LLMTextAnalyser:
     def _set_workers(self, n: int | None = None) -> int:
         """Determine the number of worker threads to use, capped at 32 or
         (os.cpu_count() or 1) + 4."""
-        self.config.max_concurrent_requests = get_max_workers(n)
+        self.config.max_concurrent_requests = get_max_workers(
+            n, env_var="LLM_MAX_WORKERS"
+        )
 
     @log_to_appins
     def _num_tokens_consumed(
@@ -321,14 +379,14 @@ class LLMTextAnalyser:
         return self.llm.chat.completions.parse(**kwargs)
 
     @log_to_appins
-    # exponential backoff to increase wait time between retries https://platform.openai.com/docs/guides/rate-limits
-    # Only retry if there is a rate limit exception. All other errors are logged and skipped
+    # Retry transient API errors and bad responses, honouring Retry-After when throttled
+    # https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#rate-limit-best-practices
     @retry(
         retry=retry_any(
+            retry_if_exception(is_transient_api_error),
             retry_if_exception_type(
                 (
-                    RateLimitError,  # API rate limit exceeded
-                    TimeoutError,  # Timeout while waiting for semaphore
+                    TimeoutError,  # Timeout while waiting for the semaphore or rate limit
                     LengthFinishReasonError,  # LLM response truncated due to length
                     ContentFilterFinishReasonError,  # LLM response blocked by content filter
                     ValidationError,  # LLM response could not be parsed into expected format
@@ -338,7 +396,7 @@ class LLMTextAnalyser:
                 "'str' object has no attribute 'choices'"
             ),
         ),
-        wait=wait_random_exponential(min=1, max=60),
+        wait=wait_for_retry_after,
         stop=stop_after_attempt(10),
         before_sleep=lambda retry_state: LoggingUtil().log_info(
             "Retrying LLM analysis..."
