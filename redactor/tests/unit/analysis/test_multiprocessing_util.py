@@ -75,6 +75,34 @@ class TestRateLimiter:
         # The timed out call did not push the next call back
         assert _sleeps(mock_sleep) == [10.0]
 
+    def test_refund_returns_unused_budget(self):
+        rate_limiter = RateLimiter(per_minute=60)
+
+        with (
+            patch("src.analysis.utils.time.monotonic", return_value=100.0),
+            patch("src.analysis.utils.time.sleep") as mock_sleep,
+        ):
+            rate_limiter.wait(5)
+            rate_limiter.refund(3)
+            rate_limiter.wait()
+
+        assert _sleeps(mock_sleep) == [2.0]
+
+    def test_refund_does_not_add_to_burst(self):
+        rate_limiter = RateLimiter(per_minute=60)
+
+        with (
+            patch("src.analysis.utils.time.monotonic", return_value=100.0),
+            patch("src.analysis.utils.time.sleep") as mock_sleep,
+        ):
+            rate_limiter.wait()
+            rate_limiter.refund(10)
+            rate_limiter.wait()
+            rate_limiter.wait()
+
+        # Refunding more than was reserved only frees the budget up to the present
+        assert _sleeps(mock_sleep) == [1.0]
+
     def test_threads_never_share_a_slot(self):
         rate_limiter = RateLimiter(per_minute=60)
         n_threads = 10

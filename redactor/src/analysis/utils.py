@@ -34,6 +34,17 @@ class RateLimiter:
         if delay:
             time.sleep(delay)
 
+    def refund(self, amount: float) -> None:
+        """Return `amount` reserved but unused units to the budget.
+
+        The budget is never refunded beyond the present, so the refund cannot add
+        to the burst allowed after an idle period.
+        """
+        with self._lock:
+            self._next_call = max(
+                time.monotonic(), self._next_call - amount * self.interval
+            )
+
 
 def get_max_workers(n: int | None = None) -> int:
     """Determine the number of worker threads to use, capped at 32 or

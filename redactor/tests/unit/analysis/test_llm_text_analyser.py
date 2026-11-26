@@ -545,9 +545,12 @@ class TestAnalyseTextChunk:
         llm_text_analyser.request_rate_limiter.wait.assert_called_once_with(
             timeout=60.0
         )
+        # 10 prompt tokens plus the 4,000 max_tokens
         llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(
-            10, timeout=60.0
+            4010, timeout=60.0
         )
+        # The 4 completion tokens used are kept and the rest of the allowance refunded
+        llm_text_analyser.token_rate_limiter.refund.assert_called_once_with(3996)
 
     @patch.object(
         LLMTextAnalyser,
@@ -687,7 +690,10 @@ class TestAnalyseTextChunk:
         )
 
         assert result is None  # The timeout is retried, then the chunk is skipped
-        llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(10, timeout=1)
+        llm_text_analyser.token_rate_limiter.wait.assert_called_once_with(
+            4010, timeout=1
+        )
+        llm_text_analyser.token_rate_limiter.refund.assert_not_called()
         mock_invoke_chain.assert_not_called()
         llm_text_analyser.request_semaphore.release.assert_called_once()
 

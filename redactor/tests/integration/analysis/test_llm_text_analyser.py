@@ -26,9 +26,7 @@ def test__llm_text_analyser___num_tokens_consumed():
     num_tokens = llm_text_analyser._num_tokens_consumed(
         llm_text_analyser.create_api_message(system_prompt, user_prompt)
     )
-    assert (
-        num_tokens == 4024
-    )  # 4000 completion + 6 in system + 6 in user + 2x4 in start + 2 in reply
+    assert num_tokens == 24  # 6 in system + 6 in user + 2x4 in start + 2 in reply
 
 
 def test__llm_text_analyser__invoke_chain__responds():
@@ -270,3 +268,49 @@ class TestAnalyseTextRateLimiting:
 
         # All chunks should eventually succeed due to retry on TimeoutError
         assert result.metadata.failed_chunk_count == 0
+
+    def test_refunds_unused_completion_tokens_to_the_next_request(self):
+        """
+        - Given a token rate limit where reserving the 4,000 max_tokens uses about
+          20s of budget, much longer than a request takes
+        - When I analyse a chunk and then another chunk
+        - Then the second request waits only for the tokens the first request used,
+          not for its whole reservation
+        """
+        token_rate_limit = 12_000
+        interval = 60 / token_rate_limit
+        llm_text_analyser = self._analyser(token_rate_limit=token_rate_limit)
+        waits = []
+        token_wait = llm_text_analyser.token_rate_limiter.wait
+
+        def timed_token_wait(amount, *args, **kwargs):
+            start = time.monotonic()
+            token_wait(amount, *args, **kwargs)
+            waits.append((amount, start, time.monotonic()))
+
+        llm_text_analyser.token_rate_limiter.wait = timed_token_wait
+
+        result = llm_text_analyser.analyse_text(
+            self.SYSTEM_PROMPT, [self.TEXT_CHUNKS[0]]
+        )
+        assert result.metadata.failed_chunk_count == 0
+        used_completion_tokens = llm_text_analyser.completion_token_count
+
+        result = llm_text_analyser.analyse_text(
+            self.SYSTEM_PROMPT, [self.TEXT_CHUNKS[1]]
+        )
+        assert result.metadata.failed_chunk_count == 0
+
+        assert len(waits) == 2, "Expected one attempt per chunk"
+        (reserved, first_start, _), (_, second_start, second_end) = waits
+        used = reserved - llm_text_analyser.config.max_tokens + used_completion_tokens
+        wait_without_refund = first_start + reserved * interval - second_start
+        wait_with_refund = max(0.0, first_start + used * interval - second_start)
+
+        assert wait_without_refund > 10, (
+            f"Expected the reservation to outlast a request, was {wait_without_refund}"
+        )
+        assert second_end - second_start == pytest.approx(wait_with_refund, abs=0.5), (
+            f"Expected the second wait to match the refunded wait, was {second_end - second_start}"
+        )
+        assert second_end - second_start < wait_without_refund - 1
