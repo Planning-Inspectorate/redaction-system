@@ -17,3 +17,4 @@ openai_quotas = {
 budget_alert_config = {
   expected_cost = 1000
 }
+llm_quota_allocation = 0.9 # Nothing else uses the training deployment, so keep 10% headroom
