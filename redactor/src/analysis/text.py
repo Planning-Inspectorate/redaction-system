@@ -1,7 +1,6 @@
 import dataclasses
 import json
 import os
-import time
 from concurrent.futures import as_completed
 from threading import Lock, Semaphore
 from typing import ClassVar, Literal
@@ -45,9 +44,13 @@ from ..types import (
     LLMRedactionResultFormat,
     LLMTextRedactionResult,
 )
-from .utils import TokenSemaphore, get_max_workers
+from .utils import RateLimiter, get_max_workers
 
 load_dotenv(verbose=True)
+
+# Azure evaluates rate limits over 1 or 10 second periods, so allow at most 1s of burst
+# https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#understanding-rate-limits
+RATE_LIMIT_BURST_SECONDS = 1.0
 
 
 @log_to_appins
@@ -128,9 +131,9 @@ class LLMTextAnalyserConfig(BaseModel):
     budget: float | None = None
     """The budget in GBP for LLM usage"""
     token_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring tokens from the token semaphore"""
+    """The timeout in seconds for acquiring tokens from the token rate limit."""
     request_timeout: float | None = 60.0
-    """The timeout in seconds for acquiring request semaphore"""
+    """The timeout in seconds for acquiring the request semaphore and request rate limit"""
 
     def __init__(self, **data):
         super().__init__(**data)
@@ -191,9 +194,11 @@ class LLMTextAnalyser:
         # Validate and set max concurrent requests
         self._set_workers(self.config.max_concurrent_requests)
         self.request_semaphore = Semaphore(self.config.max_concurrent_requests)
-
-        self.token_semaphore = TokenSemaphore(
-            self.config.token_rate_limit, self.config.token_timeout
+        self.request_rate_limiter = RateLimiter(
+            config.request_rate_limit, RATE_LIMIT_BURST_SECONDS
+        )
+        self.token_rate_limiter = RateLimiter(
+            config.token_rate_limit, RATE_LIMIT_BURST_SECONDS
         )
 
         self.input_token_count = 0
@@ -269,12 +274,11 @@ class LLMTextAnalyser:
         api_messages: str,
     ):
         """
-        Estimate the number of tokens consumed by a request to the LLM
+        Estimate the prompt tokens in a request to the LLM
 
         Based on https://github.com/openai/openai-cookbook/blob/970d8261fbf6206718fe205e88e37f4745f9cf76/examples/api_request_parallel_processor.py#L339
         """
         encoding = get_encoding(self.config.token_encoding_name)
-        completion_tokens = self.config.n * self.config.max_tokens
         n_tokens = 0
         try:
             for message in api_messages:
@@ -284,9 +288,7 @@ class LLMTextAnalyser:
                     if key == "name":  # if there's a name, the role is omitted
                         n_tokens += -1  # role is always required and always 1 token
             n_tokens += 2  # every reply is primed with <im_start>assistant
-
-            total_tokens = n_tokens + completion_tokens
-            return total_tokens
+            return n_tokens
         except Exception as e:  # noqa: BLE001
             LoggingUtil().log_exception_with_message(
                 "An error occurred while counting tokens:", e
@@ -360,13 +362,18 @@ class LLMTextAnalyser:
         # Chunk hash to distinguish between messages when multithreading
         chunk_hash_string = f"(chunk ID {hash(user_prompt)})"
 
-        # Estimate tokens for the request
-        api_messages = self.create_api_message(system_prompt, user_prompt)
-        estimated_tokens = self._num_tokens_consumed(api_messages)
-
         # Set completion tokens
         if max_completion_tokens is None:
             max_completion_tokens = self.config.max_tokens
+
+        # Azure counts generated tokens towards the rate limit, so reserve the full
+        # completion allowance and refund what is unused once the usage is known
+        # https://learn.microsoft.com/en-us/azure/ai-foundry/openai/how-to/quota#understanding-rate-limits
+        api_messages = self.create_api_message(system_prompt, user_prompt)
+        completion_allowance = self.config.n * max_completion_tokens
+        estimated_tokens = (
+            self._num_tokens_consumed(api_messages) + completion_allowance
+        )
 
         # Acquire request semaphore
         thread_available = self.request_semaphore.acquire(
@@ -380,12 +387,15 @@ class LLMTextAnalyser:
             raise TimeoutError
 
         try:
-            # Acquire token semaphore
+            # Wait while holding a permit, so that requests are sent at the paced times
             try:
-                self.token_semaphore.acquire(estimated_tokens)
+                self.request_rate_limiter.wait(timeout=self.config.request_timeout)
+                self.token_rate_limiter.wait(
+                    estimated_tokens, timeout=self.config.token_timeout
+                )
             except TimeoutError as te:
                 LoggingUtil().log_exception_with_message(
-                    f"{chunk_hash_string} Timeout while waiting for tokens to be released :",
+                    f"{chunk_hash_string} Timeout while waiting for the rate limit:",
                     te,
                 )
                 raise
@@ -440,13 +450,15 @@ class LLMTextAnalyser:
                 # Update token counts and costs
                 with self.lock:
                     self._compute_costs(usage)
-                # Release token semaphore
-                self.token_semaphore.release(estimated_tokens)
+                # Without usage, the generated tokens are unknown, so nothing is refunded
+                if usage is not None:
+                    self.token_rate_limiter.refund(
+                        completion_allowance - usage.completion_tokens
+                    )
 
         finally:
             # Release request semaphore
             self.request_semaphore.release()
-            time.sleep(60 / self.config.request_rate_limit)  # Rate limiting delay
 
     def _compute_costs(self, usage: CompletionUsage = None):
         if usage is None:
