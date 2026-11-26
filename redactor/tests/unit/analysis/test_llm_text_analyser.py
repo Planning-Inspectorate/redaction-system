@@ -750,10 +750,8 @@ class TestAnalyseTextChunk:
 
         llm_text_analyser.request_semaphore.acquire.return_value = False
 
-        user_prompt = ""
-
         result = llm_text_analyser._analyse_text_chunk(
-            system_prompt="system prompt", user_prompt=""
+            system_prompt="system prompt", user_prompt="", chunk_id="id0"
         )
 
         assert result is None  # Timeout occurred, so None is returned
@@ -768,7 +766,7 @@ class TestAnalyseTextChunk:
         logging_util_calls_as_string = [str(x) for x in logging_util_calls]
         timeout_error = str(
             TimeoutError(
-                f"(chunk ID {get_chunk_id(user_prompt)}) Timeout while waiting for request semaphore to be available."
+                "(chunk ID id0) Timeout while waiting for request semaphore to be available."
             )
         )
         assert any(timeout_error in x for x in logging_util_calls_as_string), (

@@ -3,7 +3,9 @@ import hashlib
 import json
 import os
 import time
+from collections.abc import Callable
 from concurrent.futures import as_completed
+from functools import partial
 from threading import Lock, Semaphore
 from typing import ClassVar, Literal
 
@@ -412,7 +414,7 @@ class LLMTextAnalyser:
     ) -> tuple[ParsedChatCompletion, list[str]]:
         """Redact a single chunk of text using the LLM."""
         # Chunk hash to distinguish between messages when multithreading
-        chunk_hash_string = f"(chunk ID {chunk_id or get_chunk_id(user_prompt)})"
+        chunk_hash_string = f"(chunk ID {chunk_id})"
 
         # Estimate tokens for the request
         api_messages = self.create_api_message(system_prompt, user_prompt)
@@ -553,7 +555,7 @@ class LLMTextAnalyser:
             user_prompts = [
                 self.USER_PROMPT_TEMPLATE.format(chunk=chunk) for chunk in text_chunks
             ]
-            chunk_ids = [get_chunk_id(user_prompt) for user_prompt in user_prompts]
+            chunk_ids = [get_chunk_id(chunk) for chunk in text_chunks]
             chunks_to_log = [
                 {"chunk_index": i, "chunk_id": chunk_id, "chunk": chunk}
                 for i, (chunk_id, chunk) in enumerate(zip(chunk_ids, text_chunks))
@@ -566,9 +568,24 @@ class LLMTextAnalyser:
             request_counter = 0
             text_to_redact = []
             responses: list[tuple[int, ParsedChatCompletion]] = []
-            failed_chunk_count = 0
             # Chunks left unprocessed when the budget is exceeded stay "skipped"
             chunk_statuses = ["skipped"] * chunk_count
+
+            def record_chunk_result(
+                chunk_index: int,
+                get_result: Callable[[], tuple[ParsedChatCompletion, list[str]]],
+            ) -> None:
+                try:
+                    response, redaction_strings = get_result()
+                    responses.append((chunk_index, response))
+                    text_to_redact.extend(redaction_strings)
+                    chunk_statuses[chunk_index] = "ok"
+                except Exception as e:  # noqa: BLE001
+                    chunk_statuses[chunk_index] = "failed"
+                    LoggingUtil().log_exception_with_message(
+                        f"Error processing chunk {chunk_index} ({chunk_ids[chunk_index]})",
+                        e,
+                    )
 
             # Check max concurrent requests
             if self.config.max_concurrent_requests > 32:
@@ -592,23 +609,15 @@ class LLMTextAnalyser:
                 # Process chunks sequentially if only one worker is allowed
                 for chunk_index, user_prompt in enumerate(user_prompts):
                     request_counter += 1
-                    chunk_id = chunk_ids[chunk_index]
-                    try:
-                        response, redaction_strings = self._analyse_text_chunk(
+                    record_chunk_result(
+                        chunk_index,
+                        partial(
+                            self._analyse_text_chunk,
                             system_prompt,
                             user_prompt,
-                            chunk_id=chunk_id,
-                        )
-                        responses.append((chunk_index, response))
-                        text_to_redact.extend(redaction_strings)
-                        chunk_statuses[chunk_index] = "ok"
-                    except Exception as e:  # noqa: BLE001
-                        failed_chunk_count += 1
-                        chunk_statuses[chunk_index] = "failed"
-                        LoggingUtil().log_exception_with_message(
-                            f"Error processing chunk {chunk_index} ({chunk_id})",
-                            e,
-                        )
+                            chunk_id=chunk_ids[chunk_index],
+                        ),
+                    )
 
                     # Check budget after each request
                     try:
@@ -629,22 +638,10 @@ class LLMTextAnalyser:
                         for chunk_index, user_prompt in enumerate(user_prompts)
                     }
                     for future in as_completed(future_to_chunk_index):
-                        chunk_index = future_to_chunk_index[future]
                         request_counter += 1
-
-                        try:
-                            # Get redaction result for chunk and append to overall results
-                            response, redaction_strings = future.result()
-                            responses.append((chunk_index, response))
-                            text_to_redact.extend(redaction_strings)
-                            chunk_statuses[chunk_index] = "ok"
-                        except Exception as e:  # noqa: BLE001
-                            failed_chunk_count += 1
-                            chunk_statuses[chunk_index] = "failed"
-                            LoggingUtil().log_exception_with_message(
-                                f"Error processing chunk {chunk_ids[chunk_index]}",
-                                e,
-                            )
+                        record_chunk_result(
+                            future_to_chunk_index[future], future.result
+                        )
 
                         # Check budget after each request
                         try:
@@ -680,7 +677,7 @@ class LLMTextAnalyser:
             cached_input_token_count=self.cached_input_token_count,
             cache_write_token_count=self.cache_write_token_count,
             reasoning_token_count=self.reasoning_token_count,
-            failed_chunk_count=failed_chunk_count,
+            failed_chunk_count=chunk_statuses.count("failed"),
         )
         run_metrics = {
             "llm_analysis_time": timer.elapsed_time,
