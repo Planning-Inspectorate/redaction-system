@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 
 [[package]]
@@ -3391,7 +3391,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "strenum", specifier = ">=0.4.15" },
-    { name = "tiktoken", specifier = ">=0.13.0" },
+    { name = "tiktoken", specifier = ">=0.14.0" },
     { name = "unidecode", specifier = ">=1.4.0" },
 ]
 
@@ -3399,7 +3399,7 @@ requires-dist = [
 ai-dev = [
     { name = "azure-ai-agents", specifier = ">=1.1.0" },
     { name = "azure-ai-inference", specifier = ">=1.0.0b9" },
-    { name = "azure-ai-projects", specifier = ">=2.4.0" },
+    { name = "azure-ai-projects", specifier = ">=2.10.0" },
     { name = "docker", specifier = ">=7.2.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "flask", specifier = ">=3.1.3" },
