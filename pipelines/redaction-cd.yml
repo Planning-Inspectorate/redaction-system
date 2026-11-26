@@ -143,7 +143,6 @@ extends:
 
               - script: |
                   set -e
-                  cd redaction-system/redactor
                   uv venv .venv
                   uv pip install pytest dotenv requests
                 displayName: 'Install Python dependencies'
@@ -157,8 +156,7 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    cd redaction-system/redactor
-                    uv run pytest tests/smoke/test_connectivity.py
+                    uv run pytest redactor/tests/smoke/test_connectivity.py
 
               - task: AzureCLI@2
                 displayName: Test signature detection
@@ -168,5 +166,4 @@ extends:
                   scriptLocation: 'inlineScript'
                   inlineScript: |
                     set -e
-                    cd redaction-system/redactor
-                    uv run python tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/signature.png
+                    uv run python redactor/tests/smoke/test_signature_detector_endpoint.py --endpoint-url https://$(signatureDetectorAppName).azurewebsites.net/score --image $(Build.SourcesDirectory)/redactor/tests/resources/image/signature.png
