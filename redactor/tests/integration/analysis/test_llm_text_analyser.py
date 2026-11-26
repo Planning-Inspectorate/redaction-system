@@ -1,5 +1,11 @@
+import time
+from itertools import pairwise
+from unittest.mock import patch
+
+import pytest
 from openai.types.chat.parsed_chat_completion import ParsedChatCompletion
 from pydantic import BaseModel
+from tenacity import wait_fixed
 
 from src.analysis.text import LLMTextAnalyser, LLMTextAnalyserConfig
 from src.types import LLMTextRedactionResult
@@ -171,3 +177,96 @@ def test__llm_text_analyser__analyse_text__workers_capped_by_chunk_count():
     assert isinstance(result, LLMTextRedactionResult)
     assert result.metadata.request_count == 2
     assert set(result.redaction_strings) == {"SECRET123", "CONFIDENTIAL456"}
+
+
+class TestAnalyseTextRateLimiting:
+    """Rate limiting with real requests to the LLM"""
+
+    SYSTEM_PROMPT = "Identify redaction strings in the text"
+    TEXT_CHUNKS = (
+        "This text contains SECRET123.",
+        "This text contains CONFIDENTIAL456.",
+        "This text contains PRIVATE789.",
+        "This text contains HIDDEN012.",
+        "This text contains RESTRICTED345.",
+    )
+
+    @staticmethod
+    def _analyser(**config) -> LLMTextAnalyser:
+        # Without the burst, every request is paced and the timings are predictable
+        with patch("src.analysis.text.RATE_LIMIT_BURST_SECONDS", 0.0):
+            return LLMTextAnalyser(
+                LLMTextAnalyserConfig(
+                    model="gpt-5.6-luna",
+                    max_concurrent_requests=len(
+                        TestAnalyseTextRateLimiting.TEXT_CHUNKS
+                    ),
+                    **config,
+                )
+            )
+
+    def test_paces_requests_to_the_request_rate_limit(self):
+        """
+        - Given a request rate limit of 60 per minute and a thread per chunk
+        - When I analyse the chunks
+        - Then requests are sent about 1s apart and every chunk succeeds
+        """
+        interval = 1.0
+        llm_text_analyser = self._analyser(request_rate_limit=60)
+        send_times = []
+        invoke_chain = llm_text_analyser.invoke_chain
+
+        def timed_invoke_chain(*args, **kwargs):
+            send_times.append(time.monotonic())
+            return invoke_chain(*args, **kwargs)
+
+        llm_text_analyser.invoke_chain = timed_invoke_chain
+
+        result = llm_text_analyser.analyse_text(
+            self.SYSTEM_PROMPT, list(self.TEXT_CHUNKS)
+        )
+
+        assert result.metadata.request_count == len(self.TEXT_CHUNKS)
+        assert result.metadata.failed_chunk_count == 0
+
+        send_times.sort()
+        gaps = [later - earlier for earlier, later in pairwise(send_times)]
+        # Without the rate limit, all threads send at once
+        assert min(gaps) == pytest.approx(interval, rel=0.1)
+        assert send_times[-1] - send_times[0] >= (len(send_times) - 1) * interval * 0.9
+
+    def test_retries_requests_that_time_out_on_the_token_rate_limit(self):
+        """
+        - Given a token rate limit that allows about one request per second and a
+          token timeout shorter than the queue of waiting threads
+        - When I analyse the chunks
+        - Then some requests time out waiting for tokens, are retried, and every
+          chunk still succeeds
+        """
+        # Each request reserves just over the 4,000 max_tokens, so about 1s of budget
+        llm_text_analyser = self._analyser(token_rate_limit=240_000, token_timeout=1.5)
+        timeouts = []
+        token_wait = llm_text_analyser.token_rate_limiter.wait
+
+        def counted_token_wait(*args, **kwargs):
+            try:
+                return token_wait(*args, **kwargs)
+            except TimeoutError:
+                timeouts.append(time.monotonic())
+                raise
+
+        llm_text_analyser.token_rate_limiter.wait = counted_token_wait
+
+        # The production backoff of 1 to 60s would make the test slow and variable
+        with patch.object(
+            LLMTextAnalyser._analyse_text_chunk.retry, "wait", wait_fixed(1.0)
+        ):
+            result = llm_text_analyser.analyse_text(
+                self.SYSTEM_PROMPT, list(self.TEXT_CHUNKS)
+            )
+
+        assert timeouts, "Expected some requests to time out on the token rate limit"
+        assert result.metadata.request_count == len(self.TEXT_CHUNKS)
+
+        # All chunks should eventually succeed due to retry on TimeoutError
+        assert result.metadata.failed_chunk_count == 0
