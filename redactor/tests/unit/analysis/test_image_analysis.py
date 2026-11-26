@@ -119,6 +119,19 @@ class TestImageDetection:
 
         compare_unhashable_lists(expected_results, results)
 
+    @pytest.mark.parametrize(
+        ("analyser", "env_var"),
+        [
+            (AzureImageAnalyser, "VISION_MAX_WORKERS"),
+            (SignatureDetector, "SIGNATURE_MAX_WORKERS"),
+        ],
+    )
+    def test_worker_cap_uses_service_env_var(self, analyser, env_var):
+        with patch("src.analysis.images.get_max_workers", return_value=2) as mock_get:
+            analyser._image_detection([], "test", lambda image: ())
+
+        mock_get.assert_called_once_with(env_var=env_var)
+
 
 class TestAzureImageAnalyserBase:
     # Avoid checking for the environment variable in tests
@@ -531,7 +544,7 @@ class TestDetectSignatures(TestSignatureDetectorBase):
 
         assert result == ((10, 20, 50, 60),)
 
-    @pytest.mark.parametrize("status_code", [429, 503])
+    @pytest.mark.parametrize("status_code", [429, 500, 503])
     def test_retries_on_throttled_or_unavailable_response(self, status_code):
         image = Image.new("RGB", (100, 100))
         failed = self._mock_response([], status_code=status_code)

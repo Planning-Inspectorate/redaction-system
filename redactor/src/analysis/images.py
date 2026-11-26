@@ -40,6 +40,7 @@ def handle_last_retry_error(retry_state):
 
 class ImageAnalyser:
     CACHE_LOCK = Lock()
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = None
 
     class EndpointNotSetError(EnvironmentError):
         pass
@@ -140,7 +141,7 @@ class ImageAnalyser:
         :returns: A list of tuples containing the image and the detected objects
         """
         responses: list[tuple[Image.Image, tuple[str, tuple]]] = []
-        max_workers = get_max_workers()
+        max_workers = get_max_workers(env_var=cls.MAX_WORKERS_ENV_VAR)
         LoggingUtil().log_info(
             f"Detecting {object_to_detect}s in {len(images)} images using up to "
             f"{max_workers} workers..."
@@ -194,6 +195,8 @@ class ImageAnalyser:
 
 
 class AzureImageAnalyser(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "VISION_MAX_WORKERS"
+
     # Fallback caches, used only when no job scope is active (see _get_cache). A thread
     # that loses its job scope shares these with every concurrent job, so they are
     # cleared when a job ends and must hold nothing that is specific to one job
@@ -389,6 +392,8 @@ class AzureImageAnalyser(ImageAnalyser):
 
 
 class SignatureDetector(ImageAnalyser):
+    MAX_WORKERS_ENV_VAR: ClassVar[str | None] = "SIGNATURE_MAX_WORKERS"
+
     # Fallback cache, used only when no job scope is active (see _get_cache). Shared by
     # concurrent jobs if a thread loses its scope, so see the note on AzureImageAnalyser
     _IMAGE_CACHE: ClassVar[dict[str, list]] = {}
@@ -435,7 +440,7 @@ class SignatureDetector(ImageAnalyser):
             lambda exception: (
                 isinstance(exception, HTTPError)
                 and exception.response is not None
-                and exception.response.status_code in [429, 503]
+                and exception.response.status_code in [429, 500, 503]
             )
         ),
         wait=wait_random_exponential(min=1, max=60),

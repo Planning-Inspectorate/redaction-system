@@ -60,43 +60,49 @@ def init():
     logger.info("Model loaded successfully")
 
 
-def run(raw_data):
+class BadRequestError(ValueError):
+    """The request payload is invalid, so retrying cannot help."""
+
+
+def _parse_request(raw_data):
     try:
         request = json.loads(raw_data)
         image_bytes = bytes.fromhex(request["image"])
         threshold = request.get("threshold", 0.5)
-
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except (ValueError, KeyError, TypeError, AttributeError, OSError) as e:
+        raise BadRequestError("Invalid request payload") from e
+    return image, threshold
 
-        inputs = processor(images=image, return_tensors="pt")
 
-        with torch.no_grad():
-            outputs = model(**inputs)
+def run(raw_data):
+    image, threshold = _parse_request(raw_data)
 
-        target_sizes = torch.tensor([image.size[::-1]])
-        results = processor.post_process_object_detection(
-            outputs, target_sizes=target_sizes, threshold=threshold
-        )[0]
+    inputs = processor(images=image, return_tensors="pt")
 
-        detections = []
-        for score, label, box in zip(
-            results["scores"], results["labels"], results["boxes"]
-        ):
-            detections.append(
-                {
-                    "score": round(score.item(), 4),
-                    "label": model.config.id2label[label.item()],
-                    "box": {
-                        "x_min": round(box[0].item(), 2),
-                        "y_min": round(box[1].item(), 2),
-                        "x_max": round(box[2].item(), 2),
-                        "y_max": round(box[3].item(), 2),
-                    },
-                }
-            )
+    with torch.no_grad():
+        outputs = model(**inputs)
 
-        return json.dumps({"detections": detections})
+    target_sizes = torch.tensor([image.size[::-1]])
+    results = processor.post_process_object_detection(
+        outputs, target_sizes=target_sizes, threshold=threshold
+    )[0]
 
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Error during inference: {e}")
-        return json.dumps({"error": "An internal error has occurred."})
+    detections = []
+    for score, label, box in zip(
+        results["scores"], results["labels"], results["boxes"]
+    ):
+        detections.append(
+            {
+                "score": round(score.item(), 4),
+                "label": model.config.id2label[label.item()],
+                "box": {
+                    "x_min": round(box[0].item(), 2),
+                    "y_min": round(box[1].item(), 2),
+                    "x_max": round(box[2].item(), 2),
+                    "y_max": round(box[3].item(), 2),
+                },
+            }
+        )
+
+    return json.dumps({"detections": detections})

@@ -50,6 +50,9 @@ resource "azurerm_linux_web_app" "signature_detector" {
     HF_HUB_OFFLINE                      = "1"
     APP_INSIGHTS_CONNECTION_STRING      = azurerm_application_insights.redaction_system.connection_string
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
+    WEB_CONCURRENCY                     = "4"
+    OMP_NUM_THREADS                     = "1"
+    MKL_NUM_THREADS                     = "1"
   }
 
   tags = local.tags
