@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 from abc import ABC, abstractmethod
 from collections.abc import Generator
@@ -161,6 +162,14 @@ class FileProcessor(ABC):
         :return list[dict[str, Any]]: The final redactions
         """
 
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Return the reasons behind the proposed redactions, if the processor recorded any
+
+        :return list[dict[str, Any]] | None: The rationale, or None if there is none
+        """
+        return None
+
 
 class PDFProcessor(FileProcessor):
     """
@@ -171,10 +180,16 @@ class PDFProcessor(FileProcessor):
         super().__init__()
         self.pdf_text: str | None = None
         self.rendered_pdf_text: str | None = None
+        # (1-based page number, start offset) of each page within the joined text
+        self.pdf_text_page_offsets: list[tuple[int, int]] = []
+        self.rendered_pdf_text_page_offsets: list[tuple[int, int]] = []
         self.pdf_images: list[PDFImageMetadata] = []
         self.pages_metadata: list[PDFPageMetadata] = []
         self.redaction_rules: list[RedactionConfig] = []
         self.redaction_results: list[RedactionResult] = []
+        self._llm_text_results: list[TextRedactionResult] = []
+        # The 1-based pages that each term was matched on in the PDF
+        self._term_pages: dict[str, set[int]] = {}
 
     @classmethod
     def get_name(cls) -> str:
@@ -268,7 +283,8 @@ class PDFProcessor(FileProcessor):
         annotations_list = []
         for page in annotations:
             page_dict = {
-                "pageNumber": int(page.pop("page_number", 0)),
+                # pymupdf pages are 0-based, but outputs number pages from 1
+                "pageNumber": int(page.pop("page_number", 0)) + 1,
                 "annotations": [],
             }
             for annot in page.get("annotations", []):
@@ -380,6 +396,8 @@ class PDFProcessor(FileProcessor):
         redaction_instances = []
         for term in text_to_redact:
             self.terms_found[term] = 0
+        self._term_positions = {}
+        exclusion_terms = self._get_exclusion_terms(text_to_redact)
         for i, page in enumerate(pdf):
             if i == 0:
                 page_metadata = PDFUtil.extract_page_metadata(page)
@@ -403,6 +421,19 @@ class PDFProcessor(FileProcessor):
                 page,
             )
             redaction_instances.extend(page_redaction_instances)
+            for _, _, term in page_redaction_instances:
+                self.terms_found[term] += 1
+            self._record_term_pages(page_redaction_instances)
+            if exclusion_terms:
+                # Excluded terms are not highlighted, but are located in the same way
+                self._record_term_pages(
+                    self._examine_provisional_redactions_on_page(
+                        exclusion_terms,
+                        page_metadata,
+                        next_page_metadata,
+                        page,
+                    )
+                )
             LoggingUtil().log_info(
                 f"    Found {len(page_redaction_instances)} redaction candidates on "
                 f"page {page.number}."
@@ -467,20 +498,35 @@ class PDFProcessor(FileProcessor):
         ]
         redaction_instances = []
         for term_to_redact in filtered_term_to_redact:
-            LoggingUtil().log_audit(
-                f"    Examining redaction candidate for term '{term_to_redact}'"
-            )
+            LoggingUtil().log_audit(f"    Examining term '{term_to_redact}'")
             instances_to_apply = PDFUtil.examine_provisional_text_redaction(
                 term_to_redact, page_metadata, next_page_metadata, page=page
             )
             redaction_instances.extend(instances_to_apply)
-            self.terms_found.update(
-                {
-                    term_to_redact: self.terms_found.get(term_to_redact, 0)
-                    + len(instances_to_apply)
-                }
-            )
         return redaction_instances
+
+    @staticmethod
+    def _term_key(text: str) -> str:
+        # Terms are matched in the PDF with line breaks replaced by spaces
+        return " ".join(text.split("\n"))
+
+    def _get_exclusion_terms(self, text_to_redact: list[str]) -> list[str]:
+        # Terms also redacted are already located by the redaction pass
+        return sorted(
+            {
+                self._term_key(decision["text"])
+                for result in self._llm_text_results
+                for decision in result.excluded_decisions
+            }
+            - set(text_to_redact)
+        )
+
+    def _record_term_pages(
+        self, instances: list[tuple[int, pymupdf.Rect, str]]
+    ) -> None:
+        for page_number, _, term in instances:
+            # pymupdf pages are 0-based, but outputs number pages from 1
+            self._term_pages.setdefault(term, set()).add(page_number + 1)
 
     def _apply_provisional_image_redactions(
         self,
@@ -646,18 +692,24 @@ class PDFProcessor(FileProcessor):
         with TimerUtil() as timer:
             self._extract_pdf_text_content(file_bytes)
             # Only include non-printed text content for LLM text redaction
-            pages_text = [
-                page.raw_text
+            text_pages = [
+                page
                 for page in self.pages_metadata
                 if not page.rendered_image.text_rect_map
             ]
+            pages_text = [page.raw_text for page in text_pages]
             if not all(text == "" for text in pages_text):
                 self.pdf_text = "\n".join(pages_text)
+                self.pdf_text_page_offsets = PDFUtil.get_page_offsets(text_pages)
 
-            rendered_page_text = [
-                page.raw_text for page in self.pages_metadata if page.rendered_image
+            rendered_pages = [
+                page for page in self.pages_metadata if page.rendered_image
             ]
+            rendered_page_text = [page.raw_text for page in rendered_pages]
             self.rendered_pdf_text = "\n".join(rendered_page_text)
+            self.rendered_pdf_text_page_offsets = PDFUtil.get_page_offsets(
+                rendered_pages
+            )
         self.run_metrics["pdf_text_extraction_time"] = timer.elapsed_time
 
         if self.pdf_text:
@@ -683,6 +735,84 @@ class PDFProcessor(FileProcessor):
         self.run_metrics["pdf_image_extraction_time"] = timer.elapsed_time
         LoggingUtil().log_info(f"Extracted {len(self.pdf_images)} images from the PDF.")
 
+    def _add_pages_to_decision(
+        self, decision: dict[str, Any], chunk_pages: dict[int, list[int]]
+    ) -> dict[str, Any]:
+        """Add the pages of the decision and of each of its occurrences. The pages the
+        term was matched on in the PDF limit each occurrence to the pages of its chunk
+        that the term is on. If the term was not matched, the chunks' pages are used
+        """
+        term_pages = self._term_pages.get(self._term_key(decision["text"]))
+        occurrences = []
+        for occurrence in decision["occurrences"]:
+            pages = chunk_pages.get(occurrence["chunk_index"], [])
+            if term_pages:
+                pages = [p for p in pages if p in term_pages] or sorted(term_pages)
+            occurrences.append(occurrence | {"pages": pages})
+        return decision | {
+            "pages": sorted(
+                term_pages or {page for o in occurrences for page in o["pages"]}
+            ),
+            "occurrences": occurrences,
+        }
+
+    @staticmethod
+    def _sort_by_first_page(decisions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return sorted(
+            decisions,
+            key=lambda d: (d["pages"][0] if d["pages"] else math.inf, d["text"]),
+        )
+
+    def get_redaction_rationale(self) -> list[dict[str, Any]] | None:
+        """
+        Get the LLM's rationale for each rule's decisions, with each occurrence traced
+        to its chunk and the pages it was found on
+
+        :return list[dict[str, Any]] | None: The rationale for each LLM rule, or None if
+            no rule produced any decisions
+        """
+        if not self._llm_text_results:
+            return None
+        unapplied_terms = set(
+            self.run_metrics.get("unapplied_text_redaction_terms", [])
+        )
+        rule_configs = {rule.name: rule for rule in self.redaction_rules}
+        rationale = []
+        for result in self._llm_text_results:
+            page_offsets = self._rule_page_offsets.get(result.rule_name, [])
+            chunk_pages = {
+                chunk["chunk_index"]: PDFUtil.get_pages_in_range(
+                    page_offsets, chunk.get("char_start"), chunk.get("char_end")
+                )
+                for chunk in result.chunk_summaries
+            }
+            redactions = [
+                self._add_pages_to_decision(d, chunk_pages)
+                | {"applied": self._term_key(d["text"]) not in unapplied_terms}
+                for d in result.redaction_decisions
+            ]
+            exclusions = [
+                self._add_pages_to_decision(d, chunk_pages)
+                for d in result.excluded_decisions
+            ]
+            config = rule_configs.get(result.rule_name)
+            rationale.append(
+                {
+                    "rule_name": result.rule_name,
+                    "model": getattr(config, "model", None),
+                    "chunk_size": getattr(config, "chunk_size", None),
+                    "chunk_overlap": getattr(config, "chunk_overlap", None),
+                    "clauses": result.clause_legend,
+                    "chunks": [
+                        chunk | {"pages": chunk_pages[chunk["chunk_index"]]}
+                        for chunk in result.chunk_summaries
+                    ],
+                    "redactions": self._sort_by_first_page(redactions),
+                    "exclusions": self._sort_by_first_page(exclusions),
+                }
+            )
+        return rationale
+
     def _apply_rule(self, rule: Redactor):
         LoggingUtil().log_info(f"Running redaction rule {rule}")
         with TimerUtil() as timer:
@@ -702,13 +832,13 @@ class PDFProcessor(FileProcessor):
                 "n_proposed": n_strings,
                 "n_applied": n_strings,
             }
+            self._text_redaction_summary[redaction_result.rule_name] = summary
+            # Decisions quote personal data, so keep them out of run metrics
             if isinstance(redaction_result, LLMTextRedactionResult) and (
                 redaction_result.redaction_decisions
                 or redaction_result.excluded_decisions
             ):
-                summary["redaction_decisions"] = redaction_result.redaction_decisions
-                summary["excluded_decisions"] = redaction_result.excluded_decisions
-            self._text_redaction_summary[redaction_result.rule_name] = summary
+                self._llm_text_results.append(redaction_result)
         elif issubclass(redaction_result.__class__, ImageRedactionResult):
             self.run_metrics["image_analysis_total_time"] += redaction_time
 
@@ -763,10 +893,12 @@ class PDFProcessor(FileProcessor):
             ]
         )
         # Attach text and images to redaction configs
+        self._rule_page_offsets = {}
         for rule in self.redaction_rules:
             if hasattr(rule, "text") and hasattr(rule, "images"):
                 # Analyse rendered printed pages with text only
                 rule.text = self.rendered_pdf_text if self.rendered_pdf_text else None
+                self._rule_page_offsets[rule.name] = self.rendered_pdf_text_page_offsets
                 rule.rendered_images = image_text_analysis_pages
                 if pages_rendered:
                     # Only include images that are not included in the rendered pages
@@ -775,6 +907,7 @@ class PDFProcessor(FileProcessor):
                     rule.images = unique_pdf_images
             elif hasattr(rule, "text"):
                 rule.text = self.pdf_text
+                self._rule_page_offsets[rule.name] = self.pdf_text_page_offsets
             elif hasattr(rule, "images") and rule.redactor_type == "ImageTextRedaction":
                 # Embedded images, plus full pages only where no text was extractable
                 rule.images = [
@@ -803,6 +936,7 @@ class PDFProcessor(FileProcessor):
 
         # Apply each redaction rule
         self._text_redaction_summary: dict[str, Any] = {}
+        self._llm_text_results = []
         for rule_to_apply in redaction_rules_to_apply:
             self._apply_rule(rule_to_apply)
 
@@ -827,7 +961,7 @@ class PDFProcessor(FileProcessor):
             )
         ]
         text_redactions = [
-            " ".join(redaction_string.split("\n"))
+            self._term_key(redaction_string)
             for result in text_redaction_results
             for redaction_string in result.redaction_strings
         ]

@@ -1,3 +1,4 @@
+from bisect import bisect_right
 from io import BytesIO
 
 import numpy as np
@@ -1094,3 +1095,29 @@ class PDFUtil:
         # Transform the normalised bounding box
         transformed = normalised_bbox.transform(image_transform)
         return transformed
+
+    @staticmethod
+    def get_page_offsets(pages: list[PDFPageMetadata]) -> list[tuple[int, int]]:
+        """
+        Get the (1-based page number, start offset) of each page within the text made
+        by joining the pages' raw text with newlines
+        """
+        page_offsets = []
+        start = 0
+        for page in pages:
+            page_offsets.append((page.page_number + 1, start))
+            start += len(page.raw_text) + 1
+        return page_offsets
+
+    @staticmethod
+    def get_pages_in_range(
+        page_offsets: list[tuple[int, int]], start: int | None, end: int | None
+    ) -> list[int]:
+        """Get the 1-based numbers of the pages that the character range [start, end)
+        overlaps"""
+        if start is None or end is None or not page_offsets:
+            return []
+        page_starts = [page_start for _, page_start in page_offsets]
+        first = max(bisect_right(page_starts, start) - 1, 0)
+        last = max(bisect_right(page_starts, max(start, end - 1)) - 1, 0)
+        return [page_number for page_number, _ in page_offsets[first : last + 1]]
